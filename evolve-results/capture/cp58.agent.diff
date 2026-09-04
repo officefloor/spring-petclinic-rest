@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 98fea8e69..fd2857991 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,7 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.model.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
++    @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.model.RiskFlag.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/model/RiskFlag.java
+new file mode 100644
+index 000000000..e715d2b78
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/RiskFlag.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.model;
++
++import java.util.Set;
++
++/**
++ * Read-time risk assessment for an owner. The flag is raised when any single signal fires:
++ * the owner is a possible duplicate, its email domain is disposable-adjacent (a known
++ * disposable provider or a subdomain of one), or its city is over its soft capacity.
++ */
++public final class RiskFlag {
++
++    private static final Set<String> DISPOSABLE = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private RiskFlag() {
++    }
++
++    /** True when any single risk signal holds for the given owner; otherwise false. */
++    public static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || disposableAdjacent(owner.getEmail());
++    }
++
++    /** True when the email's domain is, or is a subdomain of, a known disposable provider. */
++    private static boolean disposableAdjacent(String email) {
++        int at = email == null ? -1 : email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        return DISPOSABLE.stream().anyMatch(d -> domain.equals(d) || domain.endsWith("." + d));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index abb711561..24176d028 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2251,6 +2251,13 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: "True when any single risk signal holds: the owner is a possible duplicate, its email domain is disposable-adjacent (a known disposable provider or a subdomain of one), or its city is over its soft capacity; otherwise false."
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when the owner has been soft-deleted via DELETE; the record is retained but ignored by the create endpoint's duplicate and identity checks. False for a newly created owner.
