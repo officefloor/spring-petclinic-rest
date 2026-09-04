@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 410736276..a3eaa6802 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
+@@ -146,6 +149,14 @@ public class Owner extends Person {
+         this.address = AddressNormalizer.normalize(address);
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcode.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcode.java
+new file mode 100644
+index 000000000..54de78178
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcode.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Class-level constraint for owner input: when a 'postcode' is present it must fall within the
++ * inclusive range of the owner's city region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
++ * A city with no known region, or an absent postcode, is accepted.
++ */
++@Target({ ElementType.TYPE })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = ValidPostcodeValidator.class)
++@Documented
++public @interface ValidPostcode {
++
++    String message() default "Postcode is not valid for the city's region";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java
+new file mode 100644
+index 000000000..c1a1be08d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++import org.springframework.samples.petclinic.model.Locality;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Rejects a supplied postcode that is out of range for its city's region. Region ranges are fixed;
++ * an unknown region, or a blank/malformed postcode (left to the field-level pattern), is accepted.
++ */
++public class ValidPostcodeValidator implements ConstraintValidator<ValidPostcode, OwnerFieldsDto> {
++
++    /** Region to its inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_RANGE = Map.of(
++        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    @Override
++    public boolean isValid(OwnerFieldsDto owner, ConstraintValidatorContext context) {
++        String postcode = owner == null ? null : owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return true;
++        }
++        int[] range = REGION_RANGE.get(Locality.of(owner.getCity()));
++        if (range == null || !postcode.matches("\\d{4}")) {
++            return true;
++        }
++        int value = Integer.parseInt(postcode);
++        return value >= range[0] && value <= range[1];
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 177c06c95..78f9568f9 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4e608693d..77744ef05 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -1991,6 +1991,7 @@ components:
+     OwnerFields:
+       title: Owner fields
+       description: Editable fields of a pet owner.
++      x-class-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.ValidPostcode"
+       type: object
+       properties:
+         firstName:
+@@ -2041,6 +2042,12 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++        postcode:
++          title: Postcode
++          description: Optional 4-digit postcode; when present it must be valid for the city's region.
++          type: string
++          pattern: '^\d{4}$'
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: The date the owner was registered. Defaults to the server's current date when omitted.
