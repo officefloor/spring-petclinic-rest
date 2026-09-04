@@ -101,6 +101,43 @@ public class TelephoneNormalizer {
     }
 
     /**
+     * Format a canonical E.164 telephone for humans: a '+' and the country code, a space, then the
+     * national digits grouped in threes from the left (e.g. '+61412345678' becomes
+     * '+61 412 345 678'). A number whose country code is not listed carries no known split into
+     * country code and national number and is returned unchanged.
+     *
+     * @param e164Telephone a canonical E.164 telephone (a '+' followed by digits), as produced by
+     *                      {@link #normalize(String)}
+     * @return the human-readable telephone, or {@code null} when {@code e164Telephone} is
+     *         {@code null} or not a '+'-prefixed number
+     */
+    public String toDisplayForm(String e164Telephone) {
+        if (e164Telephone == null || !e164Telephone.startsWith("+")) {
+            return null;
+        }
+        String countryCode = countryCodeOf(e164Telephone);
+        if (countryCode == null) {
+            return e164Telephone;
+        }
+        return "+" + countryCode + " " + groupInThrees(nationalNumberOf(e164Telephone, countryCode));
+    }
+
+    /**
+     * Group a run of digits into space-separated groups of three, from the left, with any final
+     * short group left as-is (e.g. '412345678' becomes '412 345 678').
+     */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder(digits.length() + digits.length() / 3);
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * The listed country code (a key of {@link #NATIONAL_NUMBER_LENGTHS}) that a canonical E.164
      * telephone carries, i.e. the one its digits begin with, or {@code null} when the number's
      * digits begin with no listed country code.
