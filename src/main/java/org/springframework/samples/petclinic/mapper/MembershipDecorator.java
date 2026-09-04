@@ -28,5 +28,6 @@ public class MembershipDecorator {
                 owner.getRegistrationDate(), goldHousehold);
         dto.setMembershipPoints(points);
         dto.setMembershipLevel(HouseholdCap.cap(owner, MembershipLevel.of(points), ownerRepository));
+        dto.setOwnerSegment(OwnerSegment.of(dto.getMembershipLevel(), dto.getLocality()));
     }
 }
