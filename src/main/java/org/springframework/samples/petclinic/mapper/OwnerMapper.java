@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeRegion;
+import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.LocalityTimezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
@@ -21,7 +22,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, CustomerCodeCheckDigit.class, CustomerCodeRegion.class, LocalityTimezone.class, AgeBand.class, TelephoneDisplay.class})
+@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, CustomerCodeCheckDigit.class, CustomerCodeRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class})
 public interface OwnerMapper {
 
     @Mapping(target = "salutation",
@@ -42,6 +43,8 @@ public interface OwnerMapper {
             expression = "java(CustomerCodeCheckDigit.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBand.of(owner))")
+    @Mapping(target = "fiscalYear",
+            expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(TelephoneDisplay.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
