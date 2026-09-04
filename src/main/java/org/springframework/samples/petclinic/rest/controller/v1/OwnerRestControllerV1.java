@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -101,10 +102,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (this.clinicService.findAllOwners().stream()
+        Collection<Owner> owners = this.clinicService.findAllOwners();
+        if (owners.stream()
                 .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setCustomerCode(CustomerCode.of(owner.getLastName(), owners.size()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
