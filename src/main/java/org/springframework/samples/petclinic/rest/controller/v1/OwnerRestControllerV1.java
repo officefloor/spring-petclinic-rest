@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -71,6 +72,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * Maximum number of owners a single city may hold. A create whose city already contains this many
+     * owners is rejected with a {@code 409 Conflict} (see {@link #rejectCityAtCapacity}).
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -123,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateHousehold(ownerFieldsDto);
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
         normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -368,6 +376,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(owner -> firstName.equalsIgnoreCase(owner.getFirstName())
                 && lastName.equalsIgnoreCase(owner.getLastName()))
             .count();
+    }
+
+    /**
+     * Rejects creating an owner whose city already holds {@link #MAX_OWNERS_PER_CITY} or more owners.
+     * The submitted city is compared case-insensitively against every existing owner's stored city; a
+     * city that is already at (or over) capacity is reported as a {@code 409 Conflict}.
+     *
+     * @param city the submitted city (non-blank here, {@link #rejectBlankOwnerFields} having already
+     *             run)
+     * @throws OwnerCityAtCapacityException if the city already contains the maximum number of owners
+     */
+    private void rejectCityAtCapacity(String city) {
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(Objects::nonNull)
+            .filter(city::equalsIgnoreCase)
+            .count();
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
+            throw new OwnerCityAtCapacityException(city);
+        }
     }
 
     private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
