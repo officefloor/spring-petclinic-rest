@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityException.java
+new file mode 100644
+index 000000000..f9eb4c32a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request names a city that already contains 50 or more
++ * owners. Handled by {@link CrowdedCityExceptionHandler}, which responds 409.
++ */
++public class CrowdedCityException extends Exception {
++
++    public CrowdedCityException(String city) {
++        super("City is at capacity: " + city);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityExceptionHandler.java
+new file mode 100644
+index 000000000..915c77dd4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CrowdedCityExceptionHandler.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class CrowdedCityExceptionHandler {
++
++    public void handle(@Parameter CrowdedCityException ex,
++            ObjectResponse<ResponseEntity<String>> response) {
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage()));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectCrowdedCity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectCrowdedCity.java
+new file mode 100644
+index 000000000..bc86e2c91
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectCrowdedCity.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.CrowdedCityException;
++
++/**
++ * Rejects a create body whose city already holds 50 or more owners (compared
++ * case-insensitively), so the endpoint responds 409.
++ */
++public class RejectCrowdedCity {
++
++    private static final int CAPACITY = 50;
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws CrowdedCityException {
++        String city = request.getCity();
++        long count = ownerRepository.findAll().stream()
++                .filter(o -> city.equalsIgnoreCase(o.getCity()))
++                .count();
++        if (count >= CAPACITY) {
++            throw new CrowdedCityException(city);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CrowdedCityException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CrowdedCityException.yml
+new file mode 100644
+index 000000000..25a7513fe
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CrowdedCityException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.CrowdedCityExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a289d2565..c8cba2978 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -23,6 +23,10 @@ rejectDuplicate:
+ 
+ rejectHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateHousehold
++  next: rejectCrowdedCity
++
++rejectCrowdedCity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectCrowdedCity
+   next: build
+ 
+ build:
