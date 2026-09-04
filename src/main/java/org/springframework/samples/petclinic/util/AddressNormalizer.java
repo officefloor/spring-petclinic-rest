@@ -67,4 +67,17 @@ public abstract class AddressNormalizer {
         return sb.toString();
     }
 
+    /**
+     * Reduce a submitted address to its canonical form exactly as {@link #normalize} does, but tolerate
+     * an absent value: a {@code null} address is returned unchanged (still absent), so an optional
+     * address field can be normalized in place without a separate presence check at every call site. A
+     * blank value still reduces to the empty string.
+     *
+     * @param rawAddress the submitted address, or {@code null} when absent
+     * @return the canonical address, or {@code null} when the input was {@code null}
+     */
+    public static String normalizeOrNull(String rawAddress) {
+        return rawAddress == null ? null : normalize(rawAddress);
+    }
+
 }

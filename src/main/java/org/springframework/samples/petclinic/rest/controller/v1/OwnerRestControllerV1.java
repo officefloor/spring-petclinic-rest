@@ -181,7 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddress(addressFor(ownerFieldsDto));
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -327,11 +327,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param ownerFieldsDto the submitted owner fields
      */
     private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        String address = ownerFieldsDto.getAddress();
-        if (address == null) {
-            return;
-        }
-        ownerFieldsDto.setAddress(AddressNormalizer.normalize(address));
+        ownerFieldsDto.setAddress(AddressNormalizer.normalizeOrNull(ownerFieldsDto.getAddress()));
     }
 
     /**
@@ -439,6 +435,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(Owner::getHouseholdId)
             .filter(householdId::equals)
             .count();
+    }
+
+    /**
+     * Derives the address an owner should carry from its submitted fields. The update path stamps an
+     * owner with an address taken from the request, so routing that through this single method keeps the
+     * derivation of "the owner's address" in one place, mirroring {@link #householdIdFor} for the
+     * household id.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @return the address to store on the owner
+     */
+    private String addressFor(OwnerFieldsDto ownerFieldsDto) {
+        return ownerFieldsDto.getAddress();
     }
 
     /**
