@@ -41,4 +41,20 @@ public final class PhoneNumbers {
         }
         return "+61" + digits;
     }
+
+    /**
+     * Format a stored E.164 number for humans: the country code, a space, then the national
+     * digits grouped in threes (e.g. {@code +61412345678} becomes {@code +61 412 345 678}).
+     *
+     * @param e164 a normalised E.164 telephone (leading '+' followed by digits)
+     * @return the human-friendly representation, or the input unchanged when blank
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || e164.isBlank()) {
+            return e164;
+        }
+        int split = e164.startsWith("+1") ? 2 : 3;
+        String national = e164.substring(split).replaceAll("(\\d{3})(?=\\d)", "$1 ");
+        return e164.substring(0, split) + " " + national;
+    }
 }
