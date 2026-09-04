@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -119,16 +120,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(owner.getFirstName())
                 && existing.getLastName().equalsIgnoreCase(owner.getLastName()))
             .count());
-        if (owners.stream().anyMatch(existing -> sameHousehold(existing, owner))
-                && !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         owner.setHouseholdMemberCount(1 + (int) owners.stream().filter(existing -> sameHousehold(existing, owner)).count());
         owner.setCustomerCode(CustomerCode.of(owner, owners));
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        int householdMax = owners.stream().filter(existing -> sameHousehold(existing, owner))
+            .mapToInt(existing -> MembershipLevel.of(MembershipLevel.points(existing.getNamesakeCount(),
+                existing.getEmail(), existing.getHouseholdMemberCount(), existing.getRegistrationDate())))
+            .max().orElse(-1);
+        if (householdMax >= 0 && ownerDto.getMembershipLevel() > householdMax + 1) {
+            ownerDto.setMembershipLevel(householdMax + 1);
+        }
         ownerDto.setBulkSignupWarning(owners.stream()
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() > 80);
         headers.setLocation(UriComponentsBuilder.newInstance()
