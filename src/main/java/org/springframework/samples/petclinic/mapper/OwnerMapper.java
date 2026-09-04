@@ -33,6 +33,7 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembership.level(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
@@ -85,6 +86,20 @@ public interface OwnerMapper {
     default String identityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(
                 owner.getTelephone(), owner.getEmail(), owner.getLastName());
+    }
+
+    /**
+     * The owner's segment, formatted {@code '<TIER>_<AREA>'}: one of {@code PREMIUM_METRO},
+     * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}. TIER is
+     * {@code PREMIUM} when membershipLevel is 3 or more, otherwise {@code STANDARD}. AREA is
+     * {@code METRO} when the locality is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default String ownerSegment(Owner owner) {
+        String tier = org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
+                .level(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String locality = locality(owner);
+        boolean metro = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
+        return tier + "_" + (metro ? "METRO" : "REGIONAL");
     }
 
     /**
