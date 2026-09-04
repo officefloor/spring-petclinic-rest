@@ -39,7 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BulkSignup;
-import org.springframework.samples.petclinic.util.UniqueCustomerCode;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.DisposableEmail;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Namesakes;
@@ -123,14 +123,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCapacityWarning(CityAtCapacityException.isApproachingCapacity(owner.getCity(), this.clinicService.findAllOwners()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
-        owner.setCustomerCode(UniqueCustomerCode.assign(owner, this.clinicService.findAllOwners()));
+        owner.setMemberId(MemberId.assign(owner, this.clinicService.findAllOwners()));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(org.springframework.samples.petclinic.util.LevelCeiling.cap(ownerDto.getMembershipLevel(), owner, this.clinicService.findAllOwners()));
-        org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} memberId={} registrationDate={} membershipLevel={}", owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
         org.springframework.samples.petclinic.util.OwnerCreatedEvent.emit(owner, ownerDto.getMembershipLevel());
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
