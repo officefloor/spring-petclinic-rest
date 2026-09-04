@@ -17,33 +17,22 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.samples.petclinic.util.IdentityUtils;
 import org.springframework.stereotype.Component;
 
 /**
- * Owns the household-identity concern: the single place that decides which owners belong to
- * the same household and derives the shared household id they carry.
- *
- * <p>Keeping this in one place means the shared household id and the household-membership
- * lookup can never drift apart: two owners belong to the same household exactly when the
- * identity fields this resolver keys on (their normalized last name and postcode) agree, and
- * for that household they derive an identical id.
+ * Owns the household-identity concern: the single place that derives the shared household id
+ * owners carry.
  *
  * <p>The household id is deterministic: the first twelve hex characters of the SHA-256 digest
  * of the normalized last name and the postcode joined by '|'. Owners that share a normalized
  * last name and postcode therefore derive the same id automatically, without any explicit
- * link.
+ * link. The id no longer participates in duplicate detection (which now rests solely on the
+ * identity key); it feeds the household membership-level ceiling and household-size derivations.
  */
 @Component
 public class HouseholdResolver {
-
-    private final ClinicService clinicService;
-
-    public HouseholdResolver(ClinicService clinicService) {
-        this.clinicService = clinicService;
-    }
 
     /**
      * The stable, shared household identifier for {@code owner}: the first twelve hex
@@ -57,20 +46,5 @@ public class HouseholdResolver {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         String key = IdentityUtils.normalizeIdentity(owner.getLastName()) + "|" + postcode;
         return HashUtils.sha256HexPrefix(key, 12);
-    }
-
-    /**
-     * Whether an existing owner already belongs to {@code owner}'s household, i.e. shares its
-     * computed household id (same normalized last name and postcode). Such a second owner is a
-     * household duplicate unless it deliberately declares {@code sharesHousehold}.
-     *
-     * @param owner the owner about to be created
-     * @return {@code true} if an already-registered owner shares this owner's household
-     */
-    public boolean householdExists(Owner owner) {
-        String householdId = householdId(owner);
-        return this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(householdId(existing)));
     }
 }

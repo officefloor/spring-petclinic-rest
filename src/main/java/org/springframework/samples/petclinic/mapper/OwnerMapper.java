@@ -12,12 +12,15 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HashUtils;
+import org.springframework.samples.petclinic.util.IdentityUtils;
 
 import java.time.LocalDate;
 import java.time.Month;
 import java.time.Period;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.OptionalInt;
 
 /**
@@ -144,17 +147,18 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's derived identity key: the normalized telephone, the email (or an empty
-     * string when absent) and the householdId joined by '|'. This single key is the sole
-     * basis for duplicate detection on create — two owners are duplicates only when their
-     * whole identityKey matches, so members of one household with different telephones
-     * (and hence different keys) are all permitted.
+     * The owner's derived identity key: the SHA-256 hex digest of the normalized telephone,
+     * the lower-cased email (or an empty string when absent) and the {@link IdentityUtils#soundex
+     * soundex} of the last name, joined by '|'. This single key is the sole basis for duplicate
+     * detection on create — two owners are duplicates only when their whole identityKey matches,
+     * so two people sharing a household (a like-sounding last name and postcode) but carrying
+     * different telephones derive different keys and are all permitted.
      */
     public static String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
+        String lastNameSoundex = IdentityUtils.soundex(owner.getLastName());
+        return HashUtils.sha256Hex(telephone + "|" + email + "|" + lastNameSoundex);
     }
 
     /**

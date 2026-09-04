@@ -197,15 +197,15 @@ public class OwnerRegistrar {
         }
         // The owner's telephone and email are now in their canonical, stored form.
         // The household id is deterministic: owners with the same normalized last name and
-        // postcode share it automatically. Assign it unconditionally before the duplicate
-        // checks so both the household-duplicate rule and the identity-key rule key off the
-        // same computed id.
+        // postcode share it automatically. Assign it unconditionally so the membership-level
+        // ceiling can key off it; it no longer participates in duplicate detection, which now
+        // rests solely on the identity key below.
         owner.setHouseholdId(householdResolver.householdId(owner));
-        boolean householdMember = householdResolver.householdExists(owner);
-        // A second owner sharing an existing owner's household (same normalized last name and
-        // postcode) is a legitimate additional member, not a rejection: it is admitted and its
-        // membershipLevel is instead held to the household level-ceiling when the DTO is derived.
-        // A true duplicate is still caught below by the identity-key rule.
+        // Duplicate detection is the single identity key: a candidate is rejected only when its
+        // whole identityKey (normalized telephone, lower-cased email and soundex of the last name)
+        // collides with a non-deleted owner's. Two people sharing a household with different
+        // telephones therefore derive different keys and are both admitted; the second is instead
+        // flagged as a possible duplicate by the soft-match rule below.
         if (isDuplicateOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -220,13 +220,13 @@ public class OwnerRegistrar {
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setBulkSignupWarning(ownersCreatedThatDay > 80);
-        // Soft-match: the candidate has already cleared the hard-duplicate check, but it may
-        // still share an existing owner's last name and postcode while carrying a different
-        // telephone. When it does, it is created but flagged as a possible duplicate of that
-        // existing owner; otherwise the flag is false and no reference is recorded. A member of
-        // an existing household is a deliberate additional member, not a suspected duplicate, so
-        // it is never flagged.
-        Integer possibleDuplicateOf = householdMember ? null : possibleDuplicateOf(owner);
+        // Soft-match: the candidate has already cleared the hard-duplicate check, but its
+        // identityKey may still differ from an existing owner's while their last names sound alike
+        // (equal soundex) and their postcodes match — a likely re-registration of the same person
+        // under a different telephone or email. When it does, it is created but flagged as a
+        // possible duplicate of that existing owner; otherwise the flag is false and no reference
+        // is recorded.
+        Integer possibleDuplicateOf = possibleDuplicateOf(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
@@ -282,15 +282,16 @@ public class OwnerRegistrar {
      * Whether {@code candidate} collides with an already-registered owner under the single
      * identity rule enforced on create. This is the one point at which a new owner is
      * rejected as a duplicate (HTTP 409): all duplicate detection is consolidated into the
-     * derived {@link OwnerMapper#identityKey identityKey} — the normalized telephone, the
-     * email (or an empty string when absent) and the householdId joined by '|'. The
-     * candidate clashes only when its WHOLE identityKey equals an existing owner's; because
-     * the telephone is part of the key, two members of the same household (same householdId)
-     * with different telephones have different identityKeys and are both allowed.
+     * derived {@link OwnerMapper#identityKey identityKey} — the SHA-256 hex over the normalized
+     * telephone, the lower-cased email (or an empty string when absent) and the soundex of the
+     * last name, joined by '|'. The candidate clashes only when its WHOLE identityKey equals an
+     * existing owner's; because the telephone is part of the key, two people sharing a household
+     * (a like-sounding last name and postcode) with different telephones have different
+     * identityKeys and are both allowed.
      *
-     * <p>The candidate arrives with its telephone and email already normalized and its
-     * household id already derived, and each existing owner is stored in the same canonical
-     * form, so an identityKey match means the two owners are genuinely the same identity.
+     * <p>The candidate arrives with its telephone and email already normalized, and each existing
+     * owner is stored in the same canonical form, so an identityKey match means the two owners are
+     * genuinely the same identity.
      *
      * @param candidate the fully-normalized owner about to be created
      * @return {@code true} if an existing owner already occupies the candidate's identityKey
@@ -305,27 +306,28 @@ public class OwnerRegistrar {
 
     /**
      * The id of the existing owner the fully-normalized {@code candidate} soft-matches, or
-     * {@code null} when there is none. A soft match is an owner that is not a hard duplicate
-     * (its whole identityKey differs) yet shares the candidate's normalized last name and its
-     * postcode while carrying a different telephone — a likely re-registration of the same
-     * person under a new number. Both must supply a postcode for a match to be possible; when
-     * several existing owners qualify the lowest id is returned so the result is deterministic.
+     * {@code null} when there is none. A soft match is an owner whose whole identityKey differs
+     * from the candidate's (so it is not a hard duplicate) yet whose last name sounds alike (equal
+     * {@link IdentityUtils#soundex soundex}) and whose postcode matches — a likely re-registration
+     * of the same person under a different telephone or email. Both must supply a postcode for a
+     * match to be possible; when several existing owners qualify the lowest id is returned so the
+     * result is deterministic.
      *
      * @param candidate the fully-normalized owner about to be created
      * @return the matching existing owner's id, or {@code null} if the candidate is no soft match
      */
     private Integer possibleDuplicateOf(Owner candidate) {
         String postcode = candidate.getPostcode();
-        if (postcode == null) {
+        if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String lastNameKey = IdentityUtils.normalizeIdentity(candidate.getLastName());
+        String identityKey = OwnerMapper.identityKey(candidate);
+        String lastNameSoundex = IdentityUtils.soundex(candidate.getLastName());
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted()
-                && IdentityUtils.normalizeIdentity(existing.getLastName()).equals(lastNameKey)
-                && postcode.equals(existing.getPostcode())
-                && !postcode.isBlank()
-                && !java.util.Objects.equals(candidate.getTelephone(), existing.getTelephone()))
+                && !identityKey.equals(OwnerMapper.identityKey(existing))
+                && IdentityUtils.soundex(existing.getLastName()).equals(lastNameSoundex)
+                && postcode.equals(existing.getPostcode()))
             .map(Owner::getId)
             .filter(java.util.Objects::nonNull)
             .min(Integer::compareTo)
