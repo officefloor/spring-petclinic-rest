@@ -130,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(org.springframework.samples.petclinic.util.LevelCeiling.cap(ownerDto.getMembershipLevel(), owner, this.clinicService.findAllOwners()));
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        org.springframework.samples.petclinic.util.OwnerCreatedEvent.emit(owner, ownerDto.getMembershipLevel());
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
