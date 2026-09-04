@@ -17,39 +17,33 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 import java.util.Collection;
-import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.Household;
 
 /**
- * Signals that a new owner shares an existing owner's last name and address
- * (compared case-insensitively with collapsed whitespace) without opting into a
- * shared household. Mapped to HTTP 409 Conflict by {@link ExceptionControllerAdvice}.
+ * Signals that a new owner shares an existing owner's household (the same last name
+ * and postcode, via their computed {@code householdId}) without opting into a shared
+ * household. Mapped to HTTP 409 Conflict by {@link ExceptionControllerAdvice}.
  */
 public class DuplicateHouseholdException extends RuntimeException {
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("Household already registered for: " + lastName + ", " + address);
-    }
-
-    /** Canonicalize a value so comparison ignores case and collapses whitespace runs. */
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    public DuplicateHouseholdException(String lastName, String postcode) {
+        super("Household already registered for: " + lastName + ", " + postcode);
     }
 
     /**
-     * Throw if {@code candidate} has the same normalized last name and address as any owner in
-     * {@code existingOwners}, unless {@code sharesHousehold} is set.
+     * Throw if {@code candidate} shares an existing owner's {@code householdId} (same last name
+     * and postcode), unless {@code sharesHousehold} is set.
      */
     public static void rejectIfDuplicate(Owner candidate, boolean sharesHousehold, Collection<Owner> existingOwners) {
         if (sharesHousehold) {
             return;
         }
-        String lastName = normalize(candidate.getLastName());
-        String address = normalize(candidate.getAddress());
+        String household = Household.idFor(candidate);
         for (Owner owner : existingOwners) {
-            if (lastName.equals(normalize(owner.getLastName())) && address.equals(normalize(owner.getAddress()))) {
-                throw new DuplicateHouseholdException(candidate.getLastName(), candidate.getAddress());
+            if (household.equals(Household.idFor(owner))) {
+                throw new DuplicateHouseholdException(candidate.getLastName(), candidate.getPostcode());
             }
         }
     }

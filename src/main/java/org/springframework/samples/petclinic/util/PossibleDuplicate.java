@@ -15,9 +15,10 @@ public final class PossibleDuplicate {
     }
 
     /** Record on {@code candidate} whether it possibly duplicates an existing owner (same last
-     *  name and postcode, different telephone) and, if so, that owner's id. */
-    public static void assign(Owner candidate, Collection<Owner> existing) {
-        Integer match = matchId(candidate, existing);
+     *  name and postcode, different telephone) and, if so, that owner's id. A declared household
+     *  member ({@code sharesHousehold}) is never a suspected duplicate. */
+    public static void assign(Owner candidate, boolean sharesHousehold, Collection<Owner> existing) {
+        Integer match = sharesHousehold ? null : matchId(candidate, existing);
         candidate.setPossibleDuplicate(match != null);
         candidate.setPossibleDuplicateOf(match);
     }

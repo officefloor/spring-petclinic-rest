@@ -22,7 +22,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner.getLastName(), owner.getAddress()))")
+    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")

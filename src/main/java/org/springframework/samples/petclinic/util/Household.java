@@ -5,20 +5,22 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Builds an owner's {@code householdId}: a stable identifier shared by every owner
- * in the same household, i.e. owners with the same last name and address (compared
- * case-insensitively with collapsed whitespace). Derived deterministically, so two
- * owners who share a household always resolve to the same value.
+ * in the same household, i.e. owners with the same last name and postcode. Derived
+ * deterministically, so owners with the same last name and postcode always resolve
+ * to the same value.
  */
 public final class Household {
 
     private Household() {
     }
 
-    /** The 12 upper-case hex chars of SHA-256 over the normalized {@code lastName|address}. */
-    public static String idFor(String lastName, String address) {
-        String key = normalize(lastName) + "|" + normalize(address);
+    /** The 12 upper-case hex chars of SHA-256 over {@code normalizedLastName + '|' + postcode}. */
+    public static String idFor(Owner owner) {
+        String key = normalize(owner.getLastName()) + "|" + (owner.getPostcode() == null ? "" : owner.getPostcode());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
