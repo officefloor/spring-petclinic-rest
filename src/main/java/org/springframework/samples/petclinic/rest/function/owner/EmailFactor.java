@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class EmailFactor {
 
-    private static final int POINTS = 1;
+    private static final int POINTS = 2;
 
     private EmailFactor() {
     }

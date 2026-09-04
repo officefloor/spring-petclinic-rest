@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class TenureFactor {
 
-    private static final int POINTS = 1;
+    private static final int POINTS = 3;
 
     private static final long TENURE_DAYS = 365;
 

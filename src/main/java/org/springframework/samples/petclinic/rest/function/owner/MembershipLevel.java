@@ -1,22 +1,25 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Membership level rule: a numeric level derived from the owner's {@link MembershipPoints}
- * and capped at 4. The factors that earn points, and their weights, live in the small
- * factor classes behind {@link MembershipPoints}; this class owns only the mapping from a
- * points total to a level. A newly created owner has zero tenure, so a new owner never
- * exceeds 3.
+ * Membership level rule: maps a {@link MembershipPoints} total to a level of 1 (0-1 points),
+ * 2 (2-3), 3 (4-5) or 4 (6 or more). Owns only that mapping; the factors that earn points, and
+ * their weights, live in the small factor classes behind {@link MembershipPoints}.
  */
 public final class MembershipLevel {
-
-    private static final int CAP = 4;
 
     private MembershipLevel() {
     }
 
-    public static int of(Owner owner) {
-        return Math.min(MembershipPoints.of(owner), CAP);
+    public static int of(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 }

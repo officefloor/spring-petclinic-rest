@@ -3,14 +3,14 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Aggregate membership points for an owner: a starting allowance plus the points
- * contributed by each qualifying factor. Adding or reweighting a factor is a change to a
- * single small factor class ({@link EmailFactor}, {@link NamesakeFactor},
- * {@link TenureFactor}) or to this sum, not to the level-mapping in {@link MembershipLevel}.
+ * Aggregate the membership points an owner earns from entity-derivable factors
+ * ({@link EmailFactor}, {@link NamesakeFactor}, {@link TenureFactor}). The household
+ * factor needs the repository to count members, so it is added at response time by
+ * {@link Membership}; this sum feeds the level-mapping in {@link MembershipLevel}.
  */
 public final class MembershipPoints {
 
-    private static final int BASE = 1;
+    private static final int BASE = 0;
 
     private MembershipPoints() {
     }

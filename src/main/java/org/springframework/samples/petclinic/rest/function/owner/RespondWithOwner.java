@@ -14,6 +14,7 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
         PossibleDuplicate.mark(dto, owner, ownerRepository);
+        Membership.mark(dto, owner, ownerRepository);
         response.send(dto);
     }
 }

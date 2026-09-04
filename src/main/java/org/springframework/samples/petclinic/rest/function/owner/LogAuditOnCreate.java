@@ -16,6 +16,7 @@ public class LogAuditOnCreate {
 
     public void service(@Val Owner owner) {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), MembershipLevel.of(owner));
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            MembershipLevel.of(MembershipPoints.of(owner)));
     }
 }
