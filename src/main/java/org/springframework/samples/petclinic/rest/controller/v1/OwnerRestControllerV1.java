@@ -215,12 +215,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.idempotentCreates.put(idempotencyKey, owner.getId());
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
-        OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
-        AUDIT.info(event.toJson());
+        emitOwnerCreatedAudit(owner, ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -323,6 +318,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Emits the audit trail for a freshly created owner: the human-readable {@code AUDIT} line and the
+     * structured {@link OwnerCreatedEvent}, in that order. Both carry the owner's current primary
+     * identifier — the human line its {@code customerCode} and {@code membershipNumber}, the event the
+     * value returned by {@link #primaryIdentifier} — so keeping the two emissions together in one place
+     * lets the audit trail's view of the owner's identity change in a single spot. The event's {@code
+     * seq} is bumped exactly once here, so every emitted event carries a strictly larger sequence number
+     * than the create before it.
+     *
+     * @param owner    the freshly created and persisted owner, already stamped with its identity
+     * @param ownerDto the owner's mapped DTO, the source of the derived {@code membershipLevel} and
+     *                 {@code membershipNumber} carried on the audit trail
+     */
+    private void emitOwnerCreatedAudit(Owner owner, OwnerDto ownerDto) {
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+        AUDIT.info(event.toJson());
     }
 
     /**

@@ -49,6 +49,23 @@ public abstract class CustomerCode {
     }
 
     /**
+     * The HASH8 component alone: the first eight upper-case hex characters of the SHA-256 digest of the
+     * owner's normalized telephone concatenated with the last name, each part treated as the empty
+     * string when absent. This is the region-and-hash identity's hash component, exposed on its own so
+     * any other identifier built from the same {@code (telephone, lastName)} hash derives it here rather
+     * than recomputing the digest.
+     *
+     * @param telephone the owner's normalized telephone, or null
+     * @param lastName  the owner's last name, or null
+     * @return the eight-character upper-case hex HASH8
+     */
+    public static String hash8(String telephone, String lastName) {
+        String telephonePart = telephone == null ? "" : telephone;
+        String lastNamePart = lastName == null ? "" : lastName;
+        return Sha256.hex(telephonePart + lastNamePart).substring(0, HASH_LENGTH).toUpperCase();
+    }
+
+    /**
      * The region (the part before the {@code '-'}) of a customer code, or {@code null} when the code is
      * {@code null}. This is how the owner's locality is now derived from its identity.
      *
@@ -61,16 +78,6 @@ public abstract class CustomerCode {
         }
         int separator = customerCode.indexOf(SEPARATOR);
         return separator < 0 ? customerCode : customerCode.substring(0, separator);
-    }
-
-    /**
-     * First eight upper-case hex characters of SHA-256 over {@code (telephone + lastName)}, each part
-     * treated as the empty string when absent.
-     */
-    private static String hash8(String telephone, String lastName) {
-        String telephonePart = telephone == null ? "" : telephone;
-        String lastNamePart = lastName == null ? "" : lastName;
-        return Sha256.hex(telephonePart + lastNamePart).substring(0, HASH_LENGTH).toUpperCase();
     }
 
 }
