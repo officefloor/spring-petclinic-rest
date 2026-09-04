@@ -165,6 +165,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
+        owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -403,6 +404,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(owner -> firstName.equalsIgnoreCase(owner.getFirstName())
                 && lastName.equalsIgnoreCase(owner.getLastName()))
+            .count();
+    }
+
+    /**
+     * Counts the existing owners (before this create) belonging to the given household, i.e. those
+     * whose stored {@code householdId} equals the value derived for the owner being created. The
+     * count reflects only owners already persisted at the time of the create, so the owner being
+     * created is never included; callers add one to obtain the household size after this create.
+     *
+     * @param householdId the household identifier derived for the owner being created (see
+     *                    {@link HouseholdNormalizer#toHouseholdId})
+     * @return the number of existing owners already sharing that household
+     */
+    private int countHouseholdMembers(String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .map(Owner::getHouseholdId)
+            .filter(householdId::equals)
             .count();
     }
 
