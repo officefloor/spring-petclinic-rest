@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -104,6 +105,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         DuplicateTelephoneException.rejectIfDuplicate(owner.getTelephone(), this.clinicService.findAllOwners());
+        DuplicateHouseholdException.rejectIfDuplicate(owner,
+            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), this.clinicService.findAllOwners());
         owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), this.clinicService.findAllOwners().size()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
