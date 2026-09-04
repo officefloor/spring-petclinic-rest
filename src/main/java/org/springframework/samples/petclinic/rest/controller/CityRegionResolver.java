@@ -49,6 +49,13 @@ public class CityRegionResolver {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-timezone table (IANA names), keyed by region; a region not listed here
+     *  has no known timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     /**
      * Resolve a city to its canonical region.
      *
@@ -75,6 +82,17 @@ public class CityRegionResolver {
     public String regionFor(String city, String postcode) {
         String region = regionForPostcode(postcode);
         return region != null ? region : regionFor(city);
+    }
+
+    /**
+     * The IANA timezone name for a region, using the fixed region-to-timezone table
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
+     *
+     * @param region the canonical region code (e.g. 'NSW'), such as returned by {@link #regionFor}
+     * @return the region's IANA timezone name, or {@code null} when the region is not in the table
+     */
+    public String timezoneForRegion(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /**
