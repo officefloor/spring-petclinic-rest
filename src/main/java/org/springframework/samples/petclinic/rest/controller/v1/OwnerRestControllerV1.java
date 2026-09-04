@@ -126,6 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        owner.setCapacityWarning(owners.stream()
+            .filter(existing -> existing.getCity().equalsIgnoreCase(owner.getCity())).count() >= 40);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         int householdMax = owners.stream().filter(existing -> sameHousehold(existing, owner))
