@@ -30,7 +30,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -123,13 +122,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
-        DuplicateHouseholdException.rejectIfDuplicate(owner, sharesHousehold, this.clinicService.findAllOwners());
         owner.setCustomerCode(UniqueCustomerCode.assign(owner, this.clinicService.findAllOwners()));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setMembershipLevel(org.springframework.samples.petclinic.util.LevelCeiling.cap(ownerDto.getMembershipLevel(), owner, this.clinicService.findAllOwners()));
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
