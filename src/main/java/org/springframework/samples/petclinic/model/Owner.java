@@ -80,6 +80,12 @@ public class Owner extends Person {
         return this.customerCode;
     }
 
+    /** Stable identifier shared by owners of the same household (matching last name and address). */
+    @Transient
+    public String getHouseholdId() {
+        return HouseholdId.of(getLastName(), this.address);
+    }
+
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
     }
