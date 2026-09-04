@@ -200,7 +200,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner));
         int namesakeCount = (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName())
                 && owner.getLastName().equalsIgnoreCase(existing.getLastName()))
@@ -273,7 +273,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * derive an identical householdId.
      */
     private static String householdId(String lastNameKey, String addressKey) {
-        String source = lastNameKey + "|" + addressKey;
+        return "HH-" + sha256HexPrefix(lastNameKey + "|" + addressKey, 12);
+    }
+
+    /**
+     * The first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
+     * bytes of {@code source}. This is the single place the SHA-256 hex derivation lives, so
+     * every identity value built from a truncated hex digest reads the same computation.
+     */
+    private static String sha256HexPrefix(String source, int length) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(source.getBytes(StandardCharsets.UTF_8));
@@ -281,7 +289,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
+            return sb.substring(0, length).toUpperCase(Locale.ROOT);
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
@@ -289,13 +297,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code assigned on create, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}:
-     * CITY3 is the upper-cased first three letters of {@code city}, LAST3 is the upper-cased
-     * first three letters of {@code lastName} and NNNN is a per-city 4-digit zero-padded
-     * sequence equal to one more than the number of owners already in that city
-     * (e.g. 'LON-SMI-0007').
+     * Build the customer code assigned to {@code owner} on create, formatted
+     * {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the upper-cased first three letters of the
+     * owner's city, LAST3 is the upper-cased first three letters of the owner's last name and
+     * NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of
+     * owners already in that city (e.g. 'LON-SMI-0007').
      */
-    private String nextCustomerCode(String city, String lastName) {
+    private String customerCode(Owner owner) {
+        String city = owner.getCity();
+        String lastName = owner.getLastName();
         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         String cityKey = normalizeIdentity(city);
