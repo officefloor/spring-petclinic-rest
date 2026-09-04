@@ -191,6 +191,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
         owner.setNamesakeCount(namesakeCount);
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setBulkSignupWarning(ownersCreatedThatDay > 80);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
