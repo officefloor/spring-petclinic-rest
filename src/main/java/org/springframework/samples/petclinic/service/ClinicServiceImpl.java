@@ -22,6 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -233,25 +235,21 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+            owner.setCustomerCode(generateCustomerCode(owner));
         }
         ownerRepository.save(owner);
 
     }
 
     /**
-     * Build a customer code formatted '<CITY3>-<LAST3>-<NNNN>', where CITY3 is the upper-cased
-     * first three letters of the city, LAST3 the upper-cased first three letters of the last name
-     * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of owners
-     * already in that city (e.g. 'SYD-SMI-0007').
+     * Build a customer code formatted '<REGION>-<HASH8>', where REGION is the region derived from the
+     * owner's postcode (see {@link LocalityResolver#resolveFromPostcode}) and HASH8 is the first eight
+     * upper-case hex characters of the SHA-256 digest of the owner's normalized telephone concatenated
+     * with the last name (e.g. 'NSW-1A2B3C4D'). It carries no sequence number.
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        long sequence = ownerRepository.findAll().stream()
-            .filter(o -> o.getCity() != null && o.getCity().equalsIgnoreCase(city))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+    private String generateCustomerCode(Owner owner) {
+        String region = LocalityResolver.resolveFromPostcode(owner.getPostcode());
+        return CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
     }
 
     @Override

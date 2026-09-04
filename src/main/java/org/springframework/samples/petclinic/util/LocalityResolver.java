@@ -81,6 +81,19 @@ public abstract class LocalityResolver {
     }
 
     /**
+     * Derive the canonical region from the postcode alone, deriving {@link #UNKNOWN} when the postcode
+     * is absent, not four digits, or in no known range. This is the region that the owner's
+     * {@code customerCode} (and hence its locality) is built from.
+     *
+     * @param postcode the owner's postcode (may be null when absent)
+     * @return the canonical region string, or {@code UNKNOWN}
+     */
+    public static String resolveFromPostcode(String postcode) {
+        String region = regionForPostcode(postcode);
+        return region != null ? region : UNKNOWN;
+    }
+
+    /**
      * The region whose fixed inclusive range contains the given 4-digit postcode, or {@code null}
      * when the postcode is absent, not four digits, or in no known range.
      */
