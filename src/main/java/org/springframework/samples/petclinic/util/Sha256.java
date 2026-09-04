@@ -24,7 +24,7 @@ import java.security.NoSuchAlgorithmException;
  * SHA-256 reduced to a lower-case hex string. Kept separate from the owner controller and the
  * {@code Owner} model so the single way this codebase turns a value into a stable hex digest lives in
  * one place, as a pure function with no web or persistence dependencies. Several owner values are
- * derived from such a digest and share this helper: the {@link CustomerCode} hash component and the
+ * derived from such a digest and share this helper: the {@link MemberId} hash component and the
  * {@link HouseholdNormalizer} household id each keep a leading slice of it.
  */
 public abstract class Sha256 {

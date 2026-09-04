@@ -22,8 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -237,43 +237,45 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.isNew() && owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         ownerRepository.save(owner);
 
     }
 
     /**
-     * Build a customer code formatted '<REGION>-<HASH8>', where REGION is the region derived from the
-     * owner's postcode (see {@link LocalityResolver#resolveFromPostcode}) and HASH8 is the first eight
-     * upper-case hex characters of the SHA-256 digest of the owner's normalized telephone concatenated
-     * with the last name (e.g. 'NSW-1A2B3C4D'). The base code carries no sequence number, so two
-     * distinct owners whose '(telephone, lastName)' pairs hash alike would otherwise share a code; when
-     * the computed code collides with an existing owner's customer code, '-<n>' is appended with the
-     * smallest n of 2 or more that makes it unique (see {@link #deduplicateCustomerCode}).
+     * Build a member id formatted '<REGION><FY><HASH8><CHK>', where REGION is the region derived from
+     * the owner's postcode (see {@link LocalityResolver#resolveFromPostcode}), FY is the two-digit
+     * fiscal year of the owner's registration date, HASH8 is the first eight upper-case hex characters
+     * of the SHA-256 digest of the owner's normalized telephone concatenated with the last name, and
+     * CHK is a single Luhn check digit over the digits of '<REGION><FY><HASH8>' (e.g. 'NSW271A2B3C4D5';
+     * see {@link MemberId#of}). Two distinct owners whose '(region, fiscal year, telephone, lastName)'
+     * hash alike would otherwise share an id; when the computed id collides with an existing owner's
+     * member id, '-<n>' is appended with the smallest n of 2 or more that makes it unique (see
+     * {@link #deduplicateMemberId}).
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String region = LocalityResolver.resolveFromPostcode(owner.getPostcode());
-        String code = CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
-        return deduplicateCustomerCode(code);
+        String id = MemberId.of(region, owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
+        return deduplicateMemberId(id);
     }
 
     /**
-     * Returns {@code code} unchanged when no existing owner already carries it, otherwise the code with
+     * Returns {@code id} unchanged when no existing owner already carries it, otherwise the id with
      * '-<n>' appended, choosing the smallest n of 2 or more that makes the result unique among existing
-     * owners' customer codes.
+     * owners' member ids.
      */
-    private String deduplicateCustomerCode(String code) {
+    private String deduplicateMemberId(String id) {
         Set<String> existing = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!existing.contains(code)) {
-            return code;
+        if (!existing.contains(id)) {
+            return id;
         }
         for (int n = 2; ; n++) {
-            String candidate = code + "-" + n;
+            String candidate = id + "-" + n;
             if (!existing.contains(candidate)) {
                 return candidate;
             }

@@ -78,7 +78,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. A single line is emitted here on each successful owner create,
-     * carrying the new owner's id, customer code and registration date.
+     * carrying the new owner's id, member id and registration date.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -322,37 +322,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the audit trail for a freshly created owner: the human-readable {@code AUDIT} line and the
-     * structured {@link OwnerCreatedEvent}, in that order. Both carry the owner's current primary
-     * identifier — the human line its {@code customerCode} and {@code membershipNumber}, the event the
-     * value returned by {@link #primaryIdentifier} — so keeping the two emissions together in one place
-     * lets the audit trail's view of the owner's identity change in a single spot. The event's {@code
-     * seq} is bumped exactly once here, so every emitted event carries a strictly larger sequence number
-     * than the create before it.
+     * structured {@link OwnerCreatedEvent}, in that order. Both carry the owner's primary identifier,
+     * the unified {@code memberId} returned by {@link #primaryIdentifier}, so keeping the two emissions
+     * together in one place lets the audit trail's view of the owner's identity change in a single spot.
+     * The event's {@code seq} is bumped exactly once here, so every emitted event carries a strictly
+     * larger sequence number than the create before it.
      *
      * @param owner    the freshly created and persisted owner, already stamped with its identity
-     * @param ownerDto the owner's mapped DTO, the source of the derived {@code membershipLevel} and
-     *                 {@code membershipNumber} carried on the audit trail
+     * @param ownerDto the owner's mapped DTO, the source of the derived {@code membershipLevel} carried
+     *                 on the audit trail
      */
     private void emitOwnerCreatedAudit(Owner owner, OwnerDto ownerDto) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         AUDIT.info(event.toJson());
     }
 
     /**
-     * The owner's current primary identifier, as carried on the {@link OwnerCreatedEvent} audit event.
-     * Today an owner is keyed by its {@code customerCode}; when that identifier is later unified into
-     * the {@code memberId}, this single accessor changes to return the memberId and the emitted event
-     * carries it in place of the customer code, with no other call site affected.
+     * The owner's primary identifier, as carried on the {@link OwnerCreatedEvent} audit event: the
+     * unified {@code memberId}. Routing the audit event through this single accessor keeps the audit
+     * trail's notion of the owner's identity in one place.
      *
-     * @param owner the freshly created owner, already stamped with its {@code customerCode}
-     * @return the owner's current primary identifier
+     * @param owner the freshly created owner, already stamped with its {@code memberId}
+     * @return the owner's primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**

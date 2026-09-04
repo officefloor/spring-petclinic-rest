@@ -24,9 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
-    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.yearOf(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -39,22 +37,22 @@ public interface OwnerMapper {
     /**
      * The owner's locality (region), the single value every region-derived field is built from: the
      * {@code locality} itself, the {@link #timezone timezone} and the {@link #ownerSegment
-     * ownerSegment} area. It is the region component of the owner's {@code customerCode} (see
-     * {@link org.springframework.samples.petclinic.util.CustomerCode#region}). Routing all three
-     * readers through this one accessor keeps them agreed on how an owner's region is obtained from
-     * its identity.
+     * ownerSegment} area. It is the region component of the owner's {@code memberId} (see
+     * {@link org.springframework.samples.petclinic.util.MemberId#region}). Routing all three readers
+     * through this one accessor keeps them agreed on how an owner's region is obtained from its
+     * identity.
      */
     default String locality(Owner owner) {
-        return org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode());
+        return org.springframework.samples.petclinic.util.MemberId.region(owner.getMemberId());
     }
 
     /**
-     * The owner's {@code fiscalYear} label, {@code FY<YY>} for the fiscal year its
-     * business-day-adjusted {@code registrationDate} falls in (see
-     * {@link org.springframework.samples.petclinic.util.FiscalYear#label}).
+     * The owner's {@code fiscalYear} label, {@code FY<YY>}, taken from the FY component of the owner's
+     * {@code memberId} (see {@link org.springframework.samples.petclinic.util.MemberId#fiscalYearLabel}),
+     * so the fiscal-year value references the unified member id.
      */
     default String fiscalYear(Owner owner) {
-        return org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate());
+        return org.springframework.samples.petclinic.util.MemberId.fiscalYearLabel(owner.getMemberId());
     }
 
     /**

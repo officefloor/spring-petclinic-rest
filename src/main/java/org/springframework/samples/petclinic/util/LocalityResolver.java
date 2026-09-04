@@ -83,7 +83,7 @@ public abstract class LocalityResolver {
     /**
      * Derive the canonical region from the postcode alone, deriving {@link #UNKNOWN} when the postcode
      * is absent, not four digits, or in no known range. This is the region that the owner's
-     * {@code customerCode} (and hence its locality) is built from.
+     * {@code memberId} (and hence its locality) is built from.
      *
      * @param postcode the owner's postcode (may be null when absent)
      * @return the canonical region string, or {@code UNKNOWN}
