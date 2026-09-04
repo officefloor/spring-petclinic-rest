@@ -41,8 +41,8 @@ public final class IdentityKey {
      * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
      */
     public static String of(Owner owner) {
-        String raw = telephone(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|"
-                + Soundex.of(owner.getLastName());
+        String raw = CustomerCode.VERSION_TAG + "|" + telephone(owner.getTelephone()) + "|" + email(owner.getEmail())
+                + "|" + Soundex.of(owner.getLastName());
         return sha256Hex(raw);
     }
 

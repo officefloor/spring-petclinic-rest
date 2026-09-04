@@ -15,18 +15,30 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class CustomerCode {
 
+    /** Fixed identity-algorithm version tag mixed into every version-2 identifier. */
+    public static final String VERSION_TAG = "V2";
+
     private CustomerCode() {
     }
 
     /** The owner's {@code <REGION>-<HASH8>} customer code. */
     public static String assign(Owner owner) {
-        return Locality.of(owner.getCity(), owner.getPostcode())
-            + "-" + hash8(owner.getTelephone() + owner.getLastName());
+        return region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName());
+    }
+
+    /** The version-2 REGION code inside the owner's identifiers: the plain region prefixed with the 'V2' tag. */
+    public static String region(Owner owner) {
+        return VERSION_TAG + Locality.of(owner.getCity(), owner.getPostcode());
     }
 
     /** The REGION component of a {@code <REGION>-<HASH8>} customer code. */
     public static String region(String customerCode) {
         return customerCode.substring(0, customerCode.indexOf('-'));
+    }
+
+    /** The plain region with the 'V2' version tag stripped, for user-facing derivations like the owner segment. */
+    public static String plainRegion(String region) {
+        return region.startsWith(VERSION_TAG) ? region.substring(VERSION_TAG.length()) : region;
     }
 
     /** First 8 upper-case hex characters of SHA-256 over {@code value}. */

@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.mapper;
 
 import org.jspecify.annotations.NonNull;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
@@ -22,21 +24,31 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", ignore = true)
     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
-    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.Membership.points(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.util.Timezone.of(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.util.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKey.of(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplay.of(owner.getTelephone()))")
-    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
+    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.CustomerCode.plainRegion(org.springframework.samples.petclinic.util.CustomerCode.region(owner))))")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.util.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Group the version-2 identifiers under the response's nested {@code identity} object. */
+    @AfterMapping
+    default void fillIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        org.springframework.samples.petclinic.rest.dto.IdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.util.IdentityKey.of(owner));
+        identity.setHouseholdId(org.springframework.samples.petclinic.util.Household.idFor(owner));
+        ownerDto.setIdentity(identity);
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

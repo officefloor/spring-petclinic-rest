@@ -26,10 +26,10 @@ public final class OwnerCreatedEvent {
         return owner.getMemberId();
     }
 
-    /** Emits {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. */
+    /** Emits {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. */
     public static void emit(Owner owner, Object membershipLevel) {
         LoggerFactory.getLogger("AUDIT").info(
-            "{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+            "{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel);
         LoggerFactory.getLogger("NOTIFY").info(
             "welcome owner id={} memberId={}", owner.getId(), primaryIdentifier(owner));
