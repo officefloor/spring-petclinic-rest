@@ -16,22 +16,29 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * Derives an owner's {@code membershipTier}: {@code SILVER} for a unique namesake
- * ({@code namesakeCount} of 0) that has an email present, otherwise {@code BRONZE}.
+ * Derives an owner's numeric {@code membershipLevel} assigned on creation: starts at
+ * {@code 1}, adds {@code 1} when an email is present, adds {@code 1} when
+ * {@code namesakeCount} is {@code 0}, and is capped at {@code 3} (level {@code 4} is
+ * reserved for tenure).
  */
-public final class MembershipTier {
+public final class MembershipLevel {
 
-    private MembershipTier() {
+    private MembershipLevel() {
     }
 
     /**
      * @param namesakeCount number of pre-existing namesakes when the owner was created
      * @param email         the owner's email, if any
-     * @return {@code "SILVER"} when {@code namesakeCount} is 0 and {@code email} is present,
-     *         otherwise {@code "BRONZE"}
+     * @return the membership level from {@code 1} to {@code 3}
      */
-    public static String of(Integer namesakeCount, String email) {
-        boolean silver = Integer.valueOf(0).equals(namesakeCount) && email != null && !email.isBlank();
-        return silver ? "SILVER" : "BRONZE";
+    public static int of(Integer namesakeCount, String email) {
+        int level = 1;
+        if (email != null && !email.isBlank()) {
+            level++;
+        }
+        if (Integer.valueOf(0).equals(namesakeCount)) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 }
