@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.util;
 
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -40,6 +41,14 @@ public abstract class EmailNormalizer {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * Domains of disposable / throwaway email providers that an owner email is not permitted to use.
+     * Kept lower-cased so a submitted address, once reduced to its canonical (lower-cased) form, can be
+     * matched against this set directly.
+     */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Reduce a submitted email to its canonical form — trimmed and lower-cased — which is the value
@@ -68,6 +77,23 @@ public abstract class EmailNormalizer {
      */
     public static String toComparisonKey(String email) {
         return normalize(email).orElseGet(() -> email.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Whether the given email's domain is on the disposable-domain blocklist (see
+     * {@link #DISPOSABLE_DOMAINS}). The domain is the part after the last {@code '@'}, compared
+     * case-insensitively. A value with no {@code '@'} is treated as having no blocked domain.
+     *
+     * @param email a submitted or already-normalized email (non-null)
+     * @return {@code true} if the email's domain is on the blocklist
+     */
+    public static boolean hasDisposableDomain(String email) {
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        return DISPOSABLE_DOMAINS.contains(domain);
     }
 
 }

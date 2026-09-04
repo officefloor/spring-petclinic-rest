@@ -356,7 +356,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * present-but-invalid address is rejected with a {@code 400 Bad Request}.
      *
      * @param ownerFieldsDto the submitted owner fields
-     * @throws InvalidOwnerFieldsException if the email is present but not a syntactically valid address
+     * @throws InvalidOwnerFieldsException if the email is present but not a syntactically valid address,
+     *                                     or its domain is on the disposable-domain blocklist
      */
     private void normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
         String email = ownerFieldsDto.getEmail();
@@ -365,6 +366,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalized = EmailNormalizer.normalize(email)
             .orElseThrow(() -> new InvalidOwnerFieldsException(List.of("email")));
+        if (EmailNormalizer.hasDisposableDomain(normalized)) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
         ownerFieldsDto.setEmail(normalized);
     }
 
