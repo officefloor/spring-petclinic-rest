@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 62605b58b..d57e7240a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -85,6 +85,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "deleted")
+     private boolean deleted;
+ 
+@@ -186,6 +189,16 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /** True when this owner's city already held between 40 and 49 owners (approaching the 50
++     *  capacity limit) at the time it was created. */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /** True once the owner has been soft-deleted; the row is retained but ignored by the
+      *  create endpoint's duplicate and identity checks. False for a newly created owner. */
+     public boolean isDeleted() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1c4d38437..16dfb90c5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -126,6 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
+         owner.setPossibleDuplicate(possibleDuplicateOf != null);
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
++        owner.setCapacityWarning(owners.stream()
++            .filter(existing -> existing.getCity().equalsIgnoreCase(owner.getCity())).count() >= 40);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         int householdMax = owners.stream().filter(existing -> sameHousehold(existing, owner))
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index aed56dee7..b37108312 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,6 +51,7 @@ CREATE TABLE owners (
+   household_member_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 52c02aec5..71b9f0784 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2226,6 +2226,13 @@ components:
+               default: false
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already held between 40 and 49 owners (approaching the 50 capacity limit) at the time it was created; otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: "'EMAIL' when the owner has an email address, otherwise 'PHONE'."
