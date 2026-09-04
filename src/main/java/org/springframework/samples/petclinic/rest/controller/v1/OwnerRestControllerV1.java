@@ -146,8 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectInvalidPostcode(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
-        String householdId = HouseholdNormalizer.toHouseholdId(
-            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        String householdId = householdIdFor(ownerFieldsDto);
         rejectDuplicateIdentity(ownerFieldsDto, householdId);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
@@ -161,9 +160,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
-        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
-        owner.setPossibleDuplicate(possibleDuplicateOf != null);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        markPossibleDuplicate(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -187,8 +184,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         normalizeEmail(ownerFieldsDto);
         currentOwner.setEmail(ownerFieldsDto.getEmail());
-        currentOwner.setHouseholdId(
-            HouseholdNormalizer.toHouseholdId(currentOwner.getLastName(), currentOwner.getAddress()));
+        currentOwner.setHouseholdId(householdIdFor(ownerFieldsDto));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -438,6 +434,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Derives the household id an owner should carry from its submitted fields (see
+     * {@link HouseholdNormalizer#toHouseholdId}). Both create and update stamp an owner with a
+     * household id, so routing them through this single method keeps them agreed on which of the
+     * owner's fields key the household.
+     *
+     * @param ownerFieldsDto the submitted owner fields (its identifying fields are non-blank here,
+     *                       {@link #rejectBlankOwnerFields} having already run on create)
+     * @return the owner's household id
+     */
+    private String householdIdFor(OwnerFieldsDto ownerFieldsDto) {
+        return HouseholdNormalizer.toHouseholdId(
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+    }
+
+    /**
      * Finds an existing owner that the owner being created soft-matches on, or {@code null} when there
      * is none. The create has already cleared the hard-duplicate identity check
      * ({@link #rejectDuplicateIdentity}), so it is not an exact match of any existing owner; it is a
@@ -465,6 +476,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(Objects::nonNull)
             .min(Integer::compareTo)
             .orElse(null);
+    }
+
+    /**
+     * Records on the owner being created whether it is a possible (soft) duplicate of an existing
+     * owner. The match itself is decided by {@link #findPossibleDuplicate}; this method reflects its
+     * result into the two stored fields, so the interpretation of "is a possible duplicate" lives in
+     * one place: {@code possibleDuplicateOf} holds the matched owner's id (or {@code null} when there
+     * is none) and {@code possibleDuplicate} is {@code true} exactly when a match was found.
+     *
+     * @param owner the owner being created, with telephone already normalized and lastName/postcode set
+     */
+    private void markPossibleDuplicate(Owner owner) {
+        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
     }
 
     /**
