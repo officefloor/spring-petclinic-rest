@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner)))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
     @Mapping(target = "timezone", expression = "java(java.util.Map.of(\"NSW\", \"Australia/Sydney\", \"VIC\", \"Australia/Melbourne\", \"QLD\", \"Australia/Brisbane\").get(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
