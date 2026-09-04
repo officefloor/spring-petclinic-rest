@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+index b2beb9ea0..d17e83d10 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's canonical region ('locality') from its city using a fixed
+- * city-to-region table. Cities absent from the table resolve to 'UNKNOWN'.
++ * Derives an owner's canonical region ('locality'). The postcode is preferred: the region is
++ * looked up by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back
++ * to a fixed city-to-region table when the postcode is absent or in no known range. Cities absent
++ * from the table (and postcodes in no range) resolve to 'UNKNOWN'.
+  */
+ public final class LocalityLookup {
+ 
+@@ -15,6 +17,12 @@ public final class LocalityLookup {
+             "Melbourne", "VIC",
+             "Brisbane", "QLD");
+ 
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++            "NSW", new int[] {2000, 2099},
++            "VIC", new int[] {3000, 3099},
++            "QLD", new int[] {4000, 4099});
++
+     private LocalityLookup() {
+     }
+ 
+@@ -25,4 +33,35 @@ public final class LocalityLookup {
+         }
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * The canonical region, preferring the postcode: match {@code postcode} against the known
++     * region ranges first, and only fall back to {@link #regionOf(String)} when the postcode is
++     * absent or in no known range.
++     */
++    public static String regionOf(String city, String postcode) {
++        String byPostcode = regionOfPostcode(postcode);
++        return byPostcode != null ? byPostcode : regionOf(city);
++    }
++
++    /** The region whose range contains {@code postcode}, or {@code null} when none does. */
++    private static String regionOfPostcode(String postcode) {
++        if (postcode == null) {
++            return null;
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return null;
++        }
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7e334fa49..63dc8d215 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "locality",
+-            expression = "java(LocalityLookup.regionOf(owner.getCity()))")
++            expression = "java(LocalityLookup.regionOf(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+     @Mapping(target = "identityKey",
