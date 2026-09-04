@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 963d8cf88..7f9b6adc9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,8 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipLevel", expression = "java(Math.min(4, 1 + (owner.getEmail() != null ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0) + (java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365 ? 1 : 0)))")
++    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.Membership.points(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.util.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b4719e19a..870692913 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "household_gold")
++    private Boolean householdGold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -162,6 +165,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getHouseholdGold() {
++        return this.householdGold;
++    }
++
++    public void setHouseholdGold(Boolean householdGold) {
++        this.householdGold = householdGold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f81f4ef38..b0a36a97b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -126,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         DuplicateHouseholdException.rejectIfDuplicate(owner, sharesHousehold, this.clinicService.findAllOwners());
+         owner.setCustomerCode(CustomerCode.assign(owner));
+         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
++        owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
+         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
+         this.clinicService.saveOwner(owner);
+         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Membership.java b/src/main/java/org/springframework/samples/petclinic/util/Membership.java
+new file mode 100644
+index 000000000..0eb6e7e4d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Membership.java
+@@ -0,0 +1,50 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Computes an owner's membership standing as a points total and the level it maps to.
++ * Points start at 0 and accrue: +2 for a present email, +1 when the owner has no
++ * namesakes, +2 for a household of three or more (see {@link GoldTier}), and +3 for
++ * tenure over 365 days. Levels map from points: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6+).
++ */
++public final class Membership {
++
++    private Membership() {
++    }
++
++    /** Total membership points for {@code owner}. */
++    public static int points(Owner owner) {
++        int points = 0;
++        if (owner.getEmail() != null) {
++            points += 2;
++        }
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            points += 1;
++        }
++        if (Boolean.TRUE.equals(owner.getHouseholdGold())) {
++            points += 2;
++        }
++        if (ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** Membership level (1-4) for a points total. */
++    public static int level(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0e2d8017a..de1c6366f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  household_gold BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2b5ca93f4..8f1b98eb8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,18 +2159,28 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007-M26'
++            membershipPoints:
++              title: Membership points
++              description: >-
++                Total membership points, starting at 0: plus 2 when an email address is
++                present, plus 1 when the owner has no namesakes (namesakeCount is 0), plus 2
++                for a household of three or more members, and plus 3 for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              readOnly: true
++              example: 3
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                Numeric membership level from 1 to 3, assigned on creation: starts at 1,
+-                plus 1 when an email address is present, plus 1 when the owner has no
+-                namesakes (namesakeCount is 0), capped at 3.
++                Numeric membership level from 1 to 4, derived from membershipPoints:
++                1 (0-1 points), 2 (2-3 points), 3 (4-5 points), 4 (6 or more points).
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               readOnly: true
+-              example: 3
++              example: 2
+             locality:
+               title: Locality
+               description: >-
