@@ -157,6 +157,8 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField()).distinct().toList());
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);
