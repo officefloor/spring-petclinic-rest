@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -19,17 +17,11 @@ public class EnsureUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String telephone = request.getTelephone();
-        String email = normalizeEmail(request.getEmail());
+        String key = IdentityKey.of(request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner owner : ownerRepository.findAll()) {
-            if (!owner.isDeleted() && telephone.equals(owner.getTelephone())
-                    && email.equals(normalizeEmail(owner.getEmail()))) {
-                throw new DuplicateIdentityException(telephone + "|" + email);
+            if (!owner.isDeleted() && key.equals(IdentityKey.of(owner))) {
+                throw new DuplicateIdentityException(key);
             }
         }
-    }
-
-    private static String normalizeEmail(String email) {
-        return email == null || email.isBlank() ? "" : email.toLowerCase(Locale.ROOT);
     }
 }

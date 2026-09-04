@@ -27,20 +27,16 @@ public final class PossibleDuplicate {
         if (owner.getPostcode() == null) {
             return null;
         }
-        String lastName = normalize(owner.getLastName());
+        String soundex = Soundex.of(owner.getLastName());
+        String key = IdentityKey.of(owner);
         for (Owner other : ownerRepository.findAll()) {
             if (!Objects.equals(other.getId(), owner.getId())
-                    && lastName.equals(normalize(other.getLastName()))
+                    && soundex.equals(Soundex.of(other.getLastName()))
                     && owner.getPostcode().equals(other.getPostcode())
-                    && !owner.getHouseholdId().equals(other.getHouseholdId()) // same household => declared member, not a suspected duplicate
-                    && !Objects.equals(owner.getTelephone(), other.getTelephone())) {
+                    && !key.equals(IdentityKey.of(other))) { // identical identity key => the same person, not a suspected duplicate
                 return other.getId();
             }
         }
         return null;
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase();
     }
 }
