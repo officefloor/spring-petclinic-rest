@@ -12,6 +12,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 
@@ -37,7 +39,30 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's age band derived from {@code birthDate} relative to the
+     * {@code registrationDate}: 'MINOR' when under 18, 'ADULT' from 18 to 64
+     * inclusive and 'SENIOR' at 65 or older. Returns null when either date is
+     * absent so no band can be computed.
+     */
+    OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        LocalDate birthDate = owner.getBirthDate();
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * The owner's check digit: a single Luhn check digit (0-9) computed over the digits
