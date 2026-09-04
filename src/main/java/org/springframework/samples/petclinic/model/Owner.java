@@ -115,6 +115,12 @@ public class Owner extends Person {
         return MembershipNumber.of(this.customerCode, this.registrationDate);
     }
 
+    /** Luhn check digit over the digits of the {@code customerCode}. */
+    @Transient
+    public Integer getCheckDigit() {
+        return CheckDigit.of(this.customerCode);
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
