@@ -10,11 +10,12 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * The duplicate check for {@code POST /api/owners}, keyed on the whole {@code identityKey} — the
  * single source of truth for duplicate detection (see {@link OwnerIdentity}). Two owners are
  * duplicates only when their <em>whole</em> identityKey
- * ({@code normalizedTelephone + '|' + email + '|' + householdId}) is equal; because the telephone is
- * part of the key, two members of the same household (same lastName and postcode) with different
- * telephones have different identityKeys and are both allowed — which is what lets a household hold
- * more than one member. On an exact full-key match it throws {@link DuplicateIdentityException},
- * handled globally as 409. A request that sets {@code sharesHousehold} bypasses the check entirely.
+ * (SHA-256 hex over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}) is
+ * equal; because the telephone is part of the key, two owners with the same last name and postcode but
+ * different telephones have different identityKeys and are both allowed — the postcode no longer feeds
+ * this check, so there is no separate household-duplicate 409. On an exact full-key match it throws
+ * {@link DuplicateIdentityException}, handled globally as 409. A request that sets
+ * {@code sharesHousehold} bypasses the check entirely.
  */
 public class EnsureIdentityUnique {
 
@@ -26,15 +27,15 @@ public class EnsureIdentityUnique {
             return;
         }
 
-        String identityKey = OwnerIdentity.keyOf(request.getTelephone(), request.getEmail(),
-                request.getLastName(), request.getPostcode());
+        String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(),
+                request.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             // A soft-deleted owner no longer blocks a create.
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            String existingKey = OwnerIdentity.keyOf(existing.getTelephone(), existing.getEmail(),
-                    existing.getLastName(), existing.getPostcode());
+            String existingKey = OwnerIdentity.key(existing.getTelephone(), existing.getEmail(),
+                    existing.getLastName());
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
             }

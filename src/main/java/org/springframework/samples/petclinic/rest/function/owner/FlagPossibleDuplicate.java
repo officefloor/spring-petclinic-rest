@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Flags a create as a soft duplicate. Runs before {@link SaveOwner}, so
  * {@link OwnerRepository#findAll()} returns only the owners that predate this create. A new owner
  * that {@link EnsureIdentityUnique} already cleared as not a hard duplicate is nonetheless a
- * <em>possible</em> duplicate when an existing owner shares its normalized lastName and its postcode
- * but carries a different telephone. On such a match it sets {@code possibleDuplicate} true and
+ * <em>possible</em> duplicate when an existing owner has a <em>different</em> identityKey yet shares
+ * its {@code soundex(lastName)} and its postcode — for instance the same household reached under a
+ * different telephone. On such a match it sets {@code possibleDuplicate} true and
  * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match); the
  * owner is still created. With no match it sets {@code possibleDuplicate} false and leaves
  * {@code possibleDuplicateOf} null.
@@ -56,19 +57,20 @@ public class FlagPossibleDuplicate {
     }
 
     /**
-     * Whether {@code existing} is a soft duplicate of the new {@code owner}: it shares the normalized
-     * lastName and the postcode but carries a different telephone. A shared telephone is not the
-     * "different telephone" soft match.
+     * Whether {@code existing} is a soft duplicate of the new {@code owner}: it shares the
+     * {@code soundex(lastName)} and the postcode but resolves to a different identityKey. An identical
+     * identityKey is a hard duplicate ({@link EnsureIdentityUnique}), not the soft match.
      */
     private static boolean isPossibleDuplicate(Owner owner, Owner existing) {
-        if (!OwnerIdentity.normalizeName(owner.getLastName())
-                .equals(OwnerIdentity.normalizeName(existing.getLastName()))) {
+        if (!OwnerIdentity.soundex(owner.getLastName())
+                .equals(OwnerIdentity.soundex(existing.getLastName()))) {
             return false;
         }
         if (!owner.getPostcode().equals(existing.getPostcode())) {
             return false;
         }
-        return !OwnerIdentity.canonicalTelephone(owner.getTelephone())
-                .equals(OwnerIdentity.canonicalTelephone(existing.getTelephone()));
+        return !OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName())
+                .equals(OwnerIdentity.key(existing.getTelephone(), existing.getEmail(),
+                        existing.getLastName()));
     }
 }
