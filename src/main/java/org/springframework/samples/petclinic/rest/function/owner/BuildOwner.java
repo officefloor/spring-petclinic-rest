@@ -1,8 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
@@ -22,10 +20,7 @@ public class BuildOwner {
             throw new MissingFieldsException(List.of("registrationDate"));
         }
         LocalDate date = supplied != null ? supplied : LocalDate.now();
-        if (date.getDayOfWeek().getValue() > 5) { // Saturday or Sunday: roll forward to Monday
-            date = date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
-        }
-        owner.setRegistrationDate(date);
+        owner.setRegistrationDate(BusinessDay.roll(date)); // skip weekends and public holidays
         built.set(owner);
     }
 }
