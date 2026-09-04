@@ -61,6 +61,47 @@ public class CityRegionResolver {
     }
 
     /**
+     * Resolve a region preferring the postcode over the city. The {@code postcode} is looked up
+     * against the region postcode ranges first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only
+     * when the postcode is absent, non-numeric or in no known range does this fall back to the
+     * city-to-region table. For a known city with a matching postcode both agree; a postcode in a
+     * different region's range disambiguates cities that share a name.
+     *
+     * @param city     the owner's city, as stored
+     * @param postcode a 4-digit postcode string (e.g. '3000'), or {@code null} when absent
+     * @return the region derived from the postcode, else the region derived from the city, else
+     *         {@link #UNKNOWN_REGION}
+     */
+    public String regionFor(String city, String postcode) {
+        String region = regionForPostcode(postcode);
+        return region != null ? region : regionFor(city);
+    }
+
+    /**
+     * The region whose postcode range contains {@code postcode}, or {@code null} when the postcode
+     * is absent, non-numeric or in no known range.
+     */
+    private String regionForPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether a 4-digit {@code postcode} is valid for the given {@code city}. The postcode is
      * checked against the inclusive range of the city's region (NSW 2000-2099, VIC 3000-3099,
      * QLD 4000-4099); a city with no known region accepts any 4-digit postcode.

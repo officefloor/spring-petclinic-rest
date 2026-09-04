@@ -62,11 +62,11 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The canonical region derived from the owner's city via {@link CityRegionResolver},
-     * or 'UNKNOWN' when the city has no known region.
+     * The canonical region derived from the owner via {@link CityRegionResolver}, preferring the
+     * postcode over the city, or 'UNKNOWN' when neither yields a known region.
      */
     String locality(Owner owner) {
-        return cityRegionResolver.regionFor(owner.getCity());
+        return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
     }
 
     /**
