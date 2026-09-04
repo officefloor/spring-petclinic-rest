@@ -75,6 +75,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_points")
+    private Integer membershipPoints;
+
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
@@ -184,6 +187,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipPoints() {
+        return this.membershipPoints;
+    }
+
+    public void setMembershipPoints(Integer membershipPoints) {
+        this.membershipPoints = membershipPoints;
     }
 
     public Integer getMembershipLevel() {

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   bulk_signup_warning BOOLEAN,
   household_size INT(4),
+  membership_points INT(4),
   membership_level INT(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INT(4),
