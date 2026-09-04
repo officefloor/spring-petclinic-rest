@@ -7,8 +7,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
 
 /**
- * Rejects a create request whose (already normalized) telephone matches any existing owner's
- * normalized telephone, so a duplicate number is a 409 via {@link DuplicateTelephoneException}.
+ * Rejects a create request whose (already E.164-normalized) telephone equals any existing owner's
+ * stored E.164 telephone, so a duplicate number is a 409 via {@link DuplicateTelephoneException}.
  */
 public class EnsureUniqueTelephone {
 
@@ -16,13 +16,9 @@ public class EnsureUniqueTelephone {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner owner : ownerRepository.findAll()) {
-            if (telephone.equals(normalize(owner.getTelephone()))) {
+            if (telephone.equals(owner.getTelephone())) {
                 throw new DuplicateTelephoneException(telephone);
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
     }
 }
