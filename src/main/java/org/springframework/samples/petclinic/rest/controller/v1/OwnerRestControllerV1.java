@@ -111,10 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.stream().filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (owners.stream().anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))
-                || (!sharesHousehold && owners.stream().anyMatch(existing -> sameHousehold(existing, owner)))
-                || (owner.getEmail() != null && owners.stream().anyMatch(existing -> owner.getEmail().equalsIgnoreCase(existing.getEmail())))
+        if (owners.stream().anyMatch(existing -> existing.getIdentityKey().equals(owner.getIdentityKey()))
                 || owners.stream().filter(existing -> existing.getCity().equalsIgnoreCase(owner.getCity())).count() >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }

@@ -97,6 +97,15 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /** Derived duplicate-detection key: normalized telephone, email (or empty) and household id
+     *  joined with {@code '|'}. Two owners are duplicates only when their whole key matches, so a
+     *  shared telephone alone (with matching email) is a collision regardless of household. */
+    @Transient
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone) + "|"
+            + (this.email == null ? "" : this.email) + "|";
+    }
+
     /** Membership number formatted {@code <customerCode>-M<YY>}, e.g. {@code SMI-0007-M26}. */
     @Transient
     public String getMembershipNumber() {
