@@ -24,7 +24,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.of(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
+    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.yearOf(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
@@ -75,7 +76,8 @@ public interface OwnerMapper {
     /**
      * Computes the owner's {@code membershipPoints}. Starts at 0; adds 2 when a non-blank email is
      * present; adds 1 when {@code namesakeCount} is 0; adds 2 for a household of 3 or more; adds 3
-     * when tenure exceeds 365 days (measured from {@code registrationDate} to today).
+     * when at least one fiscal year has elapsed since {@code registrationDate} (measured from
+     * {@code registrationDate} to today, counting 1-July boundaries crossed).
      */
     default int membershipPoints(Owner owner) {
         int points = 0;
@@ -90,7 +92,8 @@ public interface OwnerMapper {
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365) {
+                && org.springframework.samples.petclinic.util.FiscalYear.elapsed(
+                        registrationDate, java.time.LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;
