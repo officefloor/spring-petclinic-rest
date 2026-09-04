@@ -5,8 +5,8 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * The Luhn check digit (0-9) computed over the decimal digits contained in an owner's
  * {@code customerCode}. Non-digit characters (letters, separators) are ignored, so the digit is
- * derived purely from the numeric portion of the code (e.g. the {@code 0007} sequence in
- * {@code LON-SMI-0007}).
+ * derived purely from the decimal digits within the region-and-hash code (e.g. the {@code 1} and
+ * {@code 234} digits in {@code NSW-1A2B3C4D}).
  */
 public final class CustomerCodeCheckDigit {
 
