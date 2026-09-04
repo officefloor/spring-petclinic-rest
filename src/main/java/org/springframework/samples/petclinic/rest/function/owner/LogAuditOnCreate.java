@@ -18,6 +18,6 @@ public class LogAuditOnCreate {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevel.of(MembershipPoints.of(owner)),
-            owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100));
+            owner.getCustomerCode() + "-M" + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100));
     }
 }
