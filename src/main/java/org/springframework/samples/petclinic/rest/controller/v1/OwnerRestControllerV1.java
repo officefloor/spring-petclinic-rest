@@ -42,7 +42,6 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BulkSignup;
 import org.springframework.samples.petclinic.util.CustomerCode;
-import org.springframework.samples.petclinic.util.GoldTier;
 import org.springframework.samples.petclinic.util.Namesakes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -102,9 +101,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        if (GoldTier.qualifies(owner, this.clinicService.findAllOwners())) {
-            ownerDto.setMembershipTier("GOLD");
-        }
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
