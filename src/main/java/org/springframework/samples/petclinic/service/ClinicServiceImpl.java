@@ -29,8 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -245,11 +247,36 @@ public class ClinicServiceImpl implements ClinicService {
      * Build a customer code formatted '<REGION>-<HASH8>', where REGION is the region derived from the
      * owner's postcode (see {@link LocalityResolver#resolveFromPostcode}) and HASH8 is the first eight
      * upper-case hex characters of the SHA-256 digest of the owner's normalized telephone concatenated
-     * with the last name (e.g. 'NSW-1A2B3C4D'). It carries no sequence number.
+     * with the last name (e.g. 'NSW-1A2B3C4D'). The base code carries no sequence number, so two
+     * distinct owners whose '(telephone, lastName)' pairs hash alike would otherwise share a code; when
+     * the computed code collides with an existing owner's customer code, '-<n>' is appended with the
+     * smallest n of 2 or more that makes it unique (see {@link #deduplicateCustomerCode}).
      */
     private String generateCustomerCode(Owner owner) {
         String region = LocalityResolver.resolveFromPostcode(owner.getPostcode());
-        return CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
+        String code = CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
+        return deduplicateCustomerCode(code);
+    }
+
+    /**
+     * Returns {@code code} unchanged when no existing owner already carries it, otherwise the code with
+     * '-<n>' appended, choosing the smallest n of 2 or more that makes the result unique among existing
+     * owners' customer codes.
+     */
+    private String deduplicateCustomerCode(String code) {
+        Set<String> existing = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existing.contains(code)) {
+            return code;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = code + "-" + n;
+            if (!existing.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     @Override
