@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java
+new file mode 100644
+index 000000000..97f472f05
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Derives the owner's check digit: a single Luhn check digit (0-9) computed over the
++ * digits contained in the customerCode. Non-digit characters are ignored. The value is a
++ * pure function of the customerCode, so it needs no stored state.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    public static int of(String customerCode) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1011db8b1..f546cea49 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail()))")
+     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
++    @Mapping(target = "checkDigit", expression = "java(CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipLevel", expression = "java(MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality", expression = "java(Locality.of(owner.getPostcode(), owner.getCity()))")
+     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner.getEmail()))")
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9639815f2..7f5b844ee 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,6 +2099,15 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: Stable identifier shared by owners at the same household (same last name and address).
