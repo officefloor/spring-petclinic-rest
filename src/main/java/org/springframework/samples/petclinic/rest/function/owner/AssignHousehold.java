@@ -2,47 +2,20 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * When a create request sets {@code sharesHousehold} true and an existing owner already shares this
- * owner's last name and address, both are given the same {@code householdId} so the shared household
- * is discoverable. The id is a stable identifier derived from the normalized last name and address
- * (upper-case hex prefix of their SHA-256), so every member of a household computes the same value.
+ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
+ * the normalized last name and postcode (see {@link OwnerIdentityKey#householdId(String, String)}).
+ * Every owner receives one, so owners sharing a last name and postcode automatically share the id —
+ * there is no explicit linking and no dependency on {@code sharesHousehold} (that flag now only
+ * bypasses the household duplicate block in {@link EnsureUniqueIdentity}).
  *
- * <p>Last name is compared case-insensitively with collapsed whitespace and address in its normalized
- * form (see {@link AddressNormalizer}), matching {@link EnsureUniqueIdentity}, and the id is derived
- * from those same normalized values (via {@link OwnerIdentityKey}). Runs after {@link BuildOwner} within the create transaction: it sets
- * the id on the new owner (persisted by {@link SaveOwner}) and saves any existing members that did not
- * yet carry it. A request without {@code sharesHousehold}, or one with no matching owner, is left
- * untouched.
+ * <p>Runs after {@link BuildOwner} within the create transaction and before {@link AssignHouseholdSize},
+ * which counts the members sharing this computed id, and {@link SaveOwner}, which persists it.
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = OwnerIdentityKey.normalizeName(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        java.util.List<Owner> household = new java.util.ArrayList<>();
-        for (Owner existing : ownerRepository.findAll()) {
-            if (OwnerIdentityKey.normalizeName(existing.getLastName()).equals(lastName)
-                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
-                household.add(existing);
-            }
-        }
-        if (household.isEmpty()) {
-            return;
-        }
-        String householdId = OwnerIdentityKey.householdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner member : household) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(OwnerIdentityKey.householdIdOf(owner));
     }
 }

@@ -1,14 +1,14 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request has the same derived {@code identityKey}
- * ({@code normalizedTelephone|email|householdId}) as an existing owner. Consolidates the former
- * separate telephone, email and household duplicate checks into one. Handled by
+ * Thrown when a create-owner request belongs to the same household as an existing owner — that is,
+ * it shares the deterministic {@code householdId} derived from the normalized last name and postcode —
+ * and did not opt into the shared household via {@code sharesHousehold}. Handled by
  * {@link DuplicateOwnerExceptionHandler}, which responds 409.
  */
 public class DuplicateOwnerException extends Exception {
 
-    public DuplicateOwnerException(String identityKey) {
-        super("An owner with the same identityKey already exists: " + identityKey);
+    public DuplicateOwnerException(String householdId) {
+        super("An owner in the same household already exists: " + householdId);
     }
 }

@@ -7,26 +7,27 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * The single duplicate check for creating owners. It derives the request's {@code identityKey}
- * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, see
- * {@link OwnerIdentityKey}) and rejects with 409 via {@link DuplicateOwnerException} only when that
- * whole key equals an existing owner's. This replaces the former separate telephone, email and
- * household checks: they are all expressed through this one key. Because the normalized telephone is
- * part of the key, two members of the same household with different telephones have different keys
- * and are both allowed.
+ * The duplicate check for creating owners, now keyed on the household. The household is
+ * {@code (normalizedLastName, postcode)} expressed as a deterministic {@code householdId} (see
+ * {@link OwnerIdentityKey#householdId(String, String)}), so owners sharing a last name and postcode
+ * are the same household. A create request whose computed household id matches an existing owner's is
+ * rejected with 409 via {@link DuplicateOwnerException}.
  *
- * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail} — the request already
- * holds an E.164 telephone and a lower-cased email — and before {@link BuildOwner}.
+ * <p>Setting {@code sharesHousehold} true bypasses this block: the owner is then created as a declared
+ * household member (and, being declared, is not flagged as a possible duplicate by
+ * {@link AssignPossibleDuplicate}). Runs before {@link BuildOwner}.
  */
 public class EnsureUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerException {
-        String householdId = OwnerIdentityKey.prospectiveHouseholdId(request, ownerRepository);
-        String identityKey = OwnerIdentityKey.build(request.getTelephone(), request.getEmail(), householdId);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // declared household member — bypass the household duplicate block
+        }
+        String householdId = OwnerIdentityKey.householdIdOf(request);
         for (Owner existing : ownerRepository.findAll()) {
-            if (identityKey.equals(OwnerIdentityKey.of(existing))) {
-                throw new DuplicateOwnerException(identityKey);
+            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))) {
+                throw new DuplicateOwnerException(householdId);
             }
         }
     }

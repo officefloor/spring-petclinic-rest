@@ -6,24 +6,20 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Records, on the owner being created, the size of its household — the number of owners sharing the
- * same {@code householdId} once this create completes. Runs after {@link AssignHousehold}, which has
- * already assigned the shared {@code householdId} to the new owner and any existing members, but
- * before {@link SaveOwner} persists the new owner; so the count is the existing members carrying the
- * id plus one for the owner being created.
+ * same deterministic {@code householdId} once this create completes. The id is keyed on
+ * {@code (normalizedLastName, postcode)} (see {@link OwnerIdentityKey}), so this counts existing owners
+ * with the same last name and postcode plus one for the owner being created (not yet saved).
  *
- * <p>An owner with no {@code householdId} (no shared household) has a household size of one.
+ * <p>Runs after {@link AssignHousehold}, which has set the new owner's {@code householdId}, and before
+ * {@link SaveOwner}.
  */
 public class AssignHouseholdSize {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            owner.setHouseholdSize(1);
-            return;
-        }
         int count = 1; // the owner being created, not yet saved
         for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(existing.getHouseholdId())) {
+            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))) {
                 count++;
             }
         }

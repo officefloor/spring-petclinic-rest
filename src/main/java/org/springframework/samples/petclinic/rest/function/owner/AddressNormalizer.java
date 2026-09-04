@@ -10,8 +10,8 @@ import java.util.Map;
  * {@code AVE}&rarr;{@code AVENUE}). The result is idempotent, so normalizing an already-normalized
  * value leaves it unchanged.
  *
- * <p>Used both to store/return the address and for every address comparison (household duplicate
- * detection and the shared household id), so all addresses are judged in the same normalized form.
+ * <p>Used to store/return the address in a single canonical form. (Household grouping is now keyed on
+ * last name and postcode, not the address; see {@link OwnerIdentityKey}.)
  */
 public final class AddressNormalizer {
 
