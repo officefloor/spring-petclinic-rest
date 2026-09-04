@@ -28,55 +28,48 @@ import org.springframework.stereotype.Component;
  *
  * <p>Keeping this in one place means the shared household id and the household-membership
  * lookup can never drift apart: two owners belong to the same household exactly when the
- * identity fields this resolver keys on (their normalized last name and address) agree, and
+ * identity fields this resolver keys on (their normalized last name and postcode) agree, and
  * for that household they derive an identical id.
  *
- * <p>The household id is formatted {@code 'HH-<HEX12>'} where HEX12 is the first twelve
- * upper-case hex characters of the SHA-256 digest of the normalized last name and address
- * joined by '|'.
+ * <p>The household id is deterministic: the first twelve hex characters of the SHA-256 digest
+ * of the normalized last name and the postcode joined by '|'. Owners that share a normalized
+ * last name and postcode therefore derive the same id automatically, without any explicit
+ * link.
  */
 @Component
 public class HouseholdResolver {
 
     private final ClinicService clinicService;
 
-    private final AddressNormalizer addressNormalizer;
-
-    public HouseholdResolver(ClinicService clinicService, AddressNormalizer addressNormalizer) {
+    public HouseholdResolver(ClinicService clinicService) {
         this.clinicService = clinicService;
-        this.addressNormalizer = addressNormalizer;
     }
 
     /**
-     * The stable, shared household identifier for {@code owner}. Owners in the same household
-     * (same normalized last name and address) derive an identical id.
+     * The stable, shared household identifier for {@code owner}: the first twelve hex
+     * characters of {@code SHA-256(normalizedLastName + '|' + postcode)}. Owners in the same
+     * household (same normalized last name and postcode) derive an identical id.
      *
-     * @param owner the owner whose household id is derived; its address is read in the same
-     *              canonical form used for household comparison
-     * @return the {@code 'HH-<HEX12>'} household id
+     * @param owner the owner whose household id is derived
+     * @return the deterministic household id
      */
     public String householdId(Owner owner) {
-        String key = IdentityUtils.normalizeIdentity(owner.getLastName()) + "|" + addressKey(owner);
-        return "HH-" + HashUtils.sha256HexPrefix(key, 12);
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = IdentityUtils.normalizeIdentity(owner.getLastName()) + "|" + postcode;
+        return HashUtils.sha256HexPrefix(key, 12);
     }
 
     /**
-     * Whether an existing owner already belongs to {@code owner}'s household, so an owner
-     * flagged {@code sharesHousehold} has a household to join.
+     * Whether an existing owner already belongs to {@code owner}'s household, i.e. shares its
+     * computed household id (same normalized last name and postcode). Such a second owner is a
+     * household duplicate unless it deliberately declares {@code sharesHousehold}.
      *
      * @param owner the owner about to be created
      * @return {@code true} if an already-registered owner shares this owner's household
      */
     public boolean householdExists(Owner owner) {
-        String lastNameKey = IdentityUtils.normalizeIdentity(owner.getLastName());
-        String addressKey = addressKey(owner);
+        String householdId = householdId(owner);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> IdentityUtils.normalizeIdentity(existing.getLastName()).equals(lastNameKey)
-                && addressKey(existing).equals(addressKey));
-    }
-
-    /** The owner's address in the canonical form under which households are compared. */
-    private String addressKey(Owner owner) {
-        return addressNormalizer.normalize(owner.getAddress());
+            .anyMatch(existing -> householdId.equals(householdId(existing)));
     }
 }

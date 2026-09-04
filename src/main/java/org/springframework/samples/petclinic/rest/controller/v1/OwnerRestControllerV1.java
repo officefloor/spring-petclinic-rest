@@ -187,14 +187,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         // The owner's telephone and email are now in their canonical, stored form.
-        // Establish the household id before the duplicate check so the candidate's whole
-        // identity key can be compared against the existing owners': only an owner that
-        // deliberately shares an existing household (same normalized last name and address)
-        // is assigned that household's shared id; a plain new owner has no household id, so
-        // its identity key is decided by telephone and email alone.
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                && householdResolver.householdExists(owner)) {
-            owner.setHouseholdId(householdResolver.householdId(owner));
+        // The household id is deterministic: owners with the same normalized last name and
+        // postcode share it automatically. Assign it unconditionally before the duplicate
+        // checks so both the household-duplicate rule and the identity-key rule key off the
+        // same computed id.
+        owner.setHouseholdId(householdResolver.householdId(owner));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        boolean householdMember = householdResolver.householdExists(owner);
+        // Because the household is keyed on (lastName, postcode), a second owner sharing an
+        // existing owner's household is a household duplicate and is rejected with 409. The
+        // 'sharesHousehold' flag only bypasses this block, declaring a deliberate member; it
+        // no longer creates the link, which the deterministic id now does on its own.
+        if (householdMember && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (isDuplicateOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -213,8 +218,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Soft-match: the candidate has already cleared the hard-duplicate check, but it may
         // still share an existing owner's last name and postcode while carrying a different
         // telephone. When it does, it is created but flagged as a possible duplicate of that
-        // existing owner; otherwise the flag is false and no reference is recorded.
-        Integer possibleDuplicateOf = possibleDuplicateOf(owner);
+        // existing owner; otherwise the flag is false and no reference is recorded. A declared
+        // household member (created via 'sharesHousehold') is not a suspected duplicate, so it
+        // is never flagged.
+        Integer possibleDuplicateOf = (sharesHousehold && householdMember) ? null : possibleDuplicateOf(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
