@@ -40,6 +40,15 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Transient
+    private String flatAddress;
+
+    @Transient
+    private String addressLine1;
+
+    @Transient
+    private String addressLine2;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -188,7 +197,35 @@ public class Owner extends Person {
     }
 
     public void setAddress(String address) {
-        this.address = AddressNormalizer.normalize(address);
+        this.flatAddress = AddressNormalizer.normalize(address);
+        this.address = composeAddress();
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = AddressNormalizer.normalize(addressLine1);
+        this.address = composeAddress();
+    }
+
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = AddressNormalizer.normalize(addressLine2);
+        this.address = composeAddress();
+    }
+
+    /** Prefer the structured lines when {@code addressLine1} is present (line 2 appended after a
+     *  single space), otherwise fall back to the flat address, so all address readers stay consistent. */
+    private String composeAddress() {
+        if (this.addressLine1 == null || this.addressLine1.isBlank()) {
+            return this.flatAddress;
+        }
+        return this.addressLine2 == null ? this.addressLine1 : this.addressLine1 + " " + this.addressLine2;
     }
 
     public String getPostcode() {
