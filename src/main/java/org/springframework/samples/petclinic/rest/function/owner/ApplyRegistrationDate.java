@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Sets the owner's registration date to a business day. The effective date is the one supplied in
  * the create request, or the server's current date when none was supplied; if that date falls on a
- * Saturday or Sunday it is rolled forward to the following Monday. Everything derived from the
+ * Saturday, Sunday or listed public holiday it is rolled forward to the next non-holiday business day. Everything derived from the
  * registration date (such as the membership number's year segment) sees this adjusted value.
  */
 public class ApplyRegistrationDate {
