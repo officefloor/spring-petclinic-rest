@@ -16,6 +16,9 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warns(ownerRepository));
+        if (HouseholdTier.isGold(owner, ownerRepository)) {
+            dto.setMembershipTier("GOLD");
+        }
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

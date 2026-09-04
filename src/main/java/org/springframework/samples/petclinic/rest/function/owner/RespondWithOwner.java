@@ -13,6 +13,9 @@ public class RespondWithOwner {
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warns(ownerRepository));
+        if (HouseholdTier.isGold(owner, ownerRepository)) {
+            dto.setMembershipTier("GOLD");
+        }
         response.send(dto);
     }
 }
