@@ -80,6 +80,16 @@ public class OwnerRegistrar {
 
     private final HouseholdResolver householdResolver;
 
+    /**
+     * Remembers, per {@code Idempotency-Key}, the id of the owner that key's create originally
+     * produced, so a later create carrying the same key returns that same owner instead of
+     * creating a duplicate. The registrar is a singleton, so this store outlives a single
+     * request; entries are keyed by the client-supplied key, which is expected to be unique
+     * per logical create.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Integer> idempotencyKeys =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     public OwnerRegistrar(ClinicService clinicService,
                           OwnerMapper ownerMapper,
                           TelephoneNormalizer telephoneNormalizer,
@@ -105,6 +115,33 @@ public class OwnerRegistrar {
      * @return the create outcome as an HTTP response
      */
     public ResponseEntity<OwnerDto> register(OwnerFieldsDto ownerFieldsDto) {
+        return register(ownerFieldsDto, null);
+    }
+
+    /**
+     * As {@link #register(OwnerFieldsDto)}, but honouring an optional {@code Idempotency-Key}.
+     * When {@code idempotencyKey} is non-blank and a create with that key has already succeeded,
+     * the owner it originally produced is returned with {@code 200 OK} instead of creating a
+     * duplicate. Otherwise the normal create pipeline runs and, on success, the key is recorded
+     * against the created owner so a later repeat resolves to the same owner.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @param idempotencyKey the request's {@code Idempotency-Key} header, or {@code null} when absent
+     * @return the create outcome as an HTTP response
+     */
+    public ResponseEntity<OwnerDto> register(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        String key = (idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey.trim();
+        if (key != null) {
+            Integer existingId = idempotencyKeys.get(key);
+            if (existingId != null) {
+                Owner original = this.clinicService.findOwnerById(existingId);
+                if (original != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(original), HttpStatus.OK);
+                }
+                // The originally created owner is gone; forget the stale key and create afresh.
+                idempotencyKeys.remove(key);
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (owner.getRegistrationDate() == null) {
@@ -197,6 +234,9 @@ public class OwnerRegistrar {
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
+        if (key != null) {
+            idempotencyKeys.put(key, owner.getId());
+        }
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner), owner.getMembershipNumber());

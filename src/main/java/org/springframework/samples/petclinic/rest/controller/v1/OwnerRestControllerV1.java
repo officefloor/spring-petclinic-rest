@@ -43,6 +43,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -64,16 +65,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerRegistrar ownerRegistrar;
 
+    private final HttpServletRequest request;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerRegistrar ownerRegistrar) {
+                                 OwnerRegistrar ownerRegistrar,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerRegistrar = ownerRegistrar;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -104,7 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        return ownerRegistrar.register(ownerFieldsDto);
+        return ownerRegistrar.register(ownerFieldsDto, request.getHeader("Idempotency-Key"));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
