@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 69b705a84..f81f4ef38 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.BulkSignup;
+ import org.springframework.samples.petclinic.util.CustomerCode;
++import org.springframework.samples.petclinic.util.DisposableEmail;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.Namesakes;
+ import org.springframework.samples.petclinic.util.PossibleDuplicate;
+@@ -114,6 +115,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!Postcode.isValidForCity(owner.getCity(), owner.getPostcode())) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (DisposableEmail.isBlocked(owner.getEmail())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
+         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
+         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/DisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmail.java
+new file mode 100644
+index 000000000..e24497c57
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmail.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Rejects owner emails whose domain belongs to a known disposable-email provider.
++ * The blocklist is fixed: {@code mailinator.com}, {@code tempmail.com} and
++ * {@code guerrillamail.com}. An absent or domain-less email is never blocked.
++ */
++public final class DisposableEmail {
++
++    /** Lower-case domains that are not accepted for an owner's email. */
++    private static final Set<String> BLOCKED_DOMAINS = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmail() {
++    }
++
++    /**
++     * True when {@code email} has a domain (the part after the last {@code @}) that is on
++     * the disposable-domain blocklist. Comparison ignores case; a null or {@code @}-less
++     * value returns {@code false}.
++     */
++    public static boolean isBlocked(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++        return BLOCKED_DOMAINS.contains(domain);
++    }
++}
