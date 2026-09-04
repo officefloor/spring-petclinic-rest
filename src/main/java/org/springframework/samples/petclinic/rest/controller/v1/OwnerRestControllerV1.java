@@ -96,6 +96,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * The number of owners a city must already hold before a create made for that city is flagged with
+     * {@code capacityWarning}. Once the city holds at least this many owners (but still fewer than
+     * {@link #MAX_OWNERS_PER_CITY}, so the create is not rejected), the new owner's {@code
+     * capacityWarning} is {@code true}, signalling the city is approaching its capacity limit.
+     */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Maximum number of owners that may be registered in a single day. A create made once this many
      * owners already carry today's {@code registrationDate} is rejected with a {@code 429 Too Many
      * Requests} (see {@link #rejectDailyRegistrationLimitReached}).
@@ -186,7 +194,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = householdIdFor(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(ownerFieldsDto);
-        rejectCityAtCapacity(ownerFieldsDto.getCity());
+        long ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
+        rejectCityAtCapacity(ownerFieldsDto.getCity(), ownersInCity);
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
         long registeredThatDay = countRegisteredOn(registrationDate);
@@ -197,6 +206,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
+        owner.setCapacityWarning(ownersInCity >= CAPACITY_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         owner.setMembershipLevel(cappedMembershipLevel(owner));
         markPossibleDuplicate(owner, sharesHousehold);
@@ -674,20 +684,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose city already holds {@link #MAX_OWNERS_PER_CITY} or more owners.
-     * The submitted city is compared case-insensitively against every existing owner's stored city; a
-     * city that is already at (or over) capacity is reported as a {@code 409 Conflict}.
+     * Counts how many existing owners already live in the given city. The submitted city is compared
+     * case-insensitively against every existing owner's stored city. The result drives both the hard
+     * capacity rejection (see {@link #rejectCityAtCapacity}) and the {@code capacityWarning} flag.
      *
      * @param city the submitted city (non-blank here, {@link #rejectBlankOwnerFields} having already
      *             run)
-     * @throws OwnerCityAtCapacityException if the city already contains the maximum number of owners
+     * @return the number of existing owners whose city matches the submitted city
      */
-    private void rejectCityAtCapacity(String city) {
-        long ownersInCity = this.clinicService.findAllOwners().stream()
+    private long countOwnersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
             .map(Owner::getCity)
             .filter(Objects::nonNull)
             .filter(city::equalsIgnoreCase)
             .count();
+    }
+
+    /**
+     * Rejects creating an owner whose city already holds {@link #MAX_OWNERS_PER_CITY} or more owners.
+     * A city that is already at (or over) capacity is reported as a {@code 409 Conflict}.
+     *
+     * @param city         the submitted city (used only to report the conflict)
+     * @param ownersInCity the number of owners the city already holds (see {@link #countOwnersInCity})
+     * @throws OwnerCityAtCapacityException if the city already contains the maximum number of owners
+     */
+    private void rejectCityAtCapacity(String city, long ownersInCity) {
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityAtCapacityException(city);
         }
