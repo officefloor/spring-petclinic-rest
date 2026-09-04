@@ -116,7 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
-        owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), owner.getCity(), this.clinicService.findAllOwners()));
+        owner.setCustomerCode(CustomerCode.assign(owner));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         this.clinicService.saveOwner(owner);
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
