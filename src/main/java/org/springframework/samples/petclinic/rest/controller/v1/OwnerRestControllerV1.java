@@ -138,6 +138,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        // A supplied registration date may not be later than the server's current date.
+        if (owner.getRegistrationDate().isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
         LocalDate registrationDate = owner.getRegistrationDate();
         long ownersCreatedThatDay = this.clinicService.findAllOwners().stream()
