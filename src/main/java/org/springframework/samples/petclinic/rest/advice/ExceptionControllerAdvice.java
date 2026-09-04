@@ -142,6 +142,7 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 fieldErrors);
             detail.setProperty("schemaValidationErrors", toSchemaValidationErrors(fieldErrors));
+            detail.setProperty("errors", toRejectedFieldNames(fieldErrors));
         }
         return ResponseEntity.status(status).body(detail);
     }
@@ -152,6 +153,21 @@ public class ExceptionControllerAdvice {
      * @param fieldErrors the field-level errors collected by Bean Validation
      * @return one validation message per field error, in order
      */
+    /**
+     * Collects the distinct names of the fields rejected by Bean Validation, preserving the order in
+     * which they were reported. Used to expose a simple {@code errors} array (one entry per offending
+     * field, e.g. a required field that is missing or blank) alongside the detailed messages.
+     *
+     * @param fieldErrors the field-level errors collected by Bean Validation
+     * @return the rejected field names, without duplicates
+     */
+    private List<String> toRejectedFieldNames(List<FieldError> fieldErrors) {
+        return fieldErrors.stream()
+            .map(FieldError::getField)
+            .distinct()
+            .toList();
+    }
+
     private List<ValidationMessageDto> toSchemaValidationErrors(List<FieldError> fieldErrors) {
         return fieldErrors.stream()
             .map(this::toValidationMessage)
