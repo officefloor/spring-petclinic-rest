@@ -5,7 +5,9 @@ import java.time.Instant;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 
 /**
@@ -25,5 +27,11 @@ final class ProblemDetails {
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
+    }
+
+    /** Wraps a problem detail as an {@code application/problem+json} response (RFC7807). */
+    static ResponseEntity<ProblemDetail> respond(ProblemDetail detail) {
+        return ResponseEntity.status(detail.getStatus())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 }

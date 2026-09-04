@@ -3,12 +3,13 @@ package org.springframework.samples.petclinic.rest.escalation;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class DuplicateOwnerTelephoneExceptionHandler {
 
     public void handle(@Parameter DuplicateOwnerTelephoneException ex,
-            ObjectResponse<ResponseEntity<String>> response) {
-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage()));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        response.send(ProblemDetails.respond(ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage())));
     }
 }
