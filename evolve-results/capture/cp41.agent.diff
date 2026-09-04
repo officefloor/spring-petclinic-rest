@@ -1,0 +1,33 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 93f16c863..06353648c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -301,11 +301,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * (falling back to the city) via {@link CityRegionResolver}, and HASH8 is the first eight
+      * upper-case hex characters of the SHA-256 digest of the normalized telephone concatenated
+      * with the last name (e.g. 'NSW-1A2B3C4D'). There is no per-city sequence.
++     *
++     * <p>When the computed code collides with an already-registered owner's customerCode it is
++     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
++     * makes it unique (e.g. 'NSW-1A2B3C4D-2'), and the unique code is returned.
+      */
+     private String customerCode(Owner owner) {
+         String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+         String hash8 = HashUtils.sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+-        return region + "-" + hash8;
++        String base = region + "-" + hash8;
++        java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(java.util.Objects::nonNull)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existing.contains(base)) {
++            return base;
++        }
++        int n = 2;
++        while (existing.contains(base + "-" + n)) {
++            n++;
++        }
++        return base + "-" + n;
+     }
+ 
+     /**
