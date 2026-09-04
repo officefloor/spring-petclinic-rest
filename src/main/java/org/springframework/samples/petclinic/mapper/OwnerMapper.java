@@ -219,12 +219,18 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's numeric membership level from 1 to 4, derived from {@link #membershipPoints}:
-     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points and level 4 for
-     * 6 or more points.
+     * The owner's numeric membership level from 1 to 4, derived from {@link #membershipPoints}
+     * via {@link #levelForPoints}.
      */
     public int membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
+        return levelForPoints(membershipPoints(owner));
+    }
+
+    /**
+     * The numeric membership level from 1 to 4 that {@code points} maps to: level 1 for 0-1
+     * points, level 2 for 2-3 points, level 3 for 4-5 points and level 4 for 6 or more points.
+     */
+    int levelForPoints(int points) {
         if (points >= 6) {
             return 4;
         }
@@ -238,18 +244,27 @@ public abstract class OwnerMapper {
     }
 
     /**
+     * The owners belonging to {@code owner}'s household, i.e. those sharing its householdId
+     * (including the owner itself once persisted). Returns an empty list when the owner has no
+     * household id assigned.
+     */
+    List<Owner> householdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return List.of();
+        }
+        return clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    /**
      * The number of owners belonging to {@code owner}'s household, i.e. those sharing its
      * householdId (including the owner itself once persisted). Returns 0 when the owner has no
      * household id assigned.
      */
     int householdSize(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return 0;
-        }
-        return (int) clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
+        return householdMembers(owner).size();
     }
 
     /**
