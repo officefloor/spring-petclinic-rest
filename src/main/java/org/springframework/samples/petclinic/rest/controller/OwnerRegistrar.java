@@ -215,6 +215,9 @@ public class OwnerRegistrar {
         if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Approaching-capacity warning: the city already holds 40-49 owners (the hard limit is 50,
+        // rejected above). ownersInCity counts the existing owners the candidate is joining.
+        owner.setCapacityWarning(ownersInCity >= 40 && ownersInCity < 50);
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
