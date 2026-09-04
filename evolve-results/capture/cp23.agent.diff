@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+new file mode 100644
+index 000000000..454cdb163
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Household tier rule: an owner is promoted to the {@code GOLD} membership tier once its household
++ * — the owners sharing its {@code householdId} — has {@value #GOLD_THRESHOLD} or more members,
++ * overriding the BRONZE/SILVER tier the mapper derives from the owner alone.
++ */
++public final class HouseholdTier {
++
++    private static final int GOLD_THRESHOLD = 3;
++
++    private HouseholdTier() {
++    }
++
++    public static void applyTo(OwnerDto dto, Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        long members = ownerRepository.findAll().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++        if (members >= GOLD_THRESHOLD) {
++            dto.setMembershipTier("GOLD");
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index fe83cf8af..1aa226433 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,6 +13,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        HouseholdTier.applyTo(dto, owner, ownerRepository);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 1f1067ffe..261af0c0a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,6 +16,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        HouseholdTier.applyTo(dto, owner, ownerRepository);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1a60970ff..0e7dcf6f0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2111,7 +2111,7 @@ components:
+               readOnly: true
+             membershipTier:
+               title: Membership tier
+-              description: "'SILVER' when the owner has no namesakes and an email address, otherwise 'BRONZE'."
++              description: "'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members, otherwise 'SILVER' when the owner has no namesakes and an email address, otherwise 'BRONZE'."
+               type: string
+               example: 'SILVER'
+               readOnly: true
