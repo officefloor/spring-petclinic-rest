@@ -23,7 +23,7 @@ public final class HouseholdId {
 
     public static String of(String lastName, String postcode) {
         String normalized = lastName == null ? "" : lastName.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-        return sha256hex(normalized + "|" + (postcode == null ? "" : postcode)).substring(0, 12);
+        return sha256hex("V2|" + normalized + "|" + (postcode == null ? "" : postcode)).substring(0, 12);
     }
 
     private static String sha256hex(String value) {

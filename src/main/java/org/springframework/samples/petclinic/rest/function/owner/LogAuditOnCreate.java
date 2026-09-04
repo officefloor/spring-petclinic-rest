@@ -27,18 +27,22 @@ public class LogAuditOnCreate {
             MembershipLevel.of(MembershipPoints.of(owner)));
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getCustomerCode());
         AUDIT.info(new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-            owner.getCustomerCode(), MembershipLevel.of(MembershipPoints.of(owner))).toJson());
+            owner.getCustomerCode(), MembershipLevel.of(MembershipPoints.of(owner)),
+            OwnerSegment.of(owner)).toJson());
     }
 
     /**
      * Immutable structured owner-created event. Carries the owner's unified primary
      * identifier, the {@code memberId}.
      */
-    private record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel) {
+    private record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel,
+            String ownerSegment) {
         String toJson() {
             return "{\"seq\":" + seq + ",\"ownerId\":" + ownerId
+                + ",\"schemaVersion\":2"
                 + ",\"memberId\":\"" + memberId + "\""
                 + ",\"membershipLevel\":" + membershipLevel
+                + ",\"ownerSegment\":\"" + ownerSegment + "\""
                 + ",\"event\":\"OWNER_CREATED\"}";
         }
     }

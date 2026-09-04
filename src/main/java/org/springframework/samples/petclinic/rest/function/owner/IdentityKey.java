@@ -24,7 +24,7 @@ public final class IdentityKey {
 
     public static String of(String telephone, String email, String lastName) {
         String lowerEmail = email == null || email.isBlank() ? "" : email.toLowerCase(Locale.ROOT);
-        return sha256hex((telephone == null ? "" : telephone) + "|" + lowerEmail + "|" + Soundex.of(lastName));
+        return sha256hex("V2|" + (telephone == null ? "" : telephone) + "|" + lowerEmail + "|" + Soundex.of(lastName));
     }
 
     private static String sha256hex(String value) {

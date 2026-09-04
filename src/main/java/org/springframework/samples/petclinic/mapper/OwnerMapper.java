@@ -19,7 +19,8 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.identity(owner))")
     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner)))")
@@ -28,10 +29,19 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(java.util.Map.of(\"NSW\", \"Australia/Sydney\", \"VIC\", \"Australia/Melbourne\", \"QLD\", \"Australia/Brisbane\").get(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Builds the version-2 {@code identity} block grouping the owner's derived identifiers. */
+    static org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getCustomerCode());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
