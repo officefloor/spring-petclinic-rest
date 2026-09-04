@@ -1,0 +1,215 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f1a2ebe41..4f8d67621 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,7 +20,8 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner)))")
+     @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailFactor.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailFactor.java
+index a9007feb4..9077eeb0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailFactor.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailFactor.java
+@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
+  */
+ public final class EmailFactor {
+ 
+-    private static final int POINTS = 1;
++    private static final int POINTS = 2;
+ 
+     private EmailFactor() {
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LogAuditOnCreate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LogAuditOnCreate.java
+index b1e543f20..b9102ce59 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LogAuditOnCreate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/LogAuditOnCreate.java
+@@ -16,6 +16,7 @@ public class LogAuditOnCreate {
+ 
+     public void service(@Val Owner owner) {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), MembershipLevel.of(owner));
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            MembershipLevel.of(MembershipPoints.of(owner)));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Membership.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Membership.java
+new file mode 100644
+index 000000000..933aa355f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Membership.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Response-time membership scoring: the entity-derivable {@link MembershipPoints} plus the
++ * household factor (+2 for a household of 3 or more), which needs the repository to count
++ * members. Sets both {@code membershipPoints} and the {@link MembershipLevel} mapped from them.
++ * Mirrors the response-time derivation used for {@link PossibleDuplicate} and {@link BulkSignup}.
++ */
++public final class Membership {
++
++    private static final int HOUSEHOLD_POINTS = 2;
++
++    private static final int HOUSEHOLD_THRESHOLD = 3;
++
++    private Membership() {
++    }
++
++    public static void mark(OwnerDto dto, Owner owner, OwnerRepository ownerRepository) {
++        int points = MembershipPoints.of(owner) + householdPoints(owner, ownerRepository);
++        dto.setMembershipPoints(points);
++        dto.setMembershipLevel(MembershipLevel.of(points));
++    }
++
++    private static int householdPoints(Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        long members = ownerRepository.findAll().stream()
++            .filter(other -> Objects.equals(householdId, other.getHouseholdId()))
++            .count();
++        return members >= HOUSEHOLD_THRESHOLD ? HOUSEHOLD_POINTS : 0;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+index 7e299344b..98c17bf20 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+@@ -1,22 +1,25 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import org.springframework.samples.petclinic.model.Owner;
+-
+ /**
+- * Membership level rule: a numeric level derived from the owner's {@link MembershipPoints}
+- * and capped at 4. The factors that earn points, and their weights, live in the small
+- * factor classes behind {@link MembershipPoints}; this class owns only the mapping from a
+- * points total to a level. A newly created owner has zero tenure, so a new owner never
+- * exceeds 3.
++ * Membership level rule: maps a {@link MembershipPoints} total to a level of 1 (0-1 points),
++ * 2 (2-3), 3 (4-5) or 4 (6 or more). Owns only that mapping; the factors that earn points, and
++ * their weights, live in the small factor classes behind {@link MembershipPoints}.
+  */
+ public final class MembershipLevel {
+ 
+-    private static final int CAP = 4;
+-
+     private MembershipLevel() {
+     }
+ 
+-    public static int of(Owner owner) {
+-        return Math.min(MembershipPoints.of(owner), CAP);
++    public static int of(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+index 6bc0e1891..93fcda7d9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+@@ -3,14 +3,14 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Aggregate membership points for an owner: a starting allowance plus the points
+- * contributed by each qualifying factor. Adding or reweighting a factor is a change to a
+- * single small factor class ({@link EmailFactor}, {@link NamesakeFactor},
+- * {@link TenureFactor}) or to this sum, not to the level-mapping in {@link MembershipLevel}.
++ * Aggregate the membership points an owner earns from entity-derivable factors
++ * ({@link EmailFactor}, {@link NamesakeFactor}, {@link TenureFactor}). The household
++ * factor needs the repository to count members, so it is added at response time by
++ * {@link Membership}; this sum feeds the level-mapping in {@link MembershipLevel}.
+  */
+ public final class MembershipPoints {
+ 
+-    private static final int BASE = 1;
++    private static final int BASE = 0;
+ 
+     private MembershipPoints() {
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 1259d94d7..24267d69a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
++        Membership.mark(dto, owner, ownerRepository);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 10c2b6907..c9dae77aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
++        Membership.mark(dto, owner, ownerRepository);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TenureFactor.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TenureFactor.java
+index eada5057f..4f0b81b48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TenureFactor.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TenureFactor.java
+@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.model.Owner;
+  */
+ public final class TenureFactor {
+ 
+-    private static final int POINTS = 1;
++    private static final int POINTS = 3;
+ 
+     private static final long TENURE_DAYS = 365;
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2916e516d..7b2f140c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2136,14 +2136,22 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "Points scored from membership factors: +2 for an email address, +1 for no namesakes, +2 for a household of 3 or more, +3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "Numeric level assigned on creation: starts at 1, plus 1 when an email address is present, plus 1 when the owner has no namesakes, capped at 3 (level 4 is reserved for tenure)."
++              description: "Numeric level mapped from membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more)."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
