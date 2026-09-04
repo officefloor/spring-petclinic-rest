@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +81,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * carrying the new owner's id, customer code and registration date.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Source of the {@code seq} carried by each {@link OwnerCreatedEvent}: a monotonically increasing
+     * counter bumped once per successful create, so every emitted event carries a strictly larger
+     * sequence number than the create before it.
+     */
+    private static final AtomicLong EVENT_SEQ = new AtomicLong();
 
     /**
      * Maximum number of owners a single city may hold. A create whose city already contains this many
@@ -200,6 +208,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+        AUDIT.info(event.toJson());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -302,6 +313,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * The owner's current primary identifier, as carried on the {@link OwnerCreatedEvent} audit event.
+     * Today an owner is keyed by its {@code customerCode}; when that identifier is later unified into
+     * the {@code memberId}, this single accessor changes to return the memberId and the emitted event
+     * carries it in place of the customer code, with no other call site affected.
+     *
+     * @param owner the freshly created owner, already stamped with its {@code customerCode}
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
