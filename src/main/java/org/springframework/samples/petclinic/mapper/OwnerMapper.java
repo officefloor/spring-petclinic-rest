@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.controller.CityRegionResolver;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -13,7 +14,6 @@ import org.springframework.samples.petclinic.service.ClinicService;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -24,6 +24,10 @@ public abstract class OwnerMapper {
     /** Used to count the members of an owner's household when deriving derived fields. */
     @Autowired
     protected ClinicService clinicService;
+
+    /** Single source of truth for the city-to-region mapping behind an owner's locality. */
+    @Autowired
+    protected CityRegionResolver cityRegionResolver;
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
@@ -57,18 +61,12 @@ public abstract class OwnerMapper {
         return hasEmail ? "EMAIL" : "PHONE";
     }
 
-    /** Fixed city-to-region table used to derive an owner's locality. */
-    static final Map<String, String> CITY_REGION = Map.of(
-        "Sydney", "NSW",
-        "Melbourne", "VIC",
-        "Brisbane", "QLD");
-
     /**
-     * The canonical region derived from the owner's city using the fixed
-     * {@link #CITY_REGION} table, or 'UNKNOWN' when the city is not listed.
+     * The canonical region derived from the owner's city via {@link CityRegionResolver},
+     * or 'UNKNOWN' when the city has no known region.
      */
     String locality(Owner owner) {
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        return cityRegionResolver.regionFor(owner.getCity());
     }
 
     /**
