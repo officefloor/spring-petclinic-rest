@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java
+new file mode 100644
+index 000000000..0f5811993
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java
+@@ -0,0 +1,69 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.io.IOException;
++import java.util.Map;
++
++import org.springframework.http.MediaType;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++import org.springframework.web.util.ContentCachingResponseWrapper;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++
++/**
++ * Ensures every bodiless rejection carries an RFC 7807 {@code application/problem+json} body.
++ * <p>
++ * Rejections raised as exceptions are already rendered by {@link ExceptionControllerAdvice}; the
++ * rejections a controller returns as a bare status ({@code 409}, {@code 429}) reach the client with
++ * an empty body. This filter fills that gap: for a rejection status with no body already written it
++ * emits a minimal problem document ({@code type}, {@code title}, {@code status}, {@code detail}).
++ */
++@Component
++public class ProblemDetailResponseFilter extends OncePerRequestFilter {
++
++    private static final Map<Integer, String> REJECTION_TITLES = Map.of(
++        400, "Bad Request",
++        409, "Conflict",
++        429, "Too Many Requests");
++
++    @Override
++    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
++                                    FilterChain chain) throws ServletException, IOException {
++        ContentCachingResponseWrapper capture = new ContentCachingResponseWrapper(response);
++        chain.doFilter(request, capture);
++        String title = REJECTION_TITLES.get(capture.getStatus());
++        if (title != null && capture.getContentSize() == 0) {
++            writeProblem(request, capture, title);
++        }
++        capture.copyBodyToResponse();
++    }
++
++    /** Write a minimal RFC 7807 problem document for the captured rejection status. */
++    private void writeProblem(HttpServletRequest request, ContentCachingResponseWrapper response,
++                              String title) throws IOException {
++        String body = "{\"type\":\"%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}".formatted(
++            request.getRequestURL(), title, response.getStatus(), "The request was rejected: " + title);
++        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
++        response.setCharacterEncoding("UTF-8");
++        response.getWriter().write(body);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java
+index c1a1be08d..df56aa487 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/ValidPostcodeValidator.java
+@@ -21,7 +21,7 @@ public class ValidPostcodeValidator implements ConstraintValidator<ValidPostcode
+     @Override
+     public boolean isValid(OwnerFieldsDto owner, ConstraintValidatorContext context) {
+         String postcode = owner == null ? null : owner.getPostcode();
+-        if (postcode == null || postcode.isBlank()) {
++        if (postcode == null || postcode.isBlank() || owner.getCity() == null) {
+             return true;
+         }
+         int[] range = REGION_RANGE.get(Locality.of(owner.getCity()));
