@@ -53,6 +53,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -103,6 +106,14 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = E164.toE164(telephone);
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public LocalDate getRegistrationDate() {
