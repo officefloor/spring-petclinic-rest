@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.OwnerIdentity;
+import org.springframework.samples.petclinic.util.PostcodeValidator;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -142,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
+        rejectInvalidPostcode(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         String householdId = HouseholdNormalizer.toHouseholdId(
@@ -283,6 +285,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         addIfBlank(missing, "telephone", ownerFieldsDto.getTelephone());
         if (!missing.isEmpty()) {
             throw new InvalidOwnerFieldsException(missing);
+        }
+    }
+
+    /**
+     * Rejects an owner whose supplied {@code postcode} is invalid for its {@code city}. The postcode is
+     * optional: when absent (null) the owner is accepted unchanged, so the request contract stays
+     * backward-compatible. When present it must be four digits and, when the city maps to a known region,
+     * must fall within that region's fixed inclusive range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
+     * {@code QLD 4000-4099}); a city with no known region accepts any 4-digit postcode. See
+     * {@link PostcodeValidator}.
+     *
+     * @param ownerFieldsDto the submitted owner fields (its {@code city} is non-blank here,
+     *                       {@link #rejectBlankOwnerFields} having already run)
+     * @throws InvalidOwnerFieldsException if a postcode is present but not valid for the city
+     */
+    private void rejectInvalidPostcode(OwnerFieldsDto ownerFieldsDto) {
+        if (!PostcodeValidator.isValid(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode())) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
         }
     }
 
