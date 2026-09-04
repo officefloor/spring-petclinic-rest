@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
@@ -147,7 +148,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeTelephone(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         String householdId = householdIdFor(ownerFieldsDto);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(ownerFieldsDto, householdId);
+        rejectHouseholdDuplicate(householdId, sharesHousehold);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
@@ -160,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
-        markPossibleDuplicate(owner);
+        markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -445,7 +448,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String householdIdFor(OwnerFieldsDto ownerFieldsDto) {
         return HouseholdNormalizer.toHouseholdId(
-            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
+    }
+
+    /**
+     * Rejects creating an owner that would join an existing household without declaring itself a
+     * member. The household is keyed on (last name, postcode) through the derived {@code householdId}
+     * (see {@link HouseholdNormalizer#toHouseholdId}), so a second owner sharing an existing owner's
+     * last name and postcode denotes the same household. Such a create is reported as a {@code 409
+     * Conflict} unless it opts in with {@code sharesHousehold}, in which case it is accepted as a
+     * declared household member. Only owners already persisted (before this create) are considered.
+     *
+     * @param householdId     the household id derived for the owner being created
+     * @param sharesHousehold whether the request opted in to sharing a household
+     * @throws DuplicateOwnerHouseholdException if the household already exists and the request did not
+     *                                          opt in with {@code sharesHousehold}
+     */
+    private void rejectHouseholdDuplicate(String householdId, boolean sharesHousehold) {
+        if (sharesHousehold || householdId == null) {
+            return;
+        }
+        boolean householdExists = this.clinicService.findAllOwners().stream()
+            .map(Owner::getHouseholdId)
+            .anyMatch(householdId::equals);
+        if (householdExists) {
+            throw new DuplicateOwnerHouseholdException(householdId);
+        }
     }
 
     /**
@@ -483,12 +511,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owner. The match itself is decided by {@link #findPossibleDuplicate}; this method reflects its
      * result into the two stored fields, so the interpretation of "is a possible duplicate" lives in
      * one place: {@code possibleDuplicateOf} holds the matched owner's id (or {@code null} when there
-     * is none) and {@code possibleDuplicate} is {@code true} exactly when a match was found.
+     * is none) and {@code possibleDuplicate} is {@code true} exactly when a match was found. An owner
+     * that opted in with {@code sharesHousehold} is a declared household member, not a suspected
+     * duplicate, so it is never flagged.
      *
-     * @param owner the owner being created, with telephone already normalized and lastName/postcode set
+     * @param owner           the owner being created, with telephone already normalized and
+     *                        lastName/postcode set
+     * @param sharesHousehold whether the request opted in to sharing a household
      */
-    private void markPossibleDuplicate(Owner owner) {
-        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
+    private void markPossibleDuplicate(Owner owner, boolean sharesHousehold) {
+        Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
     }
