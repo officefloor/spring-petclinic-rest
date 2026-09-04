@@ -119,12 +119,11 @@ public class Owner extends Person {
 
     /**
      * Stable identifier for the household an owner belongs to, derived from last name and
-     * address. Owners who share a household (same last name and address) share this value.
+     * postcode. Owners who share a household (same last name and postcode) share this value.
      */
     @Transient
     public String getHouseholdId() {
-        String key = (this.lastName + "|" + this.address).toLowerCase();
-        return String.format("H-%08X", key.hashCode());
+        return org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(this);
     }
 
     public String getCustomerCode() {

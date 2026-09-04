@@ -32,6 +32,7 @@ public final class PossibleDuplicate {
             if (!Objects.equals(other.getId(), owner.getId())
                     && lastName.equals(normalize(other.getLastName()))
                     && owner.getPostcode().equals(other.getPostcode())
+                    && !owner.getHouseholdId().equals(other.getHouseholdId()) // same household => declared member, not a suspected duplicate
                     && !Objects.equals(owner.getTelephone(), other.getTelephone())) {
                 return other.getId();
             }
