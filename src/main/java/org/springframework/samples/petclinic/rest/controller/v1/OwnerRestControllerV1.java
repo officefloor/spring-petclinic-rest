@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), owner.getCity(), this.clinicService.findAllOwners()));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         this.clinicService.saveOwner(owner);
+        org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
