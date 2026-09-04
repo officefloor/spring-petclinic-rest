@@ -479,8 +479,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String identityKey = OwnerIdentity.identityKey(
             ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
         String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
+        boolean inUse = activeOwners().stream()
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
             .map(TelephoneNormalizer::toComparisonKey)
@@ -488,6 +487,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
         }
+    }
+
+    /**
+     * The owners considered by duplicate detection: every persisted owner except those flagged
+     * {@code deleted}. A soft-deleted owner is retained but must never make a later create look like a
+     * duplicate, so both the hard-duplicate identity check ({@link #rejectDuplicateIdentity}) and the
+     * soft {@linkplain #findPossibleDuplicate possible-duplicate} match are judged against these owners
+     * alone. Only owners already persisted (before this create) are included.
+     *
+     * @return the non-deleted owners currently persisted
+     */
+    private List<Owner> activeOwners() {
+        return this.clinicService.findAllOwners().stream()
+            .filter(owner -> !owner.isDeleted())
+            .toList();
     }
 
     /**
@@ -613,8 +627,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
-        boolean indistinguishableMember = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
+        boolean indistinguishableMember = activeOwners().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .filter(existing -> existing.getTelephone() != null)
             .anyMatch(existing -> telephoneKey.equals(
@@ -643,8 +656,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String telephoneKey = TelephoneNormalizer.toComparisonKey(owner.getTelephone());
-        return this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
+        return activeOwners().stream()
             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> existing.getTelephone() != null

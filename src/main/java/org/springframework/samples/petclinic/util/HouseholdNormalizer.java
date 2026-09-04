@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.util;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 /**
@@ -71,7 +68,7 @@ public abstract class HouseholdNormalizer {
      * @return the household's stable shared identifier
      */
     public static String toHouseholdId(String lastName, String postcode) {
-        return sha256Hex(toComparisonKey(lastName, postcode)).substring(0, HOUSEHOLD_ID_LENGTH);
+        return Sha256.hex(toComparisonKey(lastName, postcode)).substring(0, HOUSEHOLD_ID_LENGTH);
     }
 
     /**
@@ -83,23 +80,6 @@ public abstract class HouseholdNormalizer {
      */
     private static String normalizeField(String field) {
         return field.trim().replaceAll(WHITESPACE_RUN, " ").toLowerCase(Locale.ROOT);
-    }
-
-    /** The lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            // SHA-256 is a standard algorithm required to be present on every JVM.
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
     }
 
 }

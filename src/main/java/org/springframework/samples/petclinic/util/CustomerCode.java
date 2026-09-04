@@ -16,10 +16,6 @@
 
 package org.springframework.samples.petclinic.util;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 /**
  * Derivation of an owner's {@code customerCode}, the region-and-hash identity every other owner value
  * is now built from. Kept separate from the owner controller and the {@code Owner} model so the rule
@@ -74,23 +70,7 @@ public abstract class CustomerCode {
     private static String hash8(String telephone, String lastName) {
         String telephonePart = telephone == null ? "" : telephone;
         String lastNamePart = lastName == null ? "" : lastName;
-        return sha256Hex(telephonePart + lastNamePart).substring(0, HASH_LENGTH).toUpperCase();
-    }
-
-    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but not available", e);
-        }
+        return Sha256.hex(telephonePart + lastNamePart).substring(0, HASH_LENGTH).toUpperCase();
     }
 
 }
