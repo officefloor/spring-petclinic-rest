@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
@@ -177,7 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = householdIdFor(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(ownerFieldsDto, householdId);
-        rejectHouseholdDuplicate(householdId, sharesHousehold);
+        rejectHouseholdDuplicate(ownerFieldsDto, householdId, sharesHousehold);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
@@ -190,6 +191,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
+        owner.setMembershipLevel(cappedMembershipLevel(owner));
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
@@ -516,13 +518,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners already sharing that household
      */
     private int countHouseholdMembers(String householdId) {
+        return householdMembers(householdId).size();
+    }
+
+    /**
+     * Returns the existing owners (before this create) belonging to the given household, i.e. those
+     * whose stored {@code householdId} equals the value derived for the owner being created. As with
+     * {@link #countHouseholdMembers}, only owners already persisted are included, so the owner being
+     * created is never among them.
+     *
+     * @param householdId the household identifier derived for the owner being created (see
+     *                    {@link HouseholdNormalizer#toHouseholdId})
+     * @return the existing owners already sharing that household (empty when {@code householdId} is
+     *         {@code null})
+     */
+    private List<Owner> householdMembers(String householdId) {
         if (householdId == null) {
-            return 0;
+            return List.of();
         }
-        return (int) this.clinicService.findAllOwners().stream()
-            .map(Owner::getHouseholdId)
-            .filter(householdId::equals)
-            .count();
+        return this.clinicService.findAllOwners().stream()
+            .filter(member -> householdId.equals(member.getHouseholdId()))
+            .toList();
+    }
+
+    /**
+     * Caps a new owner's {@code membershipLevel} so it cannot exceed one above the current maximum
+     * {@code membershipLevel} among their existing household members. The owner's own level is the
+     * value {@linkplain OwnerMapper#membershipLevel(Owner) it would otherwise report}; it is capped at
+     * {@code maxHouseholdLevel + 1}. When the household has no existing member no cap applies and the
+     * owner's own level is returned unchanged.
+     *
+     * @param owner the owner being created, already stamped with its household id and size
+     * @return the (possibly capped) membership level to stamp on the owner
+     */
+    private int cappedMembershipLevel(Owner owner) {
+        int ownLevel = this.ownerMapper.membershipLevel(owner);
+        OptionalInt maxHouseholdLevel = householdMembers(owner.getHouseholdId()).stream()
+            .mapToInt(this.ownerMapper::membershipLevel)
+            .max();
+        return maxHouseholdLevel.isPresent()
+            ? Math.min(ownLevel, maxHouseholdLevel.getAsInt() + 1)
+            : ownLevel;
     }
 
     /**
@@ -554,27 +590,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that would join an existing household without declaring itself a
-     * member. The household is keyed on (last name, postcode) through the derived {@code householdId}
-     * (see {@link HouseholdNormalizer#toHouseholdId}), so a second owner sharing an existing owner's
-     * last name and postcode denotes the same household. Such a create is reported as a {@code 409
-     * Conflict} unless it opts in with {@code sharesHousehold}, in which case it is accepted as a
-     * declared household member. Only owners already persisted (before this create) are considered.
+     * Rejects creating an owner that would join an existing household as an indistinguishable
+     * near-duplicate without declaring itself a member. The household is keyed on (last name,
+     * postcode) through the derived {@code householdId} (see {@link HouseholdNormalizer#toHouseholdId}),
+     * so a second owner sharing an existing owner's last name and postcode denotes the same household.
+     * A genuinely distinct household member is told apart by its telephone: an owner whose normalized
+     * telephone differs from every existing member's is a legitimate additional member (recorded as a
+     * {@linkplain #findPossibleDuplicate possible duplicate}, not rejected). Only a create that shares
+     * both the household and an existing member's telephone is reported as a {@code 409 Conflict},
+     * unless it opts in with {@code sharesHousehold}, in which case it is accepted as a declared
+     * household member. Only owners already persisted (before this create) are considered.
      *
+     * @param ownerFieldsDto  the submitted owner fields (telephone already normalized)
      * @param householdId     the household id derived for the owner being created
      * @param sharesHousehold whether the request opted in to sharing a household
-     * @throws DuplicateOwnerHouseholdException if the household already exists and the request did not
-     *                                          opt in with {@code sharesHousehold}
+     * @throws DuplicateOwnerHouseholdException if an existing member shares the household and telephone
+     *                                          and the request did not opt in with {@code sharesHousehold}
      */
-    private void rejectHouseholdDuplicate(String householdId, boolean sharesHousehold) {
+    private void rejectHouseholdDuplicate(OwnerFieldsDto ownerFieldsDto, String householdId,
+            boolean sharesHousehold) {
         if (sharesHousehold || householdId == null) {
             return;
         }
-        boolean householdExists = this.clinicService.findAllOwners().stream()
+        String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
+        boolean indistinguishableMember = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .map(Owner::getHouseholdId)
-            .anyMatch(householdId::equals);
-        if (householdExists) {
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .filter(existing -> existing.getTelephone() != null)
+            .anyMatch(existing -> telephoneKey.equals(
+                TelephoneNormalizer.toComparisonKey(existing.getTelephone())));
+        if (indistinguishableMember) {
             throw new DuplicateOwnerHouseholdException(householdId);
         }
     }
