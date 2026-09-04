@@ -31,6 +31,28 @@ import java.util.Locale;
 public abstract class HashUtils {
 
     /**
+     * The full, lower-case hex encoding of the SHA-256 digest of the UTF-8 bytes of
+     * {@code source} (64 hex characters).
+     *
+     * @param source the string to digest
+     * @return the 64-character lower-case hex SHA-256 digest of {@code source}
+     */
+    public static String sha256Hex(String source) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(source.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
      * The first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
      * bytes of {@code source}.
      *
@@ -39,17 +61,6 @@ public abstract class HashUtils {
      * @return the first {@code length} upper-case hex characters of the SHA-256 digest
      */
     public static String sha256HexPrefix(String source, int length) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(source.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.substring(0, length).toUpperCase(Locale.ROOT);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return sha256Hex(source).substring(0, length).toUpperCase(Locale.ROOT);
     }
 }
