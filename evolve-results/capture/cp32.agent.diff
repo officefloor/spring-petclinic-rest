@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e6d50e0ff..53e8c88ae 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -98,10 +98,19 @@ public abstract class OwnerMapper {
+     }
+ 
+     /**
+-     * The canonical region derived from the owner via {@link CityRegionResolver}, preferring the
+-     * postcode over the city, or 'UNKNOWN' when neither yields a known region.
++     * The owner's locality: the REGION component of the customerCode identity (the part before
++     * the first '-' of {@code '<REGION>-<HASH8>'}). When no customerCode has been assigned this
++     * falls back to the canonical region derived from the owner via {@link CityRegionResolver},
++     * preferring the postcode over the city, or 'UNKNOWN' when neither yields a known region.
+      */
+     String locality(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode != null) {
++            int dash = customerCode.indexOf('-');
++            if (dash >= 0) {
++                return customerCode.substring(0, dash);
++            }
++        }
+         return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 039a404a0..6dc6beb91 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -298,21 +298,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Build the customer code assigned to {@code owner} on create, formatted
+-     * {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the upper-cased first three letters of the
+-     * owner's city, LAST3 is the upper-cased first three letters of the owner's last name and
+-     * NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of
+-     * owners already in that city (e.g. 'LON-SMI-0007').
++     * {@code '<REGION>-<HASH8>'}: REGION is the region code derived from the owner's postcode
++     * (falling back to the city) via {@link CityRegionResolver}, and HASH8 is the first eight
++     * upper-case hex characters of the SHA-256 digest of the normalized telephone concatenated
++     * with the last name (e.g. 'NSW-1A2B3C4D'). There is no per-city sequence.
+      */
+     private String customerCode(Owner owner) {
+-        String city = owner.getCity();
+-        String lastName = owner.getLastName();
+-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        String cityKey = normalizeIdentity(city);
+-        int sequence = (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
+-            .count() + 1;
+-        return String.format("%s-%s-%04d", city3, last3, sequence);
++        String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
++        String hash8 = sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
++        return region + "-" + hash8;
+     }
+ 
+     /**
+@@ -330,7 +324,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Build the membership number assigned on create, formatted
+      * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the
+-     * {@code registrationDate} year (e.g. 'LON-SMI-0007-M26').
++     * {@code registrationDate} year (e.g. 'NSW-1A2B3C4D-M26').
+      */
+     private static String membershipNumber(String customerCode, LocalDate registrationDate) {
+         String yy = String.format("%02d", registrationDate.getYear() % 100);
