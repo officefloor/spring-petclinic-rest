@@ -36,7 +36,43 @@ public abstract class OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits
+     * contained in the customerCode, or null when no customerCode has been assigned.
+     */
+    Integer checkDigit(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        return customerCode == null ? null : luhn(customerCode);
+    }
+
+    /**
+     * The Luhn check digit (0-9) over the digits contained in {@code s}: from the rightmost
+     * digit leftward, every second digit is doubled (the rightmost first) with digits over 9
+     * reduced by 9, and the check digit makes the total a multiple of ten.
+     */
+    static int luhn(String s) {
+        int sum = 0;
+        boolean doubling = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (doubling) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            doubling = !doubling;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
 
     /**
      * The owner's derived identity key: the normalized telephone, the email (or an empty
