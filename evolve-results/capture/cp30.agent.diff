@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 055acd3eb..957a6f01b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -62,11 +62,11 @@ public abstract class OwnerMapper {
+     }
+ 
+     /**
+-     * The canonical region derived from the owner's city via {@link CityRegionResolver},
+-     * or 'UNKNOWN' when the city has no known region.
++     * The canonical region derived from the owner via {@link CityRegionResolver}, preferring the
++     * postcode over the city, or 'UNKNOWN' when neither yields a known region.
+      */
+     String locality(Owner owner) {
+-        return cityRegionResolver.regionFor(owner.getCity());
++        return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/CityRegionResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/CityRegionResolver.java
+index 900964db1..b9b3a3ed6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/CityRegionResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/CityRegionResolver.java
+@@ -60,6 +60,47 @@ public class CityRegionResolver {
+         return CITY_REGION.getOrDefault(city, UNKNOWN_REGION);
+     }
+ 
++    /**
++     * Resolve a region preferring the postcode over the city. The {@code postcode} is looked up
++     * against the region postcode ranges first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only
++     * when the postcode is absent, non-numeric or in no known range does this fall back to the
++     * city-to-region table. For a known city with a matching postcode both agree; a postcode in a
++     * different region's range disambiguates cities that share a name.
++     *
++     * @param city     the owner's city, as stored
++     * @param postcode a 4-digit postcode string (e.g. '3000'), or {@code null} when absent
++     * @return the region derived from the postcode, else the region derived from the city, else
++     *         {@link #UNKNOWN_REGION}
++     */
++    public String regionFor(String city, String postcode) {
++        String region = regionForPostcode(postcode);
++        return region != null ? region : regionFor(city);
++    }
++
++    /**
++     * The region whose postcode range contains {@code postcode}, or {@code null} when the postcode
++     * is absent, non-numeric or in no known range.
++     */
++    private String regionForPostcode(String postcode) {
++        if (postcode == null || postcode.isBlank()) {
++            return null;
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return null;
++        }
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Whether a 4-digit {@code postcode} is valid for the given {@code city}. The postcode is
+      * checked against the inclusive range of the city's region (NSW 2000-2099, VIC 3000-3099,
