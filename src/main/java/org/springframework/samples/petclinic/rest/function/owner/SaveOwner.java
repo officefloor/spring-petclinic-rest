@@ -14,6 +14,8 @@ public class SaveOwner {
 
     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger notify = LoggerFactory.getLogger("NOTIFY");
+
     private static final AtomicLong EVENT_SEQ = new AtomicLong();
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
@@ -27,5 +29,6 @@ public class SaveOwner {
         audit.info(String.format(
                 "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
                 EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel));
+        notify.info("welcome owner id={} memberId={}", owner.getId(), memberId);
     }
 }
