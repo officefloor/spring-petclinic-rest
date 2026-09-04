@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.controller.CityRegionResolver;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -68,6 +69,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    /** A postcode, when supplied, must be exactly four digits before its region range is checked. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
     /** Dedicated audit logger; emits an audit line on successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -83,18 +87,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final CityRegionResolver cityRegionResolver;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 CityRegionResolver cityRegionResolver) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.cityRegionResolver = cityRegionResolver;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -159,6 +167,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email.toLowerCase(Locale.ROOT));
+        }
+        // A postcode is optional, but when supplied it must be four digits and valid for the
+        // owner's city per the fixed region table; a city with no known region accepts any
+        // 4-digit postcode. Reject an out-of-range or malformed postcode with 400.
+        String postcode = owner.getPostcode();
+        if (postcode != null) {
+            if (!POSTCODE_PATTERN.matcher(postcode).matches()
+                    || !cityRegionResolver.isPostcodeValidForCity(owner.getCity(), postcode)) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
         }
         // The owner's telephone and email are now in their canonical, stored form.
         // Establish the household id before the duplicate check so the candidate's whole

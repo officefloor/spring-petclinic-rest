@@ -42,6 +42,13 @@ public class CityRegionResolver {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    /** Fixed region-to-postcode range table (inclusive 4-digit low/high), keyed by region; a
+     *  region not listed here (i.e. {@link #UNKNOWN_REGION}) accepts any 4-digit postcode. */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     /**
      * Resolve a city to its canonical region.
      *
@@ -51,5 +58,24 @@ public class CityRegionResolver {
      */
     public String regionFor(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN_REGION);
+    }
+
+    /**
+     * Whether a 4-digit {@code postcode} is valid for the given {@code city}. The postcode is
+     * checked against the inclusive range of the city's region (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099); a city with no known region accepts any 4-digit postcode.
+     *
+     * @param city     the owner's city, as stored
+     * @param postcode a 4-digit postcode string (e.g. '2000')
+     * @return {@code true} if the postcode is within the city's region range, or the city has
+     *         no known region; {@code false} if the postcode is out of range for the region
+     */
+    public boolean isPostcodeValidForCity(String city, String postcode) {
+        int[] range = REGION_POSTCODE_RANGE.get(regionFor(city));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 }
