@@ -139,12 +139,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String lastNameKey = normalizeIdentity(owner.getLastName());
+            String addressKey = normalizeIdentity(owner.getAddress());
+            boolean householdDuplicate = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
+                    && normalizeIdentity(existing.getAddress()).equals(addressKey));
+            if (householdDuplicate) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalize a value for household-identity comparison: null becomes an empty
+     * string, surrounding whitespace is trimmed, internal whitespace runs collapse
+     * to a single space, and the result is lower-cased.
+     */
+    private static String normalizeIdentity(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
