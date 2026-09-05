@@ -1,22 +1,25 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Objects;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Soft-match duplicate detection for create-owner. Runs after the household duplicate block
- * ({@link RejectDuplicateOwner}), so any owner reaching here that shares an existing owner's household
- * (same {@link HouseholdId} over last name and postcode) got here only by setting
- * {@code sharesHousehold} — it is a declared household member. A declared member is not a suspected
- * duplicate, so it is never flagged: {@code possibleDuplicate} is set false and
- * {@code possibleDuplicateOf} null.
+ * Soft-match duplicate detection for create-owner. Runs after the identity duplicate block
+ * ({@link RejectDuplicateOwner}), which rejects only an exact {@link IdentityKey} collision. A soft
+ * match is the near-miss the identity key deliberately lets through: an owner whose identityKey
+ * <em>differs</em> from an existing owner's yet shares that owner's {@code soundex(lastName)} and
+ * postcode — for example two members of one household with different telephones (different telephone →
+ * different identityKey). Such an owner is flagged: {@code possibleDuplicate} true and
+ * {@code possibleDuplicateOf} the matching owner's id (the lowest id when several match).
  *
- * <p>Otherwise, if the owner nonetheless shares an existing owner's household id it is flagged:
- * {@code possibleDuplicate} true and {@code possibleDuplicateOf} the matching owner's id (the lowest id
- * when several match). Runs before the owner is saved, so {@link OwnerRepository#findAll()} sees only
- * owners that existed before this create.
+ * <p>A request that sets {@code sharesHousehold} true is a declared household member, not a suspected
+ * duplicate, so it is never flagged: {@code possibleDuplicate} false and {@code possibleDuplicateOf}
+ * null. Soft-deleted owners are ignored, as by the duplicate block. Runs before the owner is saved, so
+ * {@link OwnerRepository#findAll()} sees only owners that existed before this create.
  */
 public class DetectPossibleDuplicate {
 
@@ -26,13 +29,20 @@ public class DetectPossibleDuplicate {
             owner.setPossibleDuplicateOf(null);
             return; // declared household member — not a suspected duplicate
         }
-        String householdId = HouseholdId.of(owner.getLastName(), owner.getPostcode());
+        String soundex = Soundex.of(owner.getLastName());
+        String identityKey = IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName());
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // soft-deleted owners are ignored by the duplicate check
             }
-            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
+            String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
+                    existing.getLastName());
+            if (identityKey.equals(existingKey)) {
+                continue; // same identityKey is a hard duplicate (409), not a soft match
+            }
+            if (soundex.equals(Soundex.of(existing.getLastName()))
+                    && Objects.equals(owner.getPostcode(), existing.getPostcode())) {
                 if (match == null || existing.getId() < match.getId()) {
                     match = existing;
                 }
