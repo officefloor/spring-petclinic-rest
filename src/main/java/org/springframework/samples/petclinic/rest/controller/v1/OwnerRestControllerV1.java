@@ -106,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -127,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -253,6 +255,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Normalizes an owner's optional email address. When present it is stored and returned
+     * lower-cased (using {@link Locale#ROOT} so normalization is locale-independent). A missing
+     * (null) email is left as-is. Syntactic validity is enforced by Bean Validation ({@code @Email}
+     * on {@link OwnerFieldsDto}), so an invalid address is already rejected as a 400 before this
+     * method runs.
+     *
+     * @param email the raw email value from the request, or {@code null} when omitted
+     * @return the lower-cased email, or {@code null} when none was supplied
+     */
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
