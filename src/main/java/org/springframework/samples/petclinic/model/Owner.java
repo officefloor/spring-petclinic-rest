@@ -343,6 +343,31 @@ public class Owner extends Person {
     private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
         "+61", 9, "+1", 10);
 
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans, derived on read: the country code, a
+     * space, then the national digits grouped in threes (e.g. {@code "+61 412 345 678"}). Falls back
+     * to the raw value when it is {@code null} or begins with no recognised country code.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null) {
+            return null;
+        }
+        String countryCode = countryCodeOf(this.telephone);
+        if (countryCode == null) {
+            return this.telephone;
+        }
+        String national = this.telephone.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder(countryCode);
+        for (int i = 0; i < national.length(); i++) {
+            if (i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return grouped.toString();
+    }
+
     /** The recognised telephone country code that {@code telephone} begins with (e.g. {@code "+61"}),
      *  or {@code null} when it is {@code null} or begins with no recognised country code. */
     public static String countryCodeOf(String telephone) {
