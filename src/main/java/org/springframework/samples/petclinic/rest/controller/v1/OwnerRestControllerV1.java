@@ -150,11 +150,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
-        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), registrationDate));
-        owner.setHouseholdId(householdId(owner));
-        owner.setNamesakeCount(countNamesakes(owner));
-        owner.setHouseholdMemberCount(countHouseholdMembers(owner));
+        assignRegistrationAttributes(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -289,6 +285,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             e164 = "+61" + national;
         }
         return E164_PATTERN.matcher(e164).matches() ? e164 : null;
+    }
+
+    /**
+     * Compute and assign the derived attributes carried by a newly registered owner: the customer
+     * code, membership number, household id, namesake count and household member count. Each is
+     * derived from the owner's already-normalized fields and the existing owner population, so this
+     * must run before the owner is saved, while the counts still exclude the owner being created.
+     */
+    private void assignRegistrationAttributes(Owner owner) {
+        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setHouseholdId(householdId(owner));
+        owner.setNamesakeCount(countNamesakes(owner));
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner));
     }
 
     /**
