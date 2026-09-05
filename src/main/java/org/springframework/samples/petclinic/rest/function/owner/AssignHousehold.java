@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a shared {@code householdId} when a create-owner request opts in with
- * {@code sharesHousehold} and an existing owner shares its household: same last name and
- * address, each compared case-insensitively with runs of whitespace collapsed to a single
- * space (the same identity {@link RejectDuplicateHousehold} uses). Both the new owner and
+ * {@code sharesHousehold} and an existing owner shares its household: same last name
+ * (compared case-insensitively with runs of whitespace collapsed to a single space) and
+ * same address (compared in the normalized form of {@link AddressNormalizer}), the same
+ * identity {@link RejectDuplicateHousehold} uses. Both the new owner and
  * every existing household member are assigned the same identifier, derived deterministically
  * from the normalized last name and address, so members always agree on it and it never
  * changes as more join.
@@ -28,12 +29,12 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         String householdId = householdId(lastName, address);
         boolean shared = false;
         for (Owner existing : ownerRepository.findAll()) {
             if (normalize(existing.getLastName()).equals(lastName)
-                    && normalize(existing.getAddress()).equals(address)) {
+                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
                 shared = true;
                 if (!householdId.equals(existing.getHouseholdId())) {
                     existing.setHouseholdId(householdId);

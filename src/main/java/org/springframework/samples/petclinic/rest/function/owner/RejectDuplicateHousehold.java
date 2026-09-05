@@ -8,9 +8,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Rejects a create-owner request that shares a household with an existing owner: same
- * last name and same address, each compared case-insensitively with runs of whitespace
- * collapsed to a single space. Runs before {@link BuildOwner}. A collision is rejected
- * 409 via {@link DuplicateHouseholdException}, unless the request opts in with
+ * last name (compared case-insensitively with runs of whitespace collapsed to a single
+ * space) and same address (compared in the normalized form of {@link AddressNormalizer}).
+ * Runs before {@link BuildOwner}. A collision is rejected 409 via
+ * {@link DuplicateHouseholdException}, unless the request opts in with
  * {@code sharesHousehold} set true.
  */
 public class RejectDuplicateHousehold {
@@ -21,10 +22,10 @@ public class RejectDuplicateHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (normalize(existing.getLastName()).equals(lastName)
-                    && normalize(existing.getAddress()).equals(address)) {
+                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
                 throw new DuplicateHouseholdException(
                         "Another owner with the same last name and address already exists");
             }

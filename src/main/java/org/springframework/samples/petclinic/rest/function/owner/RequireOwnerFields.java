@@ -15,11 +15,16 @@ import org.springframework.web.bind.annotation.RequestBody;
  *
  * <p>Reads the raw body (no {@code @Valid}) so this check runs ahead of bean validation and
  * owns the response format; the body is republished for later steps.
+ *
+ * <p>The address is normalized in place first (see {@link AddressNormalizer}) so the required
+ * check rejects an address that is blank <em>after</em> normalization, and every later step
+ * sees — and the response returns — the normalized address.
  */
 public class RequireOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
