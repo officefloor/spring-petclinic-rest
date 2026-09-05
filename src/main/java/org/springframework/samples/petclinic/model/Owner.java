@@ -102,7 +102,7 @@ public class Owner extends Person {
 
     /** Default a missing registration date to the server's current date. */
     public void setRegistrationDate(LocalDate registrationDate) {
-        this.registrationDate = (registrationDate == null) ? LocalDate.now() : registrationDate;
+        this.registrationDate = BusinessDay.adjust((registrationDate == null) ? LocalDate.now() : registrationDate);
     }
 
     public String getCustomerCode() {

@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.service;
 import java.time.LocalDate;
 import java.util.Collection;
 
+import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -32,7 +33,7 @@ public final class DailyRegistrationLimit {
     }
 
     public static boolean isReached(Collection<Owner> existing) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessDay.adjust(LocalDate.now());
         long createdToday = existing.stream().filter(o -> today.equals(o.getRegistrationDate())).count();
         return createdToday >= MAX_OWNERS_PER_DAY;
     }
