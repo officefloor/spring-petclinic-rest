@@ -583,15 +583,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Existing owners that share {@code owner}'s household, i.e. have the same last name AND the
-     * same address compared case-insensitively with collapsed whitespace.
+     * Existing owners that share {@code owner}'s household, i.e. resolve to the same
+     * {@link #householdId(Owner) householdId}. Household membership is defined by that single derived
+     * key rather than re-derived from the underlying fields here, so the household is described in one
+     * place and every household-keyed value stays consistent with it.
      */
     private List<Owner> findHousemates(Owner owner) {
-        String lastName = normalizeHouseholdField(owner.getLastName());
-        String address = normalizeHouseholdField(owner.getAddress());
+        String householdId = householdId(owner);
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
-                && normalizeHouseholdField(existing.getAddress()).equals(address))
+            .filter(existing -> householdId(existing).equals(householdId))
             .toList();
     }
 
