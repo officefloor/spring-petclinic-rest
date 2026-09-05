@@ -47,41 +47,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table used to derive the owner's locality.
-     */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Region -> inclusive 4-digit postcode range {low, high} used to derive the owner's
-     * locality from the postcode.
-     */
-    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
-
-    /**
-     * Derives the owner's locality (region), preferring the postcode: look up the region by
-     * postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only fall back
-     * to the fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the
-     * postcode is absent or in no known range. Returns {@code UNKNOWN} when neither yields a
-     * region.
+     * Derives the owner's locality (region) from its region-and-hash identity: the
+     * {@code customerCode} is {@code <REGION>-<HASH8>}, so the locality is the REGION segment
+     * preceding the hash. Falls back to deriving the region directly from the postcode/city
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode})
+     * only for unmigrated owners that carry no customer code.
      */
     default String toLocality(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null) {
-            try {
-                int value = Integer.parseInt(postcode.trim());
-                for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-                    int[] range = entry.getValue();
-                    if (value >= range[0] && value <= range[1]) {
-                        return entry.getKey();
-                    }
-                }
-            } catch (NumberFormatException ex) {
-                // not a numeric postcode; fall back to the city table
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
             }
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+                .region(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -104,8 +85,9 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number as {@code <customerCode>-M<YY>}, where YY is the
-     * last two digits of the registration-date year (e.g. {@code SMI-0007-M26}). Returns null
-     * when either the customer code or registration date is absent (e.g. unmigrated seed data).
+     * last two digits of the registration-date year (e.g. {@code NSW-1A2B3C4D-M26}). Returns
+     * null when either the customer code or registration date is absent (e.g. unmigrated seed
+     * data).
      */
     default String toMembershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
