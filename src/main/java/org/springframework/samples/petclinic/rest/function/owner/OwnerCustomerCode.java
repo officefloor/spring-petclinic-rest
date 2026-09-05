@@ -22,6 +22,11 @@ import java.util.Map;
  * (membership number and its Luhn check digit), the create audit record and the derived
  * locality — flows from this single value. There is no sequence number.
  *
+ * <p>Composition and decomposition of the code format live together here: {@link #of} builds
+ * a code, {@link #regionOf} reads the region back out of one, and {@link #luhn} is the check
+ * over its digits. Callers (the owner mapper's {@code locality} and {@code checkDigit}) delegate
+ * rather than re-deriving the format, so it is described in one place.
+ *
  * <p>A plain utility (not an OfficeFloor function), so it may expose helpers without
  * tripping the one-public-method-per-function rule.
  */
@@ -41,6 +46,46 @@ public final class OwnerCustomerCode {
     /** The full {@code <REGION>-<HASH8>} customer code for the given owner fields. */
     public static String of(String postcode, String city, String telephone, String lastName) {
         return region(postcode, city) + "-" + hash8(telephone, lastName);
+    }
+
+    /**
+     * The REGION segment encoded in an existing customer code, i.e. the part preceding the
+     * {@code -<HASH8>} suffix (see {@link #of}). Returns {@code null} when {@code code} is absent
+     * or carries no region segment. The inverse of {@link #of}: callers read the region back out
+     * of the code here instead of re-parsing the format themselves.
+     */
+    public static String regionOf(String code) {
+        if (code == null) {
+            return null;
+        }
+        int dash = code.indexOf('-');
+        return dash > 0 ? code.substring(0, dash) : null;
+    }
+
+    /**
+     * The Luhn check digit (0-9) computed over the decimal digits contained in {@code s}
+     * (non-digit characters are ignored). Kept beside the code it checks so the code format and
+     * the values derived from it share one home.
+     */
+    public static int luhn(String s) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

@@ -125,19 +125,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from its region-and-hash identity: the
-     * {@code customerCode} is {@code <REGION>-<HASH8>}, so the locality is the REGION segment
-     * preceding the hash. Falls back to deriving the region directly from the postcode/city
-     * (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode})
-     * only for unmigrated owners that carry no customer code.
+     * Derives the owner's locality (region) from its region-and-hash identity: the region encoded
+     * in the {@code customerCode} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode#regionOf}).
+     * Falls back to deriving the region directly from the postcode/city only for unmigrated owners
+     * that carry no customer code.
      */
     default String toLocality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
+        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+                .regionOf(owner.getCustomerCode());
+        if (region != null) {
+            return region;
         }
         return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
                 .region(owner.getPostcode(), owner.getCity());
@@ -251,32 +249,17 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's {@code checkDigit}: the Luhn check digit (0-9) computed over the
-     * digits contained in the {@code customerCode}. Returns null when the customer code is
-     * absent (e.g. unmigrated seed data).
+     * digits contained in the {@code customerCode} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode#luhn}).
+     * Returns null when the customer code is absent (e.g. unmigrated seed data).
      */
     default Integer toCheckDigit(Owner owner) {
         String customerCode = owner.getCustomerCode();
         if (customerCode == null) {
             return null;
         }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+                .luhn(customerCode);
     }
 
     Owner toOwner(OwnerDto ownerDto);
