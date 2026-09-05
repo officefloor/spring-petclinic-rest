@@ -57,6 +57,7 @@ public interface OwnerMapper {
         if (digits.length() < 8 || digits.length() > 15) {
             throw new IllegalArgumentException("Telephone cannot form a valid E.164 number: " + telephone);
         }
+        org.springframework.samples.petclinic.service.E164NationalLength.check(digits);
         return "+" + digits;
     }
 
