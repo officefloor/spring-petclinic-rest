@@ -269,10 +269,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
 
     /**
+     * Required national-number length per country code: '+61' (Australia) expects 9 national
+     * digits and '+1' (NANP) expects 10. A number whose country code is listed here but whose
+     * national part is not the required length is rejected.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
+        "+61", 9, "+1", 10);
+
+    /**
      * Canonical stored form of a telephone number in E.164: a leading '+' and country
      * code are kept when present; otherwise country code '+61' is assumed and a single
      * leading '0' is dropped from the national digits. Spaces, dashes and brackets are
-     * stripped. The result must be a '+' followed by 8 to 15 digits.
+     * stripped. The result must be a '+' followed by 8 to 15 digits, and its national number
+     * must have the length required for its country code ('+61' => 9 digits, '+1' => 10).
      * Returns {@code null} when the number cannot form a valid E.164 value.
      */
     private static String normalizeTelephone(String telephone) {
@@ -287,7 +296,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
             e164 = "+61" + national;
         }
-        return E164_PATTERN.matcher(e164).matches() ? e164 : null;
+        if (!E164_PATTERN.matcher(e164).matches()) {
+            return null;
+        }
+        return hasValidNationalNumberLength(e164) ? e164 : null;
+    }
+
+    /**
+     * Whether the national number of a well-formed E.164 value has the length required for its
+     * country code. Country codes not listed in {@link #NATIONAL_NUMBER_LENGTHS} carry no
+     * per-country length rule and are accepted.
+     */
+    private static boolean hasValidNationalNumberLength(String e164) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (e164.startsWith(countryCode)) {
+                return e164.length() - countryCode.length() == entry.getValue();
+            }
+        }
+        return true;
     }
 
     /**
