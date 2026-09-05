@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestAdvice.java
+new file mode 100644
+index 000000000..12136bc4e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestAdvice.java
+@@ -0,0 +1,69 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.net.URI;
++
++import jakarta.servlet.http.HttpServletRequest;
++import org.springframework.core.Ordered;
++import org.springframework.core.annotation.Order;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++/**
++ * Renders business-rule rejections (e.g. 409 Conflict, 429 Too Many Requests) as an
++ * RFC 7807 {@code application/problem+json} body carrying {@code type}, {@code title},
++ * {@code status} and {@code detail}. Controllers only need to throw a
++ * {@link RejectedRequestException}; the chosen status is preserved unchanged.
++ */
++@RestControllerAdvice
++@Order(Ordered.HIGHEST_PRECEDENCE)
++public class RejectedRequestAdvice {
++
++    @ExceptionHandler(RejectedRequestException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRejection(RejectedRequestException e, HttpServletRequest request) {
++        HttpStatus status = e.getStatus();
++        ProblemDetail detail = ProblemDetail.forStatus(status);
++        detail.setType(URI.create(request.getRequestURL().toString()));
++        detail.setTitle(status.getReasonPhrase());
++        detail.setDetail(e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
++    /**
++     * Signals that a request was rejected by a business rule, pairing the HTTP status to
++     * return with a human-readable detail for the problem+json body.
++     */
++    public static class RejectedRequestException extends RuntimeException {
++
++        private final HttpStatus status;
++
++        public RejectedRequestException(HttpStatus status, String detail) {
++            super(detail);
++            this.status = status;
++        }
++
++        public HttpStatus getStatus() {
++            return this.status;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8c6ae9d0d..426064548 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.RejectedRequestAdvice.RejectedRequestException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -108,13 +109,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         Collection<Owner> owners = this.clinicService.findAllOwners();
+         if (DailyRegistrationLimit.isReached(owners)) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS, "Daily owner registration limit reached");
+         }
+         if (IdentityKey.isDuplicate(owners, owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new RejectedRequestException(HttpStatus.CONFLICT, "An owner with the same identity already exists");
+         }
+         if (CityCapacity.isFull(owners, owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new RejectedRequestException(HttpStatus.CONFLICT, "The city is at owner capacity");
+         }
+         OwnerRegistration.enrich(owners, owner, ownerFieldsDto.getSharesHousehold());
+         this.clinicService.saveOwner(owner);
