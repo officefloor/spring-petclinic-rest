@@ -582,12 +582,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the membership number '<customerCode>-M<YY>' where YY is the last two digits of the
-     * {@code registrationDate} year (e.g. 'NSW-1A2B3C4D-M26').
+     * Build the membership number '<customerCode>-M<YY>' where YY is the
+     * {@link #membershipYearSegment(LocalDate) year segment} of the {@code registrationDate}
+     * (e.g. 'NSW-1A2B3C4D-M26').
      */
     private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", registrationDate.getYear() % 100);
-        return customerCode + "-M" + yy;
+        return customerCode + "-M" + membershipYearSegment(registrationDate);
+    }
+
+    /**
+     * The two-digit year segment stamped into a membership number: the last two digits of the
+     * {@code registrationDate} year, zero-padded (e.g. 2026 -> '26').
+     */
+    private static String membershipYearSegment(LocalDate registrationDate) {
+        return String.format("%02d", registrationDate.getYear() % 100);
     }
 
     /**

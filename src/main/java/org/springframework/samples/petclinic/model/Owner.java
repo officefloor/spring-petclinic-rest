@@ -293,8 +293,8 @@ public class Owner extends Person {
 
     /** The membership points derived from the given factors: they start at 0, add 2 when
      *  {@code email} is present, add 1 when {@code namesakeCount} is 0, add 2 for a household of 3 or
-     *  more ({@code householdMemberCount}), and add 3 for tenure over 365 days (whole days from
-     *  {@code registrationDate} to today). */
+     *  more ({@code householdMemberCount}), and add 3 for sufficient tenure (see
+     *  {@link #hasTenureBonus(LocalDate)}). */
     private static int membershipPoints(String email, Integer namesakeCount,
             Integer householdMemberCount, LocalDate registrationDate) {
         int points = 0;
@@ -307,11 +307,17 @@ public class Owner extends Person {
         if (householdMemberCount != null && householdMemberCount >= 3) {
             points += 2;
         }
-        if (registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+        if (hasTenureBonus(registrationDate)) {
             points += 3;
         }
         return points;
+    }
+
+    /** Whether the owner's tenure earns the membership tenure bonus: the whole days from
+     *  {@code registrationDate} to today exceed 365. A null registration date earns no bonus. */
+    private static boolean hasTenureBonus(LocalDate registrationDate) {
+        return registrationDate != null
+            && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
     }
 
     /** The numeric membership level (1-4) mapped from membership points: 1 for 0-1 points, 2 for
