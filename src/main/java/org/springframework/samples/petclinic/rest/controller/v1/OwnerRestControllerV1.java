@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -110,6 +111,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String address = normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         if (owner.getEmail() != null) {
             String email = owner.getEmail().trim().toLowerCase(Locale.ROOT);
             if (!EMAIL_PATTERN.matcher(email).matches()) {
@@ -286,6 +292,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(OwnerRestControllerV1::normalizeTelephone)
             .filter(existing -> existing != null)
             .anyMatch(telephone::equals);
+    }
+
+    /** Common street-type abbreviations expanded during address normalization. */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Canonical stored form of an owner's address: leading/trailing whitespace trimmed, inner
+     * whitespace collapsed to single spaces, upper-cased, with common street-type abbreviations
+     * expanded per word ('ST' -> 'STREET', 'RD' -> 'ROAD', 'AVE' -> 'AVENUE'). Returns the empty
+     * string when {@code address} is null or blank after normalization.
+     */
+    private static String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (String token : collapsed.split(" ")) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(token, token));
+        }
+        return sb.toString();
     }
 
     /**
