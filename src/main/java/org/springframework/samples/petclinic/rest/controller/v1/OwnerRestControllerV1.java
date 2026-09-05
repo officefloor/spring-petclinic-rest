@@ -139,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         owner.setHouseholdId(householdId(owner));
+        owner.setNamesakeCount(countNamesakes(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -282,6 +283,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * The number of existing owners (before this create) sharing {@code owner}'s first name and
+     * last name, compared case-insensitively.
+     */
+    private int countNamesakes(Owner owner) {
+        String firstName = normalizeHouseholdField(owner.getFirstName());
+        String lastName = normalizeHouseholdField(owner.getLastName());
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getFirstName()).equals(firstName)
+                && normalizeHouseholdField(existing.getLastName()).equals(lastName))
+            .count();
     }
 
     /** Whether any existing owner already uses the given (E.164) telephone number. */
