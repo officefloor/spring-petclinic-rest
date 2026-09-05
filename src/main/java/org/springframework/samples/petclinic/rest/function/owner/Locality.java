@@ -40,19 +40,22 @@ public final class Locality {
     }
 
     /**
-     * The locality read back off the owner's {@code customerCode} identity ({@code <REGION>-<HASH8>},
-     * see {@link AssignCustomerCode}): the REGION segment before the first {@code '-'}. Returns
-     * {@code "UNKNOWN"} when the code is null or carries no region segment, so locality now flows from
-     * the same region-and-hash identity rather than being derived independently.
+     * The locality read back off the owner's {@code memberId} identity ({@code <REGION><FY><HASH8><CHK>},
+     * see {@link AssignMemberId}): the leading run of letters (the REGION segment, which is followed by
+     * the two-digit FY). Returns {@code "UNKNOWN"} when the id is null or carries no region segment, so
+     * locality now flows from the same region-and-hash identity rather than being derived independently.
      */
-    public static String ofCustomerCode(String customerCode) {
-        if (customerCode == null) {
+    public static String ofMemberId(String memberId) {
+        if (memberId == null) {
             return UNKNOWN;
         }
-        int dash = customerCode.indexOf('-');
-        if (dash <= 0) {
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        if (i == 0) {
             return UNKNOWN;
         }
-        return customerCode.substring(0, dash);
+        return memberId.substring(0, i);
     }
 }

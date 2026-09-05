@@ -5,7 +5,7 @@ import java.time.LocalDate;
 /**
  * Fiscal-year helper. The fiscal year starts on 1 July and is numbered by the calendar year it ends
  * in, so 1 July 2025 – 30 June 2026 is fiscal year 2026. Every date-derived value on an owner (the
- * membership-number year segment, the {@code fiscalYear} label and tenure) is measured on this
+ * {@code memberId} FY segment, the {@code fiscalYear} label and tenure) is measured on this
  * basis, always from the business-day-adjusted registration date.
  */
 public final class FiscalYear {

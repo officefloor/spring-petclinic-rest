@@ -7,7 +7,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * SHA-256 of a string to its lower-case hex form — the one place the owner pipeline turns a value
  * into a digest. The derived keys differ only in how much of it they keep: {@link HouseholdId} and
- * {@link AssignCustomerCode} take a fixed-width, upper-case leading slice, while a full-width key
+ * {@link AssignMemberId} take a fixed-width, upper-case leading slice, while a full-width key
  * uses all 64 characters. Centralising the digest-and-hex step keeps every derived key hashing the
  * same way.
  */

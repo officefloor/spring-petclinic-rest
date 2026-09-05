@@ -63,11 +63,8 @@ public class Owner extends Person {
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -169,20 +166,12 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public Integer getNamesakeCount() {
