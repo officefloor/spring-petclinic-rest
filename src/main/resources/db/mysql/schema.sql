@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INTEGER,
   membership_level INTEGER,
   postcode VARCHAR(4),
+  birth_date DATE,
   INDEX(last_name)
 ) engine=InnoDB;
 
