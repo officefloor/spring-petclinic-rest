@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 94bb476a2..0616177fc 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,8 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
++    @Mapping(target = "householdId",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+new file mode 100644
+index 000000000..c7adae103
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Derives the stable {@code householdId} shared by owners with the same lastName and
++ * address. Names and addresses are compared case-insensitively with collapsed whitespace,
++ * matching {@link RequireUniqueHousehold}, so co-resident same-lastName owners always
++ * resolve to one identifier.
++ */
++public final class HouseholdId {
++
++    private HouseholdId() {
++    }
++
++    public static String of(String lastName, String address) {
++        String key = normalise(lastName) + '|' + normalise(address);
++        return "H-" + Integer.toHexString(key.hashCode());
++    }
++
++    private static String normalise(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5c2ecea55..fb3175ae8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2087,6 +2087,12 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: Stable identifier shared by owners with the same lastName and address (a shared household).
++              type: string
++              example: 'H-1a2b3c'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
