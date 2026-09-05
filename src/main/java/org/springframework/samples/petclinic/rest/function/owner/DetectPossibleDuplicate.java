@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Flags a soft duplicate before the new owner is saved. A hard duplicate (matching
- * telephone) has already been rejected by {@link RequireUniqueIdentity}; this records
- * the id of an existing owner in the same {@link HouseholdId} (lastName and postcode) that
- * has a different telephone, so the response can surface {@code possibleDuplicate}/
+ * {@link IdentityKey}) has already been rejected by {@link RequireUniqueIdentity}; this
+ * records the id of an existing owner whose {@code soundex(lastName)} and postcode match but
+ * whose identity key differs, so the response can surface {@code possibleDuplicate}/
  * {@code possibleDuplicateOf}. A declared household member ({@code sharesHousehold}) is not
  * a suspected duplicate, and there is no match when there is no postcode. */
 public class DetectPossibleDuplicate {
@@ -22,18 +22,22 @@ public class DetectPossibleDuplicate {
         if (postcode == null || postcode.isBlank()) {
             return;
         }
-        String householdId = HouseholdId.of(owner.getLastName(), postcode);
+        String soundex = IdentityKey.soundex(owner.getLastName());
+        String key = keyOf(owner);
         for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))
-                    && !equalsTelephone(owner, existing)) {
+            if (existing.isDeleted()) {
+                continue;
+            }
+            if (soundex.equals(IdentityKey.soundex(existing.getLastName()))
+                    && postcode.equals(existing.getPostcode()) && !key.equals(keyOf(existing))) {
                 owner.setPossibleDuplicateOf(existing.getId());
                 return;
             }
         }
     }
 
-    private static boolean equalsTelephone(Owner owner, Owner existing) {
-        String telephone = owner.getTelephone();
-        return telephone != null && telephone.equals(existing.getTelephone());
+    private static String keyOf(Owner owner) {
+        return IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(),
+                owner.getPostcode());
     }
 }
