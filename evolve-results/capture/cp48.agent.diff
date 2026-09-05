@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 98fbf756d..a7f959f32 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
++    @Mapping(target = "fiscalYear",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "checkDigit",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipPoints",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+new file mode 100644
+index 000000000..c1cfa44c3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++/**
++ * Fiscal-year helpers. The fiscal year starts on 1 July, so a date on or after 1 July
++ * belongs to the fiscal year ending in the following calendar year. {@link #of} yields that
++ * ending calendar year, {@link #label} formats it as {@code FY<YY>} (its last two digits),
++ * and {@link #elapsed} counts whole fiscal years between two dates.
++ */
++public final class FiscalYear {
++
++    private FiscalYear() {
++    }
++
++    public static int of(LocalDate date) {
++        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
++    }
++
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", of(date) % 100);
++    }
++
++    public static int elapsed(LocalDate from, LocalDate to) {
++        return of(to) - of(from);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java
+index db7602265..917b6bf65 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java
+@@ -4,7 +4,8 @@ import java.time.LocalDate;
+ 
+ /**
+  * Derives the {@code membershipNumber} formatted {@code <customerCode>-M<YY>}, where YY is
+- * the last two digits of the registrationDate year (e.g. {@code SMI-0007-M26}).
++ * the last two digits of the {@link FiscalYear} of the registrationDate (e.g.
++ * {@code SMI-0007-M26}).
+  */
+ public final class MembershipNumber {
+ 
+@@ -12,6 +13,6 @@ public final class MembershipNumber {
+     }
+ 
+     public static String of(String customerCode, LocalDate registrationDate) {
+-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++        return String.format("%s-M%02d", customerCode, FiscalYear.of(registrationDate) % 100);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+index dc1baea4f..56a635f91 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+@@ -1,13 +1,13 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
+ 
+ /**
+  * Derives the membership scoring for an owner. {@link #points} starts at 0 and adds 2
+  * when an email address is present, 1 when namesakeCount is 0, 2 for a household of 3 or
+- * more (the new owner plus namesakeCount existing members) and 3 for tenure over 365 days
+- * (days between registrationDate and today). {@link #level} maps those points to 1 (0-1),
++ * more (the new owner plus namesakeCount existing members) and 3 for tenure of at least one
++ * elapsed {@link FiscalYear} between registrationDate and today. {@link #level} maps those
++ * points to 1 (0-1),
+  * 2 (2-3), 3 (4-5) or 4 (6 or more).
+  */
+ public final class MembershipTier {
+@@ -17,7 +17,7 @@ public final class MembershipTier {
+ 
+     private static boolean hasTenure(LocalDate registrationDate) {
+         return registrationDate != null
+-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
++                && FiscalYear.elapsed(registrationDate, LocalDate.now()) > 0;
+     }
+ 
+     public static int points(Integer namesakeCount, String email, LocalDate registrationDate) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b39824efb..01a389ec3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2156,6 +2156,12 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: "Fiscal year of the business-day-adjusted registrationDate, formatted 'FY<YY>'. The fiscal year starts on 1 July."
++              type: string
++              example: 'FY26'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: Number of existing owners (before this owner was created) sharing the same firstName and lastName, case-insensitively.
