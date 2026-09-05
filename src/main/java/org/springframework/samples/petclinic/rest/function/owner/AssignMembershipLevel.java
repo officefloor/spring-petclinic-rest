@@ -1,15 +1,25 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the numeric {@code membershipLevel} (1 to 3) at creation time. The level starts at
- * {@code 1}, gains {@code 1} when the owner has an email, gains a further {@code 1} when
- * {@code namesakeCount} is {@code 0}, and is capped at {@code 3} (level {@code 4} is reserved
- * for tenure). Runs after {@link CountNamesakes} so {@code namesakeCount} is already set.
+ * Assigns the numeric {@code membershipLevel} at creation time. The level starts at {@code 1},
+ * gains {@code 1} when the owner has an email, and gains a further {@code 1} when
+ * {@code namesakeCount} is {@code 0} — so the factors available at creation cap the level at
+ * {@code 3}. Level {@code 4} requires tenure of more than {@code 365} days (days between the
+ * owner's {@code registrationDate} and the current server date). A newly created owner has zero
+ * tenure, so a new owner never exceeds level {@code 3}: a new owner with an email, a
+ * {@code namesakeCount} of {@code 0} and a 3-member household is level {@code 3}, not {@code 4}.
+ * Runs after {@link CountNamesakes} so {@code namesakeCount} is already set.
  */
 public class AssignMembershipLevel {
+
+    /** Tenure, in days, above which the owner qualifies for level 4. */
+    private static final long TENURE_THRESHOLD_DAYS = 365;
 
     public void service(@Val Owner owner) {
         int level = 1;
@@ -19,6 +29,17 @@ public class AssignMembershipLevel {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        owner.setMembershipLevel(Math.min(level, 3));
+        if (tenureDays(owner) > TENURE_THRESHOLD_DAYS) {
+            level++;
+        }
+        owner.setMembershipLevel(level);
+    }
+
+    private static long tenureDays(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
     }
 }
