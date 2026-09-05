@@ -189,6 +189,25 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's region, derived on read from the city using the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), or
+     * {@code "UNKNOWN"} when the city is not in the table.
+     */
+    @Transient
+    public String getRegion() {
+        if ("Sydney".equals(this.city)) {
+            return "NSW";
+        }
+        if ("Melbourne".equals(this.city)) {
+            return "VIC";
+        }
+        if ("Brisbane".equals(this.city)) {
+            return "QLD";
+        }
+        return "UNKNOWN";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
