@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.samples.petclinic.service.IdentityKey;
 import org.springframework.samples.petclinic.service.NamesakeCounter;
+import org.springframework.samples.petclinic.service.PossibleDuplicateMatcher;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -126,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
         owner.setHouseholdSize((int) owners.stream().filter(o -> HouseholdMatcher.sameHousehold(o, owner)).count() + 1);
+        owner.setPossibleDuplicateOf(PossibleDuplicateMatcher.matchId(owners, owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());

@@ -72,6 +72,9 @@ public class Owner extends Person {
     @Transient
     private Integer householdSize;
 
+    @Transient
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -163,6 +166,18 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     protected Set<Pet> getPetsInternal() {
