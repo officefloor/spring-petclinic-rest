@@ -39,6 +39,33 @@ public final class E164Telephone {
         return "+" + digits;
     }
 
+    /**
+     * Validates the national-number length of an E.164 telephone against its country code:
+     * country code '+61' (Australia) requires exactly 9 national digits and '+1' (NANP)
+     * requires exactly 10. Country codes without a pinned rule keep only the generic 8 to 15
+     * digit bound enforced by {@link #normalize}.
+     *
+     * @param e164 an E.164 telephone as produced by {@link #normalize} ('+' then 8 to 15 digits).
+     * @throws InvalidTelephoneException if the national-number length is wrong for the country.
+     */
+    public static void validateNationalNumberLength(String e164) throws InvalidTelephoneException {
+        String digits = e164 == null ? "" : e164.replaceAll("\\D", "");
+        if (digits.startsWith("61")) {
+            requireNationalLength(digits.length() - 2, 9, "+61");
+        }
+        else if (digits.startsWith("1")) {
+            requireNationalLength(digits.length() - 1, 10, "+1");
+        }
+    }
+
+    private static void requireNationalLength(int actual, int expected, String countryCode)
+            throws InvalidTelephoneException {
+        if (actual != expected) {
+            throw new InvalidTelephoneException("Telephone with country code " + countryCode
+                    + " must have " + expected + " national digits");
+        }
+    }
+
     /** E.164 form of a telephone, or {@code null} when it is absent or cannot be formed. */
     public static String normalizeOrNull(String raw) {
         if (raw == null) {
