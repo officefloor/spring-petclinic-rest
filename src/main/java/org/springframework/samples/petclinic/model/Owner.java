@@ -451,36 +451,29 @@ public class Owner extends Person {
         return "UNKNOWN";
     }
 
-    /** The region codes a {@link #getMemberId() member id} can begin with, matched to recover the
-     *  leading REGION segment of a '<REGION><FY><HASH8><CHK>' member id: the known postcode regions
-     *  plus the {@code "UNKNOWN"} fallback. */
-    private static final Set<String> LOCALITY_REGIONS = Set.of("NSW", "VIC", "QLD", "UNKNOWN");
+    /**
+     * The region code stamped inside the owner's identifiers - the leading REGION segment of the
+     * {@link #getMemberId() member id}. Defined here as the single source of the "region inside the
+     * identifiers", deliberately kept separate from the user-facing {@link #getRegion() region} and
+     * {@link #getLocality() locality} (which it currently equals) so the region baked into
+     * identifiers can be evolved on its own without disturbing the plain region shown to users.
+     * Today it is exactly the {@link #getRegion() region}.
+     */
+    @Transient
+    public String getIdentityRegionCode() {
+        return getRegion();
+    }
 
     /**
-     * The owner's locality, derived on read from the region-and-hash {@link #getMemberId() member
-     * id}: the leading REGION segment of the member id ('<REGION><FY><HASH8><CHK>'). Falls back to
-     * the owner's {@link #getRegion() region} when no member id has been assigned yet.
+     * The owner's locality, derived on read as the plain {@link #getRegion() region}: the region
+     * code derived from the postcode (falling back to the fixed city-to-region table
+     * {@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}, else
+     * {@code "UNKNOWN"}). It is a user-facing field, independent of the region
+     * {@link #getIdentityRegionCode() stamped inside the identifiers}.
      */
     @Transient
     public String getLocality() {
-        String region = regionOfMemberId(this.memberId);
-        return region != null ? region : getRegion();
-    }
-
-    /** The leading REGION segment of a '<REGION><FY><HASH8><CHK>' {@code memberId}, i.e. the known
-     *  region code ({@link #LOCALITY_REGIONS}) it starts with, or {@code null} when {@code memberId}
-     *  is null or starts with no known region. The remaining segments (FY, HASH8, CHK) are digits and
-     *  upper-hex, so a region prefix is recovered unambiguously. */
-    private static String regionOfMemberId(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        for (String region : LOCALITY_REGIONS) {
-            if (memberId.startsWith(region)) {
-                return region;
-            }
-        }
-        return null;
+        return getRegion();
     }
 
     /** Region -> IANA timezone name, the fixed region-to-timezone table ({@code NSW ->

@@ -662,8 +662,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build {@code owner}'s member id '<REGION><FY><HASH8><CHK>': REGION is the region code derived
-     * from the owner's postcode ({@link Owner#getRegion()}), FY the two-digit
+     * Build {@code owner}'s member id '<REGION><FY><HASH8><CHK>': REGION is the region code stamped
+     * inside the owner's identifiers ({@link Owner#getIdentityRegionCode()}), FY the two-digit
      * {@link Owner#fiscalYearSegment(LocalDate) fiscal-year segment} of the business-day-adjusted
      * {@link Owner#getRegistrationDate() registration date}, HASH8 the first 8 upper-case hex
      * characters of SHA-256 over the owner's already-normalized telephone concatenated with the
@@ -677,7 +677,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String hash8 = Owner.sha256Hex(telephone + lastName).substring(0, 8);
-        String core = owner.getRegion() + Owner.fiscalYearSegment(owner.getRegistrationDate()) + hash8;
+        String core = owner.getIdentityRegionCode()
+            + Owner.fiscalYearSegment(owner.getRegistrationDate()) + hash8;
         String base = core + Owner.luhnCheckDigit(core);
         return deduplicateMemberId(base);
     }
@@ -803,8 +804,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String key = telephone + "|" + email + "|" + soundex(owner.getLastName());
-        return Owner.sha256HexLower(key);
+        String keyMaterial = String.join("|", telephone, email, soundex(owner.getLastName()));
+        return Owner.sha256HexLower(keyMaterial);
     }
 
     /**
@@ -968,7 +969,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalizeHouseholdField(owner.getLastName()) + "|" + postcode;
-        return Owner.sha256Hex(key).substring(0, 12);
+        String keyMaterial = String.join("|", normalizeHouseholdField(owner.getLastName()), postcode);
+        return Owner.sha256Hex(keyMaterial).substring(0, 12);
     }
 }
