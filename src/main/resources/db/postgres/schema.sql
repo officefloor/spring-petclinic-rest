@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       membership_number TEXT,
                                       namesake_count INTEGER,
                                       bulk_signup_warning BOOLEAN,
-                                      household_size INTEGER
+                                      household_size INTEGER,
+                                      membership_level INTEGER
 );
 CREATE INDEX ON owners (last_name);
 

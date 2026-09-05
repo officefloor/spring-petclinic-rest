@@ -13,8 +13,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * a single space, and lower-casing, and their addresses are equal in the normalized form
  * ({@link AddressNormalizer}) — the same rule {@link RejectDuplicateHousehold} and {@link HouseholdId}
  * use. Runs before the owner is saved, so {@link OwnerRepository#findAll()} sees only the owners that
- * existed before this create, which are then counted alongside this one. The derived
- * {@code membershipTier} is {@code GOLD} when this count is 3 or more.
+ * existed before this create, which are then counted alongside this one.
  */
 public class CountHousehold {
 
