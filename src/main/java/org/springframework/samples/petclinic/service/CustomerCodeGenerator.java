@@ -15,15 +15,17 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
-import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Builds an owner's customerCode as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
- * letters of the city, the first three of the last name, and a per-city 4-digit sequence
- * that is one more than the owners already registered in that city.
+ * Builds an owner's customerCode as '<REGION>-<HASH8>': the region code derived from the
+ * postcode, and the first eight upper-case hex characters of SHA-256 over the owner's
+ * normalized telephone concatenated with the last name.
  */
 public final class CustomerCodeGenerator {
 
@@ -31,14 +33,21 @@ public final class CustomerCodeGenerator {
     }
 
     public static String generate(Collection<Owner> existing, Owner owner) {
-        String city = owner.getCity();
-        String city3 = prefix(city);
-        String last3 = prefix(owner.getLastName());
-        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
-        return String.format("%s-%s-%04d", city3, last3, inCity + 1);
+        String region = LocalityResolver.locality(owner.getCity(), owner.getPostcode());
+        return region + "-" + hash8(owner.getTelephone() + owner.getLastName());
     }
 
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                hex.append(String.format("%02X", digest[i]));
+            }
+            return hex.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 }
