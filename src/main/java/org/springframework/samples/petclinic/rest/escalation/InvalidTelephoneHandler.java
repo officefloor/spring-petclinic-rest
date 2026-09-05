@@ -6,8 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 400 to an {@link InvalidTelephoneException}: the create-owner telephone was
- * not exactly 10 digits after stripping every non-digit character.
+ * Responds 400 to an {@link InvalidTelephoneException}: the create-owner telephone could
+ * not form valid E.164 (8 to 15 digits after the '+').
  */
 public class InvalidTelephoneHandler {
 

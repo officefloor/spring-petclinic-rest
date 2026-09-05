@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request carries a telephone that, once every non-digit
- * character is stripped, is not exactly 10 digits. Handled by
+ * Thrown when a create-owner request carries a telephone that cannot form valid E.164
+ * (fewer than 8 or more than 15 digits after the '+'). Handled by
  * {@link InvalidTelephoneHandler}, which responds 400.
  */
 public class InvalidTelephoneException extends Exception {

@@ -7,11 +7,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Rejects a create-owner request whose normalized telephone is already used by another
- * owner. Runs after {@link NormalizeOwnerTelephone} (so the body carries the stripped
- * 10-digit value) and before {@link BuildOwner}, comparing against the normalized
- * telephone of every existing owner. A collision is rejected 409 via
- * {@link DuplicateTelephoneException}.
+ * Rejects a create-owner request whose E.164 telephone is already used by another owner.
+ * Runs after {@link NormalizeOwnerTelephone} (so the body carries the E.164 value) and
+ * before {@link BuildOwner}, comparing E.164 values against every existing owner. A
+ * collision is rejected 409 via {@link DuplicateTelephoneException}.
  */
 public class RejectDuplicateTelephone {
 
@@ -19,8 +18,7 @@ public class RejectDuplicateTelephone {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner existing : ownerRepository.findAll()) {
-            if (existing.getTelephone() != null
-                    && telephone.equals(existing.getTelephone().replaceAll("\\D", ""))) {
+            if (telephone.equals(E164Telephone.normalizeOrNull(existing.getTelephone()))) {
                 throw new DuplicateTelephoneException(
                         "Telephone is already used by another owner");
             }
