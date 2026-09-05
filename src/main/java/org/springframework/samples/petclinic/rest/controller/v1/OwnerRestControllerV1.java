@@ -357,7 +357,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * must run before the owner is saved, while the counts still exclude the owner being created.
      */
     private void assignRegistrationAttributes(Owner owner) {
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(generateCustomerCode(owner));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
@@ -365,15 +365,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code '<CITY3>-<LAST3>-<NNNN>': CITY3 is the upper-cased first three
-     * letters of {@code city}, LAST3 the upper-cased first three letters of {@code lastName},
-     * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners already registered in that city (e.g. 'SYD-SMI-0007').
+     * Build {@code owner}'s customer code '<CITY3>-<LAST3>-<NNNN>': CITY3 is the upper-cased first
+     * three letters of the owner's city, LAST3 the upper-cased first three letters of the owner's
+     * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number
+     * of owners already registered in that city (e.g. 'SYD-SMI-0007').
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String city3 = firstThreeLetters(city);
-        String last3 = firstThreeLetters(lastName);
-        int sequence = countOwnersInCity(city) + 1;
+    private String generateCustomerCode(Owner owner) {
+        String city3 = firstThreeLetters(owner.getCity());
+        String last3 = firstThreeLetters(owner.getLastName());
+        int sequence = countOwnersInCity(owner.getCity()) + 1;
         return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
@@ -553,12 +553,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String householdId(Owner owner) {
         String key = normalizeHouseholdField(owner.getLastName()) + "\n"
             + normalizeHouseholdField(owner.getAddress());
+        return sha256Hex(key).substring(0, 24);
+    }
+
+    /** The upper-case hex SHA-256 of the UTF-8 bytes of {@code input}, as 64 hex characters. */
+    private static String sha256Hex(String input) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(24);
-            for (int i = 0; i < 12; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
             }
             return sb.toString();
         }

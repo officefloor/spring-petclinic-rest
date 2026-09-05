@@ -242,6 +242,14 @@ public class Owner extends Person {
         return "UNKNOWN";
     }
 
+    /**
+     * The owner's locality, derived on read: currently the owner's {@link #getRegion() region}.
+     */
+    @Transient
+    public String getLocality() {
+        return getRegion();
+    }
+
     /** The region whose postcode range contains {@code postcode}, or {@code null} when the postcode is
      *  absent, not a 4-digit value, or in no known range. */
     private static String regionForPostcode(String postcode) {
