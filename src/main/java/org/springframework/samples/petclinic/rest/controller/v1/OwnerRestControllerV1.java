@@ -308,7 +308,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private OwnerDto buildOwnerDto(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        ownerDto.setCapacityWarning(isCapacityWarning(owner));
         return ownerDto;
+    }
+
+    /**
+     * Whether {@code owner}'s city is approaching its per-city capacity limit: it already holds between
+     * 40 and 49 other owners, one short of the hard limit of 50 at which creation is rejected.
+     * Surfaced on responses as {@code capacityWarning}. Computed against the current owner population
+     * excluding this owner, so the count basis mirrors the per-city create gate (which counts the
+     * owners already present, before the new one is added).
+     */
+    private boolean isCapacityWarning(Owner owner) {
+        long othersInCity = countOtherOwnersInCity(owner);
+        return othersInCity >= 40 && othersInCity < 50;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -590,6 +603,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private int countOwnersInCity(String city) {
         String normalized = normalizeHouseholdField(city);
         return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
+            .count();
+    }
+
+    /**
+     * The number of existing owners in {@code owner}'s city other than {@code owner} itself, compared
+     * case-insensitively with collapsed whitespace. This is the count of owners already present in the
+     * city that a newly created owner joins, mirroring the basis of the per-city create gate.
+     */
+    private long countOtherOwnersInCity(Owner owner) {
+        String normalized = normalizeHouseholdField(owner.getCity());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getId() == null || !existing.getId().equals(owner.getId()))
             .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
             .count();
     }
