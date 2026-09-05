@@ -7,6 +7,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 public class ApplyOwner {
 
     public void service(@Val Owner owner, @Val OwnerFieldsDto request) {
+        OwnerAddress.normalizeInPlace(request);
+        owner.setAddressLine1(request.getAddressLine1());
+        owner.setAddressLine2(request.getAddressLine2());
         owner.setAddress(request.getAddress());
         owner.setCity(request.getCity());
         owner.setFirstName(request.getFirstName());
