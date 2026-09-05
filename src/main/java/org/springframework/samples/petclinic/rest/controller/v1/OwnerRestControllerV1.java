@@ -233,21 +233,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
     }
 
+    /** Matches a well-formed E.164 number: a '+' followed by 8 to 15 digits. */
+    private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
+
     /**
-     * Canonical stored form of a telephone number: its digits, which must be exactly ten.
-     * Returns {@code null} when the number cannot form a valid value.
+     * Canonical stored form of a telephone number in E.164: a leading '+' and country
+     * code are kept when present; otherwise country code '+61' is assumed and a single
+     * leading '0' is dropped from the national digits. Spaces, dashes and brackets are
+     * stripped. The result must be a '+' followed by 8 to 15 digits.
+     * Returns {@code null} when the number cannot form a valid E.164 value.
      */
     private static String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        return digits.length() == 10 ? digits : null;
+        if (telephone == null) {
+            return null;
+        }
+        String cleaned = telephone.replaceAll("[\\s()\\[\\]-]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = cleaned;
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            e164 = "+61" + national;
+        }
+        return E164_PATTERN.matcher(e164).matches() ? e164 : null;
     }
 
-    /** Whether any existing owner already uses the given (canonical) telephone number. */
+    /** Whether any existing owner already uses the given (E.164) telephone number. */
     private boolean isTelephoneInUse(String telephone) {
         return this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
+            .map(OwnerRestControllerV1::normalizeTelephone)
+            .filter(existing -> existing != null)
             .anyMatch(telephone::equals);
     }
 }
