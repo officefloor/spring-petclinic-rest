@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 31eaea0f5..ddd2b1ab4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,6 +40,7 @@ public interface OwnerMapper {
+     @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress()))")
+     @Mapping(target = "postcode", expression = "java(org.springframework.samples.petclinic.service.PostcodeValidator.validate(ownerDto.getCity(), ownerDto.getPostcode()))")
+     @Mapping(target = "registrationDate", expression = "java(org.springframework.samples.petclinic.service.RegistrationDateValidator.validate(ownerDto.getRegistrationDate()))")
++    @Mapping(target = "email", expression = "java(org.springframework.samples.petclinic.service.DisposableEmailDomain.validate(ownerDto.getEmail()))")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomain.java b/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomain.java
+new file mode 100644
+index 000000000..d99660aad
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomain.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.service;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Rejects an owner's email whose domain is a known disposable-mail provider. A
++ * {@code null} or domain-less email is left untouched; a blocklisted domain raises
++ * {@link IllegalArgumentException}, which the REST layer reports as 400 Bad Request.
++ */
++public final class DisposableEmailDomain {
++
++    private static final Set<String> BLOCKED =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomain() {
++    }
++
++    public static String validate(String email) {
++        if (email != null) {
++            int at = email.lastIndexOf('@');
++            if (at >= 0 && BLOCKED.contains(email.substring(at + 1).toLowerCase(Locale.ROOT))) {
++                throw new IllegalArgumentException("Email domain is not allowed: " + email);
++            }
++        }
++        return email;
++    }
++}
