@@ -202,14 +202,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Canonicalize an incoming owner's submitted address into its stored form and validate it,
-     * returning whether the owner may proceed to creation. On success the owner's address is
-     * replaced with its normalized value ({@link #normalizeAddress}). Returns {@code false} - so
-     * the caller can reject the request with {@code 400 BAD_REQUEST} - when the address is blank
-     * after normalization. This is the single place the owner's address is read, canonicalized and
-     * written back, mirroring the per-concern normalization the email, postcode and telephone steps
-     * each own.
+     * returning whether the owner may proceed to creation. The structured fields are preferred when
+     * present: when {@code addressLine1} is non-blank the structured lines are each normalized
+     * ({@link #normalizeAddress}) and written back, and the flat {@code address} is set to the
+     * composed value (the normalized addressLine1, with a single space and the normalized
+     * addressLine2 appended when addressLine2 is present). Otherwise the flat {@code address} is
+     * normalized and written back for backward compatibility. Returns {@code false} - so the caller
+     * can reject the request with {@code 400 BAD_REQUEST} - when neither form supplies a non-blank
+     * address. This is the single place the owner's address is read, canonicalized and written back,
+     * mirroring the per-concern normalization the email, postcode and telephone steps each own.
      */
     private boolean normalizeAddressFields(Owner owner) {
+        String line1 = normalizeAddress(owner.getAddressLine1());
+        if (!line1.isEmpty()) {
+            String line2 = normalizeAddress(owner.getAddressLine2());
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+            owner.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+            return true;
+        }
         String address = normalizeAddress(owner.getAddress());
         if (address.isEmpty()) {
             return false;
@@ -251,6 +262,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
