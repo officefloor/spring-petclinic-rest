@@ -12,6 +12,7 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+        dto.setMembershipLevel(MembershipCap.level(owner, dto.getMembershipLevel(), ownerRepository));
         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
         dto.setSelfLink("/api/owners/" + owner.getId());
         response.send(dto);
