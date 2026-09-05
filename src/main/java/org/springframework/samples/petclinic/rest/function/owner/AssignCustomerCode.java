@@ -8,16 +8,16 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the {@code customerCode} in the form {@code <REGION>-<HASH8>}: REGION is the
- * region derived from the postcode (see {@link Locality}) and HASH8 is the first 8
- * upper-case hex characters of SHA-256 over the normalised telephone plus lastName.
+ * Assigns the unified {@code memberId} (see {@link MemberId}). REGION is derived from the
+ * postcode (see {@link Locality}) and HASH8 is the first 8 upper-case hex characters of
+ * SHA-256 over the normalised telephone plus lastName.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
         String hash8 = hash8(E164Telephone.toE164(owner.getTelephone()) + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        owner.setCustomerCode(MemberId.of(region, owner.getRegistrationDate(), hash8));
     }
 
     private static String hash8(String value) {
