@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 867c2a069..d11be7fae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -45,7 +45,6 @@ import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
+ import org.springframework.samples.petclinic.service.IdentityKey;
+ import org.springframework.samples.petclinic.service.NamesakeCounter;
+-import org.springframework.samples.petclinic.service.PossibleDuplicateMatcher;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -117,7 +116,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (DailyRegistrationLimit.isReached(owners)) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        if (IdentityKey.isDuplicate(owners, owner)) {
++        if (IdentityKey.isDuplicate(owners, owner)
++            || HouseholdMatcher.isHouseholdDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (CityCapacity.isFull(owners, owner)) {
+@@ -126,8 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
+         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
+-        owner.setHouseholdSize((int) owners.stream().filter(o -> HouseholdMatcher.sameHousehold(o, owner)).count() + 1);
+-        owner.setPossibleDuplicateOf(PossibleDuplicateMatcher.matchId(owners, owner));
++        owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));
++        owner.setPossibleDuplicateOf(HouseholdMatcher.possibleDuplicateOf(owners, owner, ownerFieldsDto.getSharesHousehold()));
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+index 88769190a..5abe2a6c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+@@ -16,33 +16,68 @@
+ package org.springframework.samples.petclinic.service;
+ 
+ import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Collection;
++import java.util.HexFormat;
+ import java.util.Locale;
+-import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Detects owners that belong to the same household: identical last name and address
+- * once case and surrounding/duplicate whitespace are normalised.
++ * Detects owners that belong to the same household. The household is keyed on the
++ * normalised last name and the postcode, so any two owners sharing those values belong
++ * to the same household without coordination.
+  */
+ public final class HouseholdMatcher {
+ 
+     private HouseholdMatcher() {
+     }
+ 
+-    public static boolean sameHousehold(Owner a, Owner b) {
+-        return normalize(a.getLastName()).equals(normalize(b.getLastName()))
+-            && normalize(a.getAddress()).equals(normalize(b.getAddress()));
++    /**
++     * A stable identifier shared by every owner in the same household: the first 12 hex
++     * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}.
++     */
++    public static String householdId(Owner owner) {
++        String key = normalize(owner.getLastName()) + "|" + (owner.getPostcode() == null ? "" : owner.getPostcode());
++        return hex12(key);
+     }
+ 
+     /**
+-     * A stable identifier shared by every owner in the same household. Derived purely from
+-     * the normalised last name and address, so any two same-household owners produce the
+-     * same value without coordination.
++     * True when an existing owner already belongs to this owner's household and the owner
++     * has not declared shared-household membership. A declared member (sharesHousehold) is
++     * allowed through rather than rejected as a household duplicate.
+      */
+-    public static String householdId(Owner owner) {
+-        String key = normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
+-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
++    public static boolean isHouseholdDuplicate(Collection<Owner> owners, Owner owner, Boolean sharesHousehold) {
++        return !Boolean.TRUE.equals(sharesHousehold)
++            && owners.stream().anyMatch(o -> sameHousehold(o, owner));
++    }
++
++    /** The number of owners in this owner's household, counting the owner itself. */
++    public static int householdSize(Collection<Owner> owners, Owner owner) {
++        return (int) owners.stream().filter(o -> sameHousehold(o, owner)).count() + 1;
++    }
++
++    /**
++     * The id of an owner this one may soft-duplicate, or {@code null}. A declared household
++     * member is never a suspected duplicate.
++     */
++    public static Integer possibleDuplicateOf(Collection<Owner> owners, Owner owner, Boolean sharesHousehold) {
++        return Boolean.TRUE.equals(sharesHousehold) ? null : PossibleDuplicateMatcher.matchId(owners, owner);
++    }
++
++    private static boolean sameHousehold(Owner a, Owner b) {
++        return householdId(a).equals(householdId(b));
++    }
++
++    private static String hex12(String key) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest, 0, 6);
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ 
+     private static String normalize(String value) {
