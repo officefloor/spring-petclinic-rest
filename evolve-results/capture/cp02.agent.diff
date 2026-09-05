@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 83000710a..86162bd31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         rejectBlankOwnerFields(ownerFieldsDto);
++        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+@@ -232,4 +233,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             blankFields.add(field);
+         }
+     }
++
++    /**
++     * Normalizes a telephone number submitted to the create endpoint by removing every non-digit
++     * character. The result must contain exactly 10 digits; otherwise the submission is rejected as
++     * a 400 (via {@link InvalidOwnerFieldsException}, which the {@code ExceptionControllerAdvice}
++     * renders with {@code telephone} in its {@code errors} array).
++     *
++     * @param telephone the raw telephone value from the request
++     * @return the stripped, 10-digit telephone to store and return
++     * @throws InvalidOwnerFieldsException if the stripped value is not exactly 10 digits
++     */
++    private String normalizeTelephone(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new InvalidOwnerFieldsException(List.of("telephone"));
++        }
++        return digits;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76c..b312d7514 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create it is normalized by
++            removing every non-digit character and must contain exactly 10 digits
++            after stripping; the stored and returned value is those 10 digits.
+           type: string
+           minLength: 1
+-          maxLength: 20
+-          pattern: '^[0-9]*$'
++          maxLength: 30
+           example: '6085551023'
+       required:
+         - firstName
