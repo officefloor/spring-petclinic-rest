@@ -93,6 +93,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
         "mailinator.com", "tempmail.com", "guerrillamail.com");
 
+    /**
+     * Hard per-city capacity: a create into a city that already holds this many owners is rejected
+     * with {@code 409 CONFLICT}. Counted against the owners already present, before the new one is
+     * added, matching the basis of {@link #countOwnersInCity(String)}.
+     */
+    private static final int CITY_HARD_CAPACITY = 50;
+
+    /**
+     * Soft per-city capacity: the threshold, one band below the {@link #CITY_HARD_CAPACITY hard
+     * limit}, at which a city is treated as filling up. Counted against the owners already present
+     * excluding the owner itself; surfaced on responses as {@code capacityWarning} for the band
+     * between this soft threshold and the hard limit.
+     */
+    private static final int CITY_SOFT_CAPACITY = 40;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -212,7 +227,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (countOwnersInCity(owner.getCity()) >= 50) {
+        if (countOwnersInCity(owner.getCity()) >= CITY_HARD_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         assignRegistrationAttributes(owner, sharesHousehold);
@@ -310,16 +325,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The domain part of {@code email} - everything after the last '@' - or {@code null} when the
+     * value carries no '@'. The email is already normalized to lower case by the caller, so the
+     * returned domain is lower-case and ready for a case-insensitive comparison. This is the single
+     * place an email's domain is carved out, so the checks that compare a domain share it rather
+     * than each re-scanning for the '@'.
+     */
+    private static String emailDomain(String email) {
+        int at = email.lastIndexOf('@');
+        return at < 0 ? null : email.substring(at + 1);
+    }
+
+    /**
      * Whether {@code email}'s domain (the part after the last '@') is on the disposable-domain
      * blocklist, compared case-insensitively. The email is already normalized to lower case by the
      * caller, so a simple membership test against {@link #DISPOSABLE_EMAIL_DOMAINS} suffices.
      */
     private static boolean isDisposableEmailDomain(String email) {
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
+        String domain = emailDomain(email);
+        return domain != null && DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
 
     /**
@@ -344,7 +368,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isCapacityWarning(Owner owner) {
         long othersInCity = countOtherOwnersInCity(owner);
-        return othersInCity >= 40 && othersInCity < 50;
+        return othersInCity >= CITY_SOFT_CAPACITY && othersInCity < CITY_HARD_CAPACITY;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
