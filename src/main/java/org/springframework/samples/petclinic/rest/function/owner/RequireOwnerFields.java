@@ -16,6 +16,7 @@ public class RequireOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(NormaliseAddress.normalise(request.getAddress()));
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", request.getFirstName());
         addIfBlank(missing, "lastName", request.getLastName());
