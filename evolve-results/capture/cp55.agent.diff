@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7ce0de533..5dde65928 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.ofCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "timezone",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.Locality.ofCustomerCode(owner.getCustomerCode())))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.Locality.ofCustomerCode(owner.getCustomerCode()), owner.getMembershipLevel()))")
+     @Mapping(target = "contactPreference",
+             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..2468931b1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++/**
++ * Derives an owner's {@code ownerSegment}, formatted {@code <TIER>_<AREA>} and always one of
++ * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++ * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} when {@code membershipLevel} is 3 or more,
++ * otherwise {@code STANDARD}. AREA is {@code METRO} when the locality is a known region
++ * (NSW, VIC or QLD, see {@link Locality}), otherwise {@code REGIONAL}. Pinned and stable across
++ * requests, so it needs no persisted column.
++ */
++public final class OwnerSegment {
++
++    /** Membership level at or above which the owner is in the PREMIUM tier. */
++    private static final int PREMIUM_THRESHOLD = 3;
++
++    /** Regions treated as METRO; anything else (including "UNKNOWN") is REGIONAL. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /** The segment for the given {@code locality} region and {@code membershipLevel}. */
++    public static String of(String locality, Integer membershipLevel) {
++        String tier = membershipLevel != null && membershipLevel >= PREMIUM_THRESHOLD ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a74e164e5..815811ced 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2213,6 +2213,12 @@ components:
+               type: string
+               example: "Australia/Sydney"
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's segment formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'."
++              type: string
++              example: "STANDARD_METRO"
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: "The owner's preferred contact channel: 'EMAIL' when an email address is present, otherwise 'PHONE'."
