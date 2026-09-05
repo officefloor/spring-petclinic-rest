@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4e0357f8d..9631e654b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
+     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.service.HouseholdMatcher.householdId(owner))")
++    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.IdentityKey.of(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.LocalityResolver.locality(owner.getCity()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1f909720e..0a341e661 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
++import org.springframework.samples.petclinic.service.IdentityKey;
+ import org.springframework.samples.petclinic.service.NamesakeCounter;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -115,16 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (DailyRegistrationLimit.isReached(owners)) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        String telephone = owner.getTelephone();
+-        if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        String email = owner.getEmail();
+-        if (email != null && owners.stream().anyMatch(o -> email.equals(o.getEmail()))) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+-                && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
++        if (IdentityKey.isDuplicate(owners, owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (CityCapacity.isFull(owners, owner)) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java
+new file mode 100644
+index 000000000..26c7709fa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Collection;
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The single derived key that consolidates owner duplicate detection. It is exposed as
++ * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Because the
++ * telephone is part of the key, two members of the same household with different telephones
++ * yield different keys and are both allowed; a new owner is rejected as a duplicate only when
++ * it collides with an existing owner on the same telephone and email.
++ */
++public final class IdentityKey {
++
++    private IdentityKey() {
++    }
++
++    public static String of(Owner owner) {
++        return owner.getTelephone() + "|" + email(owner) + "|" + HouseholdMatcher.householdId(owner);
++    }
++
++    public static boolean isDuplicate(Collection<Owner> owners, Owner owner) {
++        return owners.stream().anyMatch(o -> Objects.equals(owner.getTelephone(), o.getTelephone())
++            && email(owner).equals(email(o)));
++    }
++
++    private static String email(Owner owner) {
++        return owner.getEmail() == null ? "" : owner.getEmail();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3186777d4..92de48a22 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,6 +2103,12 @@ components:
+               type: string
+               example: '5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: "The derived duplicate-detection key formatted as 'normalizedTelephone|email|householdId' (email empty when absent)."
++              type: string
++              example: '+61412345678|owner@example.test|5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners sharing this owner's first and last name (case-insensitive) at creation time.
