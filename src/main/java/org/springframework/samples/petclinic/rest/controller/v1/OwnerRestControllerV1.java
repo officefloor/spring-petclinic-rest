@@ -139,7 +139,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
-        LocalDate registrationDate = resolveRegistrationDate(owner.getRegistrationDate());
+        LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
+        if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        LocalDate registrationDate = resolveRegistrationDate(suppliedRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
