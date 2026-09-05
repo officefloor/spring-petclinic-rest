@@ -131,6 +131,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        return createOwner(ownerFieldsDto);
+    }
+
+    /**
+     * Run the create pipeline for a new owner from its submitted fields and return the response: the
+     * fields are mapped, normalized and validated, the registration date is resolved, the per-day,
+     * identity, household and per-city gates are applied, the derived registration attributes are
+     * assigned and the owner is saved and audited, yielding {@code 201 CREATED} with the new owner and
+     * its {@code Location}. A gate that trips short-circuits with its own status ({@code 400},
+     * {@code 429} or {@code 409}) and no owner is created. This is the single place an owner is created;
+     * {@link #addOwner} is the thin entry point that delegates here, so request-level concerns stay out
+     * of the create pipeline.
+     */
+    private ResponseEntity<OwnerDto> createOwner(OwnerFieldsDto ownerFieldsDto) {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!normalizeAndValidateFields(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
