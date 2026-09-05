@@ -13,6 +13,8 @@ public class SaveOwner {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Monotonic sequence for OWNER_CREATED structured events, across all creates. */
     private static final AtomicInteger EVENT_SEQ = new AtomicInteger();
 
@@ -25,5 +27,6 @@ public class SaveOwner {
             owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
         AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel);
+        NOTIFY.info("Welcome owner id={} memberId={}", owner.getId(), memberId);
     }
 }
