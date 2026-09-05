@@ -10,9 +10,9 @@ public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
+        java.time.LocalDate effective = owner.getRegistrationDate() == null
+            ? java.time.LocalDate.now() : owner.getRegistrationDate();
+        owner.setRegistrationDate(BusinessDay.roll(effective));
         built.set(owner);
     }
 }
