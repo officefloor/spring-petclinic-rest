@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_size INTEGER,
                                       membership_level INTEGER,
                                       postcode TEXT,
-                                      birth_date DATE
+                                      birth_date DATE,
+                                      possible_duplicate BOOLEAN,
+                                      possible_duplicate_of INTEGER
 );
 CREATE INDEX ON owners (last_name);
 

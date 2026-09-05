@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_level INTEGER,
   postcode VARCHAR(4),
   birth_date DATE,
+  possible_duplicate BIT,
+  possible_duplicate_of INTEGER,
   INDEX(last_name)
 ) engine=InnoDB;
 
