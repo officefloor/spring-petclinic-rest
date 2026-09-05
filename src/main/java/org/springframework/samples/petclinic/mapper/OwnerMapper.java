@@ -25,8 +25,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.service.HouseholdMatcher.householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.IdentityKey.of(owner))")
-    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.service.CheckDigit.of(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.MembershipNumber.of(owner))")
     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.service.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.service.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.service.MembershipLevel.of(owner))")

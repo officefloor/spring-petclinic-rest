@@ -19,9 +19,10 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * The single source of truth for extracting an owner's region from its primary identifier.
- * Today the primary identifier is the customerCode, formatted '&lt;REGION&gt;-&lt;HASH8&gt;', so the
- * region is the prefix before the first '-'. Every consumer (segment, timezone, locality)
- * reads the region through here so the extraction lives in exactly one place.
+ * The primary identifier is the memberId, formatted '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;', where the
+ * alphabetic region is followed by the 2-digit fiscal year, so the region is the leading run of
+ * letters before the first digit. Every consumer (segment, timezone, locality) reads the region
+ * through here so the extraction lives in exactly one place.
  */
 public final class RegionCode {
 
@@ -29,7 +30,6 @@ public final class RegionCode {
     }
 
     public static String of(Owner owner) {
-        String code = owner.getCustomerCode();
-        return code.substring(0, code.indexOf('-'));
+        return owner.getMemberId().replaceFirst("[0-9].*", "");
     }
 }

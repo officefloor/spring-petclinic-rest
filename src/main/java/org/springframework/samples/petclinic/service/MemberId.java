@@ -25,24 +25,27 @@ import java.util.Set;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Builds an owner's customerCode as '<REGION>-<HASH8>': the region code derived from the
- * postcode, and the first eight upper-case hex characters of SHA-256 over the owner's
- * normalized telephone concatenated with the last name.
+ * Builds an owner's memberId formatted '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;': the region code
+ * derived from the postcode, the 2-digit fiscal year of the registrationDate, the first eight
+ * upper-case hex characters of SHA-256 over the owner's normalized telephone concatenated with
+ * the last name, and a single Luhn check digit over the digits of '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;'.
  */
-public final class CustomerCodeGenerator {
+public final class MemberId {
 
-    private CustomerCodeGenerator() {
+    private MemberId() {
     }
 
     public static String generate(Collection<Owner> existing, Owner owner) {
         String region = LocalityResolver.locality(owner.getCity(), owner.getPostcode());
-        return deduplicate(region + "-" + hash8(owner.getTelephone() + owner.getLastName()), existing);
+        String base = region + FiscalYear.label(owner.getRegistrationDate()).substring(2)
+            + hash8(owner.getTelephone() + owner.getLastName());
+        return deduplicate(base + CheckDigit.of(base), existing);
     }
 
     private static String deduplicate(String candidate, Collection<Owner> existing) {
         Set<String> taken = new HashSet<>();
         for (Owner o : existing) {
-            taken.add(o.getCustomerCode());
+            taken.add(o.getMemberId());
         }
         String unique = candidate;
         for (int n = 2; taken.contains(unique); n++) {

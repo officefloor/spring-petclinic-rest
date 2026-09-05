@@ -31,7 +31,7 @@ public final class OwnerRegistration {
 
     public static void enrich(Collection<Owner> owners, Owner owner, Boolean sharesHousehold) {
         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
-        owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+        owner.setMemberId(MemberId.generate(owners, owner));
         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
         owner.setCapacityWarning(CityCapacity.isApproaching(owners, owner));
         owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));

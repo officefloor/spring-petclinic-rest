@@ -76,7 +76,7 @@ public class Owner extends Person {
     private Boolean deleted = false;
 
     @Transient
-    private String customerCode;
+    private String memberId;
 
     @Transient
     private Integer namesakeCount;
@@ -197,12 +197,12 @@ public class Owner extends Person {
         this.deleted = deleted;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public Integer getNamesakeCount() {
