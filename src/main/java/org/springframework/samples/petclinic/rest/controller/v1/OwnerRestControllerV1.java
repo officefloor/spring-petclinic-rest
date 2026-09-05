@@ -128,9 +128,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate registrationDate = resolveRegistrationDate(owner.getRegistrationDate());
+        owner.setRegistrationDate(registrationDate);
         if (countOwnersRegisteredOn(LocalDate.now()) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -144,7 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
-        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), registrationDate));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         this.clinicService.saveOwner(owner);
@@ -308,6 +307,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
             .count();
+    }
+
+    /**
+     * The effective registration date to store for a new owner: the date supplied on the request
+     * when present, otherwise the current server date. This single point of resolution is what every
+     * registration-date-derived value (the stored date, the membership number's year segment) is
+     * computed from.
+     */
+    private static LocalDate resolveRegistrationDate(LocalDate suppliedDate) {
+        return suppliedDate != null ? suppliedDate : LocalDate.now();
     }
 
     /**
