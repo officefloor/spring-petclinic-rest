@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
+import org.springframework.samples.petclinic.service.NamesakeCounter;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -111,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
         String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
         owner.setCustomerCode(String.format("%s-%04d", last3, owners.size() + 1));
         this.clinicService.saveOwner(owner);
