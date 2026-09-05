@@ -217,16 +217,25 @@ public class Owner extends Person {
      */
     @Transient
     public Integer getMembershipLevel() {
+        return membershipLevel(this.email, this.namesakeCount, this.registrationDate);
+    }
+
+    /** The numeric membership level (1-4) derived from the given factors: it starts at 1, gains 1
+     *  when {@code email} is present, gains 1 when {@code namesakeCount} is 0, and is capped at 3 by
+     *  these pre-tenure factors. Level 4 is reserved for tenure: it is reached only when the
+     *  pre-tenure factors are maxed and tenure (whole days from {@code registrationDate} to today)
+     *  exceeds 365. */
+    private static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate) {
         int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
+        if (email != null && !email.isBlank()) {
             level++;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
+        if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
         level = Math.min(level, 3);
-        if (this.registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+        if (registrationDate != null
+                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
             level++;
         }
         return Math.min(level, 4);
