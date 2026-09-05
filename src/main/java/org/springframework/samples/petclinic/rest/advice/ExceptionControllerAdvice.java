@@ -28,10 +28,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -67,6 +67,7 @@ public class ExceptionControllerAdvice {
         problemDetail.setTitle(e.getClass().getSimpleName());
         problemDetail.setDetail(detail);
         problemDetail.setProperty("timestamp", Instant.now());
+        problemDetail.setProperty("errors", List.<String>of());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
     }
@@ -133,33 +134,43 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
-        BindingErrorsResponse errors = new BindingErrorsResponse();
         BindingResult bindingResult = e.getBindingResult();
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
-            errors.addAllErrors(bindingResult);
-            List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
-                .map(fieldError -> {
-                    String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
-                    String defaultMessage = Objects.toString(fieldError.getDefaultMessage(), "Validation failed");
-                    String message = "Field '%s' %s (rejected value: %s)".formatted(
-                        fieldError.getField(),
-                        defaultMessage,
-                        rejectedValue);
-                    return new ValidationMessageDto(message)
-                        .putAdditionalProperty("field", fieldError.getField())
-                        .putAdditionalProperty("rejectedValue", rejectedValue)
-                        .putAdditionalProperty("defaultMessage", defaultMessage);
-                })
-                .toList();
+            List<FieldError> fieldErrors = bindingResult.getFieldErrors();
+            detail.setProperty("errors", fieldErrors.stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList());
+            detail.setProperty("schemaValidationErrors", fieldErrors.stream()
+                .map(this::toValidationMessage)
+                .toList());
             logger.debug("Validation error at {} {}: {}",
                 request.getMethod(),
                 request.getRequestURI(),
-                bindingResult.getFieldErrors());
-            detail.setProperty("schemaValidationErrors", schemaValidationErrors);
-            return ResponseEntity.status(status).body(detail);
+                fieldErrors);
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Describes a single {@link FieldError} both as a human-readable message and as the structured
+     * properties consumed by API clients.
+     *
+     * @param fieldError the rejected field reported by Bean Validation
+     * @return the {@link ValidationMessageDto} for that field
+     */
+    private ValidationMessageDto toValidationMessage(FieldError fieldError) {
+        String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
+        String defaultMessage = Objects.toString(fieldError.getDefaultMessage(), "Validation failed");
+        String message = "Field '%s' %s (rejected value: %s)".formatted(
+            fieldError.getField(),
+            defaultMessage,
+            rejectedValue);
+        return new ValidationMessageDto(message)
+            .putAdditionalProperty("field", fieldError.getField())
+            .putAdditionalProperty("rejectedValue", rejectedValue)
+            .putAdditionalProperty("defaultMessage", defaultMessage);
     }
 
 }
