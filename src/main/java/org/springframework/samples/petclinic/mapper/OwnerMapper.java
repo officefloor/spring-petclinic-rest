@@ -185,10 +185,24 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's numeric membership level (1 to 4) from its {@code membershipPoints}:
-     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+     * The owner's numeric membership level (1 to 4). When a level has been stored on the owner
+     * (the household-capped value assigned at create time, see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel}) it
+     * is returned as-is; otherwise it is derived from {@code membershipPoints} (see
+     * {@link #deriveMembershipLevel(Owner)}).
      */
     default Integer toMembershipLevel(Owner owner) {
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return deriveMembershipLevel(owner);
+    }
+
+    /**
+     * Derives the owner's numeric membership level (1 to 4) from its {@code membershipPoints},
+     * before any household cap: level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+     */
+    default Integer deriveMembershipLevel(Owner owner) {
         int points = toMembershipPoints(owner);
         if (points >= 6) {
             return 4;

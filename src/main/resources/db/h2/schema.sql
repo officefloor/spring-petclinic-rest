@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  membership_level INTEGER,
   deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 

@@ -7,19 +7,21 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Rejects a create-owner request that lands in an existing household. Because the
- * {@code householdId} is now derived deterministically from (last name, postcode) (see
- * {@link AssignHousehold}), any existing owner sharing the new owner's {@code householdId}
- * <em>is</em> the same household, so a second such owner is a household duplicate and is
- * rejected 409 via {@link DuplicateIdentityException}.
+ * Rejects a create-owner request whose {@link OwnerIdentity#key(Owner) identity key} already
+ * belongs to an existing owner. The key consolidates all duplicate detection — it is
+ * {@code normalizedTelephone + '|' + email + '|' + householdId} — so a new owner collides only
+ * when its telephone, email <em>and</em> household all match an existing owner's. Because the
+ * telephone is part of the key, two members of the same household (same {@code householdId},
+ * derived deterministically from last name and postcode, see {@link AssignHousehold}) with
+ * different telephones have different keys and are both allowed; the later
+ * {@link AssignPossibleDuplicate} step merely flags the second as a soft duplicate.
  *
- * <p>{@code sharesHousehold} bypasses this block: the caller is declaring the owner a
- * genuine additional member of that household, so the create is allowed. (It no longer
- * creates any link — the shared identifier is implicit in the last name and postcode.)
+ * <p>{@code sharesHousehold} bypasses this block outright: the caller is declaring the owner a
+ * genuine additional member of that household, so the create is allowed regardless.
  *
- * <p>Runs after {@link AssignHousehold} (so the new owner's {@code householdId} is set) and
- * within the create transaction, but before {@link SaveOwner}, so the new owner is not yet
- * persisted and cannot collide with itself.
+ * <p>Runs after {@link AssignHousehold} (so the new owner's {@code householdId}, and hence its
+ * identity key, is set) and within the create transaction, but before {@link SaveOwner}, so the
+ * new owner is not yet persisted and cannot collide with itself.
  */
 public class RejectDuplicateIdentity {
 
@@ -28,10 +30,7 @@ public class RejectDuplicateIdentity {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member — bypass the duplicate block
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return;
-        }
+        String key = OwnerIdentity.key(owner);
         for (Owner existing : ownerRepository.findAll()) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
@@ -39,7 +38,7 @@ public class RejectDuplicateIdentity {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner does not block a new identity
             }
-            if (householdId.equals(existing.getHouseholdId())) {
+            if (key.equals(OwnerIdentity.key(existing))) {
                 throw new DuplicateIdentityException(
                         "Another owner with the same identity already exists");
             }
