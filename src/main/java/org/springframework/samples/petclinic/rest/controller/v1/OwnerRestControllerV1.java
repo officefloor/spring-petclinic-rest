@@ -109,7 +109,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -156,6 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupWarning());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -360,6 +363,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeHouseholdField(existing.getFirstName()).equals(firstName)
                 && normalizeHouseholdField(existing.getLastName()).equals(lastName))
             .count();
+    }
+
+    /**
+     * Whether more than 80 owners have already been created today, i.e. carry today's (business-day
+     * resolved) registration date. Surfaced on responses as {@code bulkSignupWarning} to flag an
+     * unusually high daily signup volume.
+     */
+    private boolean isBulkSignupWarning() {
+        return countOwnersRegisteredOn(toBusinessDay(LocalDate.now())) > 80;
     }
 
     /** The number of existing owners whose registration date is {@code date}. */
