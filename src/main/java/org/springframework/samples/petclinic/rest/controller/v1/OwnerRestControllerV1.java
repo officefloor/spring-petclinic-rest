@@ -296,14 +296,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Existing owners that share {@code owner}'s household, i.e. have the same last name AND the
+     * same address compared case-insensitively with collapsed whitespace.
+     */
+    private List<Owner> findHousemates(Owner owner) {
+        String lastName = normalizeHouseholdField(owner.getLastName());
+        String address = normalizeHouseholdField(owner.getAddress());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
+                && normalizeHouseholdField(existing.getAddress()).equals(address))
+            .toList();
+    }
+
+    /**
      * Whether any existing owner already shares the same household as {@code owner}, i.e. has the
      * same last name AND the same address compared case-insensitively with collapsed whitespace.
      */
     private boolean isHouseholdInUse(Owner owner) {
-        String lastName = normalizeHouseholdField(owner.getLastName());
-        String address = normalizeHouseholdField(owner.getAddress());
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
-                && normalizeHouseholdField(existing.getAddress()).equals(address));
+        return !findHousemates(owner).isEmpty();
     }
 }
