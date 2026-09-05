@@ -141,7 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (isDuplicate(owner, ownerFieldsDto)) {
+        owner.setIdentityKey(identityKey(owner));
+        if (isDuplicate(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(owner.getCity()) >= 50) {
@@ -417,40 +418,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Whether {@code owner} collides with an existing owner on any of the identity dimensions checked
-     * at creation: its telephone, its email, or — unless the request opts into household sharing — its
-     * household (same last name and address). A match on any single dimension makes this a duplicate.
-     * This is the one gate every duplicate rule flows through, so a create that trips it is rejected
-     * with {@code 409 CONFLICT}.
+     * The single derived key all duplicate detection flows through, formed from the owner's
+     * already-normalized fields as {@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * (householdId or empty)}. It is computed at the create-time identity gate, before the household
+     * id is derived, so the household segment is empty at that point. Because the telephone is part
+     * of the key, two owners in the same household with different telephones resolve to different
+     * keys and are both allowed.
      */
-    private boolean isDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        if (isTelephoneInUse(owner.getTelephone())) {
-            return true;
-        }
-        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
-            return true;
-        }
-        return !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner);
+    private static String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + household;
     }
 
-    /** Whether any existing owner already uses the given (E.164) telephone number. */
-    private boolean isTelephoneInUse(String telephone) {
+    /**
+     * Whether {@code owner}'s whole {@link #identityKey} equals an existing owner's, which is the sole
+     * duplicate condition: the previously separate telephone, email and household checks are now all
+     * expressed through this one key, so only an exact full-key match is a duplicate and a create that
+     * trips it is rejected with {@code 409 CONFLICT}.
+     */
+    private boolean isDuplicate(Owner owner) {
+        String key = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
+            .map(Owner::getIdentityKey)
             .filter(existing -> existing != null)
-            .map(OwnerRestControllerV1::normalizeTelephone)
-            .filter(existing -> existing != null)
-            .anyMatch(telephone::equals);
-    }
-
-    /** Whether any existing owner already uses the given email, compared case-insensitively (lower-cased). */
-    private boolean isEmailInUse(String email) {
-        String normalized = email.trim().toLowerCase(Locale.ROOT);
-        return this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
-            .anyMatch(normalized::equals);
+            .anyMatch(key::equals);
     }
 
     /** Common street-type abbreviations expanded during address normalization. */
@@ -503,14 +496,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
                 && normalizeHouseholdField(existing.getAddress()).equals(address))
             .toList();
-    }
-
-    /**
-     * Whether any existing owner already shares the same household as {@code owner}, i.e. has the
-     * same last name AND the same address compared case-insensitively with collapsed whitespace.
-     */
-    private boolean isHouseholdInUse(Owner owner) {
-        return !findHousemates(owner).isEmpty();
     }
 
     /**
