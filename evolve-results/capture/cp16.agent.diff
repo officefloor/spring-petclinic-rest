@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 719ca1c05..f7b639314 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -137,7 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setHouseholdId(householdId(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+@@ -275,15 +275,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Build the customer code '<LAST3>-<NNNN>': LAST3 is the upper-cased first three letters
+-     * of {@code lastName} and NNNN is a global 4-digit zero-padded sequence equal to one more
+-     * than the current number of owners (e.g. 'SMI-0007').
++     * Build the customer code '<CITY3>-<LAST3>-<NNNN>': CITY3 is the upper-cased first three
++     * letters of {@code city}, LAST3 the upper-cased first three letters of {@code lastName},
++     * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
++     * owners already registered in that city (e.g. 'SYD-SMI-0007').
+      */
+-    private String generateCustomerCode(String lastName) {
+-        String letters = lastName.replaceAll("[^\\p{L}]", "");
+-        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+-        int sequence = this.clinicService.findAllOwners().size() + 1;
+-        return String.format("%s-%04d", last3, sequence);
++    private String generateCustomerCode(String city, String lastName) {
++        String city3 = firstThreeLetters(city);
++        String last3 = firstThreeLetters(lastName);
++        int sequence = countOwnersInCity(city) + 1;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /** The upper-cased first three letters (ignoring non-letters) of {@code value}. */
++    private static String firstThreeLetters(String value) {
++        String letters = value == null ? "" : value.replaceAll("[^\\p{L}]", "");
++        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
++    }
++
++    /**
++     * The number of existing owners registered in {@code city}, compared case-insensitively
++     * with collapsed whitespace.
++     */
++    private int countOwnersInCity(String city) {
++        String normalized = normalizeHouseholdField(city);
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
++            .count();
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 145661c63..28c7eaf95 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,12 +2103,13 @@ components:
+               example: 'G.F.'
+             customerCode:
+               title: Customer code
+-              description: The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3 is the
+-                upper-cased first three letters of lastName and NNNN is a global 4-digit zero-padded
+-                sequence equal to one more than the number of owners at the time of creation.
++              description: The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3
++                is the upper-cased first three letters of city, LAST3 the upper-cased first three
++                letters of lastName and NNNN a per-city 4-digit zero-padded sequence equal to one
++                more than the number of owners already registered in that city.
+               type: string
+               readOnly: true
+-              example: 'SMI-0007'
++              example: 'SYD-SMI-0007'
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by all owners in the same household, i.e.
+@@ -2130,10 +2131,10 @@ components:
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where
+-                YY is the last two digits of the registrationDate year (e.g. 'SMI-0007-M26').
++                YY is the last two digits of the registrationDate year (e.g. 'SYD-SMI-0007-M26').
+               type: string
+               readOnly: true
+-              example: 'SMI-0007-M26'
++              example: 'SYD-SMI-0007-M26'
+             membershipTier:
+               title: Membership tier
+               description: The owner's membership tier. 'SILVER' when namesakeCount is 0 and an
