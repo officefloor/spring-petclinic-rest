@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 00c8a0a36..a75e46103 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
++    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress()))")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/service/AddressNormalizer.java
+new file mode 100644
+index 000000000..007ed6318
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/AddressNormalizer.java
+@@ -0,0 +1,46 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Normalises a free-text street address into a canonical form: trimmed, internal
++ * whitespace collapsed to single spaces, upper-cased, with common street-type
++ * abbreviations expanded (ST-&gt;STREET, RD-&gt;ROAD, AVE-&gt;AVENUE). Rejects an
++ * address that is blank once normalised, since address is a required field.
++ */
++public final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    public static String normalize(String address) {
++        String cleaned = address == null ? "" : address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (cleaned.isEmpty()) {
++            throw new IllegalArgumentException("Address must not be blank after normalization");
++        }
++        String[] words = cleaned.split(" ");
++        for (int i = 0; i < words.length; i++) {
++            words[i] = ABBREVIATIONS.getOrDefault(words[i], words[i]);
++        }
++        return String.join(" ", words);
++    }
++}
