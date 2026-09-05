@@ -350,11 +350,11 @@ public class OwnerRegistrar {
      * 1 July), HASH8 is the first eight upper-case hex characters of the SHA-256 digest of the
      * normalized telephone concatenated with the last name (the same HASH8 used by the
      * region-and-hash identity), and CHK is a single Luhn check digit computed over the digits
-     * of {@code '<REGION><FY><HASH8>'} (e.g. 'NSW261A2B3C4D5').
+     * of {@code '<REGION><FY><HASH8>'} (e.g. 'V2NSW261A2B3C4D5').
      *
      * <p>When the computed id collides with an already-registered owner's memberId it is
      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
-     * makes it unique (e.g. 'NSW261A2B3C4D5-2'), and the unique id is returned.
+     * makes it unique (e.g. 'V2NSW261A2B3C4D5-2'), and the unique id is returned.
      */
     private String memberId(Owner owner) {
         String region = cityRegionResolver.identityRegionFor(owner.getCity(), owner.getPostcode());

@@ -2124,6 +2124,55 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's derived identifiers, grouped together under the version-2
+        identity contract. Every value is derived with the version-2 identity
+        algorithm, which mixes a fixed 'V2' version tag into the region code
+        used inside the identifiers so no value produced under version 1 is
+        produced again.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            A stable member id assigned on create, formatted
+            '<REGION><FY><HASH8><CHK>': REGION is the version-2 region code
+            derived from the owner's postcode (falling back to the city) with
+            the 'V2' version tag mixed in, FY is the two-digit fiscal year of
+            the business-day-adjusted registrationDate (the fiscal year starts
+            on 1 July), HASH8 is the first eight upper-case hex characters of
+            the SHA-256 digest of the normalized telephone concatenated with the
+            last name, and CHK is a single Luhn check digit computed over the
+            digits of '<REGION><FY><HASH8>'. When the computed id collides with
+            an already-registered owner's it is de-duplicated by appending
+            '-<n>' with the smallest n of 2 or more that makes it unique.
+          type: string
+          example: 'V2NSW261A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable shared identifier for owners that belong to the same
+            household, derived with the version-2 identity algorithm. Owners
+            that share a normalized last name and postcode derive the same
+            householdId.
+          type: string
+          example: '3F2A1B9C7D4E'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key, derived with the version-2
+            identity algorithm from the normalized telephone, the email (or an
+            empty string when absent) and the soundex of the last name. This
+            single key is the sole basis for duplicate detection on create: a
+            new owner is rejected with 409 only when its whole identityKey equals
+            an existing owner's.
+          type: string
+          example: 'a3f2b1c9d7e4f6a8b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2188,44 +2237,19 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                A stable member id assigned on create, formatted
-                '<REGION><FY><HASH8><CHK>': REGION is the region code derived
-                from the owner's postcode (falling back to the city), FY is the
-                two-digit fiscal year of the business-day-adjusted
-                registrationDate (the fiscal year starts on 1 July), HASH8 is
-                the first eight upper-case hex characters of the SHA-256 digest
-                of the normalized telephone concatenated with the last name, and
-                CHK is a single Luhn check digit computed over the digits of
-                '<REGION><FY><HASH8>'. When the computed id collides with an
-                already-registered owner's it is de-duplicated by appending
-                '-<n>' with the smallest n of 2 or more that makes it unique.
-              type: string
-              example: 'NSW261A2B3C4D5'
+                The version of the owner identity contract carried by this
+                response. Version 2 groups the derived identifiers under the
+                nested 'identity' object and derives them with the version-2
+                identity algorithm.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A stable shared identifier for owners that belong to the same
-                household. Owners created with 'sharesHousehold' set true that
-                match an existing owner's lastName and address are assigned the
-                same householdId as that household.
-              type: string
-              example: 'HH-3F2A1B9C7D4E'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key, formed as the normalized
-                telephone, the email (or an empty string when absent) and the
-                householdId joined by '|'. This single key is the sole basis for
-                duplicate detection on create: a new owner is rejected with 409
-                only when its whole identityKey equals an existing owner's.
-              type: string
-              example: '+61412345678|george.franklin@example.com|HH-3F2A1B9C7D4E'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: >-

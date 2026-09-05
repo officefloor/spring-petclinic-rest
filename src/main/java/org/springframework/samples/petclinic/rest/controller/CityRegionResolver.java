@@ -36,6 +36,12 @@ public class CityRegionResolver {
     /** The region returned for a city that is not in the fixed {@link #CITY_REGION} table. */
     public static final String UNKNOWN_REGION = "UNKNOWN";
 
+    /** The fixed version-2 tag mixed into the region code used inside an owner's identifiers, so the
+     *  identity region can never coincide with a plain region and every version-2 identifier differs
+     *  from its version-1 counterpart. It is stamped only inside identifiers, never in the
+     *  user-facing locality, timezone or owner-segment region. */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     /** Fixed city-to-region table; a city not listed here has no known region. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
@@ -89,17 +95,35 @@ public class CityRegionResolver {
      * memberId, and the region any other identity code mixes in), resolved preferring the postcode
      * over the city exactly as {@link #regionFor(String, String)}.
      *
-     * <p>This is a deliberately separate seam from the user-facing locality region: today both
-     * resolve to the same canonical region, but keeping the identifier's region derivation in its
-     * own place means the value woven into identifiers can evolve without disturbing the plain
-     * region reported as an owner's locality, timezone or segment area.
+     * <p>This is a deliberately separate seam from the user-facing locality region. Under the
+     * version-2 identity it is the plain region with the fixed {@link #IDENTITY_VERSION_TAG version
+     * tag} mixed in (e.g. 'V2NSW'), so every identifier that embeds it differs from its version-1
+     * counterpart and no version-1 identifier is ever produced again. The tag lives only inside
+     * identifiers; the plain region reported as an owner's locality, timezone or segment area is
+     * left untouched.
      *
      * @param city     the owner's city, as stored
      * @param postcode a 4-digit postcode string (e.g. '2000'), or {@code null} when absent
-     * @return the region code to embed in the owner's identifiers
+     * @return the version-2 region code to embed in the owner's identifiers
      */
     public String identityRegionFor(String city, String postcode) {
-        return regionFor(city, postcode);
+        return IDENTITY_VERSION_TAG + regionFor(city, postcode);
+    }
+
+    /**
+     * The plain region underlying a version-2 identity region, i.e. the value returned by
+     * {@link #identityRegionFor} with the fixed {@link #IDENTITY_VERSION_TAG version tag} stripped
+     * back off (e.g. 'V2NSW' -> 'NSW'). This recovers the tag-free region that user-facing
+     * derivations (such as the owner segment) key on without leaking the version tag.
+     *
+     * @param identityRegion an identity region as returned by {@link #identityRegionFor}
+     * @return the identity region with the version tag removed
+     */
+    public String plainRegionOfIdentity(String identityRegion) {
+        if (identityRegion != null && identityRegion.startsWith(IDENTITY_VERSION_TAG)) {
+            return identityRegion.substring(IDENTITY_VERSION_TAG.length());
+        }
+        return identityRegion;
     }
 
     /**

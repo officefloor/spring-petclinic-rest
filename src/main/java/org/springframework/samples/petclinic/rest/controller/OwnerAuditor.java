@@ -70,15 +70,17 @@ public class OwnerAuditor {
 
     /**
      * Build the immutable structured owner-created event as a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. {@code seq} is
-     * the next value of the monotonic {@link #sequence}, so every event carries a distinct, ordered
-     * sequence number across creates.
+     * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+     * {@code schemaVersion} is the version-2 audit schema tag; {@code seq} is the next value of the
+     * monotonic {@link #sequence}, so every event carries a distinct, ordered sequence number across
+     * creates.
      *
-     * <p>{@code memberId} carries the owner's primary identifier, read from
-     * {@link #primaryIdentifier} rather than being spelled out here.
+     * <p>{@code memberId} carries the owner's primary identifier — the version-2 member id — read
+     * from {@link #primaryIdentifier} rather than being spelled out here.
      */
     private String structuredEvent(Owner owner, int membershipLevel) {
         Map<String, Object> event = new LinkedHashMap<>();
+        event.put("schemaVersion", 2);
         event.put("seq", sequence.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));

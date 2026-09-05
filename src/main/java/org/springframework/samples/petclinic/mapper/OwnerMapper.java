@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.controller.EmailDomainClassifi
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.HashUtils;
@@ -61,7 +62,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneNormalizer.toDisplayForm(owner.getTelephone()))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -192,7 +194,36 @@ public abstract class OwnerMapper {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String lastNameSoundex = IdentityUtils.soundex(owner.getLastName());
-        return HashUtils.sha256Hex(telephone + "|" + email + "|" + lastNameSoundex);
+        return HashUtils.sha256Hex(
+            IDENTITY_VERSION_TAG + "|" + telephone + "|" + email + "|" + lastNameSoundex);
+    }
+
+    /** The fixed version-2 tag mixed into the identity key digest so a version-2 key can never
+     *  coincide with a value the version-1 algorithm produced. */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /** The version of the owner identity contract this mapper emits. */
+    private static final int API_VERSION = 2;
+
+    /**
+     * The owner identity contract version carried at the top level of the owner response.
+     */
+    int apiVersion() {
+        return API_VERSION;
+    }
+
+    /**
+     * The owner's derived identifiers grouped under the version-2 'identity' object: the assigned
+     * {@code memberId} and {@code householdId} as stored, and the derived {@link #identityKey(Owner)
+     * identityKey}. This is the single place the three identifiers are gathered for the response, so
+     * they move together under the nested object.
+     */
+    OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
     }
 
     /**
@@ -218,12 +249,18 @@ public abstract class OwnerMapper {
     /**
      * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the owner's
      * {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is
-     * 'METRO' when the owner's {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD),
-     * otherwise 'REGIONAL'.
+     * 'METRO' when the region is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
+     *
+     * <p>Under the version-2 identity the area is recomputed from the version-2 identity region
+     * ({@link CityRegionResolver#identityRegionFor}) with its version tag stripped back off, so the
+     * region the segment keys on stays the plain region and the version tag never leaks into the
+     * segment.
      */
     OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
         String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
-        boolean knownRegion = cityRegionResolver.timezoneForRegion(locality(owner)) != null;
+        String identityRegion = cityRegionResolver.identityRegionFor(owner.getCity(), owner.getPostcode());
+        String segmentRegion = cityRegionResolver.plainRegionOfIdentity(identityRegion);
+        boolean knownRegion = cityRegionResolver.timezoneForRegion(segmentRegion) != null;
         String area = knownRegion ? "METRO" : "REGIONAL";
         return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }

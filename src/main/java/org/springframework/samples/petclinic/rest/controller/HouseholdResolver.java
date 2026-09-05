@@ -26,25 +26,32 @@ import org.springframework.stereotype.Component;
  * owners carry.
  *
  * <p>The household id is deterministic: the first twelve hex characters of the SHA-256 digest
- * of the normalized last name and the postcode joined by '|'. Owners that share a normalized
- * last name and postcode therefore derive the same id automatically, without any explicit
- * link. The id no longer participates in duplicate detection (which now rests solely on the
- * identity key); it feeds the household membership-level ceiling and household-size derivations.
+ * of the fixed version-2 tag, the normalized last name and the postcode joined by '|'. Owners
+ * that share a normalized last name and postcode therefore derive the same id automatically,
+ * without any explicit link. Mixing the version-2 tag into the digest means the id differs from
+ * the value the version-1 algorithm produced and no version-1 id is produced again. The id no
+ * longer participates in duplicate detection (which now rests solely on the identity key); it
+ * feeds the household membership-level ceiling and household-size derivations.
  */
 @Component
 public class HouseholdResolver {
 
+    /** The fixed version-2 tag mixed into the household id digest so it can never collide with a
+     *  value the version-1 algorithm produced. */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
     /**
      * The stable, shared household identifier for {@code owner}: the first twelve hex
-     * characters of {@code SHA-256(normalizedLastName + '|' + postcode)}. Owners in the same
-     * household (same normalized last name and postcode) derive an identical id.
+     * characters of {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}. Owners in
+     * the same household (same normalized last name and postcode) derive an identical id.
      *
      * @param owner the owner whose household id is derived
-     * @return the deterministic household id
+     * @return the deterministic version-2 household id
      */
     public String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = IdentityUtils.normalizeIdentity(owner.getLastName()) + "|" + postcode;
+        String key = IDENTITY_VERSION_TAG + "|"
+            + IdentityUtils.normalizeIdentity(owner.getLastName()) + "|" + postcode;
         return HashUtils.sha256HexPrefix(key, 12);
     }
 }
