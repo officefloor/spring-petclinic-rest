@@ -19,6 +19,9 @@ public class AssignNamesakeCount {
         String lastName = normalize(owner.getLastName());
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not counted as a namesake
+            }
             if (normalize(existing.getFirstName()).equals(firstName)
                     && normalize(existing.getLastName()).equals(lastName)) {
                 count++;

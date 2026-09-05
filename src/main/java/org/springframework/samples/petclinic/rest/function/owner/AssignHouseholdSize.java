@@ -23,6 +23,9 @@ public class AssignHouseholdSize {
         int size = 1; // the owner being created (not yet saved)
         if (householdId != null) {
             for (Owner existing : ownerRepository.findAll()) {
+                if (existing.isDeleted()) {
+                    continue; // a soft-deleted owner no longer counts toward the household
+                }
                 if (householdId.equals(existing.getHouseholdId())) {
                     size++;
                 }

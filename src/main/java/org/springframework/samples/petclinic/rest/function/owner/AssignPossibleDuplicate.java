@@ -43,6 +43,9 @@ public class AssignPossibleDuplicate {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not a possible duplicate
+            }
             if (!normalize(existing.getLastName()).equals(lastName)) {
                 continue;
             }

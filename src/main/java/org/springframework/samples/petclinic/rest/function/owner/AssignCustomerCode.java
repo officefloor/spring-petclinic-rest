@@ -34,6 +34,9 @@ public class AssignCustomerCode {
             if (owner.getId() != null && owner.getId().equals(other.getId())) {
                 continue; // never de-duplicate against the owner being created
             }
+            if (other.isDeleted()) {
+                continue; // a soft-deleted owner's identity code is free to reuse
+            }
             String code = other.getCustomerCode();
             if (code != null) {
                 existing.add(code);

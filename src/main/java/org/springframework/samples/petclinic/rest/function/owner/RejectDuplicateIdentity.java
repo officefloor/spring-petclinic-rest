@@ -36,6 +36,9 @@ public class RejectDuplicateIdentity {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner does not block a new identity
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateIdentityException(
                         "Another owner with the same identity already exists");
