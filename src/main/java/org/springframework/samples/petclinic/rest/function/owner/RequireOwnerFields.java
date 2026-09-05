@@ -8,8 +8,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Rejects a create-owner request that is missing or blank in any mandatory field, before the body is
- * mapped to an entity. Reads the request published by {@link NormalizeAddress}, so the {@code address}
- * has already been normalized: a blank-after-normalization address is rejected here.
+ * mapped to an entity. Reads the request published by {@link NormalizeAddress}, so the address has
+ * already been normalized and composed. An owner is valid when it supplies an address in either form —
+ * a non-blank {@code addressLine1} or the flat {@code address} — so a request blank in both (including
+ * blank-after-normalization) is rejected here.
  */
 public class RequireOwnerFields {
 
@@ -21,7 +23,7 @@ public class RequireOwnerFields {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        if (isBlank(request.getAddressLine1()) && isBlank(request.getAddress())) {
             missing.add("address");
         }
         if (isBlank(request.getCity())) {
