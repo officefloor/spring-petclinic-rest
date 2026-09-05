@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fdc4824f7..e4274ba7b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,8 +21,19 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
++    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
++     * ({@code namesakeCount} is 0) and an email is present, otherwise {@code BRONZE}.
++     */
++    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
++        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
++    }
++
+     /**
+      * Derives the owner's membership number as {@code <customerCode>-M<YY>}, where YY is the
+      * last two digits of the registration-date year (e.g. {@code SMI-0007-M26}). Returns null
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9a6e3b2a0..f77e161bd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,6 +2115,15 @@ components:
+               type: string
+               example: "SMI-0007-M26"
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: The owner's membership tier. 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
++              type: string
++              enum:
++                - SILVER
++                - BRONZE
++              example: "SILVER"
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
