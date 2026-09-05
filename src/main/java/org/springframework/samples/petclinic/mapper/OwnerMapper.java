@@ -30,10 +30,29 @@ public interface OwnerMapper {
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** On create, keep only the digits so the stored telephone is the 10-digit value. */
+    /**
+     * Normalise a telephone to E.164 for storage: keep an explicit leading '+' and country
+     * code when present, otherwise assume '+61' and drop a single leading national '0'.
+     * Spaces, dashes and brackets are stripped; the result must have 8 to 15 digits after
+     * the '+', else the number is rejected as invalid.
+     */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        if (telephone == null) {
+            return null;
+        }
+        boolean international = telephone.trim().startsWith("+");
+        String digits = telephone.replaceAll("\\D", "");
+        if (!international) {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            digits = "61" + digits;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
+            throw new IllegalArgumentException("Telephone cannot form a valid E.164 number: " + telephone);
+        }
+        return "+" + digits;
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
