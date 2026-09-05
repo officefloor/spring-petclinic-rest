@@ -44,4 +44,18 @@ public final class CityCapacity {
     static boolean warning(Owner owner, OwnerRepository ownerRepository) {
         return warning(owner == null ? null : owner.getCity(), ownerRepository);
     }
+
+    /**
+     * Whether {@code city} is over its soft capacity: it already holds at least
+     * {@link #WARNING_THRESHOLD} owners (unlike {@link #warning}, this stays true at and above the
+     * hard {@link #CAPACITY} limit too).
+     */
+    static boolean overSoftCapacity(String city, OwnerRepository ownerRepository) {
+        return count(city, ownerRepository) >= WARNING_THRESHOLD;
+    }
+
+    /** Convenience for computing the soft-capacity breach from an owner's city. */
+    static boolean overSoftCapacity(Owner owner, OwnerRepository ownerRepository) {
+        return overSoftCapacity(owner == null ? null : owner.getCity(), ownerRepository);
+    }
 }
