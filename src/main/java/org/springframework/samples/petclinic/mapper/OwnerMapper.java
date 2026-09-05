@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -41,18 +41,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier: {@code GOLD} when the owner's household has 3 or more
-     * members ({@code householdSize} &ge; 3, as counted after the owner was created); otherwise
-     * {@code SILVER} when the owner has no namesakes ({@code namesakeCount} is 0) and an email is
-     * present, otherwise {@code BRONZE}.
+     * Derives the owner's numeric membership level (1 to 3), computed on creation: start at 1;
+     * add 1 when an email is present; add 1 when the owner has no namesakes ({@code namesakeCount}
+     * is 0); capped at 3 (level 4 is reserved for tenure).
      */
-    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return OwnerDto.MembershipTierEnum.GOLD;
+    default Integer toMembershipLevel(Owner owner) {
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        if (unique) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**

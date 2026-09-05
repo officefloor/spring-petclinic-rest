@@ -14,8 +14,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * are settled) but before {@link SaveOwner} (so the owner being created is not itself in the
  * repository yet and is instead counted explicitly), mutating the owner in place so the
  * persisted value — and every later read — carries the household size as it stood after this
- * create. {@link org.springframework.samples.petclinic.mapper.OwnerMapper} derives the
- * {@code GOLD} membership tier from it.
+ * create.
  */
 public class AssignHouseholdSize {
 
