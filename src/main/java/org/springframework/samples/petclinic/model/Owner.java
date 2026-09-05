@@ -51,6 +51,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
@@ -99,6 +102,14 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public java.time.LocalDate getRegistrationDate() {
