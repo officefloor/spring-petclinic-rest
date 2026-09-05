@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.service.BulkSignupWarning;
 import org.springframework.samples.petclinic.service.CityCapacity;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
@@ -127,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+        owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
