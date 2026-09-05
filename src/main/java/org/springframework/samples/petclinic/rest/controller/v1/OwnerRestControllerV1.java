@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -129,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setHouseholdId(householdId(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -314,5 +318,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isHouseholdInUse(Owner owner) {
         return !findHousemates(owner).isEmpty();
+    }
+
+    /**
+     * A stable identifier shared by every owner in the same household, i.e. every owner with the
+     * same last name and address (compared case-insensitively with collapsed whitespace). Derived
+     * deterministically from those normalized fields so housemates always resolve to the same value,
+     * regardless of registration order.
+     */
+    private static String householdId(Owner owner) {
+        String key = normalizeHouseholdField(owner.getLastName()) + "\n"
+            + normalizeHouseholdField(owner.getAddress());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(24);
+            for (int i = 0; i < 12; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
