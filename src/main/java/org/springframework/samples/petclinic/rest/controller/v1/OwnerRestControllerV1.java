@@ -334,14 +334,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
 
     /**
-     * Required national-number length per country code: '+61' (Australia) expects 9 national
-     * digits and '+1' (NANP) expects 10. A number whose country code is listed here but whose
-     * national part is not the required length is rejected.
-     */
-    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
-        "+61", 9, "+1", 10);
-
-    /**
      * Canonical stored form of a telephone number in E.164: a leading '+' and country
      * code are kept when present; otherwise country code '+61' is assumed and a single
      * leading '0' is dropped from the national digits. Spaces, dashes and brackets are
@@ -369,17 +361,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Whether the national number of a well-formed E.164 value has the length required for its
-     * country code. Country codes not listed in {@link #NATIONAL_NUMBER_LENGTHS} carry no
-     * per-country length rule and are accepted.
+     * country code. The country-code length table lives on {@link Owner#nationalNumberLength(String)}
+     * and is shared, not duplicated here; a country code carrying no length rule is accepted.
      */
     private static boolean hasValidNationalNumberLength(String e164) {
-        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
-            String countryCode = entry.getKey();
-            if (e164.startsWith(countryCode)) {
-                return e164.length() - countryCode.length() == entry.getValue();
-            }
+        String countryCode = Owner.countryCodeOf(e164);
+        if (countryCode == null) {
+            return true;
         }
-        return true;
+        return e164.length() - countryCode.length() == Owner.nationalNumberLength(countryCode);
     }
 
     /**

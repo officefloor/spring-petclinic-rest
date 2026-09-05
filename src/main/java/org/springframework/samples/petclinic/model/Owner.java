@@ -336,6 +336,34 @@ public class Owner extends Person {
         return null;
     }
 
+    /** Telephone country code -> the national-number length it requires ({@code +61} Australia => 9
+     *  digits, {@code +1} NANP => 10), used to derive telephone values from the stored E.164 number.
+     *  The country codes here carry no conflicting prefixes ({@code +61} does not start with
+     *  {@code +1}), so a number matches at most one. */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
+        "+61", 9, "+1", 10);
+
+    /** The recognised telephone country code that {@code telephone} begins with (e.g. {@code "+61"}),
+     *  or {@code null} when it is {@code null} or begins with no recognised country code. */
+    public static String countryCodeOf(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        for (String countryCode : NATIONAL_NUMBER_LENGTHS.keySet()) {
+            if (telephone.startsWith(countryCode)) {
+                return countryCode;
+            }
+        }
+        return null;
+    }
+
+    /** The national-number length required for {@code countryCode}, or {@code null} when the country
+     *  code carries no length rule (i.e. any code absent from the table: {@code +61 => 9},
+     *  {@code +1 => 10}). */
+    public static Integer nationalNumberLength(String countryCode) {
+        return NATIONAL_NUMBER_LENGTHS.get(countryCode);
+    }
+
     /** The single Luhn check digit (0-9) over the decimal digits contained in {@code value}, scanning
      *  right to left and doubling every second digit; non-digit characters are ignored and a null or
      *  digit-free value yields {@code 0}. */
