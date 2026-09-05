@@ -25,9 +25,9 @@ public class RequireOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        // Normalise the telephone to its digits and require exactly 10 of them.
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        // Normalise the telephone to E.164 form; reject when it cannot be formed.
+        String telephone = E164Telephone.toE164(request.getTelephone());
+        if (telephone == null) {
             throw new MissingOwnerFieldsException(List.of("telephone"));
         }
         request.setTelephone(telephone);
