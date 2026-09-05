@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.service.HouseholdLevelCap;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.samples.petclinic.service.IdentityKey;
 import org.springframework.samples.petclinic.service.NamesakeCounter;
+import org.springframework.samples.petclinic.service.OwnerCreatedEvent;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -135,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             org.springframework.samples.petclinic.service.MembershipLevel.of(owner),
             owner.getCustomerCode() + "-M"
                 + org.springframework.samples.petclinic.service.FiscalYear.label(owner.getRegistrationDate()).substring(2));
+        OwnerCreatedEvent.emit(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
