@@ -4,10 +4,11 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives the numeric {@code membershipLevel} (1-4): starts at 1, adds 1 when an email
- * address is present, adds 1 when namesakeCount is 0, and adds 1 for tenure of more than
- * 365 days (days between registrationDate and today). A newly created owner has zero
- * tenure, so it never exceeds level 3.
+ * Derives the membership scoring for an owner. {@link #points} starts at 0 and adds 2
+ * when an email address is present, 1 when namesakeCount is 0, 2 for a household of 3 or
+ * more (the new owner plus namesakeCount existing members) and 3 for tenure over 365 days
+ * (days between registrationDate and today). {@link #level} maps those points to 1 (0-1),
+ * 2 (2-3), 3 (4-5) or 4 (6 or more).
  */
 public final class MembershipTier {
 
@@ -19,17 +20,33 @@ public final class MembershipTier {
                 && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
     }
 
-    public static int of(Integer namesakeCount, String email, LocalDate registrationDate) {
-        int level = 1;
+    public static int points(Integer namesakeCount, String email, LocalDate registrationDate) {
+        int points = 0;
         if (email != null && !email.isBlank()) {
-            level++;
+            points += 2;
         }
         if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+            points += 1;
+        }
+        if (namesakeCount != null && namesakeCount >= 2) {
+            points += 2;
         }
         if (hasTenure(registrationDate)) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    public static int level(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 }
