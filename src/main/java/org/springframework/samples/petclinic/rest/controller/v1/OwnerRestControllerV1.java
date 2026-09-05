@@ -228,9 +228,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * identifier is audited is confined here rather than woven through the create pipeline.
      */
     private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         AUDIT.info(OwnerCreatedEvent.of(AUDIT_EVENT_SEQ.incrementAndGet(), owner).toJson());
     }
 
@@ -505,10 +504,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Compute and assign the derived attributes carried by a newly registered owner: the customer
-     * code, membership number, household id, namesake count and household member count. Each is
-     * derived from the owner's already-normalized fields and the existing owner population, so this
-     * must run before the owner is saved, while the counts still exclude the owner being created.
+     * Compute and assign the derived attributes carried by a newly registered owner: the member id,
+     * household id, namesake count and household member count. Each is derived from the owner's
+     * already-normalized fields and the existing owner population, so this must run before the owner
+     * is saved, while the counts still exclude the owner being created.
      *
      * <p>{@code declaredMember} is true when the owner was created into an existing household by
      * setting {@code sharesHousehold}: such an owner is a declared, not a suspected, household member,
@@ -516,8 +515,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * runs (and, since a create that reaches here shares no existing household, does not flag it).
      */
     private void assignRegistrationAttributes(Owner owner, boolean declaredMember) {
-        owner.setCustomerCode(generateCustomerCode(owner));
-        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMemberId(generateMemberId(owner));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner));
@@ -570,30 +568,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build {@code owner}'s customer code '<REGION>-<HASH8>': REGION is the region code derived from
-     * the owner's postcode ({@link Owner#getRegion()}) and HASH8 the first 8 upper-case hex
+     * Build {@code owner}'s member id '<REGION><FY><HASH8><CHK>': REGION is the region code derived
+     * from the owner's postcode ({@link Owner#getRegion()}), FY the two-digit
+     * {@link Owner#fiscalYearSegment(LocalDate) fiscal-year segment} of the business-day-adjusted
+     * {@link Owner#getRegistrationDate() registration date}, HASH8 the first 8 upper-case hex
      * characters of SHA-256 over the owner's already-normalized telephone concatenated with the
-     * owner's last name (e.g. 'NSW-1A2B3C4D'). The identity is otherwise a pure function of the
-     * region and the (telephone, last name) pair; only when the computed code collides with an
-     * existing owner's customer code is it de-duplicated by appending '-<n>' with the smallest
-     * {@code n} of 2 or more that makes it unique (e.g. 'NSW-1A2B3C4D-2').
+     * owner's last name, and CHK a single {@link Owner#luhnCheckDigit(String) Luhn check digit} over
+     * the digits of '<REGION><FY><HASH8>' (e.g. 'NSW271A2B3C4D5'). The identity is otherwise a pure
+     * function of the region, fiscal year and the (telephone, last name) pair; only when the computed
+     * id collides with an existing owner's member id is it de-duplicated by appending '-<n>' with the
+     * smallest {@code n} of 2 or more that makes it unique (e.g. 'NSW271A2B3C4D5-2').
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String hash8 = Owner.sha256Hex(telephone + lastName).substring(0, 8);
-        String base = owner.getRegion() + "-" + hash8;
-        return deduplicateCustomerCode(base);
+        String core = owner.getRegion() + Owner.fiscalYearSegment(owner.getRegistrationDate()) + hash8;
+        String base = core + Owner.luhnCheckDigit(core);
+        return deduplicateMemberId(base);
     }
 
     /**
-     * De-duplicate a computed customer code against the existing owner population: when {@code base}
+     * De-duplicate a computed member id against the existing owner population: when {@code base}
      * is not already in use it is returned unchanged; otherwise '-<n>' is appended with the smallest
-     * {@code n} of 2 or more that yields a code no existing owner carries.
+     * {@code n} of 2 or more that yields an id no existing owner carries.
      */
-    private String deduplicateCustomerCode(String base) {
+    private String deduplicateMemberId(String base) {
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(code -> code != null)
             .collect(java.util.stream.Collectors.toSet());
         if (!existing.contains(base)) {
@@ -635,7 +637,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * when present, otherwise the current server date, in either case rolled forward to a business
      * day so it never falls on a weekend or public holiday (rolled forward to the next such day).
      * This single point of resolution is what every registration-date-derived value (the stored
-     * date, the membership number's year segment, the per-day create-limit) is computed from.
+     * date, the member id's fiscal-year segment, the per-day create-limit) is computed from.
      */
     private static LocalDate resolveRegistrationDate(LocalDate suppliedDate) {
         LocalDate date = suppliedDate != null ? suppliedDate : LocalDate.now();
@@ -664,16 +666,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             date = date.plusDays(1);
         }
         return date;
-    }
-
-    /**
-     * Build the membership number '<customerCode>-M<YY>' where YY is the two-digit
-     * {@link Owner#fiscalYearSegment(LocalDate) fiscal-year segment} of the business-day-adjusted
-     * {@code registrationDate} (e.g. 'NSW-1A2B3C4D-M27'). The fiscal-year segment lives on
-     * {@link Owner} and is shared, not duplicated here.
-     */
-    private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        return customerCode + "-M" + Owner.fiscalYearSegment(registrationDate);
     }
 
     /**

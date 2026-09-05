@@ -23,20 +23,19 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Immutable structured audit event emitted when an owner is created. It is serialized to a compact
- * JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}} and published on the
+ * JSON object {@code {seq, ownerId, memberId, membershipLevel, event}} and published on the
  * dedicated {@code AUDIT} logger alongside the human-readable audit line.
  *
  * <p>{@code seq} is a monotonically increasing sequence number across creates (assigned by the
- * caller), and {@code customerCode} carries the owner's <em>current primary identifier</em>. Today
- * that identifier is the {@link Owner#getCustomerCode() customer code}; {@link #of(long, Owner)} is
- * the single place it is read, so when the customer code is later unified into the member id the
- * event carries the member id instead without touching the emit site.
+ * caller), and {@code memberId} carries the owner's <em>current primary identifier</em>, the
+ * unified {@link Owner#getMemberId() member id}. {@link #of(long, Owner)} is the single place it is
+ * read, so a future change to which identifier is audited is confined there.
  *
  * <p>Being a {@code record} the event is immutable: once built it cannot be altered before it is
  * logged, which is the property an audit trail requires. The declaration order of the components is
  * the JSON field order.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
 
     /** The fixed event type carried by every owner-created event. */
@@ -48,11 +47,11 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
     /**
      * Build the event for a freshly persisted {@code owner}, stamping it with the given sequence
      * number. The event's primary identifier is read here from the owner's current primary
-     * identifier (the customer code), so this factory is the one place to update when that identifier
+     * identifier (the member id), so this factory is the one place to update when that identifier
      * changes.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
             owner.getMembershipLevel(), EVENT_TYPE);
     }
 

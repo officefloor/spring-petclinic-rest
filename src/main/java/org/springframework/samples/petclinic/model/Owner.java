@@ -73,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -87,9 +87,6 @@ public class Owner extends Person {
 
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "membership_level_cap")
     private Integer membershipLevelCap;
@@ -199,12 +196,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -237,14 +234,6 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     /**
@@ -430,15 +419,6 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    /**
-     * The single Luhn check digit (0-9) computed over the decimal digits contained in the
-     * {@link #customerCode}, derived on read.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        return luhnCheckDigit(this.customerCode);
-    }
-
     /** Region -> inclusive 4-digit postcode range {low, high}, used to derive the region from the
      *  postcode ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). */
     private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
@@ -471,21 +451,36 @@ public class Owner extends Person {
         return "UNKNOWN";
     }
 
+    /** The region codes a {@link #getMemberId() member id} can begin with, matched to recover the
+     *  leading REGION segment of a '<REGION><FY><HASH8><CHK>' member id: the known postcode regions
+     *  plus the {@code "UNKNOWN"} fallback. */
+    private static final Set<String> LOCALITY_REGIONS = Set.of("NSW", "VIC", "QLD", "UNKNOWN");
+
     /**
-     * The owner's locality, derived on read from the region-and-hash {@link #getCustomerCode()
-     * customer code}: the region segment before the first '-' of the customer code
-     * ('<REGION>-<HASH8>'). Falls back to the owner's {@link #getRegion() region} when no customer
-     * code has been assigned yet.
+     * The owner's locality, derived on read from the region-and-hash {@link #getMemberId() member
+     * id}: the leading REGION segment of the member id ('<REGION><FY><HASH8><CHK>'). Falls back to
+     * the owner's {@link #getRegion() region} when no member id has been assigned yet.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode != null) {
-            int dash = this.customerCode.indexOf('-');
-            if (dash > 0) {
-                return this.customerCode.substring(0, dash);
+        String region = regionOfMemberId(this.memberId);
+        return region != null ? region : getRegion();
+    }
+
+    /** The leading REGION segment of a '<REGION><FY><HASH8><CHK>' {@code memberId}, i.e. the known
+     *  region code ({@link #LOCALITY_REGIONS}) it starts with, or {@code null} when {@code memberId}
+     *  is null or starts with no known region. The remaining segments (FY, HASH8, CHK) are digits and
+     *  upper-hex, so a region prefix is recovered unambiguously. */
+    private static String regionOfMemberId(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        for (String region : LOCALITY_REGIONS) {
+            if (memberId.startsWith(region)) {
+                return region;
             }
         }
-        return getRegion();
+        return null;
     }
 
     /** Region -> IANA timezone name, the fixed region-to-timezone table ({@code NSW ->
@@ -606,9 +601,8 @@ public class Owner extends Person {
 
     /** The single Luhn check digit (0-9) over the decimal digits contained in {@code value}, scanning
      *  right to left and doubling every second digit; non-digit characters are ignored and a null or
-     *  digit-free value yields {@code 0}. Shared by the derived {@link #getCheckDigit()} and the
-     *  controller that stamps a check digit into an owner's identifier, so the Luhn rule lives here
-     *  once and is not duplicated. */
+     *  digit-free value yields {@code 0}. Used by the controller to compute the CHK segment stamped
+     *  into an owner's member id, so the Luhn rule lives here once and is not duplicated. */
     public static int luhnCheckDigit(String value) {
         int sum = 0;
         boolean doubling = true;
