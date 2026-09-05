@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   household_member_count INTEGER,
   membership_number VARCHAR(30),
-  identity_key VARCHAR(512)
+  identity_key VARCHAR(512),
+  postcode VARCHAR(4)
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

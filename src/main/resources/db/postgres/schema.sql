@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       namesake_count INTEGER,
                                       household_member_count INTEGER,
                                       membership_number TEXT,
-                                      identity_key TEXT
+                                      identity_key TEXT,
+                                      postcode TEXT
 );
 CREATE INDEX ON owners (last_name);
 

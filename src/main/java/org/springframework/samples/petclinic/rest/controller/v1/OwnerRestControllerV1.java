@@ -131,6 +131,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
+        if (!isPostcodeValidForCity(owner)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String telephone = normalizeTelephone(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -258,6 +261,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /** Matches a well-formed postcode: exactly 4 digits. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
+    /**
+     * Region -> inclusive 4-digit postcode range {low, high}. A city's region is derived from the
+     * fixed city-to-region table ({@link Owner#getRegion()}); a region absent from this map (i.e.
+     * {@code UNKNOWN}) carries no range rule and accepts any 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Whether {@code owner}'s postcode is acceptable. Postcode is optional: a null postcode is always
+     * accepted. When present it must be a 4-digit value and, when the owner's city maps to a known
+     * region, must fall within that region's inclusive range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099); a city with no known region accepts any 4-digit postcode.
+     */
+    private static boolean isPostcodeValidForCity(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return true;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            return false;
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(owner.getRegion());
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /** Matches a well-formed E.164 number: a '+' followed by 8 to 15 digits. */
