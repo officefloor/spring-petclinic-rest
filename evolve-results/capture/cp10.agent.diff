@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0cf33a330..2774e5ead 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.HouseholdMatcher;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -106,6 +107,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++                && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
+         owner.setCustomerCode(String.format("%s-%04d", last3, owners.size() + 1));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+new file mode 100644
+index 000000000..af2f6d746
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Detects owners that belong to the same household: identical last name and address
++ * once case and surrounding/duplicate whitespace are normalised.
++ */
++public final class HouseholdMatcher {
++
++    private HouseholdMatcher() {
++    }
++
++    public static boolean sameHousehold(Owner a, Owner b) {
++        return normalize(a.getLastName()).equals(normalize(b.getLastName()))
++            && normalize(a.getAddress()).equals(normalize(b.getAddress()));
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 07f960a65..909c219d4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2046,6 +2046,12 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: When true, allow creating this owner even though another owner has the same last name and address.
++          type: boolean
++          writeOnly: true
++          example: false
+       required:
+         - firstName
+         - lastName
