@@ -21,7 +21,18 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
+     * ({@code namesakeCount} is 0) and an email is present, otherwise {@code BRONZE}.
+     */
+    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
+        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+    }
 
     /**
      * Derives the owner's membership number as {@code <customerCode>-M<YY>}, where YY is the
