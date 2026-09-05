@@ -8,20 +8,19 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Rejects a create-owner request whose {@link OwnerIdentity#key(Owner) identity key} already
- * belongs to an existing owner. The key consolidates all duplicate detection — it is
- * {@code normalizedTelephone + '|' + email + '|' + householdId} — so a new owner collides only
- * when its telephone, email <em>and</em> household all match an existing owner's. Because the
- * telephone is part of the key, two members of the same household (same {@code householdId},
- * derived deterministically from last name and postcode, see {@link AssignHousehold}) with
- * different telephones have different keys and are both allowed; the later
- * {@link AssignPossibleDuplicate} step merely flags the second as a soft duplicate.
+ * belongs to an existing owner. The key consolidates all duplicate detection — it is the
+ * SHA-256 digest of {@code normalizedTelephone + '|' + email + '|' + soundex(lastName)} — so a
+ * new owner collides only when its telephone, email <em>and</em> phonetic last name all match
+ * an existing owner's. Because the telephone is part of the key, two owners sharing a last name
+ * (phonetically) and postcode but carrying different telephones have different keys and are both
+ * allowed; the later {@link AssignPossibleDuplicate} step merely flags the second as a soft
+ * duplicate.
  *
  * <p>{@code sharesHousehold} bypasses this block outright: the caller is declaring the owner a
  * genuine additional member of that household, so the create is allowed regardless.
  *
- * <p>Runs after {@link AssignHousehold} (so the new owner's {@code householdId}, and hence its
- * identity key, is set) and within the create transaction, but before {@link SaveOwner}, so the
- * new owner is not yet persisted and cannot collide with itself.
+ * <p>Runs within the create transaction but before {@link SaveOwner}, so the new owner is not
+ * yet persisted and cannot collide with itself.
  */
 public class RejectDuplicateIdentity {
 

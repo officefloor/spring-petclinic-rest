@@ -107,8 +107,8 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's {@code identityKey}: the single value that consolidates all
-     * duplicate detection, {@code normalizedTelephone + '|' + (email or empty) + '|' +
-     * (householdId or empty)}.
+     * duplicate detection, the SHA-256 hex digest of {@code normalizedTelephone + '|' +
+     * (email or empty) + '|' + soundex(lastName)}.
      */
     default String toIdentityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner);

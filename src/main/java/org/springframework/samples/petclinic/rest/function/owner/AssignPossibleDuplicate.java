@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
-import java.util.Objects;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
@@ -10,11 +9,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Flags a create-owner request as a <em>possible</em> (soft) duplicate: one that is not a hard
- * duplicate (see {@link RejectDuplicateIdentity}) yet shares an existing owner's
- * {@code lastName} (compared case-insensitively with surrounding whitespace trimmed) and
- * {@code postcode} while carrying a <em>different</em> telephone (compared in E.164 form, see
- * {@link E164Telephone}). Such an owner is still created; it is merely marked so callers can
- * review it. When a match is found the owner's {@code possibleDuplicate} is set true and
+ * duplicate (see {@link RejectDuplicateIdentity}) yet whose {@link OwnerIdentity#key(Owner)
+ * identity key} <em>differs</em> from an existing owner's while sharing that owner's last name
+ * phonetically ({@code soundex(lastName)}, see {@link NameSoundex}) and its {@code postcode}
+ * (compared case-insensitively with surrounding whitespace trimmed). Such an owner is still
+ * created; it is merely marked so callers can review it. When a match is found the owner's
+ * {@code possibleDuplicate} is set true and
  * {@code possibleDuplicateOf} to the matching owner's id (the earliest such owner by id when
  * several match); otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf}
  * is left unset.
@@ -62,8 +62,9 @@ public class AssignPossibleDuplicate {
 
     /**
      * Whether {@code existing} makes {@code owner} a soft (possible) duplicate: a different,
-     * live owner sharing its last name and postcode but carrying a different telephone (the same
-     * telephone would be a hard duplicate, already rejected upstream).
+     * live owner sharing its last name phonetically ({@code soundex(lastName)}) and its postcode
+     * while carrying a <em>different</em> identity key (an equal key would be a hard duplicate,
+     * already rejected upstream).
      */
     private static boolean isSoftMatch(Owner owner, Owner existing) {
         if (owner.getId() != null && owner.getId().equals(existing.getId())) {
@@ -72,16 +73,14 @@ public class AssignPossibleDuplicate {
         if (existing.isDeleted()) {
             return false; // a soft-deleted owner is not a possible duplicate
         }
-        if (!normalize(existing.getLastName()).equals(normalize(owner.getLastName()))) {
+        if (!NameSoundex.of(existing.getLastName()).equals(NameSoundex.of(owner.getLastName()))) {
             return false;
         }
         if (!normalize(existing.getPostcode()).equals(normalize(owner.getPostcode()))) {
             return false;
         }
-        String telephone = E164Telephone.normalizeOrNull(owner.getTelephone());
-        String existingTelephone = E164Telephone.normalizeOrNull(existing.getTelephone());
-        // same telephone is not a soft match (it would be a hard duplicate)
-        return !Objects.equals(telephone, existingTelephone);
+        // an equal identity key is a hard duplicate, already rejected upstream
+        return !OwnerIdentity.key(owner).equals(OwnerIdentity.key(existing));
     }
 
     private static String normalize(String value) {
