@@ -6,15 +6,14 @@ import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.samples.petclinic.rest.function.owner.DuplicateHouseholdException;
+import org.springframework.samples.petclinic.rest.function.owner.DuplicateIdentityException;
 
 /**
- * Responds 409 when a create-owner request has the same last name and address as an existing owner
- * and did not set {@code sharesHousehold} true.
+ * Responds 409 when a create-owner request's derived identityKey collides with an existing owner's.
  */
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
         response.send(ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("errors", ex.getMessage())));

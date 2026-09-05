@@ -24,6 +24,8 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "householdId",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+    @Mapping(target = "identityKey",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity()))")
     @Mapping(target = "contactPreference",

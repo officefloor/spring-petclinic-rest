@@ -13,8 +13,8 @@ import java.util.Map;
  *
  * <p>This is the single normalized form used everywhere an address matters: it is what
  * {@link NormalizeAddress} stores on the request (so it is persisted and returned), what
- * {@link RequireOwnerFields} tests for blankness, and what {@link RejectDuplicateHousehold} and
- * {@link HouseholdId} compare, so both duplicate detection and the shared household id agree.
+ * {@link RequireOwnerFields} tests for blankness, and what {@link HouseholdId} compares, so both the
+ * derived {@link IdentityKey} used for duplicate detection and the shared household id agree.
  */
 public final class AddressNormalizer {
 

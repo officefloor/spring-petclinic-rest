@@ -11,8 +11,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * every existing owner sharing the same household plus the owner being created. Two owners belong to
  * the same household when their last names are equal after trimming, collapsing runs of whitespace to
  * a single space, and lower-casing, and their addresses are equal in the normalized form
- * ({@link AddressNormalizer}) — the same rule {@link RejectDuplicateHousehold} and {@link HouseholdId}
- * use. Runs before the owner is saved, so {@link OwnerRepository#findAll()} sees only the owners that
+ * ({@link AddressNormalizer}) — the same rule {@link HouseholdId} uses (the household component of the
+ * derived {@link IdentityKey}). Runs before the owner is saved, so {@link OwnerRepository#findAll()} sees only the owners that
  * existed before this create, which are then counted alongside this one.
  */
 public class CountHousehold {

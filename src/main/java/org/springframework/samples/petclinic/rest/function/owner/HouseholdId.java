@@ -7,10 +7,10 @@ import java.util.Locale;
 
 /**
  * Derives an owner's {@code householdId}: a stable identifier shared by every owner with the same
- * last name and address (one household). The last name is normalized the same way as
- * {@link RejectDuplicateHousehold} (trim, collapse runs of whitespace to a single space, lower-case)
- * and the address in the normalized form ({@link AddressNormalizer}) — the same form the duplicate
- * check compares — before hashing, so owners created with {@code sharesHousehold} true, who by
+ * last name and address (one household). The last name is normalized (trim, collapse runs of
+ * whitespace to a single space, lower-case) and the address in the normalized form
+ * ({@link AddressNormalizer}) — the same form the derived {@link IdentityKey} builds its household
+ * component from — before hashing, so owners created with {@code sharesHousehold} true, who by
  * definition match an existing owner's last name and address, derive the identical value. Computed as
  * the first 12 upper-case hex characters of SHA-256 over the normalized pair, so it is stable across
  * requests and needs no persisted column.

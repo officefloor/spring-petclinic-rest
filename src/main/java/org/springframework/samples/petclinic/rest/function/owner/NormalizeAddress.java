@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * {@link AddressNormalizer}: trim, collapse whitespace, upper-case, expand common abbreviations) before
  * any other step runs. Binds the request body (the single {@code @RequestBody} step of this pipeline)
  * and republishes it as a variable for the later steps. Because it runs first, the normalized value is
- * what {@link RequireOwnerFields} tests for blankness, what {@link RejectDuplicateHousehold} compares,
- * and what {@link BuildOwner} maps to the entity — so a blank-after-normalization address is rejected
+ * what {@link RequireOwnerFields} tests for blankness, what the household component of the derived
+ * {@link IdentityKey} is built from, and what {@link BuildOwner} maps to the entity — so a blank-after-normalization address is rejected
  * and the normalized {@code address} is stored and returned.
  */
 public class NormalizeAddress {
