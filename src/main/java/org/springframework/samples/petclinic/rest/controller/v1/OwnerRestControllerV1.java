@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.service.CityCapacity;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
+import org.springframework.samples.petclinic.service.HouseholdLevelCap;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.samples.petclinic.service.IdentityKey;
 import org.springframework.samples.petclinic.service.NamesakeCounter;
@@ -116,8 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (DailyRegistrationLimit.isReached(owners)) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (IdentityKey.isDuplicate(owners, owner)
-            || HouseholdMatcher.isHouseholdDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
+        if (IdentityKey.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (CityCapacity.isFull(owners, owner)) {
@@ -128,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
         owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));
         owner.setPossibleDuplicateOf(HouseholdMatcher.possibleDuplicateOf(owners, owner, ownerFieldsDto.getSharesHousehold()));
+        owner.setMembershipLevel(HouseholdLevelCap.cap(owners, owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
