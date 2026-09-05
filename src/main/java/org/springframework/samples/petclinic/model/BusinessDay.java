@@ -17,20 +17,30 @@ package org.springframework.samples.petclinic.model;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
- * Rolls a date forward onto a business day: a Saturday or Sunday becomes the
- * following Monday, any weekday is returned unchanged.
+ * Rolls a date forward onto a business day: weekends and listed public
+ * holidays are skipped, landing on the next non-holiday weekday.
  */
 public final class BusinessDay {
+
+    private static final Set<LocalDate> HOLIDAYS = Set.of(
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
+            LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"),
+            LocalDate.parse("2026-12-28"));
 
     private BusinessDay() {
     }
 
-    public static LocalDate adjust(LocalDate date) {
+    private static boolean isBusinessDay(LocalDate date) {
         DayOfWeek dow = date.getDayOfWeek();
-        if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) {
-            return date.plusDays(8 - dow.getValue());
+        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !HOLIDAYS.contains(date);
+    }
+
+    public static LocalDate adjust(LocalDate date) {
+        while (!isBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
     }
