@@ -138,6 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         this.clinicService.saveOwner(owner);
@@ -283,6 +284,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Build the membership number '<customerCode>-M<YY>' where YY is the last two digits of the
+     * {@code registrationDate} year (e.g. 'SMI-0007-M26').
+     */
+    private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
+        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        return customerCode + "-M" + yy;
     }
 
     /**
