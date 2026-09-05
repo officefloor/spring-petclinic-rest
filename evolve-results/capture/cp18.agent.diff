@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3bfda36bc..ade5e15a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.service.CityCapacity;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
+@@ -113,6 +114,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (CityCapacity.isFull(owners, owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
+         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java
+new file mode 100644
+index 000000000..c79d6efc7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Enforces the per-city owner cap: a city is full once it already holds
++ * {@value #MAX_OWNERS_PER_CITY} owners, comparing city names case-insensitively.
++ */
++public final class CityCapacity {
++
++    public static final int MAX_OWNERS_PER_CITY = 50;
++
++    private CityCapacity() {
++    }
++
++    public static boolean isFull(Collection<Owner> existing, Owner owner) {
++        String city = owner.getCity();
++        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
++        return inCity >= MAX_OWNERS_PER_CITY;
++    }
++}
