@@ -29,6 +29,9 @@ public class DetectPossibleDuplicate {
         String householdId = HouseholdId.of(owner.getLastName(), owner.getPostcode());
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the duplicate check
+            }
             if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
                 if (match == null || existing.getId() < match.getId()) {
                     match = existing;

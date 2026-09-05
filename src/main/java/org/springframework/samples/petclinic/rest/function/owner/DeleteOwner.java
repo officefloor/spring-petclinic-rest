@@ -7,6 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class DeleteOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true); // soft-delete: flag the row, retain the record
+        ownerRepository.save(owner);
     }
 }

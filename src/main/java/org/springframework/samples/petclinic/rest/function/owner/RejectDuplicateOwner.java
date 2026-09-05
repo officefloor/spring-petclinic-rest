@@ -28,6 +28,9 @@ public class RejectDuplicateOwner {
         }
         String householdId = HouseholdId.of(request.getLastName(), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the duplicate check
+            }
             if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
                 throw new DuplicateIdentityException(IdentityKey.of(request.getTelephone(),
                         request.getEmail(), request.getLastName(), request.getPostcode()));
