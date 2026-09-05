@@ -201,6 +201,15 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The single Luhn check digit (0-9) computed over the decimal digits contained in the
+     * {@link #customerCode}, derived on read.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        return luhnCheckDigit(this.customerCode);
+    }
+
     /** Region -> inclusive 4-digit postcode range {low, high}, used to derive the region from the
      *  postcode ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). */
     private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
