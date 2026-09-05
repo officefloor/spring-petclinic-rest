@@ -1,0 +1,261 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5d0359bff..7ce0de533 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
+     @Mapping(target = "identityKey",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.ofCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+index 4cf54784c..7de5c7b7c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+@@ -1,22 +1,25 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Objects;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Soft-match duplicate detection for create-owner. Runs after the household duplicate block
+- * ({@link RejectDuplicateOwner}), so any owner reaching here that shares an existing owner's household
+- * (same {@link HouseholdId} over last name and postcode) got here only by setting
+- * {@code sharesHousehold} — it is a declared household member. A declared member is not a suspected
+- * duplicate, so it is never flagged: {@code possibleDuplicate} is set false and
+- * {@code possibleDuplicateOf} null.
++ * Soft-match duplicate detection for create-owner. Runs after the identity duplicate block
++ * ({@link RejectDuplicateOwner}), which rejects only an exact {@link IdentityKey} collision. A soft
++ * match is the near-miss the identity key deliberately lets through: an owner whose identityKey
++ * <em>differs</em> from an existing owner's yet shares that owner's {@code soundex(lastName)} and
++ * postcode — for example two members of one household with different telephones (different telephone →
++ * different identityKey). Such an owner is flagged: {@code possibleDuplicate} true and
++ * {@code possibleDuplicateOf} the matching owner's id (the lowest id when several match).
+  *
+- * <p>Otherwise, if the owner nonetheless shares an existing owner's household id it is flagged:
+- * {@code possibleDuplicate} true and {@code possibleDuplicateOf} the matching owner's id (the lowest id
+- * when several match). Runs before the owner is saved, so {@link OwnerRepository#findAll()} sees only
+- * owners that existed before this create.
++ * <p>A request that sets {@code sharesHousehold} true is a declared household member, not a suspected
++ * duplicate, so it is never flagged: {@code possibleDuplicate} false and {@code possibleDuplicateOf}
++ * null. Soft-deleted owners are ignored, as by the duplicate block. Runs before the owner is saved, so
++ * {@link OwnerRepository#findAll()} sees only owners that existed before this create.
+  */
+ public class DetectPossibleDuplicate {
+ 
+@@ -26,13 +29,20 @@ public class DetectPossibleDuplicate {
+             owner.setPossibleDuplicateOf(null);
+             return; // declared household member — not a suspected duplicate
+         }
+-        String householdId = HouseholdId.of(owner.getLastName(), owner.getPostcode());
++        String soundex = Soundex.of(owner.getLastName());
++        String identityKey = IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+         Owner match = null;
+         for (Owner existing : ownerRepository.findAll()) {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // soft-deleted owners are ignored by the duplicate check
+             }
+-            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
++            String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
++                    existing.getLastName());
++            if (identityKey.equals(existingKey)) {
++                continue; // same identityKey is a hard duplicate (409), not a soft match
++            }
++            if (soundex.equals(Soundex.of(existing.getLastName()))
++                    && Objects.equals(owner.getPostcode(), existing.getPostcode())) {
+                 if (match == null || existing.getId() < match.getId()) {
+                     match = existing;
+                 }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index 4a728549f..dfe2dc2c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -4,26 +4,28 @@ import java.util.Locale;
+ 
+ /**
+  * Derives an owner's {@code identityKey}: the single value all duplicate detection is now expressed
+- * through. It is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the
+- * telephone is normalized to E.164 the same way as {@link NormalizeTelephone}/{@link TelephoneE164},
+- * the email is trimmed and lower-cased (empty when absent or blank, the same form as
+- * {@link NormalizeEmail}), and the household component is {@link HouseholdId} over the last name and
+- * postcode. Because the telephone is part of the key, two members of the same household (same
+- * {@code householdId}) with different telephones derive different identityKeys.
++ * through. It is the full lower-case hex {@link Sha256} of {@code normalizedTelephone + '|' +
++ * lowerEmail + '|' + soundex(lastName)}, where the telephone is normalized to E.164 the same way as
++ * {@link NormalizeTelephone}/{@link TelephoneE164}, the email is trimmed and lower-cased (empty when
++ * absent or blank, the same form as {@link NormalizeEmail}), and the surname component is
++ * {@link Soundex} of the last name. Because the telephone is part of the key, two members of the same
++ * household — same {@code soundex(lastName)} and postcode but different telephones — derive different
++ * identityKeys and are not a hard duplicate; the postcode is no longer part of the key, so it is the
++ * soft-match ({@link DetectPossibleDuplicate}) that pairs such owners.
+  */
+ public final class IdentityKey {
+ 
+     private IdentityKey() {
+     }
+ 
+-    public static String of(String telephone, String email, String lastName, String postcode) {
++    public static String of(String telephone, String email, String lastName) {
+         String normalizedTelephone = TelephoneE164.normalizeOrNull(telephone);
+         if (normalizedTelephone == null) {
+             normalizedTelephone = telephone == null ? "" : telephone.trim();
+         }
+         String normalizedEmail = (email == null || email.isBlank())
+                 ? "" : email.trim().toLowerCase(Locale.ROOT);
+-        String householdId = HouseholdId.of(lastName, postcode);
+-        return normalizedTelephone + "|" + normalizedEmail + "|" + householdId;
++        String soundex = Soundex.of(lastName);
++        return Sha256.hex(normalizedTelephone + "|" + normalizedEmail + "|" + soundex);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
+index f9f47704a..07a191fdd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
+@@ -6,18 +6,19 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Identity duplicate detection for create-owner — "the duplicate block". Detection keys off the full
+- * {@link IdentityKey} ({@code normalizedTelephone + '|' + email + '|' + householdId}): a create is
+- * rejected via {@link DuplicateIdentityException} (turned into a 409 by the global handler) only when
+- * its identityKey collides with an existing owner's. Because the telephone is part of the key, distinct
+- * members of the same household — same last name and postcode but different telephones — derive
+- * different identityKeys and coexist; only a genuine identity collision is rejected.
++ * Identity duplicate detection for create-owner — "the duplicate block", now the single duplicate
++ * check (the old household-duplicate 409 no longer exists). Detection keys off the full
++ * {@link IdentityKey} — the SHA-256 hex over {@code normalizedTelephone + '|' + lowerEmail + '|' +
++ * soundex(lastName)}: a create is rejected via {@link DuplicateIdentityException} (turned into a 409 by
++ * the global handler) only when its identityKey collides with an existing owner's. Because the
++ * telephone is part of the key, distinct members of the same household — same last name and postcode
++ * but different telephones — derive different identityKeys and coexist; only a genuine identity
++ * collision is rejected. Such household members are instead flagged by the soft-match
++ * ({@link DetectPossibleDuplicate}).
+  *
+  * <p>A request that sets {@code sharesHousehold} true bypasses this block: it is a declared household
+- * member and is created (see {@link DetectPossibleDuplicate}, which does not flag a declared member as a
+- * suspected duplicate). {@code sharesHousehold} now only bypasses the duplicate block; the shared
+- * {@code householdId} is derived automatically, not linked. Runs before the owner is built and saved,
+- * so {@link OwnerRepository#findAll()} sees only the owners that existed before this create.
++ * member and is created. Runs before the owner is built and saved, so
++ * {@link OwnerRepository#findAll()} sees only the owners that existed before this create.
+  */
+ public class RejectDuplicateOwner {
+ 
+@@ -27,13 +28,13 @@ public class RejectDuplicateOwner {
+             return; // declared household member — bypass the duplicate block
+         }
+         String identityKey = IdentityKey.of(request.getTelephone(), request.getEmail(),
+-                request.getLastName(), request.getPostcode());
++                request.getLastName());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // soft-deleted owners are ignored by the duplicate check
+             }
+             String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
+-                    existing.getLastName(), existing.getPostcode());
++                    existing.getLastName());
+             if (identityKey.equals(existingKey)) {
+                 throw new DuplicateIdentityException(identityKey);
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+new file mode 100644
+index 000000000..fd3f05b91
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+@@ -0,0 +1,55 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * American Soundex of a name — the phonetic code the owner identity now hashes over (see
++ * {@link IdentityKey}) and the soft-match ({@link DetectPossibleDuplicate}) groups by. The code is the
++ * first letter followed by three digits derived from the remaining consonants (b,f,p,v→1;
++ * c,g,j,k,q,s,x,z→2; d,t→3; l→4; m,n→5; r→6), where adjacent letters with the same digit — including a
++ * pair separated only by {@code h}/{@code w} — collapse to one, vowels (and {@code y}) reset the run,
++ * and the result is zero-padded or truncated to four characters. Non-letters are dropped first; a
++ * value with no letters yields an empty string. Deterministic, so both the create-time duplicate check
++ * and the mapped response derive the identical value.
++ */
++public final class Soundex {
++
++    /** A–Z → Soundex digit; '0' marks vowels and the ignored {@code h}/{@code w}. */
++    private static final char[] MAP = "01230120022455012623010202".toCharArray();
++
++    private Soundex() {
++    }
++
++    public static String of(String value) {
++        if (value == null) {
++            return "";
++        }
++        StringBuilder letters = new StringBuilder();
++        for (int i = 0; i < value.length(); i++) {
++            char c = Character.toUpperCase(value.charAt(i));
++            if (c >= 'A' && c <= 'Z') {
++                letters.append(c);
++            }
++        }
++        if (letters.length() == 0) {
++            return "";
++        }
++        char first = letters.charAt(0);
++        StringBuilder code = new StringBuilder();
++        code.append(first);
++        char last = MAP[first - 'A'];
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char ch = letters.charAt(i);
++            if (ch == 'H' || ch == 'W') {
++                continue; // ignored: does not break a run of same-coded consonants
++            }
++            char digit = MAP[ch - 'A'];
++            if (digit != '0' && digit != last) {
++                code.append(digit);
++            }
++            last = digit; // vowels reset the run so later same-coded consonants still count
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 58dc8f0fe..419f01502 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2160,9 +2160,9 @@ components:
+               readOnly: true
+             identityKey:
+               title: Identity key
+-              description: "Server-assigned key that all duplicate detection is expressed through: normalizedTelephone + '|' + (email or empty) + '|' + householdId. Two owners are duplicates only when their whole identityKey matches; because the telephone is part of the key, two members of the same household with different telephones have different identityKeys. Derived deterministically, so it is stable across requests."
++              description: "Server-assigned key that all duplicate detection is expressed through: the lower-case hex SHA-256 over normalizedTelephone + '|' + (email or empty, lower-cased) + '|' + soundex(lastName). Two owners are duplicates only when their whole identityKey matches; because the telephone is part of the key, two members of the same household with different telephones have different identityKeys (they surface instead as a soft match). Derived deterministically, so it is stable across requests."
+               type: string
+-              example: "+61412345678|george.franklin@example.com|A1B2C3D4E5F6"
++              example: "3f8a1c2d4e5b6a7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e"
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
+@@ -2221,13 +2221,13 @@ components:
+               readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+-              description: "True when this owner shares an existing owner's household (same householdId, derived from lastName and postcode) but was not rejected as a household duplicate; otherwise false. A declared household member (created with sharesHousehold true) is never flagged."
++              description: "True when this owner's identityKey differs from an existing owner's yet shares that owner's soundex(lastName) and postcode (a near-miss the identity key lets through, e.g. same household with a different telephone); otherwise false. A declared household member (created with sharesHousehold true) is never flagged."
+               type: boolean
+               example: false
+               readOnly: true
+             possibleDuplicateOf:
+               title: Possible duplicate of
+-              description: "When possibleDuplicate is true, the id of the existing owner whose household (householdId, derived from lastName and postcode) this owner shares; otherwise absent (null)."
++              description: "When possibleDuplicate is true, the id of the existing owner (lowest id when several match) whose soundex(lastName) and postcode this owner shares; otherwise absent (null)."
+               type: integer
+               format: int32
+               minimum: 0
