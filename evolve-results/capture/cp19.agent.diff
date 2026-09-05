@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ade5e15a9..711654f89 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.CityCapacity;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
++import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
+ import org.springframework.samples.petclinic.service.NamesakeCounter;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -106,6 +107,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         Collection<Owner> owners = this.clinicService.findAllOwners();
++        if (DailyRegistrationLimit.isReached(owners)) {
++            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++        }
+         String telephone = owner.getTelephone();
+         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimit.java b/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimit.java
+new file mode 100644
+index 000000000..367620e8e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DailyRegistrationLimit.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Enforces the per-day owner cap: creation is blocked once
++ * {@value #MAX_OWNERS_PER_DAY} owners already share today's registration date.
++ */
++public final class DailyRegistrationLimit {
++
++    public static final int MAX_OWNERS_PER_DAY = 100;
++
++    private DailyRegistrationLimit() {
++    }
++
++    public static boolean isReached(Collection<Owner> existing) {
++        LocalDate today = LocalDate.now();
++        long createdToday = existing.stream().filter(o -> today.equals(o.getRegistrationDate())).count();
++        return createdToday >= MAX_OWNERS_PER_DAY;
++    }
++}
