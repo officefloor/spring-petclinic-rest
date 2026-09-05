@@ -154,6 +154,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), registrationDate));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -449,6 +450,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isHouseholdInUse(Owner owner) {
         return !findHousemates(owner).isEmpty();
+    }
+
+    /**
+     * The number of owners in {@code owner}'s household once this owner is created, i.e. the existing
+     * housemates (owners sharing the same {@code householdId}) plus {@code owner} itself. A value of
+     * 3 or more raises the membership tier to GOLD.
+     */
+    private int countHouseholdMembers(Owner owner) {
+        return findHousemates(owner).size() + 1;
     }
 
     /**
