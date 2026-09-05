@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,6 +54,9 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Syntactic email check: a non-empty local part, an '@', and a dotted domain, none containing spaces. */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final ClinicService clinicService;
 
@@ -101,6 +106,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (owner.getEmail() != null) {
+            String email = owner.getEmail().trim().toLowerCase(Locale.ROOT);
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            owner.setEmail(email);
+        }
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
         if (telephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -133,6 +145,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        String email = ownerFieldsDto.getEmail();
+        if (email != null) {
+            email = email.trim().toLowerCase(Locale.ROOT);
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+        }
+        currentOwner.setEmail(email);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
