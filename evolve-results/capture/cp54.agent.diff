@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 26ee847dc..bbfe6b29b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -308,9 +308,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private OwnerDto buildOwnerDto(Owner owner) {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
++        ownerDto.setCapacityWarning(isCapacityWarning(owner));
+         return ownerDto;
+     }
+ 
++    /**
++     * Whether {@code owner}'s city is approaching its per-city capacity limit: it already holds between
++     * 40 and 49 other owners, one short of the hard limit of 50 at which creation is rejected.
++     * Surfaced on responses as {@code capacityWarning}. Computed against the current owner population
++     * excluding this owner, so the count basis mirrors the per-city create gate (which counts the
++     * owners already present, before the new one is added).
++     */
++    private boolean isCapacityWarning(Owner owner) {
++        long othersInCity = countOtherOwnersInCity(owner);
++        return othersInCity >= 40 && othersInCity < 50;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+@@ -594,6 +607,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * The number of existing owners in {@code owner}'s city other than {@code owner} itself, compared
++     * case-insensitively with collapsed whitespace. This is the count of owners already present in the
++     * city that a newly created owner joins, mirroring the basis of the per-city create gate.
++     */
++    private long countOtherOwnersInCity(Owner owner) {
++        String normalized = normalizeHouseholdField(owner.getCity());
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getId() == null || !existing.getId().equals(owner.getId()))
++            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
++            .count();
++    }
++
+     /**
+      * The effective registration date to store for a new owner: the date supplied on the request
+      * when present, otherwise the current server date, in either case rolled forward to a business
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 555689050..bf5a05d76 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2304,6 +2304,14 @@ components:
+               type: boolean
+               readOnly: true
+               example: false
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already holds between 40 and 49 other owners
++                (approaching the per-city capacity limit of 50, at which creation is rejected);
++                otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: Whether this owner has been soft-deleted. False for a newly created owner;
