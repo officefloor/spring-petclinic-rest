@@ -137,7 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
@@ -275,15 +275,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code '<LAST3>-<NNNN>': LAST3 is the upper-cased first three letters
-     * of {@code lastName} and NNNN is a global 4-digit zero-padded sequence equal to one more
-     * than the current number of owners (e.g. 'SMI-0007').
+     * Build the customer code '<CITY3>-<LAST3>-<NNNN>': CITY3 is the upper-cased first three
+     * letters of {@code city}, LAST3 the upper-cased first three letters of {@code lastName},
+     * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
+     * owners already registered in that city (e.g. 'SYD-SMI-0007').
      */
-    private String generateCustomerCode(String lastName) {
-        String letters = lastName.replaceAll("[^\\p{L}]", "");
-        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+    private String generateCustomerCode(String city, String lastName) {
+        String city3 = firstThreeLetters(city);
+        String last3 = firstThreeLetters(lastName);
+        int sequence = countOwnersInCity(city) + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /** The upper-cased first three letters (ignoring non-letters) of {@code value}. */
+    private static String firstThreeLetters(String value) {
+        String letters = value == null ? "" : value.replaceAll("[^\\p{L}]", "");
+        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * The number of existing owners registered in {@code city}, compared case-insensitively
+     * with collapsed whitespace.
+     */
+    private int countOwnersInCity(String city) {
+        String normalized = normalizeHouseholdField(city);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalized))
+            .count();
     }
 
     /**
