@@ -1,0 +1,234 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5ea4f76a4..c02b8ddeb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,9 @@ public class Owner extends Person {
+     @Column(name = "membership_level")
+     private Integer membershipLevel;
+ 
++    @Column(name = "membership_points")
++    private Integer membershipPoints;
++
+     @Column(name = "postcode")
+     private String postcode;
+ 
+@@ -175,6 +178,14 @@ public class Owner extends Person {
+         this.membershipLevel = membershipLevel;
+     }
+ 
++    public Integer getMembershipPoints() {
++        return this.membershipPoints;
++    }
++
++    public void setMembershipPoints(Integer membershipPoints) {
++        this.membershipPoints = membershipPoints;
++    }
++
+     public String getPostcode() {
+         return this.postcode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index 0da04d5b5..fe11de9fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -7,32 +7,51 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Assigns the numeric {@code membershipLevel} at creation time. The level starts at {@code 1},
+- * gains {@code 1} when the owner has an email, and gains a further {@code 1} when
+- * {@code namesakeCount} is {@code 0} — so the factors available at creation cap the level at
+- * {@code 3}. Level {@code 4} requires tenure of more than {@code 365} days (days between the
+- * owner's {@code registrationDate} and the current server date). A newly created owner has zero
+- * tenure, so a new owner never exceeds level {@code 3}: a new owner with an email, a
+- * {@code namesakeCount} of {@code 0} and a 3-member household is level {@code 3}, not {@code 4}.
+- * Runs after {@link CountNamesakes} so {@code namesakeCount} is already set.
++ * Assigns the {@code membershipPoints} score and the derived numeric {@code membershipLevel} at
++ * creation time. Points start at {@code 0} and accrue: {@code 2} when the owner has an email,
++ * {@code 1} when {@code namesakeCount} is {@code 0}, {@code 2} for a household of {@code 3} or more
++ * (from {@code householdSize}), and {@code 3} for tenure over {@code 365} days (days between the
++ * owner's {@code registrationDate} and the current server date). Points map to a level as
++ * {@code 1} (0-1 points), {@code 2} (2-3), {@code 3} (4-5) and {@code 4} (6 or more). Runs after
++ * {@link CountNamesakes} and {@link CountHousehold} so both counts are already set.
+  */
+ public class AssignMembershipLevel {
+ 
+-    /** Tenure, in days, above which the owner qualifies for level 4. */
++    /** Tenure, in days, above which the owner qualifies for the tenure points. */
+     private static final long TENURE_THRESHOLD_DAYS = 365;
+ 
++    /** Household size at or above which the household points are awarded. */
++    private static final int HOUSEHOLD_THRESHOLD = 3;
++
+     public void service(@Val Owner owner) {
+-        int level = 1;
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_THRESHOLD) {
++            points += 2;
+         }
+         if (tenureDays(owner) > TENURE_THRESHOLD_DAYS) {
+-            level++;
++            points += 3;
++        }
++        owner.setMembershipPoints(points);
++        owner.setMembershipLevel(levelForPoints(points));
++    }
++
++    private static int levelForPoints(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        owner.setMembershipLevel(level);
++        return 4;
+     }
+ 
+     private static long tenureDays(Owner owner) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 106a168e8..2dd6919c2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level INTEGER,
++  membership_points INTEGER,
+   postcode VARCHAR(4),
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index c96a6f717..0a04da898 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0480b93fc..4b17f7c9f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,6 +50,7 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level INTEGER,
++  membership_points INTEGER,
+   postcode VARCHAR(4),
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a28e253e8..6c6181c97 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BIT,
+   household_size INTEGER,
+   membership_level INTEGER,
++  membership_points INTEGER,
+   postcode VARCHAR(4),
+   birth_date DATE,
+   possible_duplicate BIT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c2a3f457d..c9746d1a6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       membership_level INTEGER,
++                                      membership_points INTEGER,
+                                       postcode TEXT,
+                                       birth_date DATE,
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 3a19cb97c..e40d65b90 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -69,16 +69,16 @@ assignMembershipNumber:
+ countNamesakes:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountNamesakes
+   govern: [ transaction ]
+-  next: assignMembershipLevel
+-
+-assignMembershipLevel:
+-  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
+-  govern: [ transaction ]
+   next: countHousehold
+ 
+ countHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHousehold
+   govern: [ transaction ]
++  next: assignMembershipLevel
++
++assignMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
++  govern: [ transaction ]
+   next: flagBulkSignup
+ 
+ flagBulkSignup:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ca9596f42..1f8a8d14b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2142,14 +2142,22 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "Points score assigned at creation. Starts at 0, plus 2 when an email is present, plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more, plus 3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "Numeric membership level assigned at creation. Starts at 1, plus 1 when an email is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              description: "Numeric membership level derived from membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more)."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
