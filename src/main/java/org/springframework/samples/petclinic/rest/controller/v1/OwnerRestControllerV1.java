@@ -125,6 +125,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -279,5 +282,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(OwnerRestControllerV1::normalizeTelephone)
             .filter(existing -> existing != null)
             .anyMatch(telephone::equals);
+    }
+
+    /**
+     * Canonical form for comparing a household field: trimmed, inner whitespace collapsed
+     * to single spaces and lower-cased, so the match is case-insensitive and whitespace-insensitive.
+     */
+    private static String normalizeHouseholdField(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether any existing owner already shares the same household as {@code owner}, i.e. has the
+     * same last name AND the same address compared case-insensitively with collapsed whitespace.
+     */
+    private boolean isHouseholdInUse(Owner owner) {
+        String lastName = normalizeHouseholdField(owner.getLastName());
+        String address = normalizeHouseholdField(owner.getAddress());
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
+                && normalizeHouseholdField(existing.getAddress()).equals(address));
     }
 }
