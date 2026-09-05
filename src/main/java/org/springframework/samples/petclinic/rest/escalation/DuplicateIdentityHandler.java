@@ -6,12 +6,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 to a {@link DuplicateTelephoneException}: the create-owner normalized
- * telephone is already used by another owner.
+ * Responds 409 to a {@link DuplicateIdentityException}: the create-owner identity key
+ * (normalized telephone, email and household id) is already used by another owner.
  */
-public class DuplicateTelephoneHandler {
+public class DuplicateIdentityHandler {
 
-    public void handle(@Parameter DuplicateTelephoneException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<String>> response) {
         response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
     }
