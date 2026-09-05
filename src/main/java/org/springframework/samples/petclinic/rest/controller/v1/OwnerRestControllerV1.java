@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RejectedRequestAdvice.RejectedRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -108,13 +109,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
         if (DailyRegistrationLimit.isReached(owners)) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS, "Daily owner registration limit reached");
         }
         if (IdentityKey.isDuplicate(owners, owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT, "An owner with the same identity already exists");
         }
         if (CityCapacity.isFull(owners, owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT, "The city is at owner capacity");
         }
         OwnerRegistration.enrich(owners, owner, ownerFieldsDto.getSharesHousehold());
         this.clinicService.saveOwner(owner);
