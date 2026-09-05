@@ -12,9 +12,9 @@ import java.util.Map;
  * normalizes to the empty string.
  *
  * <p>This is the single normalized form used everywhere an address matters: it is what
- * {@link NormalizeAddress} stores on the request (so it is persisted and returned), what
- * {@link RequireOwnerFields} tests for blankness, and what {@link HouseholdId} compares, so both the
- * derived {@link IdentityKey} used for duplicate detection and the shared household id agree.
+ * {@link NormalizeAddress} stores on the request (so it is persisted and returned) and what
+ * {@link RequireOwnerFields} tests for blankness. (The household id is keyed on last name and
+ * postcode, not the address — see {@link HouseholdId}.)
  */
 public final class AddressNormalizer {
 

@@ -7,21 +7,21 @@ import java.util.Locale;
 
 /**
  * Derives an owner's {@code householdId}: a stable identifier shared by every owner with the same
- * last name and address (one household). The last name is normalized (trim, collapse runs of
- * whitespace to a single space, lower-case) and the address in the normalized form
- * ({@link AddressNormalizer}) — the same form the derived {@link IdentityKey} builds its household
- * component from — before hashing, so owners created with {@code sharesHousehold} true, who by
- * definition match an existing owner's last name and address, derive the identical value. Computed as
- * the first 12 upper-case hex characters of SHA-256 over the normalized pair, so it is stable across
- * requests and needs no persisted column.
+ * last name and postcode (one household). The last name is normalized (trim, collapse runs of
+ * whitespace to a single space, lower-case) and joined to the postcode with a {@code '|'} separator
+ * before hashing, so owners with the same last name and postcode — including one created with
+ * {@code sharesHousehold} true, which by definition matches an existing owner's last name and
+ * postcode — derive the identical value. Computed as the first 12 upper-case hex characters of
+ * SHA-256 over {@code normalizedLastName + '|' + postcode}, so it is stable across requests and needs
+ * no persisted column.
  */
 public final class HouseholdId {
 
     private HouseholdId() {
     }
 
-    public static String of(String lastName, String address) {
-        String key = normalize(lastName) + "\n" + AddressNormalizer.normalize(address);
+    public static String of(String lastName, String postcode) {
+        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
