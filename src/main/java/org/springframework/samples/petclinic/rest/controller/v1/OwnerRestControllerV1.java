@@ -119,6 +119,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        String email = owner.getEmail();
+        if (email != null && owners.stream().anyMatch(o -> email.equals(o.getEmail()))) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
                 && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
