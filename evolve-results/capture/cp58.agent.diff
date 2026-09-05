@@ -1,0 +1,81 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 865870013..31910a8c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -15,6 +15,7 @@ public class RespondWithOwner {
+         dto.setMembershipLevel(MembershipCap.level(owner, dto.getMembershipLevel(), ownerRepository));
+         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
+         dto.setCapacityWarning(CityCapacity.approaching(owner.getCity(), ownerRepository));
++        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+         dto.setSelfLink("/api/owners/" + owner.getId());
+         response.send(dto);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 000000000..d5af860b4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Derives an owner's {@code riskFlag}: {@code true} when any risk signal holds — the owner
++ * is a possible duplicate ({@link DetectPossibleDuplicate}), its email domain is
++ * disposable-adjacent, or its city is over soft capacity ({@link CityCapacity}) — otherwise
++ * {@code false}. Read-only; nothing is mutated.
++ *
++ * <p>A domain is <em>disposable-adjacent</em> when its second-level label matches that of a
++ * known disposable provider (mailinator, tempmail, guerrillamail) under any suffix — the exact
++ * blocked domains are already refused at creation by {@link NormaliseEmail}, so this catches the
++ * look-alikes (e.g. {@code mailinator.net}) that slip through.
++ */
++public final class RiskFlag {
++
++    private static final Set<String> DISPOSABLE_LABELS = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private RiskFlag() {
++    }
++
++    public static boolean of(Owner owner, OwnerRepository ownerRepository) {
++        return owner.getPossibleDuplicateOf() != null
++                || disposableAdjacent(owner.getEmail())
++                || CityCapacity.approaching(owner.getCity(), ownerRepository);
++    }
++
++    private static boolean disposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.indexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        int dot = domain.indexOf('.');
++        String label = dot < 0 ? domain : domain.substring(0, dot);
++        return DISPOSABLE_LABELS.contains(label);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5973e6e31..63edaa7dc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2228,6 +2228,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: "True when any risk signal holds: the owner is a possible duplicate, its email domain is disposable-adjacent, or its city is over soft capacity; otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: "True when this owner has been soft-deleted (record retained but flagged); false for an active owner."
