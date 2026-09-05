@@ -1,10 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 /**
- * Computes the Luhn {@code checkDigit} (0-9) over the digits contained in an owner's
- * {@code customerCode}. Non-digit characters (the separating dashes) are ignored, so the
- * check digit is taken over the CITY3/LAST3/NNNN digits alone. Derived deterministically
- * from the customer code, so it is stable across requests and needs no persisted column.
+ * Computes the Luhn {@code checkDigit} (0-9) over the decimal digits contained in an owner's
+ * {@code customerCode}. Non-digit characters (the separating dash and the hex letters {@code A-F}
+ * of the hash) are ignored, so the check digit is taken over the decimal digits of the
+ * {@code <REGION>-<HASH8>} identity alone. Derived deterministically from the customer code, so it
+ * is stable across requests and needs no persisted column.
  */
 public final class CheckDigit {
 

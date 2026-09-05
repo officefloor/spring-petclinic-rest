@@ -5,8 +5,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the {@code membershipNumber} formatted {@code <customerCode>-M<YY>}, where YY is
- * the last two digits of the owner's {@code registrationDate} year (e.g. {@code LON-SMI-0007-M26}).
- * Runs after {@link AssignCustomerCode} and after the registration date has been defaulted.
+ * the last two digits of the owner's {@code registrationDate} year (e.g. {@code NSW-1A2B3C4D-M26}).
+ * Runs after {@link AssignCustomerCode} and after the registration date has been defaulted, so it
+ * carries the new region-and-hash {@code customerCode}.
  */
 public class AssignMembershipNumber {
 

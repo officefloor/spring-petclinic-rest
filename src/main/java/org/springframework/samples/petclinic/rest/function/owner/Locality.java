@@ -38,4 +38,21 @@ public final class Locality {
         }
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * The locality read back off the owner's {@code customerCode} identity ({@code <REGION>-<HASH8>},
+     * see {@link AssignCustomerCode}): the REGION segment before the first {@code '-'}. Returns
+     * {@code "UNKNOWN"} when the code is null or carries no region segment, so locality now flows from
+     * the same region-and-hash identity rather than being derived independently.
+     */
+    public static String ofCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return UNKNOWN;
+        }
+        int dash = customerCode.indexOf('-');
+        if (dash <= 0) {
+            return UNKNOWN;
+        }
+        return customerCode.substring(0, dash);
+    }
 }
