@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * Derives an owner's {@code identityKey}: the single value that consolidates all
  * duplicate detection for {@code POST /api/owners}. The key is the SHA-256 hex digest (see
  * {@link Sha256}, 64 lower-case hex characters) of
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}, where the
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)},
+ * where {@code 'V2'} is the fixed version-2 tag (see {@link OwnerMemberId#VERSION_TAG}), the
  * telephone is in E.164 form (see {@link E164Telephone}), the email is lower-cased and the last
  * name is folded to its Soundex code (see {@link NameSoundex}). Two owners are duplicates only
  * when their WHOLE keys are equal, so — because the telephone is part of the key — two owners
@@ -40,6 +41,7 @@ public final class OwnerIdentity {
         String normalizedTelephone = tel == null ? "" : tel;
         String normalizedEmail = email == null ? "" : email.toLowerCase(Locale.ROOT);
         String soundex = NameSoundex.of(lastName);
-        return Sha256.hex(normalizedTelephone + "|" + normalizedEmail + "|" + soundex);
+        return Sha256.hex(OwnerMemberId.VERSION_TAG + "|" + normalizedTelephone + "|" + normalizedEmail
+                + "|" + soundex);
     }
 }

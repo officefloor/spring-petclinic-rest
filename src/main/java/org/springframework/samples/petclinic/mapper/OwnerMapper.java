@@ -28,7 +28,8 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
@@ -109,11 +110,28 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's {@code identityKey}: the single value that consolidates all
-     * duplicate detection, the SHA-256 hex digest of {@code normalizedTelephone + '|' +
-     * (email or empty) + '|' + soundex(lastName)}.
+     * duplicate detection, the SHA-256 hex digest of {@code 'V2' + '|' + normalizedTelephone +
+     * '|' + (email or empty) + '|' + soundex(lastName)}, where {@code 'V2'} is the fixed
+     * version-2 tag.
      */
     default String toIdentityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner);
+    }
+
+    /**
+     * Builds the owner's version-2 {@code identity} object, grouping the {@code memberId}, the
+     * {@code identityKey} and the {@code householdId}. Each identifier mixes in the fixed 'V2'
+     * version tag (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId#VERSION_TAG}),
+     * so it differs from any value produced under version 1; the tag stays inside these
+     * identifiers and never reaches {@code locality}, {@code timezone} or {@code ownerSegment}.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toIdentity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(toIdentityKey(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
     }
 
     /**

@@ -28,14 +28,19 @@ public final class OwnerHouseholdId {
 
     /**
      * The household id for the given parts: the first 12 hex characters of
-     * {@code SHA-256(normalizedLastName + '|' + postcode)}. The last name is trimmed, its
-     * internal whitespace collapsed and lower-cased (an absent last name contributes empty);
-     * the postcode is trimmed (an absent postcode contributes empty).
+     * {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}, where {@code 'V2'} is
+     * the fixed version-2 tag (see {@link OwnerMemberId#VERSION_TAG}) mixed in so every
+     * identifier changes and no value produced under version 1 is produced again. The last name
+     * is trimmed, its internal whitespace collapsed and lower-cased (an absent last name
+     * contributes empty); the postcode is trimmed (an absent postcode contributes empty). The
+     * tag is a fixed constant, so owners sharing a last name and postcode still receive the
+     * same household id.
      */
     public static String of(String lastName, String postcode) {
         String normalizedLastName = normalizeLastName(lastName);
         String normalizedPostcode = postcode == null ? "" : postcode.trim();
-        return Sha256.hex(normalizedLastName + "|" + normalizedPostcode).substring(0, 12);
+        return Sha256.hex(OwnerMemberId.VERSION_TAG + "|" + normalizedLastName + "|" + normalizedPostcode)
+                .substring(0, 12);
     }
 
     private static String normalizeLastName(String value) {

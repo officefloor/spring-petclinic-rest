@@ -20,9 +20,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * <ol>
  * <li>a human-readable audit line carrying the owner id, the {@code memberId},
  * the {@code registrationDate} and the {@code membershipLevel}; and
- * <li>an immutable structured event, a JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}},
- * where {@code seq} is a monotonically increasing integer across all creates.
+ * <li>an immutable structured event, a version-2 JSON object
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}},
+ * where {@code schemaVersion} is the event schema version (2) and {@code seq} is a
+ * monotonically increasing integer across all creates.
  * </ol>
  *
  * <p>The event carries the owner's <em>primary identifier</em>, the unified
@@ -33,6 +34,10 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** The audit event schema version. Version 2 adds this {@code schemaVersion} field itself
+     *  and carries the version-2 {@code memberId}. */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
 
     /** Monotonically increasing sequence shared across every owner-create event. */
     private static final AtomicLong SEQUENCE = new AtomicLong();
@@ -45,6 +50,7 @@ public class AuditOwnerCreated {
                 ownerMapper.toMembershipLevel(owner));
 
         Map<String, Object> event = new LinkedHashMap<>();
+        event.put("schemaVersion", AUDIT_SCHEMA_VERSION);
         event.put("seq", SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));

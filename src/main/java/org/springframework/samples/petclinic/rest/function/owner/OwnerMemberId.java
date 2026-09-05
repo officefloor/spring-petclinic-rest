@@ -46,14 +46,34 @@ public final class OwnerMemberId {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
             "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /**
+     * The fixed version-2 tag mixed into the region code that goes <em>inside</em> the
+     * identifiers (see {@link #regionV2}). It is only ever prefixed onto the region segment of
+     * the {@code memberId} (and the sibling {@code householdId}/{@code identityKey} tags); the
+     * user-facing {@code locality} stays the plain {@link #region} code, so this tag never
+     * leaks into {@code locality}, {@code timezone} or the owner segment.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerMemberId() {
     }
 
     /** The full {@code <REGION><FY><HASH8><CHK>} member id for the given owner fields. */
     public static String of(String postcode, String city, String telephone, String lastName,
             LocalDate registrationDate) {
-        String body = region(postcode, city) + fiscalYear(registrationDate) + hash8(telephone, lastName);
+        String body = regionV2(postcode, city) + fiscalYear(registrationDate) + hash8(telephone, lastName);
         return body + luhn(body);
+    }
+
+    /**
+     * The version-2 region code used <em>inside</em> the identifiers: the plain {@link #region}
+     * code with the fixed {@link #VERSION_TAG 'V2'} version tag mixed in (e.g. {@code NSW ->
+     * V2NSW}). Distinct from {@link #region} so every identifier changes and no value produced
+     * under version 1 is produced again, while the user-facing {@code locality} keeps the plain
+     * region.
+     */
+    public static String regionV2(String postcode, String city) {
+        return VERSION_TAG + region(postcode, city);
     }
 
     /** The two-digit fiscal-year segment (e.g. {@code 26}) for a registration date. */
@@ -62,20 +82,24 @@ public final class OwnerMemberId {
     }
 
     /**
-     * The REGION segment encoded in an existing member id, i.e. the leading run of letters that
-     * precedes the {@code <FY>} digits (see {@link #of}). Returns {@code null} when {@code id} is
-     * absent or carries no region segment. The inverse of {@link #of}: callers read the region
-     * back out of the id here instead of re-parsing the format themselves.
+     * The <em>plain</em> REGION segment encoded in an existing member id (e.g. {@code NSW}),
+     * i.e. the leading run of letters that precedes the {@code <FY>} digits (see {@link #of}),
+     * with the version-2 {@link #VERSION_TAG 'V2'} tag stripped off first so the recovered
+     * region never carries it. Returns {@code null} when {@code id} is absent or carries no
+     * region segment. The inverse of {@link #of}: callers (such as the mapper's {@code
+     * locality}) read the plain region back out of the id here instead of re-parsing the format
+     * themselves, keeping the tag inside the identifier only.
      */
     public static String regionOf(String id) {
         if (id == null) {
             return null;
         }
+        String rest = id.startsWith(VERSION_TAG) ? id.substring(VERSION_TAG.length()) : id;
         int i = 0;
-        while (i < id.length() && Character.isLetter(id.charAt(i))) {
+        while (i < rest.length() && Character.isLetter(rest.charAt(i))) {
             i++;
         }
-        return i > 0 ? id.substring(0, i) : null;
+        return i > 0 ? rest.substring(0, i) : null;
     }
 
     /**
