@@ -18,6 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
@@ -33,6 +34,17 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code selfLink}: the canonical API path {@code /api/owners/} followed by
+     * the owner's id. Returns null when the owner has no id (e.g. before it has been persisted).
+     */
+    default String toSelfLink(Owner owner) {
+        if (owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives the owner's {@code fiscalYear}: the fiscal year of the business-day-adjusted
