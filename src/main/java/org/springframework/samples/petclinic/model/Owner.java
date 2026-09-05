@@ -249,6 +249,30 @@ public class Owner extends Person {
         return null;
     }
 
+    /** The single Luhn check digit (0-9) over the decimal digits contained in {@code value}, scanning
+     *  right to left and doubling every second digit; non-digit characters are ignored and a null or
+     *  digit-free value yields {@code 0}. */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean doubling = true;
+        for (int i = (value == null ? 0 : value.length()) - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubling) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubling = !doubling;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
