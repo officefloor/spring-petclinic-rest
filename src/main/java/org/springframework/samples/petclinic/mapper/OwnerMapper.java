@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getAddress()))")
     @Mapping(target = "membershipTier",
-            expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\")")
+            expression = "java((owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) ? \"GOLD\" : ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
