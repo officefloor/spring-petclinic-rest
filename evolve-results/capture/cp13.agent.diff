@@ -1,0 +1,113 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 624d0b08e..f0fc58a75 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Transient
+     private String customerCode;
+ 
++    @Transient
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2774e5ead..b9fd504f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
++import org.springframework.samples.petclinic.service.NamesakeCounter;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -111,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
+         String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
+         owner.setCustomerCode(String.format("%s-%04d", last3, owners.size() + 1));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java b/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java
+new file mode 100644
+index 000000000..7cebf8af1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Counts existing owners that are namesakes of a given owner: identical first name and
++ * last name compared case-insensitively.
++ */
++public final class NamesakeCounter {
++
++    private NamesakeCounter() {
++    }
++
++    public static int count(Collection<Owner> existing, Owner owner) {
++        String firstName = owner.getFirstName();
++        String lastName = owner.getLastName();
++        return (int) existing.stream()
++            .filter(o -> firstName.equalsIgnoreCase(o.getFirstName())
++                && lastName.equalsIgnoreCase(o.getLastName()))
++            .count();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e2460650a..e65b97c4c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2097,6 +2097,14 @@ components:
+               type: string
+               example: '5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of existing owners sharing this owner's first and last name (case-insensitive) at creation time.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
