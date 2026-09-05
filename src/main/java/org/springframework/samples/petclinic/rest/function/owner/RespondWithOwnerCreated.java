@@ -14,10 +14,7 @@ public class RespondWithOwnerCreated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setBulkSignupWarning(BulkSignup.warning(ownerRepository));
-        dto.setCapacityWarning(CityCapacity.warning(owner, ownerRepository));
-        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+        OwnerDto dto = OwnerResponse.enriched(owner, ownerMapper, ownerRepository);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

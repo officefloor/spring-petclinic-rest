@@ -24,14 +24,14 @@ import java.util.Map;
  * </ul>
  *
  * <p>The whole owner identity — the {@code memberId} itself, the create audit record and the
- * derived locality and fiscal year — flows from this single value. There is no sequence
- * number; de-duplication of a collided {@code memberId} is handled in {@link AssignMemberId}.
+ * derived locality — flows from this single value. There is no sequence number;
+ * de-duplication of a collided {@code memberId} is handled in {@link AssignMemberId}.
  *
  * <p>Composition and decomposition of the id format live together here: {@link #of} builds an
- * id, {@link #regionOf} reads the region back out of one, {@link #fiscalYearOf} reads the FY
- * segment, and {@link #luhn} is the check over its digits. Callers (the owner mapper's
- * {@code locality} and {@code fiscalYear}) delegate rather than re-deriving the format, so it
- * is described in one place.
+ * id, {@link #regionOf} reads the region back out of one, and {@link #luhn} is the check over
+ * its digits. The owner mapper's {@code locality} delegates to {@link #regionOf} rather than
+ * re-deriving the format; its {@code fiscalYear} is a projection of the registration date
+ * (see {@link FiscalYear#label}), not read back out of the id.
  *
  * <p>A plain utility (not an OfficeFloor function), so it may expose helpers without
  * tripping the one-public-method-per-function rule.
@@ -76,19 +76,6 @@ public final class OwnerMemberId {
             i++;
         }
         return i > 0 ? id.substring(0, i) : null;
-    }
-
-    /**
-     * The two-digit fiscal-year segment ({@code FY}) encoded in an existing member id — the two
-     * characters immediately after the {@code REGION} letters (see {@link #of}). Returns
-     * {@code null} when {@code id} is absent or too short to carry a fiscal-year segment.
-     */
-    public static String fiscalYearOf(String id) {
-        String region = regionOf(id);
-        if (region == null || id.length() < region.length() + 2) {
-            return null;
-        }
-        return id.substring(region.length(), region.length() + 2);
     }
 
     /**

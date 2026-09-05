@@ -46,19 +46,20 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear}: the {@code FY} segment carried inside the
-     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}, see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId#fiscalYearOf}),
-     * formatted {@code FY<YY>}. Returns null when no member id is present (e.g. unmigrated seed
-     * data).
+     * Derives the owner's {@code fiscalYear}: the fiscal year of the {@code registrationDate}
+     * formatted {@code FY<YY>} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.FiscalYear#label}) — the
+     * same fiscal year the {@code memberId}'s {@code FY} segment encodes. Taken from the
+     * registration date directly rather than parsed back out of the member id, so it stays a
+     * plain projection of the owner's own data regardless of the id's internal format. Returns
+     * null when no registration date is present (e.g. unmigrated seed data).
      */
     default String toFiscalYear(Owner owner) {
-        String fiscalYear = org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
-                .fiscalYearOf(owner.getMemberId());
-        if (fiscalYear == null) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
             return null;
         }
-        return "FY" + fiscalYear;
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(registrationDate);
     }
 
     /**

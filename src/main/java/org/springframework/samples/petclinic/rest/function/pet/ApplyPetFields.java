@@ -8,8 +8,6 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 public class ApplyPetFields {
 
     public void service(@Val Pet pet, @Val PetFieldsDto request, PetMapper petMapper) {
-        pet.setBirthDate(request.getBirthDate());
-        pet.setName(request.getName());
-        pet.setType(petMapper.toPetType(request.getType()));
+        ApplyPet.apply(pet, request.getName(), request.getBirthDate(), request.getType(), petMapper);
     }
 }

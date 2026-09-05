@@ -15,7 +15,6 @@ public class DuplicateIdentityHandler {
 
     public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+        ProblemDetails.send(response, ex, HttpStatus.CONFLICT, ex.getMessage());
     }
 }

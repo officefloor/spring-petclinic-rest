@@ -15,7 +15,6 @@ public class DisposableEmailDomainHandler {
 
     public void handle(@Parameter DisposableEmailDomainException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+        ProblemDetails.send(response, ex, HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 }

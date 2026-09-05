@@ -16,6 +16,6 @@ public class GeneralExceptionHandler {
         logger.error("Unexpected error", ex);
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred while processing your request");
-        response.send(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(detail));
+        ProblemDetails.send(response, HttpStatus.INTERNAL_SERVER_ERROR, detail);
     }
 }
