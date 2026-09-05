@@ -127,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
+        owner.setCapacityWarning(CityCapacity.isApproaching(owners, owner));
         owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));
         owner.setPossibleDuplicateOf(HouseholdMatcher.possibleDuplicateOf(owners, owner, ownerFieldsDto.getSharesHousehold()));
         owner.setMembershipLevel(HouseholdLevelCap.cap(owners, owner));

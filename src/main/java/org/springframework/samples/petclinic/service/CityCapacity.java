@@ -27,12 +27,22 @@ public final class CityCapacity {
 
     public static final int MAX_OWNERS_PER_CITY = 50;
 
+    public static final int WARN_THRESHOLD = 40;
+
     private CityCapacity() {
     }
 
     public static boolean isFull(Collection<Owner> existing, Owner owner) {
+        return count(existing, owner) >= MAX_OWNERS_PER_CITY;
+    }
+
+    public static boolean isApproaching(Collection<Owner> existing, Owner owner) {
+        long inCity = count(existing, owner);
+        return inCity >= WARN_THRESHOLD && inCity < MAX_OWNERS_PER_CITY;
+    }
+
+    private static long count(Collection<Owner> existing, Owner owner) {
         String city = owner.getCity();
-        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
-        return inCity >= MAX_OWNERS_PER_CITY;
+        return existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
     }
 }
