@@ -28,13 +28,13 @@ public class RejectDuplicateOwner {
             return; // declared household member — bypass the duplicate block
         }
         String identityKey = IdentityKey.of(request.getTelephone(), request.getEmail(),
-                request.getLastName());
+                request.getLastName(), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // soft-deleted owners are ignored by the duplicate check
             }
             String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
-                    existing.getLastName());
+                    existing.getLastName(), existing.getPostcode());
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
             }

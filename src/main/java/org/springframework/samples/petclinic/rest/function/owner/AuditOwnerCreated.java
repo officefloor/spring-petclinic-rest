@@ -33,13 +33,23 @@ public class AuditOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
                 owner.getMembershipLevel());
 
-        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                primaryIdentifier(owner), owner.getMembershipLevel(), OwnerCreatedEvent.OWNER_CREATED);
+        OwnerCreatedEvent event = new OwnerCreatedEvent(OwnerCreatedEvent.SCHEMA_VERSION,
+                SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner),
+                owner.getMembershipLevel(), ownerSegment(owner), OwnerCreatedEvent.OWNER_CREATED);
         AUDIT.info(JSON.writeValueAsString(event));
     }
 
-    /** The owner's primary identifier: the unified {@code memberId}. */
+    /** The owner's primary identifier: the unified version-2 {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
         return owner.getMemberId();
+    }
+
+    /**
+     * The owner segment recomputed for the version-2 owner. Its region is the plain region code (no
+     * {@code "V2"} tag), so the tag stays inside the identifiers and never leaks into the segment.
+     */
+    private static String ownerSegment(Owner owner) {
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        return OwnerSegment.of(region, owner.getMembershipLevel());
     }
 }

@@ -22,16 +22,18 @@ public interface OwnerMapper {
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "householdId",
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "identity.identityKey",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.ofMemberId(owner.getMemberId()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.Locality.ofMemberId(owner.getMemberId())))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "ownerSegment",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.Locality.ofMemberId(owner.getMemberId()), owner.getMembershipLevel()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()), owner.getMembershipLevel()))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",

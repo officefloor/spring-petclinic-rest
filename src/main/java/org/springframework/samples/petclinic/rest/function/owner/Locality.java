@@ -38,24 +38,4 @@ public final class Locality {
         }
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
-
-    /**
-     * The locality read back off the owner's {@code memberId} identity ({@code <REGION><FY><HASH8><CHK>},
-     * see {@link AssignMemberId}): the leading run of letters (the REGION segment, which is followed by
-     * the two-digit FY). Returns {@code "UNKNOWN"} when the id is null or carries no region segment, so
-     * locality now flows from the same region-and-hash identity rather than being derived independently.
-     */
-    public static String ofMemberId(String memberId) {
-        if (memberId == null) {
-            return UNKNOWN;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        if (i == 0) {
-            return UNKNOWN;
-        }
-        return memberId.substring(0, i);
-    }
 }

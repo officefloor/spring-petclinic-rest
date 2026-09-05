@@ -30,14 +30,15 @@ public class DetectPossibleDuplicate {
             return; // declared household member — not a suspected duplicate
         }
         String soundex = Soundex.of(owner.getLastName());
-        String identityKey = IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+        String identityKey = IdentityKey.of(owner.getTelephone(), owner.getEmail(),
+                owner.getLastName(), owner.getPostcode());
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // soft-deleted owners are ignored by the duplicate check
             }
             String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
-                    existing.getLastName());
+                    existing.getLastName(), existing.getPostcode());
             if (identityKey.equals(existingKey)) {
                 continue; // same identityKey is a hard duplicate (409), not a soft match
             }
