@@ -273,8 +273,8 @@ public class Owner extends Person {
     /**
      * The owner's membership points, derived on read: they start at 0, add 2 when an email is
      * present, add 1 when {@link #namesakeCount} is 0, add 2 for a household of 3 or more
-     * ({@link #householdMemberCount}), and add 3 for tenure over 365 days (whole days from
-     * {@link #registrationDate} to today).
+     * ({@link #householdMemberCount}), and add 3 for tenure over one fiscal year (elapsed fiscal
+     * years from {@link #registrationDate} to today; see {@link #hasTenureBonus(LocalDate)}).
      */
     @Transient
     public Integer getMembershipPoints() {
@@ -313,11 +313,37 @@ public class Owner extends Person {
         return points;
     }
 
-    /** Whether the owner's tenure earns the membership tenure bonus: the whole days from
-     *  {@code registrationDate} to today exceed 365. A null registration date earns no bonus. */
+    /** Whether the owner's tenure earns the membership tenure bonus: the elapsed fiscal years from
+     *  {@code registrationDate} to today exceed one, i.e. the registration falls two or more fiscal
+     *  years before the current one (fiscal years start 1 July). A null registration date earns no
+     *  bonus. */
     private static boolean hasTenureBonus(LocalDate registrationDate) {
         return registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+            && fiscalYear(LocalDate.now()) - fiscalYear(registrationDate) > 1;
+    }
+
+    /**
+     * The fiscal year (starting 1 July) that contains {@code date}, identified by the calendar year
+     * in which that fiscal year ends: a date in July-December belongs to the fiscal year ending the
+     * following calendar year, and a date in January-June to the fiscal year ending that same year
+     * (e.g. 2026-09-05 -> 2027, 2026-03-01 -> 2026).
+     */
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, derived on read from the (business-day-adjusted)
+     * {@link #registrationDate} as {@code "FY<YY>"}, where YY is the last two digits of the fiscal
+     * year (starting 1 July) that contains the registration date (e.g. a date of 2026-09-05 yields
+     * {@code "FY27"}). Returns {@code null} when no registration date is available.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYear(this.registrationDate) % 100);
     }
 
     /** The numeric membership level (1-4) mapped from membership points: 1 for 0-1 points, 2 for

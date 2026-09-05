@@ -583,8 +583,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the membership number '<customerCode>-M<YY>' where YY is the
-     * {@link #membershipYearSegment(LocalDate) year segment} of the {@code registrationDate}
-     * (e.g. 'NSW-1A2B3C4D-M26').
+     * {@link #membershipYearSegment(LocalDate) fiscal-year segment} of the {@code registrationDate}
+     * (e.g. 'NSW-1A2B3C4D-M27').
      */
     private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
         return customerCode + "-M" + membershipYearSegment(registrationDate);
@@ -592,10 +592,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The two-digit year segment stamped into a membership number: the last two digits of the
-     * {@code registrationDate} year, zero-padded (e.g. 2026 -> '26').
+     * fiscal year (starting 1 July) that contains the business-day-adjusted {@code registrationDate},
+     * zero-padded (e.g. a date of 2026-09-05 falls in fiscal year 2027 -> '27'). Shares the
+     * fiscal-year rule with {@link Owner#getFiscalYear()} via {@link Owner#fiscalYear(LocalDate)}.
      */
     private static String membershipYearSegment(LocalDate registrationDate) {
-        return String.format("%02d", registrationDate.getYear() % 100);
+        return String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
     }
 
     /**
