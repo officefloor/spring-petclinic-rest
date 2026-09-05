@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0c5c146f5..fe6b7e7b7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,10 +30,29 @@ public interface OwnerMapper {
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    /** On create, keep only the digits so the stored telephone is the 10-digit value. */
++    /**
++     * Normalise a telephone to E.164 for storage: keep an explicit leading '+' and country
++     * code when present, otherwise assume '+61' and drop a single leading national '0'.
++     * Spaces, dashes and brackets are stripped; the result must have 8 to 15 digits after
++     * the '+', else the number is rejected as invalid.
++     */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        if (telephone == null) {
++            return null;
++        }
++        boolean international = telephone.trim().startsWith("+");
++        String digits = telephone.replaceAll("\\D", "");
++        if (!international) {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            digits = "61" + digits;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
++            throw new IllegalArgumentException("Telephone cannot form a valid E.164 number: " + telephone);
++        }
++        return "+" + digits;
+     }
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index bdba00fa2..f8a3f107b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164: '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 31b4af67a..0efa3c12e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -122,6 +122,23 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link IllegalArgumentException} raised while processing a request body (for
++     * example a telephone number that cannot be normalised to valid E.164) by returning a
++     * 400 Bad Request status.
++     *
++     * @param e The {@link IllegalArgumentException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(IllegalArgumentException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleIllegalArgumentException(IllegalArgumentException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7fea84461..7dadabd36 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2031,7 +2031,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^\D*(\d\D*){10}$'
++          pattern: '^[+()\d\s-]+$'
+           example: '6085551023'
+         email:
+           title: Email address
