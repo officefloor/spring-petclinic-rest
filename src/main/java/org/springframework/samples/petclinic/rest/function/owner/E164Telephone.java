@@ -4,7 +4,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * Converts a raw telephone number to E.164 form: strip spaces, dashes and brackets; keep
  * a leading '+' and country code when present, otherwise assume country code '+61' and
  * drop a single leading '0' from the national digits. Requires 8 to 15 digits after the
- * '+'. Returns {@code null} when no valid E.164 number can be formed.
+ * '+', and enforces the national-number length per country ('+61' needs 9 national
+ * digits, '+1' needs 10). Returns {@code null} when no valid E.164 number can be formed.
  */
 public final class E164Telephone {
 
@@ -25,6 +26,9 @@ public final class E164Telephone {
             }
             digits = "61" + cleaned;
         }
-        return digits.matches("\\d{8,15}") ? "+" + digits : null;
+        // '+61' needs 9 national digits and '+1' 10 — each a total of 11 digits.
+        boolean countryCoded = digits.startsWith("61") || digits.startsWith("1");
+        return digits.matches("\\d{8,15}") && (!countryCoded || digits.length() == 11)
+                ? "+" + digits : null;
     }
 }
