@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+index 436296877..9fdf93180 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Flags a soft duplicate before the new owner is saved. A hard duplicate (matching
+- * telephone) has already been rejected by {@link RequireUniqueIdentity}; this records
+- * the id of an existing owner in the same {@link HouseholdId} (lastName and postcode) that
+- * has a different telephone, so the response can surface {@code possibleDuplicate}/
++ * {@link IdentityKey}) has already been rejected by {@link RequireUniqueIdentity}; this
++ * records the id of an existing owner whose {@code soundex(lastName)} and postcode match but
++ * whose identity key differs, so the response can surface {@code possibleDuplicate}/
+  * {@code possibleDuplicateOf}. A declared household member ({@code sharesHousehold}) is not
+  * a suspected duplicate, and there is no match when there is no postcode. */
+ public class DetectPossibleDuplicate {
+@@ -22,18 +22,22 @@ public class DetectPossibleDuplicate {
+         if (postcode == null || postcode.isBlank()) {
+             return;
+         }
+-        String householdId = HouseholdId.of(owner.getLastName(), postcode);
++        String soundex = IdentityKey.soundex(owner.getLastName());
++        String key = keyOf(owner);
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))
+-                    && !equalsTelephone(owner, existing)) {
++            if (existing.isDeleted()) {
++                continue;
++            }
++            if (soundex.equals(IdentityKey.soundex(existing.getLastName()))
++                    && postcode.equals(existing.getPostcode()) && !key.equals(keyOf(existing))) {
+                 owner.setPossibleDuplicateOf(existing.getId());
+                 return;
+             }
+         }
+     }
+ 
+-    private static boolean equalsTelephone(Owner owner, Owner existing) {
+-        String telephone = owner.getTelephone();
+-        return telephone != null && telephone.equals(existing.getTelephone());
++    private static String keyOf(Owner owner) {
++        return IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(),
++                owner.getPostcode());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index 0a754850c..29d05ee3b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -1,11 +1,20 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++import org.apache.commons.codec.language.Soundex;
++
+ /**
+  * Derives the single duplicate-detection key that consolidates the former separate
+- * telephone, email and household checks: {@code normalizedTelephone|email|householdId},
+- * with an empty segment for an absent email. Telephone is already E.164-normalised and
+- * email lower-cased by earlier steps, and {@link HouseholdId} keys on lastName/postcode,
+- * so two owners collide only when their whole key matches.
++ * telephone, email and household checks. It is the SHA-256 hex over
++ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with an empty
++ * segment for an absent value. Telephone is already E.164-normalised and email lower-cased
++ * by earlier steps, so two owners collide only when their whole key matches. The
++ * {@code postcode} argument is retained for the mapper's stable call site but is not part of
++ * the key.
+  */
+ public final class IdentityKey {
+ 
+@@ -13,11 +22,33 @@ public final class IdentityKey {
+     }
+ 
+     public static String of(String telephone, String email, String lastName, String postcode) {
+-        return blankToEmpty(telephone) + '|' + blankToEmpty(email) + '|'
+-                + HouseholdId.of(lastName, postcode);
++        String raw = blankToEmpty(telephone) + '|'
++                + blankToEmpty(email).toLowerCase(Locale.ROOT) + '|'
++                + soundex(lastName);
++        return sha256Hex(raw);
++    }
++
++    /** Soundex of {@code lastName}, letters-only so the codec never rejects the input. */
++    public static String soundex(String lastName) {
++        String cleaned = lastName == null ? "" : lastName.replaceAll("[^A-Za-z]", "");
++        return cleaned.isEmpty() ? "" : Soundex.US_ENGLISH.soundex(cleaned);
+     }
+ 
+     private static String blankToEmpty(String value) {
+         return value == null ? "" : value;
+     }
++
++    private static String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index ace62c1db..05d997278 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -9,22 +9,25 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
+ /**
+  * Consolidated duplicate check replacing the former separate telephone, email and
+  * household checks, run before {@link BuildOwner}. Duplicate detection now turns on the
+- * derived {@link IdentityKey} whose leading, always-present segment is the normalized
+- * telephone: two owners collide exactly when that telephone matches. Because the
++ * derived {@link IdentityKey} (SHA-256 over normalized telephone, lower email and
++ * soundex(lastName)): two owners collide exactly when that whole key matches. Because the
+  * telephone is part of the key, same-household owners with different telephones have
+- * different keys and are both allowed. The full key is exposed on the owner response.
++ * different keys and are both allowed (a soft match, not a 409). Owners flagged deleted are
++ * ignored; the email-domain blocklist has already been applied by the earlier email step.
+  */
+ public class RequireUniqueIdentity {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateTelephoneException {
+-        String telephone = request.getTelephone();
++        String key = IdentityKey.of(request.getTelephone(), request.getEmail(),
++                request.getLastName(), request.getPostcode());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (existing.isDeleted()) {
+                 continue;
+             }
+-            if (telephone.equals(existing.getTelephone())) {
+-                throw new DuplicateTelephoneException(telephone);
++            if (key.equals(IdentityKey.of(existing.getTelephone(), existing.getEmail(),
++                    existing.getLastName(), existing.getPostcode()))) {
++                throw new DuplicateTelephoneException(request.getTelephone());
+             }
+         }
+     }
