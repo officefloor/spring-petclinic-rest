@@ -41,6 +41,7 @@ public final class OwnerCreatedEvent {
             owner.getId(), primaryId(owner), owner.getRegistrationDate(), MembershipLevel.of(owner));
         AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel());
+        WelcomeNotification.enqueue(owner);
     }
 
     private static String primaryId(Owner owner) {
