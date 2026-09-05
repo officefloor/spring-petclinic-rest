@@ -1,13 +1,13 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives the membership scoring for an owner. {@link #points} starts at 0 and adds 2
  * when an email address is present, 1 when namesakeCount is 0, 2 for a household of 3 or
- * more (the new owner plus namesakeCount existing members) and 3 for tenure over 365 days
- * (days between registrationDate and today). {@link #level} maps those points to 1 (0-1),
+ * more (the new owner plus namesakeCount existing members) and 3 for tenure of at least one
+ * elapsed {@link FiscalYear} between registrationDate and today. {@link #level} maps those
+ * points to 1 (0-1),
  * 2 (2-3), 3 (4-5) or 4 (6 or more).
  */
 public final class MembershipTier {
@@ -17,7 +17,7 @@ public final class MembershipTier {
 
     private static boolean hasTenure(LocalDate registrationDate) {
         return registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+                && FiscalYear.elapsed(registrationDate, LocalDate.now()) > 0;
     }
 
     public static int points(Integer namesakeCount, String email, LocalDate registrationDate) {

@@ -4,7 +4,8 @@ import java.time.LocalDate;
 
 /**
  * Derives the {@code membershipNumber} formatted {@code <customerCode>-M<YY>}, where YY is
- * the last two digits of the registrationDate year (e.g. {@code SMI-0007-M26}).
+ * the last two digits of the {@link FiscalYear} of the registrationDate (e.g.
+ * {@code SMI-0007-M26}).
  */
 public final class MembershipNumber {
 
@@ -12,6 +13,6 @@ public final class MembershipNumber {
     }
 
     public static String of(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.of(registrationDate) % 100);
     }
 }
