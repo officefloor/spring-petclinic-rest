@@ -51,6 +51,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -100,6 +103,14 @@ public class Owner extends Person {
     /** Store the email lower-cased so it is persisted and returned in canonical form. */
     public void setEmail(String email) {
         this.email = (email == null) ? null : email.toLowerCase(Locale.ROOT);
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public LocalDate getRegistrationDate() {

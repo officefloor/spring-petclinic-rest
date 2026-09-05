@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress()))")
+    @Mapping(target = "postcode", expression = "java(org.springframework.samples.petclinic.service.PostcodeValidator.validate(ownerDto.getCity(), ownerDto.getPostcode()))")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
