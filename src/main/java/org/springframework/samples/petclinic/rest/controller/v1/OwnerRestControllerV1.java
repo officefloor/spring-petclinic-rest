@@ -114,20 +114,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = normalizeTelephone(owner.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
-            .anyMatch(telephone::equals);
-        if (telephoneInUse) {
+        if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.clinicService.saveOwner(owner);
@@ -236,5 +231,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Canonical stored form of a telephone number: its digits, which must be exactly ten.
+     * Returns {@code null} when the number cannot form a valid value.
+     */
+    private static String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        return digits.length() == 10 ? digits : null;
+    }
+
+    /** Whether any existing owner already uses the given (canonical) telephone number. */
+    private boolean isTelephoneInUse(String telephone) {
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(telephone::equals);
     }
 }
