@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+new file mode 100644
+index 000000000..7291d41a1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a city approaching the owner {@link RequireCityCapacity#CAPACITY capacity limit}:
++ * {@code true} once a city already holds between {@value #WARNING_THRESHOLD} and one below the
++ * limit, otherwise {@code false}. Cities are compared exactly, as elsewhere in the pipeline.
++ */
++public final class CityCapacity {
++
++    static final int WARNING_THRESHOLD = 40;
++
++    private CityCapacity() {
++    }
++
++    public static boolean approaching(String city, OwnerRepository ownerRepository) {
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> city.equals(existing.getCity()))
++            .count();
++        return count >= WARNING_THRESHOLD && count < RequireCityCapacity.CAPACITY;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 0c9d65e04..865870013 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setMembershipLevel(MembershipCap.level(owner, dto.getMembershipLevel(), ownerRepository));
+         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
++        dto.setCapacityWarning(CityCapacity.approaching(owner.getCity(), ownerRepository));
+         dto.setSelfLink("/api/owners/" + owner.getId());
+         response.send(dto);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index b3140c034..5ae34d925 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setMembershipLevel(MembershipCap.level(owner, dto.getMembershipLevel(), ownerRepository));
+         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
++        dto.setCapacityWarning(CityCapacity.approaching(owner.getCity(), ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2648d3035..d0405aea9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2231,6 +2231,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: "True when this owner's city already holds between 40 and 49 owners (approaching the 50 capacity limit), otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: "True when this owner has been soft-deleted (record retained but flagged); false for an active owner."
