@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ee1a8bf5c..7940788a6 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -39,7 +39,9 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+-    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress()))")
++    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
++    @Mapping(target = "addressLine1", expression = "java(normalizeLine(ownerDto.getAddressLine1()))")
++    @Mapping(target = "addressLine2", expression = "java(normalizeLine(ownerDto.getAddressLine2()))")
+     @Mapping(target = "postcode", expression = "java(org.springframework.samples.petclinic.service.PostcodeValidator.validate(ownerDto.getCity(), ownerDto.getPostcode()))")
+     @Mapping(target = "registrationDate", expression = "java(org.springframework.samples.petclinic.service.RegistrationDateValidator.validate(ownerDto.getRegistrationDate()))")
+     @Mapping(target = "email", expression = "java(org.springframework.samples.petclinic.service.DisposableEmailDomain.validate(ownerDto.getEmail()))")
+@@ -71,6 +73,28 @@ public interface OwnerMapper {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Prefer the structured addressLine1 (with a normalized addressLine2 appended after a
++     * single space when present) over the flat address; each supplied line is normalized
++     * independently. Falls back to the flat address when no addressLine1 is supplied.
++     */
++    default String composeAddress(OwnerFieldsDto ownerDto) {
++        String line1 = ownerDto.getAddressLine1();
++        if (line1 != null && !line1.isBlank()) {
++            String normalized = org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line1);
++            String line2 = ownerDto.getAddressLine2();
++            return (line2 == null || line2.isBlank()) ? normalized
++                : normalized + " " + org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line2);
++        }
++        return org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress());
++    }
++
++    /** Normalize an optional address line, returning null when it is absent or blank. */
++    default String normalizeLine(String line) {
++        return (line == null || line.isBlank()) ? null
++            : org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line);
++    }
++
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ee62e8fc9..080de7936 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Transient
++    private String addressLine1;
++
++    @Transient
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -86,6 +92,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1d73d7a95..bc91b7bbf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,12 +2011,28 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. Optional when a structured addressLine1 is supplied; on read it is the composed normalized address.
+           type: string
+           minLength: 1
+           maxLength: 255
+           pattern: '.*\S.*'
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the structured postal address. Preferred over the flat address when present.
++          type: string
++          minLength: 1
++          maxLength: 255
++          pattern: '.*\S.*'
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the structured postal address.
++          type: string
++          minLength: 1
++          maxLength: 255
++          pattern: '.*\S.*'
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2067,7 +2083,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
