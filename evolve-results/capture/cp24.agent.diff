@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6526404a0..3e0eba955 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -41,18 +41,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's membership tier: {@code GOLD} when the owner's household has 3 or more
+-     * members ({@code householdSize} &ge; 3, as counted after the owner was created); otherwise
+-     * {@code SILVER} when the owner has no namesakes ({@code namesakeCount} is 0) and an email is
+-     * present, otherwise {@code BRONZE}.
++     * Derives the owner's numeric membership level (1 to 3), computed on creation: start at 1;
++     * add 1 when an email is present; add 1 when the owner has no namesakes ({@code namesakeCount}
++     * is 0); capped at 3 (level 4 is reserved for tenure).
+      */
+-    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return OwnerDto.MembershipTierEnum.GOLD;
++    default Integer toMembershipLevel(Owner owner) {
++        int level = 1;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        if (hasEmail) {
++            level++;
+         }
+         boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+index 1f2574d80..06e24acd0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+@@ -14,8 +14,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * are settled) but before {@link SaveOwner} (so the owner being created is not itself in the
+  * repository yet and is instead counted explicitly), mutating the owner in place so the
+  * persisted value — and every later read — carries the household size as it stood after this
+- * create. {@link org.springframework.samples.petclinic.mapper.OwnerMapper} derives the
+- * {@code GOLD} membership tier from it.
++ * create.
+  */
+ public class AssignHouseholdSize {
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d2edcc9de..4e82a792c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,15 +2115,14 @@ components:
+               type: string
+               example: "LON-SMI-0007-M26"
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier. 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members after this create; otherwise 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: "SILVER"
++            membershipLevel:
++              title: Membership level
++              description: The owner's numeric membership level, from 1 to 3, computed on creation. Starts at 1; add 1 when an email is present; add 1 when namesakeCount is 0; capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
