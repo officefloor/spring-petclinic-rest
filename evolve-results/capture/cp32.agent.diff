@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c6b858ae3..0ea49b07b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,7 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.service.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.LocalityResolver.locality(owner.getCity(), owner.getPostcode()))")
++    @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index 6d8a446e9..391fb9d6a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -15,15 +15,17 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Collection;
+-import java.util.Locale;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Builds an owner's customerCode as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
+- * letters of the city, the first three of the last name, and a per-city 4-digit sequence
+- * that is one more than the owners already registered in that city.
++ * Builds an owner's customerCode as '<REGION>-<HASH8>': the region code derived from the
++ * postcode, and the first eight upper-case hex characters of SHA-256 over the owner's
++ * normalized telephone concatenated with the last name.
+  */
+ public final class CustomerCodeGenerator {
+ 
+@@ -31,14 +33,21 @@ public final class CustomerCodeGenerator {
+     }
+ 
+     public static String generate(Collection<Owner> existing, Owner owner) {
+-        String city = owner.getCity();
+-        String city3 = prefix(city);
+-        String last3 = prefix(owner.getLastName());
+-        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
+-        return String.format("%s-%s-%04d", city3, last3, inCity + 1);
++        String region = LocalityResolver.locality(owner.getCity(), owner.getPostcode());
++        return region + "-" + hash8(owner.getTelephone() + owner.getLastName());
+     }
+ 
+-    private static String prefix(String value) {
+-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
++    private static String hash8(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder();
++            for (int i = 0; i < 4; i++) {
++                hex.append(String.format("%02X", digest[i]));
++            }
++            return hex.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
+     }
+ }
