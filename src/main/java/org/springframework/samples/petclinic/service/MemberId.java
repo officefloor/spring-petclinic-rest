@@ -38,7 +38,7 @@ public final class MemberId {
     public static String generate(Collection<Owner> existing, Owner owner) {
         String region = LocalityResolver.locality(owner.getCity(), owner.getPostcode());
         String base = region + FiscalYear.label(owner.getRegistrationDate()).substring(2)
-            + hash8(owner.getTelephone() + owner.getLastName());
+            + hash8(IdentityRegion.v2(owner) + owner.getTelephone() + owner.getLastName());
         return deduplicate(base + CheckDigit.of(base), existing);
     }
 

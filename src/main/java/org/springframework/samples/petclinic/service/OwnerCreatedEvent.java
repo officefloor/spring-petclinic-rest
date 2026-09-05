@@ -39,8 +39,10 @@ public final class OwnerCreatedEvent {
     public static void emit(Owner owner) {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), primaryId(owner), owner.getRegistrationDate(), MembershipLevel.of(owner));
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel());
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},"
+                + "\"segment\":\"{}\",\"schemaVersion\":2,\"event\":\"OWNER_CREATED\"}",
+            SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel(),
+            OwnerSegment.of(owner));
         WelcomeNotification.enqueue(owner);
     }
 

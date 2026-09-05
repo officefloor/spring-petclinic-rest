@@ -39,7 +39,8 @@ public final class HouseholdMatcher {
      * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}.
      */
     public static String householdId(Owner owner) {
-        String key = normalize(owner.getLastName()) + "|" + (owner.getPostcode() == null ? "" : owner.getPostcode());
+        String key = IdentityRegion.v2(owner) + "|" + normalize(owner.getLastName()) + "|"
+            + (owner.getPostcode() == null ? "" : owner.getPostcode());
         return hex12(key);
     }
 

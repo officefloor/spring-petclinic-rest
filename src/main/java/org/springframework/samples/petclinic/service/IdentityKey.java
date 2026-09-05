@@ -37,7 +37,8 @@ public final class IdentityKey {
     }
 
     public static String of(Owner owner) {
-        String raw = owner.getTelephone() + "|" + email(owner) + "|" + Soundex.of(owner.getLastName());
+        String raw = IdentityRegion.v2(owner) + "|" + owner.getTelephone() + "|" + email(owner) + "|"
+            + Soundex.of(owner.getLastName());
         return sha256hex(raw);
     }
 
