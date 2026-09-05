@@ -1,0 +1,204 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 34f2e6dc1..fa38a1bd3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -79,6 +79,12 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -186,6 +192,22 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The owner's numeric membership level, derived on creation: it starts at 1, gains 1 when an
+      * email is present, gains 1 when {@link #namesakeCount} is 0, and is capped at 3 (level 4 is
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2edb22988..5b59a2e53 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -389,6 +389,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setHouseholdId(householdId(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdMemberCount(countHouseholdMembers(owner));
++        assignPossibleDuplicate(owner);
++    }
++
++    /**
++     * Flag {@code owner} as a possible duplicate when, though not a hard duplicate (its create having
++     * already cleared the {@link #isDuplicate} identity gate), it shares an existing owner's last name
++     * (compared case-insensitively with collapsed whitespace) and postcode but carries a different
++     * telephone. Sets {@code possibleDuplicate} accordingly and, when true, {@code possibleDuplicateOf}
++     * to the matching owner's id. Runs before save, against the existing owner population.
++     */
++    private void assignPossibleDuplicate(Owner owner) {
++        Integer matchId = findPossibleDuplicateOf(owner);
++        owner.setPossibleDuplicate(matchId != null);
++        owner.setPossibleDuplicateOf(matchId);
++    }
++
++    /**
++     * The id of an existing owner that shares {@code owner}'s postcode and last name (compared
++     * case-insensitively with collapsed whitespace) but has a different telephone, or {@code null}
++     * when there is none. When several match, the lowest id is returned. An owner without a postcode
++     * never matches.
++     */
++    private Integer findPossibleDuplicateOf(Owner owner) {
++        String postcode = owner.getPostcode();
++        if (postcode == null) {
++            return null;
++        }
++        String lastName = normalizeHouseholdField(owner.getLastName());
++        String telephone = owner.getTelephone();
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getId() != null
++                && postcode.equals(existing.getPostcode())
++                && normalizeHouseholdField(existing.getLastName()).equals(lastName)
++                && !telephone.equals(existing.getTelephone()))
++            .map(Owner::getId)
++            .min(Integer::compareTo)
++            .orElse(null);
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 610fd5ba5..0d70c7745 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
+   identity_key VARCHAR(512),
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index e5ab3f803..c96a6f717 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 71b6dd39e..2adbab211 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,9 @@ CREATE TABLE owners (
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
+   identity_key VARCHAR(512),
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d2108b3e1..6e36a1e50 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   identity_key VARCHAR(512),
+   postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 48e3ac0ee..065ef2337 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_member_count INTEGER,
+                                       membership_number TEXT,
+                                       identity_key TEXT,
+-                                      postcode TEXT
++                                      postcode TEXT,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f4cda7a5f..510675f25 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2218,6 +2218,22 @@ components:
+               type: boolean
+               readOnly: true
+               example: false
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner, though not a hard duplicate, was created sharing an
++                existing owner's last name and postcode with a different telephone; otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: When possibleDuplicate is true, the id of the existing owner whose last name
++                and postcode this owner shares (with a different telephone); otherwise absent.
++              type: integer
++              format: int32
++              minimum: 0
++              readOnly: true
++              example: 1
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
