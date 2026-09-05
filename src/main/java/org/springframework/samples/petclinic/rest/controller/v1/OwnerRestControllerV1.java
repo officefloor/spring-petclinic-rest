@@ -144,6 +144,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -400,6 +403,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(OwnerRestControllerV1::normalizeTelephone)
             .filter(existing -> existing != null)
             .anyMatch(telephone::equals);
+    }
+
+    /** Whether any existing owner already uses the given email, compared case-insensitively (lower-cased). */
+    private boolean isEmailInUse(String email) {
+        String normalized = email.trim().toLowerCase(Locale.ROOT);
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
+            .anyMatch(normalized::equals);
     }
 
     /** Common street-type abbreviations expanded during address normalization. */
