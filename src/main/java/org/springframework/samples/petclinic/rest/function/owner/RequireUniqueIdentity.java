@@ -20,6 +20,9 @@ public class RequireUniqueIdentity {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (telephone.equals(existing.getTelephone())) {
                 throw new DuplicateTelephoneException(telephone);
             }
