@@ -17,7 +17,8 @@ public final class HouseholdId {
     }
 
     public static String of(String lastName, String postcode) {
-        String key = normalise(lastName) + '|' + (postcode == null ? "" : postcode);
+        // 'V2' version tag mixed in so every version-2 householdId differs from version 1.
+        String key = "V2|" + normalise(lastName) + '|' + (postcode == null ? "" : postcode);
         return sha256Hex(key).substring(0, 12);
     }
 

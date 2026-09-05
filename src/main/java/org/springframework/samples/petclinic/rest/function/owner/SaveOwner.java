@@ -23,10 +23,14 @@ public class SaveOwner {
         int membershipLevel = MembershipTier.level(MembershipTier.points(
                 owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()));
         String memberId = owner.getCustomerCode();
+        // Owner segment recomputed for the version-2 audit schema from the plain region
+        // (the 'V2' tag stays inside the identifiers, never in the segment's region).
+        String ownerSegment = OwnerSegment.of(membershipLevel,
+            Locality.of(owner.getCity(), owner.getPostcode()));
         AUDIT.info("Created owner id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel);
+        AUDIT.info("{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel, ownerSegment);
         NOTIFY.info("Welcome owner id={} memberId={}", owner.getId(), memberId);
     }
 }

@@ -22,12 +22,13 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "householdId",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "memberId",
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity.memberId",
             expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "identity.householdId",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
+    @Mapping(target = "identity.identityKey",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode()))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MemberId.fiscalYear(owner.getCustomerCode()))")
     @Mapping(target = "membershipPoints",
@@ -35,11 +36,11 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())))")
     @Mapping(target = "ownerSegment",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())), org.springframework.samples.petclinic.rest.function.owner.MemberId.region(owner.getCustomerCode())))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())), org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MemberId.region(owner.getCustomerCode()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.MemberId.region(owner.getCustomerCode())))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand",

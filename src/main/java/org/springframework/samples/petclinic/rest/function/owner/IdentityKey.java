@@ -22,7 +22,8 @@ public final class IdentityKey {
     }
 
     public static String of(String telephone, String email, String lastName, String postcode) {
-        String raw = blankToEmpty(telephone) + '|'
+        // 'V2' version tag mixed in so every version-2 identityKey differs from version 1.
+        String raw = "V2|" + blankToEmpty(telephone) + '|'
                 + blankToEmpty(email).toLowerCase(Locale.ROOT) + '|'
                 + soundex(lastName);
         return sha256Hex(raw);

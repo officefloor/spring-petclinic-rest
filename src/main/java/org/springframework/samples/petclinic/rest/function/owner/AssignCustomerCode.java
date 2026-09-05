@@ -15,7 +15,10 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        // Version-2 region: the plain region with a fixed 'V2' tag mixed in, so the memberId
+        // changes and never reproduces a version-1 value. The tag stays inside the identifier;
+        // the user-facing locality/timezone/segment still use the plain region.
+        String region = "V2" + Locality.of(owner.getCity(), owner.getPostcode());
         String hash8 = hash8(E164Telephone.toE164(owner.getTelephone()) + owner.getLastName());
         owner.setCustomerCode(MemberId.of(region, owner.getRegistrationDate(), hash8));
     }
