@@ -469,14 +469,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Build {@code owner}'s customer code '<REGION>-<HASH8>': REGION is the region code derived from
      * the owner's postcode ({@link Owner#getRegion()}) and HASH8 the first 8 upper-case hex
      * characters of SHA-256 over the owner's already-normalized telephone concatenated with the
-     * owner's last name (e.g. 'NSW-1A2B3C4D'). There are no sequence numbers: the identity is a pure
-     * function of the region and the (telephone, last name) pair.
+     * owner's last name (e.g. 'NSW-1A2B3C4D'). The identity is otherwise a pure function of the
+     * region and the (telephone, last name) pair; only when the computed code collides with an
+     * existing owner's customer code is it de-duplicated by appending '-<n>' with the smallest
+     * {@code n} of 2 or more that makes it unique (e.g. 'NSW-1A2B3C4D-2').
      */
     private String generateCustomerCode(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String hash8 = sha256Hex(telephone + lastName).substring(0, 8);
-        return owner.getRegion() + "-" + hash8;
+        String base = owner.getRegion() + "-" + hash8;
+        return deduplicateCustomerCode(base);
+    }
+
+    /**
+     * De-duplicate a computed customer code against the existing owner population: when {@code base}
+     * is not already in use it is returned unchanged; otherwise '-<n>' is appended with the smallest
+     * {@code n} of 2 or more that yields a code no existing owner carries.
+     */
+    private String deduplicateCustomerCode(String base) {
+        Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
