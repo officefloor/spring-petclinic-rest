@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4cda3d668..6d01407ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -125,6 +125,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isTelephoneInUse(telephone)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -280,4 +283,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .filter(existing -> existing != null)
+             .anyMatch(telephone::equals);
+     }
++
++    /**
++     * Canonical form for comparing a household field: trimmed, inner whitespace collapsed
++     * to single spaces and lower-cased, so the match is case-insensitive and whitespace-insensitive.
++     */
++    private static String normalizeHouseholdField(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * Whether any existing owner already shares the same household as {@code owner}, i.e. has the
++     * same last name AND the same address compared case-insensitively with collapsed whitespace.
++     */
++    private boolean isHouseholdInUse(Owner owner) {
++        String lastName = normalizeHouseholdField(owner.getLastName());
++        String address = normalizeHouseholdField(owner.getAddress());
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
++                && normalizeHouseholdField(existing.getAddress()).equals(address));
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index df59244f9..7f0847c54 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2060,6 +2060,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: When true on create, allows registering this owner even if another
++            owner already has the same last name and postal address (compared
++            case-insensitively with collapsed whitespace) because they share a household.
++            Otherwise such a request is rejected with 409 Conflict. Request-only; not persisted.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
