@@ -137,6 +137,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (countOwnersInCity(owner.getCity()) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId(owner));
