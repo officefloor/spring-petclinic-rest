@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setMembershipLevel(MembershipCap.level(owner, dto.getMembershipLevel(), ownerRepository));
         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
+        dto.setCapacityWarning(CityCapacity.approaching(owner.getCity(), ownerRepository));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
