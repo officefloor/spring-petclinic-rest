@@ -19,6 +19,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
@@ -31,6 +32,19 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code salutation}: the {@code title} followed by a single space and the
+     * {@code lastName} when a title is present, or just the {@code lastName} when no title was
+     * supplied.
+     */
+    default String toSalutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
+    }
 
     /**
      * Derives the owner's {@code telephoneDisplay}: the stored E.164 {@code telephone} formatted
