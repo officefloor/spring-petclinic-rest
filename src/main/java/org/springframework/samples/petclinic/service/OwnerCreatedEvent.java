@@ -22,13 +22,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Emits an immutable, structured {@code OWNER_CREATED} event to the {@code AUDIT}
- * logger. Each event carries a monotonically increasing {@code seq} across all
- * creates, the owner id, and the owner's current primary identifier.
+ * Emits the audit records for a newly created owner to the {@code AUDIT} logger: a
+ * human-readable line and an immutable, structured {@code OWNER_CREATED} event carrying a
+ * monotonically increasing {@code seq} across all creates, the owner id, and the owner's
+ * current primary identifier.
  * <p>
  * The primary identifier is the {@code customerCode} today; when it is unified
  * into the {@code memberId}, only {@link #primaryId(Owner)} needs to change and
- * the event will carry the {@code memberId} instead.
+ * the records will carry the {@code memberId} instead.
  */
 public final class OwnerCreatedEvent {
 
@@ -40,6 +41,9 @@ public final class OwnerCreatedEvent {
     }
 
     public static void emit(Owner owner) {
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), primaryId(owner), owner.getRegistrationDate(),
+            MembershipLevel.of(owner), MembershipNumber.of(owner));
         AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel());
     }

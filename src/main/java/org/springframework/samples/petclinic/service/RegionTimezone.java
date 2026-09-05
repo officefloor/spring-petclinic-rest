@@ -33,7 +33,6 @@ public final class RegionTimezone {
     }
 
     public static String of(Owner owner) {
-        String code = owner.getCustomerCode();
-        return REGION_TIMEZONE.get(code.substring(0, code.indexOf('-')));
+        return REGION_TIMEZONE.get(RegionCode.of(owner));
     }
 }

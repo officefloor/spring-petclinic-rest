@@ -15,27 +15,21 @@
  */
 package org.springframework.samples.petclinic.service;
 
-import java.util.Set;
-
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's segment as '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' when the effective
- * membershipLevel is 3 or more, otherwise 'STANDARD'; AREA is 'METRO' when the locality is a
- * known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
+ * The single source of truth for extracting an owner's region from its primary identifier.
+ * Today the primary identifier is the customerCode, formatted '&lt;REGION&gt;-&lt;HASH8&gt;', so the
+ * region is the prefix before the first '-'. Every consumer (segment, timezone, locality)
+ * reads the region through here so the extraction lives in exactly one place.
  */
-public final class OwnerSegment {
+public final class RegionCode {
 
-    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
-
-    private OwnerSegment() {
+    private RegionCode() {
     }
 
     public static String of(Owner owner) {
-        Integer level = owner.getMembershipLevel();
-        int effective = level != null ? level : MembershipLevel.of(owner);
-        String tier = effective >= 3 ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(RegionCode.of(owner)) ? "METRO" : "REGIONAL";
-        return tier + "_" + area;
+        String code = owner.getCustomerCode();
+        return code.substring(0, code.indexOf('-'));
     }
 }

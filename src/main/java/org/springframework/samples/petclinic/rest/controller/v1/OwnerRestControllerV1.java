@@ -19,8 +19,6 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.Collection;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,16 +35,12 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
-import org.springframework.samples.petclinic.service.BulkSignupWarning;
 import org.springframework.samples.petclinic.service.CityCapacity;
 import org.springframework.samples.petclinic.service.ClinicService;
-import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
-import org.springframework.samples.petclinic.service.HouseholdLevelCap;
-import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.samples.petclinic.service.IdentityKey;
-import org.springframework.samples.petclinic.service.NamesakeCounter;
 import org.springframework.samples.petclinic.service.OwnerCreatedEvent;
+import org.springframework.samples.petclinic.service.OwnerRegistration;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,8 +57,6 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
-
-    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -124,19 +116,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (CityCapacity.isFull(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
-        owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
-        owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
-        owner.setCapacityWarning(CityCapacity.isApproaching(owners, owner));
-        owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));
-        owner.setPossibleDuplicateOf(HouseholdMatcher.possibleDuplicateOf(owners, owner, ownerFieldsDto.getSharesHousehold()));
-        owner.setMembershipLevel(HouseholdLevelCap.cap(owners, owner));
+        OwnerRegistration.enrich(owners, owner, ownerFieldsDto.getSharesHousehold());
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            org.springframework.samples.petclinic.service.MembershipLevel.of(owner),
-            owner.getCustomerCode() + "-M"
-                + org.springframework.samples.petclinic.service.FiscalYear.label(owner.getRegistrationDate()).substring(2));
         OwnerCreatedEvent.emit(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

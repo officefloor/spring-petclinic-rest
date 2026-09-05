@@ -15,27 +15,21 @@
  */
 package org.springframework.samples.petclinic.service;
 
-import java.util.Set;
-
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's segment as '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' when the effective
- * membershipLevel is 3 or more, otherwise 'STANDARD'; AREA is 'METRO' when the locality is a
- * known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
+ * The single source of truth for an owner's membership number, formatted
+ * '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the last two digits of the fiscal year of the
+ * registrationDate. Both the API projection and the audit record derive it through here so
+ * the format lives in exactly one place.
  */
-public final class OwnerSegment {
+public final class MembershipNumber {
 
-    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
-
-    private OwnerSegment() {
+    private MembershipNumber() {
     }
 
     public static String of(Owner owner) {
-        Integer level = owner.getMembershipLevel();
-        int effective = level != null ? level : MembershipLevel.of(owner);
-        String tier = effective >= 3 ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(RegionCode.of(owner)) ? "METRO" : "REGIONAL";
-        return tier + "_" + area;
+        return owner.getCustomerCode() + "-M"
+            + FiscalYear.label(owner.getRegistrationDate()).substring(2);
     }
 }
