@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -180,7 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Run the create pipeline for a new owner from its submitted fields and return the response: the
      * fields are mapped, normalized and validated, the registration date is resolved, the per-day,
-     * identity, household and per-city gates are applied, the derived registration attributes are
+     * identity and per-city gates are applied, the derived registration attributes are
      * assigned and the owner is saved and audited, yielding {@code 201 CREATED} with the new owner and
      * its {@code Location}. A gate that trips short-circuits with its own status ({@code 400},
      * {@code 429} or {@code 409}) and no owner is created. This is the single place an owner is created;
@@ -207,9 +208,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold && hasExistingHousehold(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (countOwnersInCity(owner.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -498,23 +496,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner));
+        owner.setMembershipLevelCap(membershipLevelCapForHousehold(owner));
         if (declaredMember) {
             owner.setPossibleDuplicate(false);
             owner.setPossibleDuplicateOf(null);
         } else {
             assignPossibleDuplicate(owner);
         }
-    }
-
-    /**
-     * Whether {@code owner} would join an existing household, i.e. some already-registered owner
-     * resolves to the same {@link #householdId(Owner) householdId} (same last name and postcode).
-     * Because the household is keyed on (last name, postcode), such a create is a household duplicate
-     * and is rejected with {@code 409 CONFLICT} unless the request sets {@code sharesHousehold}, in
-     * which case the owner is created as a declared household member.
-     */
-    private boolean hasExistingHousehold(Owner owner) {
-        return !findHousemates(owner).isEmpty();
     }
 
     /**
@@ -775,6 +763,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private int countHouseholdMembers(Owner owner) {
         return findHousemates(owner).size() + 1;
+    }
+
+    /**
+     * The membership level ceiling for a newly registered {@code owner}, derived from the household it
+     * joins: one above the current maximum {@link Owner#getMembershipLevel() membershipLevel} among the
+     * existing housemates (owners sharing the same {@code householdId}), so a new owner's reported level
+     * can never exceed one above the household's current best. Returns {@code null} - meaning no ceiling
+     * applies - when the owner has no existing household member.
+     */
+    private Integer membershipLevelCapForHousehold(Owner owner) {
+        OptionalInt maxLevel = findHousemates(owner).stream()
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        return maxLevel.isPresent() ? maxLevel.getAsInt() + 1 : null;
     }
 
     /**
