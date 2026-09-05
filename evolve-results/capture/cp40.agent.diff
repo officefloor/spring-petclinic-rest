@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 58ab020ab..3e6ddf4dd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,8 +30,10 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+     @Mapping(target = "checkDigit",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
++    @Mapping(target = "membershipPoints",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())))")
+     @Mapping(target = "locality",
+             expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+index 2bc460689..dc1baea4f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+@@ -4,10 +4,11 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ 
+ /**
+- * Derives the numeric {@code membershipLevel} (1-4): starts at 1, adds 1 when an email
+- * address is present, adds 1 when namesakeCount is 0, and adds 1 for tenure of more than
+- * 365 days (days between registrationDate and today). A newly created owner has zero
+- * tenure, so it never exceeds level 3.
++ * Derives the membership scoring for an owner. {@link #points} starts at 0 and adds 2
++ * when an email address is present, 1 when namesakeCount is 0, 2 for a household of 3 or
++ * more (the new owner plus namesakeCount existing members) and 3 for tenure over 365 days
++ * (days between registrationDate and today). {@link #level} maps those points to 1 (0-1),
++ * 2 (2-3), 3 (4-5) or 4 (6 or more).
+  */
+ public final class MembershipTier {
+ 
+@@ -19,17 +20,33 @@ public final class MembershipTier {
+                 && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+     }
+ 
+-    public static int of(Integer namesakeCount, String email, LocalDate registrationDate) {
+-        int level = 1;
++    public static int points(Integer namesakeCount, String email, LocalDate registrationDate) {
++        int points = 0;
+         if (email != null && !email.isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
++            points += 1;
++        }
++        if (namesakeCount != null && namesakeCount >= 2) {
++            points += 2;
+         }
+         if (hasTenure(registrationDate)) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    public static int level(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1f7819ed4..b72af34a2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2139,14 +2139,22 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "Points scored on creation: +2 when an email is present, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "Numeric level assigned on creation: starts at 1, +1 when an email is present, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure)."
++              description: "Numeric level mapped from membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more)."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
