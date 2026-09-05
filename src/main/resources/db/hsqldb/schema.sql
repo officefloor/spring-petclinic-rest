@@ -50,6 +50,7 @@ CREATE TABLE owners (
   bulk_signup_warning BOOLEAN,
   household_size INTEGER,
   membership_level INTEGER,
+  membership_points INTEGER,
   postcode VARCHAR(4),
   birth_date DATE,
   possible_duplicate BOOLEAN,
