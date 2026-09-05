@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+index 223d8da6c..b37db638d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+@@ -44,4 +44,18 @@ public final class CityCapacity {
+     static boolean warning(Owner owner, OwnerRepository ownerRepository) {
+         return warning(owner == null ? null : owner.getCity(), ownerRepository);
+     }
++
++    /**
++     * Whether {@code city} is over its soft capacity: it already holds at least
++     * {@link #WARNING_THRESHOLD} owners (unlike {@link #warning}, this stays true at and above the
++     * hard {@link #CAPACITY} limit too).
++     */
++    static boolean overSoftCapacity(String city, OwnerRepository ownerRepository) {
++        return count(city, ownerRepository) >= WARNING_THRESHOLD;
++    }
++
++    /** Convenience for computing the soft-capacity breach from an owner's city. */
++    static boolean overSoftCapacity(Owner owner, OwnerRepository ownerRepository) {
++        return overSoftCapacity(owner == null ? null : owner.getCity(), ownerRepository);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java
+index 431e71917..0e75c5f7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java
+@@ -16,22 +16,47 @@ import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDoma
+  */
+ public class RejectDisposableEmailDomain {
+ 
+-    private static final Set<String> BLOCKED_DOMAINS = Set.of(
++    static final Set<String> BLOCKED_DOMAINS = Set.of(
+             "mailinator.com", "tempmail.com", "guerrillamail.com");
+ 
+     public void service(@Val OwnerFieldsDto request) throws DisposableEmailDomainException {
+-        String email = request.getEmail();
++        String domain = domainOf(request == null ? null : request.getEmail());
++        if (domain != null && BLOCKED_DOMAINS.contains(domain)) {
++            throw new DisposableEmailDomainException(
++                    "Email domain is not permitted");
++        }
++    }
++
++    /**
++     * The lower-cased domain part of {@code email}, or null when there is no email or no '@'.
++     */
++    static String domainOf(String email) {
+         if (email == null) {
+-            return;
++            return null;
+         }
+         int at = email.lastIndexOf('@');
+         if (at < 0) {
+-            return;
++            return null;
+         }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        if (BLOCKED_DOMAINS.contains(domain)) {
+-            throw new DisposableEmailDomainException(
+-                    "Email domain is not permitted");
++        return email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * Whether {@code email}'s domain is <em>disposable-adjacent</em>: a subdomain of a known
++     * disposable domain (e.g. {@code mail.mailinator.com}). An exact disposable domain is rejected
++     * at create time by {@link #service}, so it never reaches a stored owner; the adjacency here
++     * flags the softer, still-suspicious case of a subdomain that slipped past that block.
++     */
++    static boolean adjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null) {
++            return false;
++        }
++        for (String blocked : BLOCKED_DOMAINS) {
++            if (domain.endsWith("." + blocked)) {
++                return true;
++            }
+         }
++        return false;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 0eee4bf3a..95082f61b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warning(ownerRepository));
+         dto.setCapacityWarning(CityCapacity.warning(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 2229b5066..b68ec2d99 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warning(ownerRepository));
+         dto.setCapacityWarning(CityCapacity.warning(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 000000000..9d1aa659c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The owner {@code riskFlag}: true when any single risk signal holds, otherwise false. The signals
++ * are
++ * <ul>
++ *   <li>the owner is a possible (soft) duplicate ({@link Owner#getPossibleDuplicate()}, see
++ *       {@link AssignPossibleDuplicate});</li>
++ *   <li>the email domain is disposable-adjacent (a subdomain of a known disposable domain, see
++ *       {@link RejectDisposableEmailDomain#adjacent(String)});</li>
++ *   <li>the owner's city is over its soft capacity (see
++ *       {@link CityCapacity#overSoftCapacity(Owner, OwnerRepository)}).</li>
++ * </ul>
++ */
++public final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    /** Computes the {@code riskFlag} for {@code owner}. */
++    static boolean of(Owner owner, OwnerRepository ownerRepository) {
++        if (owner == null) {
++            return false;
++        }
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean disposableAdjacent = RejectDisposableEmailDomain.adjacent(owner.getEmail());
++        boolean overSoftCapacity = CityCapacity.overSoftCapacity(owner, ownerRepository);
++        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d6a53dbf7..50d125260 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2197,6 +2197,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any of these hold - the owner is a possible duplicate, the email domain is disposable-adjacent (a subdomain of a known disposable domain), or the owner's city is over its soft capacity (at least 40 owners) - otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when this owner, though not a hard duplicate, shares an existing owner's lastName and postcode with a different telephone, otherwise false.
