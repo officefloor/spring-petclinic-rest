@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 837c3d42c..ee62e8fc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,9 @@ public class Owner extends Person {
+     @Transient
+     private Integer householdSize;
+ 
++    @Transient
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -165,6 +168,18 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicateOf != null;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0a341e661..867c2a069 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
+ import org.springframework.samples.petclinic.service.IdentityKey;
+ import org.springframework.samples.petclinic.service.NamesakeCounter;
++import org.springframework.samples.petclinic.service.PossibleDuplicateMatcher;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -126,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
+         owner.setHouseholdSize((int) owners.stream().filter(o -> HouseholdMatcher.sameHousehold(o, owner)).count() + 1);
++        owner.setPossibleDuplicateOf(PossibleDuplicateMatcher.matchId(owners, owner));
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/PossibleDuplicateMatcher.java b/src/main/java/org/springframework/samples/petclinic/service/PossibleDuplicateMatcher.java
+new file mode 100644
+index 000000000..b72210503
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/PossibleDuplicateMatcher.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Collection;
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Detects a soft duplicate: an owner that is not a hard duplicate but shares an existing
++ * owner's last name (case-insensitive) and postcode while using a different telephone.
++ * Returns the id of the first such existing owner, or {@code null} when there is none.
++ */
++public final class PossibleDuplicateMatcher {
++
++    private PossibleDuplicateMatcher() {
++    }
++
++    public static Integer matchId(Collection<Owner> existing, Owner owner) {
++        if (owner.getPostcode() == null || owner.getLastName() == null) {
++            return null;
++        }
++        return existing.stream()
++            .filter(o -> owner.getLastName().equalsIgnoreCase(o.getLastName())
++                && owner.getPostcode().equals(o.getPostcode())
++                && !Objects.equals(owner.getTelephone(), o.getTelephone()))
++            .map(Owner::getId)
++            .findFirst()
++            .orElse(null);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9fcf45a6e..1294d5ea6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2171,6 +2171,20 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner shares an existing owner's last name and postcode but has a different telephone, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner may duplicate (same last name and postcode, different telephone), absent when there is none.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
