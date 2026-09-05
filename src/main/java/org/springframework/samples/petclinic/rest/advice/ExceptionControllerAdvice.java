@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -138,6 +139,11 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
+            List<String> invalidFields = bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
+            detail.setProperty("errors", invalidFields);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                 .map(fieldError -> {
                     String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
@@ -159,6 +165,29 @@ public class ExceptionControllerAdvice {
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidOwnerFieldsException} raised when an owner has required fields that are
+     * present but blank (whitespace-only). Returns a 400 Bad Request whose body carries an
+     * {@code errors} array listing the name of each blank field, mirroring the shape produced for
+     * Bean Validation failures.
+     *
+     * @param e The {@link InvalidOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidOwnerFieldsException(InvalidOwnerFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Blank owner fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
         return ResponseEntity.status(status).body(detail);
     }
 

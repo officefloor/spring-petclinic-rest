@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -36,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        rejectBlankOwnerFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -199,5 +202,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Rejects an owner whose required text fields are blank (whitespace-only). Missing (null)
+     * and empty fields are already rejected by Bean Validation on {@link OwnerFieldsDto}; this
+     * closes the gap for {@code address} and {@code city}, whose values may be non-empty yet
+     * blank (e.g. {@code "   "}). The offending field names are reported through an
+     * {@link InvalidOwnerFieldsException}, which the {@code ExceptionControllerAdvice} renders
+     * as a 400 response carrying an {@code errors} array of field names.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws InvalidOwnerFieldsException if one or more required fields are blank
+     */
+    private void rejectBlankOwnerFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> blankFields = new ArrayList<>();
+        addIfBlank(blankFields, "firstName", ownerFieldsDto.getFirstName());
+        addIfBlank(blankFields, "lastName", ownerFieldsDto.getLastName());
+        addIfBlank(blankFields, "address", ownerFieldsDto.getAddress());
+        addIfBlank(blankFields, "city", ownerFieldsDto.getCity());
+        addIfBlank(blankFields, "telephone", ownerFieldsDto.getTelephone());
+        if (!blankFields.isEmpty()) {
+            throw new InvalidOwnerFieldsException(blankFields);
+        }
+    }
+
+    private void addIfBlank(List<String> blankFields, String field, String value) {
+        if (value != null && value.isBlank()) {
+            blankFields.add(field);
+        }
     }
 }
