@@ -16,14 +16,13 @@
 package org.springframework.samples.petclinic.service;
 
 import java.util.Collection;
-import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Detects a soft duplicate: an owner that is not a hard duplicate but shares an existing
- * owner's last name (case-insensitive) and postcode while using a different telephone.
- * Returns the id of the first such existing owner, or {@code null} when there is none.
+ * Detects a soft duplicate: an owner that is not a hard duplicate (its identity key differs)
+ * but shares an existing owner's postcode and last-name soundex. Returns the id of the first
+ * such existing owner, or {@code null} when there is none.
  */
 public final class PossibleDuplicateMatcher {
 
@@ -34,10 +33,12 @@ public final class PossibleDuplicateMatcher {
         if (owner.getPostcode() == null || owner.getLastName() == null) {
             return null;
         }
+        String soundex = Soundex.of(owner.getLastName());
+        String key = IdentityKey.of(owner);
         return existing.stream()
-            .filter(o -> owner.getLastName().equalsIgnoreCase(o.getLastName())
+            .filter(o -> soundex.equals(Soundex.of(o.getLastName()))
                 && owner.getPostcode().equals(o.getPostcode())
-                && !Objects.equals(owner.getTelephone(), o.getTelephone()))
+                && !key.equals(IdentityKey.of(o)))
             .map(Owner::getId)
             .findFirst()
             .orElse(null);
