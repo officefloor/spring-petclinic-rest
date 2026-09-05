@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -104,6 +105,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Collection<Owner> owners = this.clinicService.findAllOwners();
         String telephone = owner.getTelephone();
         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+                && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
