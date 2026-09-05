@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 053648f65..b6aa28e64 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
++    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+@@ -100,6 +101,20 @@ public interface OwnerMapper {
+                 .region(owner.getPostcode(), owner.getCity());
+     }
+ 
++    /** Region -> IANA timezone, the pinned region-to-timezone table. */
++    java.util.Map<String, String> REGION_TIMEZONE = java.util.Map.of(
++            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
++    /**
++     * Derives the owner's {@code timezone}: the IANA name for the owner's locality/region via
++     * the fixed region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++     * QLD-&gt;Australia/Brisbane). Returns null when the region yields no known timezone (e.g.
++     * an {@code UNKNOWN} locality).
++     */
++    default String toTimezone(Owner owner) {
++        return REGION_TIMEZONE.get(toLocality(owner));
++    }
++
+     /**
+      * Derives the owner's membership points: start at 0; add 2 when an email is present; add 1
+      * when the owner has no namesakes ({@code namesakeCount} is 0); add 2 for a household of 3 or
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3dc72af03..25f7efd8d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,6 +2159,12 @@ components:
+               type: string
+               example: "NSW"
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's IANA timezone derived from the locality/region via the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the region yields no known timezone.
++              type: string
++              example: "Australia/Sydney"
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners have already been created for today's business day (a bulk sign-up), otherwise false.
