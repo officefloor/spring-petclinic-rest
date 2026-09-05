@@ -13,6 +13,13 @@ public class RespondWithOwner {
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warningToday(ownerRepository));
+        String householdId = HouseholdId.of(owner.getLastName(), owner.getAddress());
+        long members = ownerRepository.findAll().stream()
+                .filter(o -> householdId.equals(HouseholdId.of(o.getLastName(), o.getAddress())))
+                .count();
+        if (members >= 3) {
+            dto.setMembershipTier("GOLD");
+        }
         response.send(dto);
     }
 }
