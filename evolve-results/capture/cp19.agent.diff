@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitException.java
+new file mode 100644
+index 000000000..120162c77
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by {@link org.springframework.samples.petclinic.rest.function.owner.RequireDailyCapacity}
++ * when the maximum number of owners has already been registered today.
++ * Handled by {@link DailyLimitExceptionHandler}, which responds 429.
++ */
++public class DailyLimitException extends Exception {
++
++    public DailyLimitException(long count) {
++        super("Daily owner limit reached: " + count);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitExceptionHandler.java
+new file mode 100644
+index 000000000..c3b2e227b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyLimitExceptionHandler.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class DailyLimitExceptionHandler {
++
++    public void handle(@Parameter DailyLimitException ex,
++            ObjectResponse<ResponseEntity<Void>> response) {
++        response.send(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyCapacity.java
+new file mode 100644
+index 000000000..c27ad0fd9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyCapacity.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DailyLimitException;
++
++/**
++ * Rejects a create-owner request once {@value #DAILY_LIMIT} or more owners have already been
++ * registered today, before {@link BuildOwner} runs. Owners are counted by registrationDate,
++ * which {@link BuildOwner} defaults to today for newly created owners.
++ */
++public class RequireDailyCapacity {
++
++    static final int DAILY_LIMIT = 100;
++
++    public void service(OwnerRepository ownerRepository) throws DailyLimitException {
++        LocalDate today = LocalDate.now();
++        long count = ownerRepository.findAll().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        if (count >= DAILY_LIMIT) {
++            throw new DailyLimitException(count);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyLimitException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyLimitException.yml
+new file mode 100644
+index 000000000..f685c6e2e
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyLimitException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DailyLimitExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 1c482a709..deff76f7f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -22,6 +22,11 @@ household:
+ capacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireCityCapacity
+   govern: [ transaction ]
++  next: dailyLimit
++
++dailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireDailyCapacity
++  govern: [ transaction ]
+   next: build
+ 
+ build:
