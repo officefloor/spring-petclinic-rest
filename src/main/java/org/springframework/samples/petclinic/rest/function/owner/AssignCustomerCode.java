@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -30,7 +27,7 @@ public class AssignCustomerCode {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = shaHex8(telephone + lastName);
+        String hash8 = Sha256.hex(telephone + lastName).substring(0, 8).toUpperCase(Locale.ROOT);
         String base = region + "-" + hash8;
 
         Set<String> existing = new HashSet<>();
@@ -45,21 +42,5 @@ public class AssignCustomerCode {
             customerCode = base + "-" + n;
         }
         owner.setCustomerCode(customerCode);
-    }
-
-    /** First 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code s}. */
-    private static String shaHex8(String s) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(s.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.substring(0, 8).toUpperCase(Locale.ROOT);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }
