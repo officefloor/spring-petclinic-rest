@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
@@ -111,6 +112,36 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Derives the owner's {@code checkDigit}: the Luhn check digit (0-9) computed over the
+     * digits contained in the {@code customerCode}. Returns null when the customer code is
+     * absent (e.g. unmigrated seed data).
+     */
+    default Integer toCheckDigit(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = customerCode.length() - 1; i >= 0; i--) {
+            char c = customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);
