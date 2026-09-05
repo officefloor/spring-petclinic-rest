@@ -176,11 +176,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is not acceptable for the owner's city, or the telephone cannot form a valid E.164 number.
      */
     private boolean normalizeAndValidateFields(Owner owner) {
-        String address = normalizeAddress(owner.getAddress());
-        if (address.isEmpty()) {
+        if (!normalizeAddressFields(owner)) {
             return false;
         }
-        owner.setAddress(address);
         if (owner.getEmail() != null) {
             String email = owner.getEmail().trim().toLowerCase(Locale.ROOT);
             if (!EMAIL_PATTERN.matcher(email).matches()) {
@@ -199,6 +197,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         owner.setTelephone(telephone);
+        return true;
+    }
+
+    /**
+     * Canonicalize an incoming owner's submitted address into its stored form and validate it,
+     * returning whether the owner may proceed to creation. On success the owner's address is
+     * replaced with its normalized value ({@link #normalizeAddress}). Returns {@code false} - so
+     * the caller can reject the request with {@code 400 BAD_REQUEST} - when the address is blank
+     * after normalization. This is the single place the owner's address is read, canonicalized and
+     * written back, mirroring the per-concern normalization the email, postcode and telephone steps
+     * each own.
+     */
+    private boolean normalizeAddressFields(Owner owner) {
+        String address = normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
         return true;
     }
 
