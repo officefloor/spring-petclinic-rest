@@ -548,7 +548,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * The effective registration date to store for a new owner: the date supplied on the request
      * when present, otherwise the current server date, in either case rolled forward to a business
-     * day so it never falls on a weekend (a Saturday or Sunday is advanced to the following Monday).
+     * day so it never falls on a weekend or public holiday (rolled forward to the next such day).
      * This single point of resolution is what every registration-date-derived value (the stored
      * date, the membership number's year segment, the per-day create-limit) is computed from.
      */
@@ -558,11 +558,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Roll {@code date} forward to the next business day: a Saturday or Sunday is advanced to the
-     * following Monday; a weekday is returned unchanged.
+     * The fixed list of public holidays that a registration date must not fall on. A date landing
+     * on one of these is rolled forward, exactly as weekends are.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
+     * Roll {@code date} forward to the next business day: a Saturday, Sunday, or listed public
+     * holiday is advanced day by day until it lands on a non-holiday weekday, which is returned
+     * unchanged.
      */
     private static LocalDate toBusinessDay(LocalDate date) {
-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY
+                || PUBLIC_HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
