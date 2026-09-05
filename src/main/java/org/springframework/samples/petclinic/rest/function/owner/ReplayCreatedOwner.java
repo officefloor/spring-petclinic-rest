@@ -19,6 +19,7 @@ public class ReplayCreatedOwner {
         Owner owner = ownerRepository.findById(ownerId);
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warning(ownerRepository));
+        dto.setCapacityWarning(CityCapacity.warning(owner, ownerRepository));
         response.send(dto);
     }
 }
