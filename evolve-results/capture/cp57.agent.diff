@@ -1,0 +1,39 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fcca67f32..dace1ff06 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -69,6 +69,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit logger; a successful create emits one line here. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Dedicated notification logger; a successful create enqueues one welcome line here. */
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
+     /** Monotonically increasing sequence number stamped onto each structured {@link OwnerCreatedEvent}. */
+     private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
+         new java.util.concurrent.atomic.AtomicLong();
+@@ -215,6 +218,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         assignRegistrationAttributes(owner, sharesHousehold);
+         this.clinicService.saveOwner(owner);
+         auditOwnerCreated(owner);
++        enqueueWelcomeNotification(owner);
+         HttpHeaders headers = new HttpHeaders();
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -233,6 +237,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info(OwnerCreatedEvent.of(AUDIT_EVENT_SEQ.incrementAndGet(), owner).toJson());
+     }
+ 
++    /**
++     * Enqueue the welcome notification for a freshly persisted {@code owner} on the dedicated
++     * {@code NOTIFY} logger: one line carrying the owner's id and member id, the identifiers a
++     * downstream notifier needs to greet the new member. Kept separate from the audit trail so the
++     * notification concern is emitted in one place, after the owner is saved and its id is assigned.
++     */
++    private void enqueueWelcomeNotification(Owner owner) {
++        NOTIFY.info("Welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
++    }
++
+     /**
+      * Canonicalize an incoming owner's submitted contact and address fields into their stored forms
+      * and validate them, returning whether the owner may proceed to creation. On success the owner's
