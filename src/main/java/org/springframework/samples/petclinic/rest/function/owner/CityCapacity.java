@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>The counted population matches {@link RejectCityAtCapacity}: every owner in the repository
  * whose {@code city} equals the given city (null-safe, same-city equality as
- * {@link AssignCustomerCode}), soft-deleted owners included.
+ * {@link AssignMemberId}), soft-deleted owners included.
  */
 public final class CityCapacity {
 

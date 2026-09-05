@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Rejects a create-owner request whose city already contains 50 or more owners. Runs
  * before {@link BuildOwner}, counting existing owners in the requested city (same-city
- * equality as {@link AssignCustomerCode}). At capacity the request is rejected 409 via
+ * equality as {@link AssignMemberId}). At capacity the request is rejected 409 via
  * {@link CityAtCapacityException}.
  */
 public class RejectCityAtCapacity {

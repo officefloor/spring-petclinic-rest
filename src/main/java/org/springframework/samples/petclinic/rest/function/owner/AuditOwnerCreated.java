@@ -18,18 +18,15 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Two things are emitted per create:
  * <ol>
- * <li>a human-readable audit line carrying the owner id, the {@code customerCode},
- * the {@code registrationDate}, the {@code membershipLevel} and the
- * {@code membershipNumber}; and
+ * <li>a human-readable audit line carrying the owner id, the {@code memberId},
+ * the {@code registrationDate} and the {@code membershipLevel}; and
  * <li>an immutable structured event, a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}},
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}},
  * where {@code seq} is a monotonically increasing integer across all creates.
  * </ol>
  *
- * <p>The event carries the owner's <em>current primary identifier</em>. Today that
- * identifier is the {@code customerCode}; when it is later unified into the
- * {@code memberId}, only {@link #primaryIdentifier(Owner)} changes and the event
- * follows without touching the emission below.
+ * <p>The event carries the owner's <em>primary identifier</em>, the unified
+ * {@code memberId}, read through {@link #primaryIdentifier(Owner)}.
  *
  * <p>Runs after {@code SaveOwner} so the owner id has been assigned.
  */
@@ -43,24 +40,23 @@ public class AuditOwnerCreated {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                ownerMapper.toMembershipLevel(owner), ownerMapper.toMembershipNumber(owner));
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                ownerMapper.toMembershipLevel(owner));
 
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", primaryIdentifier(owner));
+        event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", ownerMapper.toMembershipLevel(owner));
         event.put("event", "OWNER_CREATED");
         AUDIT.info(JSON.writeValueAsString(event));
     }
 
     /**
-     * The owner's current primary identifier. Today this is the {@code customerCode};
-     * change this single method when the identifier is unified into the {@code memberId}.
+     * The owner's primary identifier, the unified {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

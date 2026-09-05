@@ -22,9 +22,9 @@ public class ValidatePostcode {
         if (!postcode.matches("^[0-9]{4}$")) {
             throw new InvalidPostcodeException("Postcode must be a 4-digit code");
         }
-        // Region reference data lives once in OwnerCustomerCode; share it rather than copy it.
-        String region = OwnerCustomerCode.regionForCity(request.getCity());
-        int[] range = region == null ? null : OwnerCustomerCode.postcodeRange(region);
+        // Region reference data lives once in OwnerMemberId; share it rather than copy it.
+        String region = OwnerMemberId.regionForCity(request.getCity());
+        int[] range = region == null ? null : OwnerMemberId.postcodeRange(region);
         if (range == null) {
             return; // city with no known region accepts any 4-digit postcode
         }

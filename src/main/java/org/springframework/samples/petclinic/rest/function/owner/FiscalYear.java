@@ -8,7 +8,7 @@ import java.time.LocalDate;
  * the following June ({@code year + 1}); a date in January-June belongs to the fiscal year
  * ending that same June ({@code year}).
  *
- * <p>Used for the date-derived owner values (the membership number's year segment, the
+ * <p>Used for the date-derived owner values (the {@code memberId}'s FY segment, the
  * {@code fiscalYear} field, and tenure), all taken from the business-day-adjusted
  * {@code registrationDate}.
  *

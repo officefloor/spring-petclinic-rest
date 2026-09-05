@@ -22,8 +22,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipNumber", expression = "java(toMembershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
@@ -48,17 +46,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear}: the fiscal year of the business-day-adjusted
-     * {@code registrationDate}, formatted {@code FY<YY>} (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.FiscalYear}). Returns null
-     * when no registration date is present (e.g. unmigrated seed data).
+     * Derives the owner's {@code fiscalYear}: the {@code FY} segment carried inside the
+     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}, see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId#fiscalYearOf}),
+     * formatted {@code FY<YY>}. Returns null when no member id is present (e.g. unmigrated seed
+     * data).
      */
     default String toFiscalYear(Owner owner) {
-        java.time.LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate == null) {
+        String fiscalYear = org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
+                .fiscalYearOf(owner.getMemberId());
+        if (fiscalYear == null) {
             return null;
         }
-        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(registrationDate);
+        return "FY" + fiscalYear;
     }
 
     /**
@@ -125,19 +125,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from its region-and-hash identity: the region encoded
-     * in the {@code customerCode} (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode#regionOf}).
+     * Derives the owner's locality (region) from its unified identity: the region encoded in the
+     * {@code memberId} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId#regionOf}).
      * Falls back to deriving the region directly from the postcode/city only for unmigrated owners
-     * that carry no customer code.
+     * that carry no member id.
      */
     default String toLocality(Owner owner) {
-        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
-                .regionOf(owner.getCustomerCode());
+        String region = org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
+                .regionOf(owner.getMemberId());
         if (region != null) {
             return region;
         }
-        return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerMemberId
                 .region(owner.getPostcode(), owner.getCity());
     }
 
@@ -232,41 +232,11 @@ public interface OwnerMapper {
         return 1;
     }
 
-    /**
-     * Derives the owner's membership number as {@code <customerCode>-M<YY>}, where YY is the
-     * last two digits of the fiscal year of the registration date (fiscal years starting 1 July;
-     * e.g. {@code NSW-1A2B3C4D-M26}). Returns null when either the customer code or registration
-     * date is absent (e.g. unmigrated seed data).
-     */
-    default String toMembershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.FiscalYear
-                .of(owner.getRegistrationDate());
-        return owner.getCustomerCode() + "-M" + String.format("%02d", fiscalYear % 100);
-    }
-
-    /**
-     * Derives the owner's {@code checkDigit}: the Luhn check digit (0-9) computed over the
-     * digits contained in the {@code customerCode} (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode#luhn}).
-     * Returns null when the customer code is absent (e.g. unmigrated seed data).
-     */
-    default Integer toCheckDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
-                .luhn(customerCode);
-    }
-
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
