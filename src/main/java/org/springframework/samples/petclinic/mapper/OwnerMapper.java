@@ -39,7 +39,9 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
-    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress()))")
+    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+    @Mapping(target = "addressLine1", expression = "java(normalizeLine(ownerDto.getAddressLine1()))")
+    @Mapping(target = "addressLine2", expression = "java(normalizeLine(ownerDto.getAddressLine2()))")
     @Mapping(target = "postcode", expression = "java(org.springframework.samples.petclinic.service.PostcodeValidator.validate(ownerDto.getCity(), ownerDto.getPostcode()))")
     @Mapping(target = "registrationDate", expression = "java(org.springframework.samples.petclinic.service.RegistrationDateValidator.validate(ownerDto.getRegistrationDate()))")
     @Mapping(target = "email", expression = "java(org.springframework.samples.petclinic.service.DisposableEmailDomain.validate(ownerDto.getEmail()))")
@@ -69,6 +71,28 @@ public interface OwnerMapper {
         }
         org.springframework.samples.petclinic.service.E164NationalLength.check(digits);
         return "+" + digits;
+    }
+
+    /**
+     * Prefer the structured addressLine1 (with a normalized addressLine2 appended after a
+     * single space when present) over the flat address; each supplied line is normalized
+     * independently. Falls back to the flat address when no addressLine1 is supplied.
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        String line1 = ownerDto.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalized = org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line1);
+            String line2 = ownerDto.getAddressLine2();
+            return (line2 == null || line2.isBlank()) ? normalized
+                : normalized + " " + org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line2);
+        }
+        return org.springframework.samples.petclinic.service.AddressNormalizer.normalize(ownerDto.getAddress());
+    }
+
+    /** Normalize an optional address line, returning null when it is absent or blank. */
+    default String normalizeLine(String line) {
+        return (line == null || line.isBlank()) ? null
+            : org.springframework.samples.petclinic.service.AddressNormalizer.normalize(line);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
