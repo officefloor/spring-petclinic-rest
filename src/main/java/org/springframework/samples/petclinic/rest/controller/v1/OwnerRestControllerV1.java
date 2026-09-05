@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -52,6 +53,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -67,6 +70,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; a successful create emits one line here. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Request header carrying the client-supplied key that makes a create idempotent. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Idempotency-Key -> id of the owner originally created under that key. A repeat create carrying an
+     * already-seen key returns that owner rather than creating a duplicate. Only successful creates are
+     * recorded here, and the key space is client-supplied, so the map is bounded by distinct keys seen.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
 
     /** Syntactic email check: a non-empty local part, an '@', and a dotted domain, none containing spaces. */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
@@ -131,7 +144,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        return createOwner(ownerFieldsDto);
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(buildOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
+        ResponseEntity<OwnerDto> response = createOwner(ownerFieldsDto);
+        if (idempotencyKey != null && response.getStatusCode() == HttpStatus.CREATED
+                && response.getBody() != null && response.getBody().getId() != null) {
+            idempotentCreates.put(idempotencyKey, response.getBody().getId());
+        }
+        return response;
+    }
+
+    /**
+     * The non-blank {@code Idempotency-Key} header on the current request, or {@code null} when the
+     * header is absent or blank. Read from the ambient request rather than the handler signature so the
+     * generated {@link OwnersApi#addOwner} contract stays unchanged.
+     */
+    private static String currentIdempotencyKey() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            String key = attrs.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+            if (key != null && !key.isBlank()) {
+                return key;
+            }
+        }
+        return null;
     }
 
     /**
