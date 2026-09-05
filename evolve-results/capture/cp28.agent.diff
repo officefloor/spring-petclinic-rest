@@ -1,0 +1,228 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b8bf8c293..1f4972e04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "identity_key")
++    private String identityKey;
++
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
+@@ -128,6 +131,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public String getIdentityKey() {
++        return this.identityKey;
++    }
++
++    public void setIdentityKey(String identityKey) {
++        this.identityKey = identityKey;
++    }
++
+     public Integer getNamesakeCount() {
+         return this.namesakeCount;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 25f1c709a..4c2db754b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -141,7 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (countOwnersRegisteredOn(registrationDate) >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        if (isDuplicate(owner, ownerFieldsDto)) {
++        owner.setIdentityKey(identityKey(owner));
++        if (isDuplicate(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (countOwnersInCity(owner.getCity()) >= 50) {
+@@ -417,40 +418,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Whether {@code owner} collides with an existing owner on any of the identity dimensions checked
+-     * at creation: its telephone, its email, or — unless the request opts into household sharing — its
+-     * household (same last name and address). A match on any single dimension makes this a duplicate.
+-     * This is the one gate every duplicate rule flows through, so a create that trips it is rejected
+-     * with {@code 409 CONFLICT}.
++     * The single derived key all duplicate detection flows through, formed from the owner's
++     * already-normalized fields as {@code normalizedTelephone + '|' + (email or empty) + '|' +
++     * (householdId or empty)}. It is computed at the create-time identity gate, before the household
++     * id is derived, so the household segment is empty at that point. Because the telephone is part
++     * of the key, two owners in the same household with different telephones resolve to different
++     * keys and are both allowed.
+      */
+-    private boolean isDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+-        if (isTelephoneInUse(owner.getTelephone())) {
+-            return true;
+-        }
+-        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
+-            return true;
+-        }
+-        return !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner);
+-    }
+-
+-    /** Whether any existing owner already uses the given (E.164) telephone number. */
+-    private boolean isTelephoneInUse(String telephone) {
+-        return this.clinicService.findAllOwners().stream()
+-            .map(Owner::getTelephone)
+-            .filter(existing -> existing != null)
+-            .map(OwnerRestControllerV1::normalizeTelephone)
+-            .filter(existing -> existing != null)
+-            .anyMatch(telephone::equals);
++    private static String identityKey(Owner owner) {
++        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
++        String email = owner.getEmail() == null ? "" : owner.getEmail();
++        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
++        return telephone + "|" + email + "|" + household;
+     }
+ 
+-    /** Whether any existing owner already uses the given email, compared case-insensitively (lower-cased). */
+-    private boolean isEmailInUse(String email) {
+-        String normalized = email.trim().toLowerCase(Locale.ROOT);
++    /**
++     * Whether {@code owner}'s whole {@link #identityKey} equals an existing owner's, which is the sole
++     * duplicate condition: the previously separate telephone, email and household checks are now all
++     * expressed through this one key, so only an exact full-key match is a duplicate and a create that
++     * trips it is rejected with {@code 409 CONFLICT}.
++     */
++    private boolean isDuplicate(Owner owner) {
++        String key = owner.getIdentityKey();
+         return this.clinicService.findAllOwners().stream()
+-            .map(Owner::getEmail)
++            .map(Owner::getIdentityKey)
+             .filter(existing -> existing != null)
+-            .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
+-            .anyMatch(normalized::equals);
++            .anyMatch(key::equals);
+     }
+ 
+     /** Common street-type abbreviations expanded during address normalization. */
+@@ -505,14 +498,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .toList();
+     }
+ 
+-    /**
+-     * Whether any existing owner already shares the same household as {@code owner}, i.e. has the
+-     * same last name AND the same address compared case-insensitively with collapsed whitespace.
+-     */
+-    private boolean isHouseholdInUse(Owner owner) {
+-        return !findHousemates(owner).isEmpty();
+-    }
+-
+     /**
+      * The number of owners in {@code owner}'s household once this owner is created, i.e. the existing
+      * housemates (owners sharing the same {@code householdId}) plus {@code owner} itself.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index cbb9c21e4..96f82a456 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_member_count INTEGER,
+-  membership_number VARCHAR(30)
++  membership_number VARCHAR(30),
++  identity_key VARCHAR(512)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b02f5ea2..71c95cb54 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index e59e535b4..d353f0c79 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_member_count INTEGER,
+-  membership_number VARCHAR(30)
++  membership_number VARCHAR(30),
++  identity_key VARCHAR(512)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 549fdc50e..2cdf84e7d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   household_member_count INT,
+   membership_number VARCHAR(30),
++  identity_key VARCHAR(512),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e3c17d9c5..5f03d4e2d 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_member_count INTEGER,
+-                                      membership_number TEXT
++                                      membership_number TEXT,
++                                      identity_key TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 10fae4cf4..a900a4e39 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,6 +2119,18 @@ components:
+               type: string
+               readOnly: true
+               example: 'A1B2C3D4E5F6'
++            identityKey:
++              title: Identity key
++              description: The single derived key used for duplicate detection, formed as
++                'normalizedTelephone|email|householdId' (the email segment is empty when no email
++                is present, the householdId segment is empty when it has not yet been assigned).
++                A create is rejected with 409 Conflict only when a new owner's whole identityKey
++                equals an existing owner's; because the telephone is part of the key, two members
++                of the same household with different telephones have different keys and are both
++                allowed.
++              type: string
++              readOnly: true
++              example: '+61412345678||'
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners (before this owner was created) sharing
