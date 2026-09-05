@@ -139,14 +139,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        owner.setHouseholdId(householdId(owner));
         owner.setIdentityKey(identityKey(owner));
         if (isDuplicate(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold && hasExistingHousehold(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(owner.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        assignRegistrationAttributes(owner);
+        assignRegistrationAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
@@ -382,14 +387,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * code, membership number, household id, namesake count and household member count. Each is
      * derived from the owner's already-normalized fields and the existing owner population, so this
      * must run before the owner is saved, while the counts still exclude the owner being created.
+     *
+     * <p>{@code declaredMember} is true when the owner was created into an existing household by
+     * setting {@code sharesHousehold}: such an owner is a declared, not a suspected, household member,
+     * so it is never flagged as a possible duplicate; otherwise the usual possible-duplicate check
+     * runs (and, since a create that reaches here shares no existing household, does not flag it).
      */
-    private void assignRegistrationAttributes(Owner owner) {
+    private void assignRegistrationAttributes(Owner owner, boolean declaredMember) {
         owner.setCustomerCode(generateCustomerCode(owner));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner));
-        assignPossibleDuplicate(owner);
+        if (declaredMember) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        } else {
+            assignPossibleDuplicate(owner);
+        }
+    }
+
+    /**
+     * Whether {@code owner} would join an existing household, i.e. some already-registered owner
+     * resolves to the same {@link #householdId(Owner) householdId} (same last name and postcode).
+     * Because the household is keyed on (last name, postcode), such a create is a household duplicate
+     * and is rejected with {@code 409 CONFLICT} unless the request sets {@code sharesHousehold}, in
+     * which case the owner is created as a declared household member.
+     */
+    private boolean hasExistingHousehold(Owner owner) {
+        return !findHousemates(owner).isEmpty();
     }
 
     /**
@@ -605,14 +631,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * A stable identifier shared by every owner in the same household, i.e. every owner with the
-     * same last name and address (compared case-insensitively with collapsed whitespace). Derived
-     * deterministically from those normalized fields so housemates always resolve to the same value,
-     * regardless of registration order.
+     * same last name (compared case-insensitively with collapsed whitespace) and postcode. It is the
+     * first 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode} (the empty
+     * string standing in for a missing postcode), so housemates always resolve to the same value
+     * regardless of registration order, and owners sharing a last name and postcode share it
+     * automatically.
      */
     private static String householdId(Owner owner) {
-        String key = normalizeHouseholdField(owner.getLastName()) + "\n"
-            + normalizeHouseholdField(owner.getAddress());
-        return sha256Hex(key).substring(0, 24);
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = normalizeHouseholdField(owner.getLastName()) + "|" + postcode;
+        return sha256Hex(key).substring(0, 12);
     }
 
     /** The upper-case hex SHA-256 of the UTF-8 bytes of {@code input}, as 64 hex characters. */
