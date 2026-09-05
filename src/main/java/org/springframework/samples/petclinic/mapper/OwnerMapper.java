@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
@@ -98,6 +99,20 @@ public interface OwnerMapper {
         }
         return org.springframework.samples.petclinic.rest.function.owner.OwnerCustomerCode
                 .region(owner.getPostcode(), owner.getCity());
+    }
+
+    /** Region -> IANA timezone, the pinned region-to-timezone table. */
+    java.util.Map<String, String> REGION_TIMEZONE = java.util.Map.of(
+            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * Derives the owner's {@code timezone}: the IANA name for the owner's locality/region via
+     * the fixed region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane). Returns null when the region yields no known timezone (e.g.
+     * an {@code UNKNOWN} locality).
+     */
+    default String toTimezone(Owner owner) {
+        return REGION_TIMEZONE.get(toLocality(owner));
     }
 
     /**
