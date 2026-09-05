@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -69,6 +70,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Syntactic email check: a non-empty local part, an '@', and a dotted domain, none containing spaces. */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /** Disposable email domains that are not accepted for an owner's email; a create with one is rejected. */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private final ClinicService clinicService;
 
@@ -180,6 +185,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (!EMAIL_PATTERN.matcher(email).matches()) {
                 return false;
             }
+            if (isDisposableEmailDomain(email)) {
+                return false;
+            }
             owner.setEmail(email);
         }
         if (!isPostcodeValidForCity(owner)) {
@@ -191,6 +199,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(telephone);
         return true;
+    }
+
+    /**
+     * Whether {@code email}'s domain (the part after the last '@') is on the disposable-domain
+     * blocklist, compared case-insensitively. The email is already normalized to lower case by the
+     * caller, so a simple membership test against {@link #DISPOSABLE_EMAIL_DOMAINS} suffices.
+     */
+    private static boolean isDisposableEmailDomain(String email) {
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
     }
 
     /**
