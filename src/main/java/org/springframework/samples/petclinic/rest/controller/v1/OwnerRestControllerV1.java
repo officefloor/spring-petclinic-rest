@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.CityCapacity;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
 import org.springframework.samples.petclinic.service.NamesakeCounter;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -106,6 +107,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
+        if (DailyRegistrationLimit.isReached(owners)) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         String telephone = owner.getTelephone();
         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
