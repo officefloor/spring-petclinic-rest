@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 73bb8f2bd..82e1c3f6d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "locality",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+index d62b5ddf0..88093cb8e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+@@ -3,10 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's {@code locality}: the canonical region for the owner's city, looked up in a
+- * fixed city-to-region table (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD). Any city not in the
+- * table (including a null or blank city) derives {@code "UNKNOWN"}. The mapping is pinned so it is
+- * stable across requests and needs no persisted column.
++ * Derives an owner's {@code locality}: the canonical region. The postcode is preferred — a postcode
++ * that falls in a known range fixes the region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, via
++ * {@link PostcodeRanges}) regardless of the city. Only when the postcode is absent or in no known
++ * range does it fall back to the fixed city-to-region table (Sydney -> NSW, Melbourne -> VIC,
++ * Brisbane -> QLD). Any city not in the table (including a null or blank city) derives
++ * {@code "UNKNOWN"}. This returns the same region for known cities but disambiguates cities that
++ * share a name. The mapping is pinned so it is stable across requests and needs no persisted column.
+  */
+ public final class Locality {
+ 
+@@ -19,7 +22,20 @@ public final class Locality {
+     private Locality() {
+     }
+ 
++    /** The region for {@code city} from the fixed table alone, or {@code "UNKNOWN"} when unlisted. */
+     public static String of(String city) {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Derives the region, preferring the postcode: the region whose range contains the postcode wins;
++     * otherwise the city-to-region table decides.
++     */
++    public static String of(String city, String postcode) {
++        String fromPostcode = PostcodeRanges.regionFor(postcode);
++        if (fromPostcode != null) {
++            return fromPostcode;
++        }
++        return CITY_REGION.getOrDefault(city, UNKNOWN);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRanges.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRanges.java
+index 27a08f8eb..b6baaf0e1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRanges.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRanges.java
+@@ -22,4 +22,22 @@ public final class PostcodeRanges {
+     public static int[] forRegion(String region) {
+         return REGION_POSTCODES.get(region);
+     }
++
++    /**
++     * The region whose range contains {@code postcode}, or {@code null} when the postcode is absent,
++     * not four digits, or in no known range.
++     */
++    public static String regionFor(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
