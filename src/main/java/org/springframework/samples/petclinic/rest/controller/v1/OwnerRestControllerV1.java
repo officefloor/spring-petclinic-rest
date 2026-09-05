@@ -106,6 +106,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
+        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(telephone::equals);
+        if (telephoneInUse) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
