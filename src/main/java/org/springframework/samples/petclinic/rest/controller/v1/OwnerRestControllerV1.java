@@ -69,6 +69,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; a successful create emits one line here. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Monotonically increasing sequence number stamped onto each structured {@link OwnerCreatedEvent}. */
+    private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
+        new java.util.concurrent.atomic.AtomicLong();
+
     /** Request header carrying the client-supplied key that makes a create idempotent. */
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
@@ -213,6 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        AUDIT.info(OwnerCreatedEvent.of(AUDIT_EVENT_SEQ.incrementAndGet(), owner).toJson());
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
