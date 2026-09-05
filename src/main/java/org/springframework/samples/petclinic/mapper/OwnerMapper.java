@@ -100,9 +100,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's numeric membership level (1 to 3), computed on creation: start at 1;
-     * add 1 when an email is present; add 1 when the owner has no namesakes ({@code namesakeCount}
-     * is 0); capped at 3 (level 4 is reserved for tenure).
+     * Derives the owner's numeric membership level (1 to 4): start at 1; add 1 when an email is
+     * present; add 1 when the owner has no namesakes ({@code namesakeCount} is 0). These
+     * pre-tenure factors are capped at 3. Level 4 is earned only by tenure — a
+     * {@code registrationDate} more than 365 days ago. A newly created owner has zero tenure, so
+     * it never exceeds level 3.
      */
     default Integer toMembershipLevel(Owner owner) {
         int level = 1;
@@ -114,7 +116,14 @@ public interface OwnerMapper {
         if (unique) {
             level++;
         }
-        return Math.min(level, 3);
+        // Pre-tenure factors cap at level 3; level 4 requires tenure over 365 days.
+        level = Math.min(level, 3);
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null && java.time.temporal.ChronoUnit.DAYS
+                .between(registrationDate, java.time.LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /**
