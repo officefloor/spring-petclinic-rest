@@ -50,11 +50,10 @@ public final class E164Telephone {
      */
     public static void validateNationalNumberLength(String e164) throws InvalidTelephoneException {
         String digits = e164 == null ? "" : e164.replaceAll("\\D", "");
-        if (digits.startsWith("61")) {
-            requireNationalLength(digits.length() - 2, 9, "+61");
-        }
-        else if (digits.startsWith("1")) {
-            requireNationalLength(digits.length() - 1, 10, "+1");
+        CountryCode country = CountryCode.of(digits);
+        if (country != null) {
+            requireNationalLength(digits.length() - country.digits.length(),
+                    country.nationalNumberLength, country.dialCode());
         }
     }
 
@@ -76,6 +75,52 @@ public final class E164Telephone {
         }
         catch (InvalidTelephoneException ex) {
             return null;
+        }
+    }
+
+    /**
+     * The known E.164 country codes and the national-number length pinned for each: '+61'
+     * (Australia) requires 9 national digits, '+1' (NANP) requires 10. A country code is
+     * recognised when its bare dial digits lead the E.164 number's digits; splitting the dial
+     * code off leaves the national number. Country codes with no entry here keep only the
+     * generic 8-to-15 digit bound from {@link #normalize}.
+     */
+    private enum CountryCode {
+
+        /** Australia: '+61', 9 national digits. */
+        AUSTRALIA("61", 9),
+
+        /** North American Numbering Plan: '+1', 10 national digits. */
+        NANP("1", 10);
+
+        /** Bare dial-code digits, matched as a prefix of an E.164 number's digits. */
+        private final String digits;
+
+        /** Exact national-number length required for this country code. */
+        private final int nationalNumberLength;
+
+        CountryCode(String digits, int nationalNumberLength) {
+            this.digits = digits;
+            this.nationalNumberLength = nationalNumberLength;
+        }
+
+        /**
+         * The recognised country code whose dial digits lead {@code e164Digits}, or
+         * {@code null} when none is recognised. Codes are tried in declaration order, so a
+         * longer dial code takes precedence over a shorter one that shares its lead.
+         */
+        static CountryCode of(String e164Digits) {
+            for (CountryCode country : values()) {
+                if (e164Digits.startsWith(country.digits)) {
+                    return country;
+                }
+            }
+            return null;
+        }
+
+        /** The '+'-prefixed dial code, e.g. {@code "+61"}. */
+        String dialCode() {
+            return "+" + digits;
         }
     }
 }
