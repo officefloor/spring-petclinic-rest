@@ -15,7 +15,9 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -31,6 +33,16 @@ public final class HouseholdMatcher {
     public static boolean sameHousehold(Owner a, Owner b) {
         return normalize(a.getLastName()).equals(normalize(b.getLastName()))
             && normalize(a.getAddress()).equals(normalize(b.getAddress()));
+    }
+
+    /**
+     * A stable identifier shared by every owner in the same household. Derived purely from
+     * the normalised last name and address, so any two same-household owners produce the
+     * same value without coordination.
+     */
+    public static String householdId(Owner owner) {
+        String key = normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private static String normalize(String value) {
