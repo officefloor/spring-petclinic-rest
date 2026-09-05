@@ -26,7 +26,30 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code ageBand} from its {@code birthDate} measured against its
+     * {@code registrationDate}: {@code MINOR} when under 18, {@code ADULT} from 18 to 64,
+     * {@code SENIOR} at 65 or older. Returns null when either date is absent (so no band is
+     * reported for owners with no supplied birth date).
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum toAgeBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = java.time.Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.ADULT;
+        }
+        return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Derives the owner's {@code identityKey}: the single value that consolidates all
