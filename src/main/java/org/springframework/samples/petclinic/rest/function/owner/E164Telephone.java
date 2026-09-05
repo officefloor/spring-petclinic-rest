@@ -65,6 +65,33 @@ public final class E164Telephone {
         }
     }
 
+    /**
+     * Formats a stored E.164 telephone for humans: the '+' and country dial code, a space, then
+     * the national digits grouped in threes and separated by spaces
+     * (e.g. {@code "+61412345678"} -> {@code "+61 412 345 678"}). The country code is recognised
+     * via the same pinned dial codes used for validation; when none is recognised (or the input
+     * is not E.164) the value is returned unchanged. Returns {@code null} when the input is null.
+     *
+     * @param e164 an E.164 telephone as produced by {@link #normalize} ('+' then 8 to 15 digits).
+     * @return the human-facing display form, or the input unchanged when it is not recognised E.164.
+     */
+    public static String display(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.replaceAll("\\D", "");
+        CountryCode country = CountryCode.of(digits);
+        if (country == null || digits.length() <= country.digits.length()) {
+            return e164;
+        }
+        String national = digits.substring(country.digits.length());
+        StringBuilder sb = new StringBuilder("+").append(country.digits);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
+    }
+
     /** E.164 form of a telephone, or {@code null} when it is absent or cannot be formed. */
     public static String normalizeOrNull(String raw) {
         if (raw == null) {

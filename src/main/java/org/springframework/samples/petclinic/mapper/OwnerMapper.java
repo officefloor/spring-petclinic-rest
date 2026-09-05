@@ -27,7 +27,18 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code telephoneDisplay}: the stored E.164 {@code telephone} formatted
+     * for humans (see {@link org.springframework.samples.petclinic.rest.function.owner.E164Telephone#display}).
+     * The raw {@code telephone} is left in E.164 form.
+     */
+    default String toTelephoneDisplay(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.E164Telephone
+                .display(owner.getTelephone());
+    }
 
     /**
      * Derives the owner's {@code ageBand} from its {@code birthDate} measured against its
