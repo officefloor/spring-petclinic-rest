@@ -19,6 +19,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.service.HouseholdMatcher.householdId(owner))")
@@ -45,7 +46,14 @@ public interface OwnerMapper {
     @Mapping(target = "postcode", expression = "java(org.springframework.samples.petclinic.service.PostcodeValidator.validate(ownerDto.getCity(), ownerDto.getPostcode()))")
     @Mapping(target = "registrationDate", expression = "java(org.springframework.samples.petclinic.service.RegistrationDateValidator.validate(ownerDto.getRegistrationDate()))")
     @Mapping(target = "email", expression = "java(org.springframework.samples.petclinic.service.DisposableEmailDomain.validate(ownerDto.getEmail()))")
+    @Mapping(target = "salutation", expression = "java(composeSalutation(ownerDto.getTitle(), ownerDto.getLastName()))")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /** Salutation as 'title lastName', or just lastName when no title is given. Composed from the raw
+     *  request fields so it keeps their original casing (the mapped entity fields are normalized). */
+    default String composeSalutation(String title, String lastName) {
+        return (title == null || title.isBlank()) ? lastName : title + " " + lastName;
+    }
 
     /**
      * Normalise a telephone to E.164 for storage: keep an explicit leading '+' and country
