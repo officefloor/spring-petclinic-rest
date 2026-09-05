@@ -355,6 +355,32 @@ public class Owner extends Person {
         return getRegion();
     }
 
+    /** Region -> IANA timezone name, the fixed region-to-timezone table ({@code NSW ->
+     *  Australia/Sydney}, {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). */
+    private static final Map<String, String> REGION_TIMEZONES = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
+     * The owner's timezone, derived on read as the IANA name for the owner's
+     * {@link #getLocality() locality/region} via the fixed region-to-timezone table
+     * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
+     * {@code QLD -> Australia/Brisbane}). Returns {@code null} when the region carries no entry in
+     * the table (e.g. {@code UNKNOWN}).
+     */
+    @Transient
+    public String getTimezone() {
+        return timezoneForRegion(getLocality());
+    }
+
+    /** The IANA timezone name for {@code region} via the fixed region-to-timezone table, or
+     *  {@code null} when the region carries no entry ({@code NSW -> Australia/Sydney},
+     *  {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). */
+    public static String timezoneForRegion(String region) {
+        return REGION_TIMEZONES.get(region);
+    }
+
     /** The inclusive 4-digit postcode {@code {low, high}} range for {@code region}, or {@code null} when
      *  the region carries no range rule (i.e. {@code UNKNOWN} or any region absent from the table:
      *  {@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). */
