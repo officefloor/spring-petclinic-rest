@@ -347,6 +347,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The registrable second-level labels of the {@link #DISPOSABLE_EMAIL_DOMAINS disposable domains}
+     * (the label before the final TLD, e.g. {@code "mailinator.com" -> "mailinator"}), used to detect
+     * domains that are merely disposable-adjacent rather than an exact blocklist match.
+     */
+    private static final Set<String> DISPOSABLE_DOMAIN_LABELS = DISPOSABLE_EMAIL_DOMAINS.stream()
+        .map(OwnerRestControllerV1::secondLevelLabel)
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /**
+     * The second-level label of {@code domain}: the dot-delimited label immediately before the final
+     * TLD segment (e.g. {@code "x.mailinator.com" -> "mailinator"}, {@code "mailinator" -> "mailinator"}).
+     */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        return labels.length >= 2 ? labels[labels.length - 2] : labels[labels.length - 1];
+    }
+
+    /**
+     * Whether {@code email}'s domain is disposable-adjacent: it is, is a subdomain of, or shares its
+     * second-level label with a {@link #DISPOSABLE_EMAIL_DOMAINS known disposable domain} - so
+     * {@code mailinator.com} (exact), {@code x.mailinator.com} (subdomain) and {@code mailinator.net}
+     * (same label, different TLD) all match, while an unrelated domain does not. A softer signal than
+     * the exact {@link #isDisposableEmailDomain(String) blocklist} the create gate rejects on, this
+     * feeds the read-time {@link #isRiskFlag(Owner) risk flag}. A null or {@code '@'}-less email never
+     * matches.
+     */
+    private static boolean isDisposableAdjacentDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        String domain = emailDomain(email.trim().toLowerCase(Locale.ROOT));
+        return domain != null && DISPOSABLE_DOMAIN_LABELS.contains(secondLevelLabel(domain));
+    }
+
+    /**
      * Build the response DTO for a single owner, attaching the per-response derived flags that are
      * computed against the owner population rather than carried on the owner itself (currently the
      * {@code bulkSignupWarning}). Used by the single-owner read and create endpoints; the collection
@@ -356,7 +391,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
         ownerDto.setCapacityWarning(isCapacityWarning(owner));
+        ownerDto.setRiskFlag(isRiskFlag(owner));
         return ownerDto;
+    }
+
+    /**
+     * Whether {@code owner} should be surfaced as a risk on read: true when any of the risk signals
+     * hold - the owner is a possible duplicate ({@link Owner#getPossibleDuplicate()}), the owner's
+     * email domain is {@link #isDisposableAdjacentDomain(String) disposable-adjacent}, or the owner's
+     * city is over its soft capacity ({@link #isCapacityWarning(Owner)}); otherwise false. Each signal
+     * reuses the rule that owns it rather than re-deriving it here.
+     */
+    private boolean isRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentDomain(owner.getEmail())
+            || isCapacityWarning(owner);
     }
 
     /**
