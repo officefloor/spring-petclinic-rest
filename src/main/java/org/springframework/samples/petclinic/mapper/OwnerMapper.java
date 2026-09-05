@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
@@ -154,6 +155,23 @@ public interface OwnerMapper {
      */
     default String toTimezone(Owner owner) {
         return REGION_TIMEZONE.get(toLocality(owner));
+    }
+
+    /** The known regions used to distinguish a METRO area from a REGIONAL one. */
+    java.util.Set<String> KNOWN_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code <TIER>_<AREA>}: TIER is
+     * {@code PREMIUM} when the {@code membershipLevel} is 3 or more, otherwise {@code STANDARD};
+     * AREA is {@code METRO} when the {@code locality} is a known region (NSW, VIC or QLD),
+     * otherwise {@code REGIONAL}. One of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
+     * {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
+     */
+    default String toOwnerSegment(Owner owner) {
+        Integer membershipLevel = toMembershipLevel(owner);
+        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
+        String area = KNOWN_REGIONS.contains(toLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
