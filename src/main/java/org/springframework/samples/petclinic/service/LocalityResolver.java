@@ -27,10 +27,29 @@ public final class LocalityResolver {
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Postcode hundreds-prefix (postcode / 100) -&gt; region, one per known range. */
+    private static final Map<Integer, String> POSTCODE_REGION =
+        Map.of(20, "NSW", 30, "VIC", 40, "QLD");
+
     private LocalityResolver() {
     }
 
     public static String locality(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Prefer the postcode's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
+     * falling back to the city-to-region table when the postcode is absent or in no
+     * known range.
+     */
+    public static String locality(String city, String postcode) {
+        if (postcode != null) {
+            String region = POSTCODE_REGION.get(Integer.parseInt(postcode) / 100);
+            if (region != null) {
+                return region;
+            }
+        }
+        return locality(city);
     }
 }
