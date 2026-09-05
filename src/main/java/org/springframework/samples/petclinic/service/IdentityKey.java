@@ -37,8 +37,9 @@ public final class IdentityKey {
     }
 
     public static boolean isDuplicate(Collection<Owner> owners, Owner owner) {
-        return owners.stream().anyMatch(o -> Objects.equals(owner.getTelephone(), o.getTelephone())
-            && email(owner).equals(email(o)));
+        return owners.stream().filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
+            .anyMatch(o -> Objects.equals(owner.getTelephone(), o.getTelephone())
+                && email(owner).equals(email(o)));
     }
 
     private static String email(Owner owner) {

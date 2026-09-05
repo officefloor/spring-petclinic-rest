@@ -50,7 +50,7 @@ public final class HouseholdMatcher {
      */
     public static boolean isHouseholdDuplicate(Collection<Owner> owners, Owner owner, Boolean sharesHousehold) {
         return !Boolean.TRUE.equals(sharesHousehold)
-            && owners.stream().anyMatch(o -> sameHousehold(o, owner));
+            && owners.stream().filter(o -> !Boolean.TRUE.equals(o.getDeleted())).anyMatch(o -> sameHousehold(o, owner));
     }
 
     /** The number of owners in this owner's household, counting the owner itself. */

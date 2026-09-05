@@ -72,6 +72,9 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Column(name = "deleted")
+    private Boolean deleted = false;
+
     @Transient
     private String customerCode;
 
@@ -178,6 +181,14 @@ public class Owner extends Person {
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 
     public String getCustomerCode() {
