@@ -34,6 +34,8 @@ public interface OwnerMapper {
             expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
     @Mapping(target = "contactPreference",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner.getEmail()))")
+    @Mapping(target = "ageBand",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
