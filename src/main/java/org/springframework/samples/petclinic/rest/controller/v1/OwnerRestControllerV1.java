@@ -131,6 +131,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (countOwnersRegisteredOn(LocalDate.now()) >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -326,6 +329,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeHouseholdField(existing.getFirstName()).equals(firstName)
                 && normalizeHouseholdField(existing.getLastName()).equals(lastName))
+            .count();
+    }
+
+    /** The number of existing owners whose registration date is {@code date}. */
+    private int countOwnersRegisteredOn(LocalDate date) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
 
