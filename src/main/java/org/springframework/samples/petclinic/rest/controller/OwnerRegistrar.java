@@ -343,8 +343,9 @@ public class OwnerRegistrar {
 
     /**
      * Build the member id assigned to {@code owner} on create, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region code derived from the owner's
-     * postcode (falling back to the city) via {@link CityRegionResolver}, FY is the two-digit
+     * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region code stamped inside identifiers,
+     * derived from the owner's postcode (falling back to the city) via
+     * {@link CityRegionResolver#identityRegionFor}, FY is the two-digit
      * fiscal year of the (business-day-adjusted) registrationDate (the fiscal year starts on
      * 1 July), HASH8 is the first eight upper-case hex characters of the SHA-256 digest of the
      * normalized telephone concatenated with the last name (the same HASH8 used by the
@@ -356,7 +357,7 @@ public class OwnerRegistrar {
      * makes it unique (e.g. 'NSW261A2B3C4D5-2'), and the unique id is returned.
      */
     private String memberId(Owner owner) {
-        String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+        String region = cityRegionResolver.identityRegionFor(owner.getCity(), owner.getPostcode());
         String fy = String.format("%02d", OwnerMapper.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = HashUtils.sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
         String core = region + fy + hash8;

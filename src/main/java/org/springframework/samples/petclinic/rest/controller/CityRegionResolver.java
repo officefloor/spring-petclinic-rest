@@ -85,6 +85,24 @@ public class CityRegionResolver {
     }
 
     /**
+     * The region code stamped INSIDE an owner's derived identifiers (the REGION segment of its
+     * memberId, and the region any other identity code mixes in), resolved preferring the postcode
+     * over the city exactly as {@link #regionFor(String, String)}.
+     *
+     * <p>This is a deliberately separate seam from the user-facing locality region: today both
+     * resolve to the same canonical region, but keeping the identifier's region derivation in its
+     * own place means the value woven into identifiers can evolve without disturbing the plain
+     * region reported as an owner's locality, timezone or segment area.
+     *
+     * @param city     the owner's city, as stored
+     * @param postcode a 4-digit postcode string (e.g. '2000'), or {@code null} when absent
+     * @return the region code to embed in the owner's identifiers
+     */
+    public String identityRegionFor(String city, String postcode) {
+        return regionFor(city, postcode);
+    }
+
+    /**
      * The IANA timezone name for a region, using the fixed region-to-timezone table
      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
      *

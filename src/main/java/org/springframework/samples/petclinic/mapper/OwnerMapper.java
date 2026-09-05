@@ -113,16 +113,13 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year formatted 'FY<YY>', where YY is the two-digit FY segment carried by
-     * the owner's assigned memberId (see {@link #memberIdCore}). When no memberId has been assigned
-     * this falls back to the fiscal year of the (business-day-adjusted) {@code registrationDate}
-     * (the fiscal year starts on 1 July), and returns null when there is no registrationDate either.
+     * The owner's fiscal year formatted 'FY<YY>', where YY is the two-digit fiscal year of the
+     * (business-day-adjusted) {@code registrationDate} (the fiscal year starts on 1 July) — the same
+     * value the assigned memberId carries in its FY segment. Returns null when there is no
+     * registrationDate. Derived from the registrationDate directly rather than by parsing it back out
+     * of the memberId, so this user-facing field stays independent of how the memberId is composed.
      */
     String fiscalYear(Owner owner) {
-        String core = memberIdCore(owner.getMemberId());
-        if (core != null && core.length() > 11) {
-            return "FY" + core.substring(core.length() - 11, core.length() - 9);
-        }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return null;
@@ -208,39 +205,14 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The memberId's core: the {@code '<REGION><FY><HASH8><CHK>'} carried by the owner's assigned
-     * memberId, with any de-duplication {@code '-<n>'} suffix stripped, or null when no memberId has
-     * been assigned. This is the single place the stored identifier is split back into its fixed
-     * segments (a trailing FY of 2, HASH8 of 8 and CHK of 1 — eleven characters — following the
-     * variable-length region), so every rule keyed on a segment reads it the one way.
-     */
-    private static String memberIdCore(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int dash = memberId.indexOf('-');
-        return dash >= 0 ? memberId.substring(0, dash) : memberId;
-    }
-
-    /**
-     * The REGION segment carried by the owner's assigned memberId: the part of its
-     * {@link #memberIdCore core} before the fixed trailing FY(2) + HASH8(8) + CHK(1). Returns null
-     * when no memberId has been assigned, or when it carries no region segment.
-     */
-    private String identityRegion(Owner owner) {
-        String core = memberIdCore(owner.getMemberId());
-        return core != null && core.length() > 11 ? core.substring(0, core.length() - 11) : null;
-    }
-
-    /**
-     * The owner's locality: the REGION segment of its assigned identity code (see
-     * {@link #identityRegion}). When no code has been assigned this falls back to the canonical
-     * region derived from the owner via {@link CityRegionResolver}, preferring the postcode over the
-     * city, or 'UNKNOWN' when neither yields a known region.
+     * The owner's locality: the plain, user-facing region derived from the owner via
+     * {@link CityRegionResolver}, preferring the postcode over the city, or 'UNKNOWN' when neither
+     * yields a known region. This is the region as shown to callers; it is derived straight from the
+     * owner's city and postcode rather than read back out of an identifier, so it stays independent
+     * of how the owner's identifiers are composed.
      */
     String locality(Owner owner) {
-        String region = identityRegion(owner);
-        return region != null ? region : cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+        return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
     }
 
     /**
