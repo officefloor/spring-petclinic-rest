@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   household_member_count INTEGER,
   membership_number VARCHAR(30),
+  membership_level_cap INTEGER,
   identity_key VARCHAR(512),
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,

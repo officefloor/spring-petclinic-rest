@@ -88,6 +88,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -241,6 +244,19 @@ public class Owner extends Person {
         this.membershipNumber = membershipNumber;
     }
 
+    /**
+     * This owner's membership level ceiling: the derived {@link #getMembershipLevel() membership level}
+     * is never reported above it. Assigned once when the owner is registered and stored; {@code null}
+     * when no ceiling applies.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
     }
@@ -284,11 +300,12 @@ public class Owner extends Person {
 
     /**
      * The owner's numeric membership level, derived on read from {@link #getMembershipPoints()}:
-     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more; then held down to the owner's
+     * {@link #getMembershipLevelCap() membership level cap} when one has been assigned.
      */
     @Transient
     public Integer getMembershipLevel() {
-        return membershipLevel(getMembershipPoints());
+        return capMembershipLevel(membershipLevel(getMembershipPoints()), this.membershipLevelCap);
     }
 
     /** The membership points derived from the given factors: they start at 0, add 2 when
@@ -359,6 +376,12 @@ public class Owner extends Person {
             return 2;
         }
         return 1;
+    }
+
+    /** The membership {@code level} held down to {@code cap}, i.e. the smaller of the two, when a cap
+     *  is present; the level unchanged when {@code cap} is {@code null} and no ceiling applies. */
+    private static int capMembershipLevel(int level, Integer cap) {
+        return cap == null ? level : Math.min(level, cap);
     }
 
     /**
