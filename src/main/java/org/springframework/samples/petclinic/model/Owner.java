@@ -152,6 +152,23 @@ public class Owner extends Person {
         this.membershipNumber = membershipNumber;
     }
 
+    /**
+     * The owner's numeric membership level, derived on creation: it starts at 1, gains 1 when an
+     * email is present, gains 1 when {@link #namesakeCount} is 0, and is capped at 3 (level 4 is
+     * reserved for tenure).
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isBlank()) {
+            level++;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

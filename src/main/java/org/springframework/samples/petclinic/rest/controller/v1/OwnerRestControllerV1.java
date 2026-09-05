@@ -152,8 +152,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         assignRegistrationAttributes(owner);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -464,8 +464,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The number of owners in {@code owner}'s household once this owner is created, i.e. the existing
-     * housemates (owners sharing the same {@code householdId}) plus {@code owner} itself. A value of
-     * 3 or more raises the membership tier to GOLD.
+     * housemates (owners sharing the same {@code householdId}) plus {@code owner} itself.
      */
     private int countHouseholdMembers(Owner owner) {
         return findHousemates(owner).size() + 1;
