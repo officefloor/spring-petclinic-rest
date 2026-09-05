@@ -494,6 +494,20 @@ public class Owner extends Person {
         return timezoneForRegion(getLocality());
     }
 
+    /**
+     * The owner's segment, derived on read as {@code "<TIER>_<AREA>"}: one of {@code "PREMIUM_METRO"},
+     * {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"} or {@code "STANDARD_REGIONAL"}. TIER is
+     * {@code "PREMIUM"} when the {@link #getMembershipLevel() membership level} is 3 or more, otherwise
+     * {@code "STANDARD"}. AREA is {@code "METRO"} when the {@link #getLocality() locality} is a known
+     * region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code "REGIONAL"}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_POSTCODE_RANGES.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
     /** The IANA timezone name for {@code region} via the fixed region-to-timezone table, or
      *  {@code null} when the region carries no entry ({@code NSW -> Australia/Sydney},
      *  {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). */
