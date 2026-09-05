@@ -141,13 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (isTelephoneInUse(telephone)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner)) {
+        if (isDuplicate(owner, ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(owner.getCity()) >= 50) {
@@ -420,6 +414,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
+    }
+
+    /**
+     * Whether {@code owner} collides with an existing owner on any of the identity dimensions checked
+     * at creation: its telephone, its email, or — unless the request opts into household sharing — its
+     * household (same last name and address). A match on any single dimension makes this a duplicate.
+     * This is the one gate every duplicate rule flows through, so a create that trips it is rejected
+     * with {@code 409 CONFLICT}.
+     */
+    private boolean isDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (isTelephoneInUse(owner.getTelephone())) {
+            return true;
+        }
+        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
+            return true;
+        }
+        return !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdInUse(owner);
     }
 
     /** Whether any existing owner already uses the given (E.164) telephone number. */
