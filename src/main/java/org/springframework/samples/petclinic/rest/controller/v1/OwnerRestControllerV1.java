@@ -504,10 +504,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Flag {@code owner} as a possible duplicate when, though not a hard duplicate (its create having
-     * already cleared the {@link #isDuplicate} identity gate), it shares an existing owner's last name
-     * (compared case-insensitively with collapsed whitespace) and postcode but carries a different
-     * telephone. Sets {@code possibleDuplicate} accordingly and, when true, {@code possibleDuplicateOf}
-     * to the matching owner's id. Runs before save, against the existing owner population.
+     * already cleared the {@link #isDuplicate} identity gate), it shares an existing owner's postcode
+     * and last-name {@link #soundex(String) Soundex} yet resolves to a different {@link #identityKey}.
+     * Sets {@code possibleDuplicate} accordingly and, when true, {@code possibleDuplicateOf} to the
+     * matching owner's id. Runs before save, against the existing owner population.
      */
     private void assignPossibleDuplicate(Owner owner) {
         Integer matchId = findPossibleDuplicateOf(owner);
@@ -516,24 +516,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The id of an existing owner that shares {@code owner}'s postcode and last name (compared
-     * case-insensitively with collapsed whitespace) but has a different telephone, or {@code null}
-     * when there is none. When several match, the lowest id is returned. An owner without a postcode
-     * never matches.
+     * The id of an existing owner that shares {@code owner}'s postcode and last-name
+     * {@link #soundex(String) Soundex} but resolves to a different {@link #identityKey}, or
+     * {@code null} when there is none. Because the telephone is part of the identity key, two owners
+     * with the same last name and postcode but different telephones differ in key and so match here,
+     * making the later a soft (possible) duplicate rather than a hard conflict. When several match,
+     * the lowest id is returned. An owner without a postcode never matches.
      */
     private Integer findPossibleDuplicateOf(Owner owner) {
         String postcode = owner.getPostcode();
         if (postcode == null) {
             return null;
         }
-        String lastName = normalizeHouseholdField(owner.getLastName());
-        String telephone = owner.getTelephone();
+        String soundex = soundex(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .filter(existing -> existing.getId() != null
                 && postcode.equals(existing.getPostcode())
-                && normalizeHouseholdField(existing.getLastName()).equals(lastName)
-                && !telephone.equals(existing.getTelephone()))
+                && soundex(existing.getLastName()).equals(soundex)
+                && !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);
@@ -672,25 +674,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The single derived key all duplicate detection flows through, formed from the owner's
-     * already-normalized fields as {@code normalizedTelephone + '|' + (email or empty) + '|' +
-     * (householdId or empty)}. It is computed at the create-time identity gate, before the household
-     * id is derived, so the household segment is empty at that point. Because the telephone is part
-     * of the key, two owners in the same household with different telephones resolve to different
-     * keys and are both allowed.
+     * The single derived key all duplicate detection flows through: the lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, formed from the
+     * owner's already-normalized fields (the email is already lower-cased, the telephone already in
+     * E.164 form, and the last name reduced to its {@link #soundex(String) Soundex} code). Because
+     * the telephone is part of the key, two owners with the same last name and postcode but
+     * different telephones resolve to different keys and are both allowed (the later one becoming a
+     * possible duplicate rather than a hard conflict).
      */
     private static String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + household;
+        String key = telephone + "|" + email + "|" + soundex(owner.getLastName());
+        return Owner.sha256HexLower(key);
     }
 
     /**
-     * Whether {@code owner}'s whole {@link #identityKey} equals an existing owner's, which is the sole
-     * duplicate condition: the previously separate telephone, email and household checks are now all
-     * expressed through this one key, so only an exact full-key match is a duplicate and a create that
-     * trips it is rejected with {@code 409 CONFLICT}.
+     * Whether {@code owner}'s {@link #identityKey} equals a non-deleted existing owner's, which is
+     * the sole duplicate condition: the previously separate telephone, email and household checks -
+     * including the household-duplicate check derived from the {@code householdId} - are now all
+     * expressed through this one identity key, so only an exact key match is a duplicate and a create
+     * that trips it is rejected with {@code 409 CONFLICT}. Soft-deleted owners are ignored.
      */
     private boolean isDuplicate(Owner owner) {
         String key = owner.getIdentityKey();
@@ -738,6 +742,66 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * The American Soundex code of {@code value}: the retained first letter followed by up to three
+     * digits encoding the remaining consonants, right-padded with zeros to length four. Non-letters
+     * are ignored, adjacent letters coding to the same digit (including when separated by 'H' or 'W')
+     * are coded once, and vowels (with 'Y') act as separators. Returns the empty string when
+     * {@code value} holds no letters. Phonetically similar last names share a code, which is what the
+     * identity key and the possible-duplicate soft match compare on.
+     */
+    private static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (char c : value.toCharArray()) {
+            if (c < 128 && Character.isLetter(c)) {
+                letters.append(Character.toUpperCase(c));
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder().append(letters.charAt(0));
+        char previous = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            previous = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /** The Soundex digit for an upper-case letter, or {@code '0'} for letters that are not coded. */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**
