@@ -49,6 +49,7 @@ CREATE TABLE owners (
   membership_number VARCHAR(30),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
+  capacity_warning BOOLEAN,
   household_size INTEGER,
   membership_level INTEGER,
   membership_points INTEGER,
