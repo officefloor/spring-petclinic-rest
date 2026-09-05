@@ -5,6 +5,10 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * present; otherwise country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped
  * from the national digits. Spaces, dashes and brackets are stripped. The result must have 8 to 15
  * digits after the {@code '+'}, otherwise it cannot form valid E.164.
+ *
+ * <p>The national-number length is also checked against the country code: {@code '+61'} requires
+ * exactly 9 national digits and {@code '+1'} requires exactly 10. A wrong length for the country
+ * cannot form a valid number and is rejected (a 400 at the endpoint).
  */
 final class TelephoneE164 {
 
@@ -50,6 +54,17 @@ final class TelephoneE164 {
         }
         if (national.length() < 8 || national.length() > 15) {
             return null;
+        }
+        // National-number length per country code: '+61' => 9 national digits, '+1' => 10.
+        if (national.startsWith("61")) {
+            if (national.length() - 2 != 9) {
+                return null;
+            }
+        }
+        else if (national.startsWith("1")) {
+            if (national.length() - 1 != 10) {
+                return null;
+            }
         }
         return "+" + national;
     }
