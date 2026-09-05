@@ -389,6 +389,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner));
+        assignPossibleDuplicate(owner);
+    }
+
+    /**
+     * Flag {@code owner} as a possible duplicate when, though not a hard duplicate (its create having
+     * already cleared the {@link #isDuplicate} identity gate), it shares an existing owner's last name
+     * (compared case-insensitively with collapsed whitespace) and postcode but carries a different
+     * telephone. Sets {@code possibleDuplicate} accordingly and, when true, {@code possibleDuplicateOf}
+     * to the matching owner's id. Runs before save, against the existing owner population.
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        Integer matchId = findPossibleDuplicateOf(owner);
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
+    }
+
+    /**
+     * The id of an existing owner that shares {@code owner}'s postcode and last name (compared
+     * case-insensitively with collapsed whitespace) but has a different telephone, or {@code null}
+     * when there is none. When several match, the lowest id is returned. An owner without a postcode
+     * never matches.
+     */
+    private Integer findPossibleDuplicateOf(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        String lastName = normalizeHouseholdField(owner.getLastName());
+        String telephone = owner.getTelephone();
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getId() != null
+                && postcode.equals(existing.getPostcode())
+                && normalizeHouseholdField(existing.getLastName()).equals(lastName)
+                && !telephone.equals(existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**
