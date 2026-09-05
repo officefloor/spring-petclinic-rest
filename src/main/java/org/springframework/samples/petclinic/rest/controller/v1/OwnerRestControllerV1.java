@@ -129,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
+        owner.setHouseholdSize((int) owners.stream().filter(o -> HouseholdMatcher.sameHousehold(o, owner)).count() + 1);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
