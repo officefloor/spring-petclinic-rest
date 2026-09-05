@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ad3ecc20a..3afa9176b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 84f4b99de..bf5d0d11f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -233,21 +233,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /** Matches a well-formed E.164 number: a '+' followed by 8 to 15 digits. */
++    private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
++
+     /**
+-     * Canonical stored form of a telephone number: its digits, which must be exactly ten.
+-     * Returns {@code null} when the number cannot form a valid value.
++     * Canonical stored form of a telephone number in E.164: a leading '+' and country
++     * code are kept when present; otherwise country code '+61' is assumed and a single
++     * leading '0' is dropped from the national digits. Spaces, dashes and brackets are
++     * stripped. The result must be a '+' followed by 8 to 15 digits.
++     * Returns {@code null} when the number cannot form a valid E.164 value.
+      */
+     private static String normalizeTelephone(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        return digits.length() == 10 ? digits : null;
++        if (telephone == null) {
++            return null;
++        }
++        String cleaned = telephone.replaceAll("[\\s()\\[\\]-]", "");
++        String e164;
++        if (cleaned.startsWith("+")) {
++            e164 = cleaned;
++        } else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            e164 = "+61" + national;
++        }
++        return E164_PATTERN.matcher(e164).matches() ? e164 : null;
+     }
+ 
+-    /** Whether any existing owner already uses the given (canonical) telephone number. */
++    /** Whether any existing owner already uses the given (E.164) telephone number. */
+     private boolean isTelephoneInUse(String telephone) {
+         return this.clinicService.findAllOwners().stream()
+             .map(Owner::getTelephone)
+             .filter(existing -> existing != null)
+-            .map(existing -> existing.replaceAll("\\D", ""))
++            .map(OwnerRestControllerV1::normalizeTelephone)
++            .filter(existing -> existing != null)
+             .anyMatch(telephone::equals);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2d00b2cf3..628d52511 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2037,11 +2037,14 @@ components:
+         telephone:
+           title: Telephone number
+           description: The telephone number of the pet owner. On create it is normalized
+-            by removing every non-digit character and must yield exactly 10 digits.
++            to E.164 form; a leading '+' and country code are kept when present, otherwise
++            country code '+61' is assumed and a single leading '0' is dropped from the
++            national digits. Spaces, dashes and brackets are stripped and the result must
++            be a '+' followed by 8 to 15 digits.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Optional; when present it must
