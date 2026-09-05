@@ -1,0 +1,215 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 27ecd9be8..14f0915b7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,7 +8,10 @@ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.service.HouseholdMatcher;
++import org.springframework.samples.petclinic.service.IdentityKey;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -23,8 +26,8 @@ public interface OwnerMapper {
+     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
+-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.service.HouseholdMatcher.householdId(owner))")
+-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.IdentityKey.of(owner))")
++    @Mapping(target = "apiVersion", expression = "java(2)")
++    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.service.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.service.MembershipPoints.of(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.service.MembershipLevel.of(owner))")
+@@ -39,6 +42,16 @@ public interface OwnerMapper {
+ 
+     Owner toOwner(OwnerDto ownerDto);
+ 
++    /** Groups the owner's version-2 identifiers (memberId, householdId, identityKey) into the
++     *  nested identity object of the response. */
++    default OwnerIdentityDto toIdentity(Owner owner) {
++        OwnerIdentityDto identity = new OwnerIdentityDto();
++        identity.setMemberId(owner.getMemberId());
++        identity.setHouseholdId(HouseholdMatcher.householdId(owner));
++        identity.setIdentityKey(IdentityKey.of(owner));
++        return identity;
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", qualifiedByName = "normalizeTelephone")
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+index f9eecb66d..cc1cc4913 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+@@ -39,7 +39,8 @@ public final class HouseholdMatcher {
+      * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}.
+      */
+     public static String householdId(Owner owner) {
+-        String key = normalize(owner.getLastName()) + "|" + (owner.getPostcode() == null ? "" : owner.getPostcode());
++        String key = IdentityRegion.v2(owner) + "|" + normalize(owner.getLastName()) + "|"
++            + (owner.getPostcode() == null ? "" : owner.getPostcode());
+         return hex12(key);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java
+index d324a87ab..293ae15d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/IdentityKey.java
+@@ -37,7 +37,8 @@ public final class IdentityKey {
+     }
+ 
+     public static String of(Owner owner) {
+-        String raw = owner.getTelephone() + "|" + email(owner) + "|" + Soundex.of(owner.getLastName());
++        String raw = IdentityRegion.v2(owner) + "|" + owner.getTelephone() + "|" + email(owner) + "|"
++            + Soundex.of(owner.getLastName());
+         return sha256hex(raw);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/IdentityRegion.java b/src/main/java/org/springframework/samples/petclinic/service/IdentityRegion.java
+new file mode 100644
+index 000000000..11cf9d599
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/IdentityRegion.java
+@@ -0,0 +1,35 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The region code fed into the version-2 owner identifiers. It takes the plain region and
++ * mixes in the fixed 'V2' version tag, so every identifier that hashes it in (memberId,
++ * householdId, identityKey) differs from its version-1 value and no version-1 value is
++ * reproduced. The tag lives only here, inside the identifiers; the user-facing locality,
++ * timezone and owner segment keep reading the plain region through {@link RegionCode}.
++ */
++public final class IdentityRegion {
++
++    private IdentityRegion() {
++    }
++
++    public static String v2(Owner owner) {
++        return "V2|" + LocalityResolver.locality(owner.getCity(), owner.getPostcode());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MemberId.java b/src/main/java/org/springframework/samples/petclinic/service/MemberId.java
+index 15a3fd688..6e5b6e1ec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/MemberId.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/MemberId.java
+@@ -38,7 +38,7 @@ public final class MemberId {
+     public static String generate(Collection<Owner> existing, Owner owner) {
+         String region = LocalityResolver.locality(owner.getCity(), owner.getPostcode());
+         String base = region + FiscalYear.label(owner.getRegistrationDate()).substring(2)
+-            + hash8(owner.getTelephone() + owner.getLastName());
++            + hash8(IdentityRegion.v2(owner) + owner.getTelephone() + owner.getLastName());
+         return deduplicate(base + CheckDigit.of(base), existing);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+index b82ab72c6..0322b43ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+@@ -39,8 +39,10 @@ public final class OwnerCreatedEvent {
+     public static void emit(Owner owner) {
+         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+             owner.getId(), primaryId(owner), owner.getRegistrationDate(), MembershipLevel.of(owner));
+-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+-            SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel());
++        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},"
++                + "\"segment\":\"{}\",\"schemaVersion\":2,\"event\":\"OWNER_CREATED\"}",
++            SEQ.incrementAndGet(), owner.getId(), primaryId(owner), owner.getMembershipLevel(),
++            OwnerSegment.of(owner));
+         WelcomeNotification.enqueue(owner);
+     }
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index abc213494..5e48f8446 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,6 +2092,29 @@ components:
+         - lastName
+         - city
+         - telephone
++    OwnerIdentity:
++      title: Owner identity
++      description: The owner's version-2 identifiers, grouped together.
++      type: object
++      properties:
++        memberId:
++          title: Member ID
++          description: "The owner's member ID formatted as '<REGION><FY><HASH8><CHK>': the region code, the 2-digit fiscal year, the first eight upper-case hex characters of a version-2 SHA-256, and a single Luhn check digit over the digits of '<REGION><FY><HASH8>'."
++          type: string
++          example: 'NSW26A1B2C3D48'
++          readOnly: true
++        householdId:
++          title: Household ID
++          description: A stable identifier shared by owners in the same household (same last name and postcode), derived under version 2.
++          type: string
++          example: '5b8e2a441f3c'
++          readOnly: true
++        identityKey:
++          title: Identity key
++          description: The derived version-2 duplicate-detection key.
++          type: string
++          example: 'a1b2c3d4e5f6'
++          readOnly: true
+     Owner:
+       title: Owner
+       description: A pet owner.
+@@ -2137,30 +2160,21 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
+-            memberId:
+-              title: Member ID
+-              description: "The owner's member ID formatted as '<REGION><FY><HASH8><CHK>': the region code, the 2-digit fiscal year, the first eight upper-case hex characters of SHA-256 over (normalizedTelephone + lastName), and a single Luhn check digit over the digits of '<REGION><FY><HASH8>'."
+-              type: string
+-              example: 'NSW26A1B2C3D48'
++            apiVersion:
++              title: API version
++              description: The version of the owner identity contract, currently 2.
++              type: integer
++              format: int32
++              example: 2
+               readOnly: true
++            identity:
++              $ref: '#/components/schemas/OwnerIdentity'
+             fiscalYear:
+               title: Fiscal year
+               description: "The fiscal year of the business-day-adjusted registrationDate formatted as 'FY<YY>', where the fiscal year starts on 1 July."
+               type: string
+               example: 'FY26'
+               readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: A stable identifier shared by owners in the same household (same last name and address).
+-              type: string
+-              example: '5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
+-              readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: "The derived duplicate-detection key formatted as 'normalizedTelephone|email|householdId' (email empty when absent)."
+-              type: string
+-              example: '+61412345678|owner@example.test|5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
+-              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners sharing this owner's first and last name (case-insensitive) at creation time.
