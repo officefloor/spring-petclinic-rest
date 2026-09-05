@@ -15,25 +15,27 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Maps an owner's {@link MembershipPoints} to a numeric level: 1 for 0-1 points, 2 for
- * 2-3, 3 for 4-5, and 4 for 6 or more.
+ * Scores an owner's membership from a base of 0: +2 for a present email, +1 when
+ * namesakeCount is 0, +2 for a household of 3 or more, and +3 for tenure over 365 days
+ * since registration.
  */
-public final class MembershipLevel {
+public final class MembershipPoints {
 
-    private MembershipLevel() {
+    private MembershipPoints() {
     }
 
     public static int of(Owner owner) {
-        int points = MembershipPoints.of(owner);
-        if (points <= 1) {
-            return 1;
-        }
-        if (points <= 3) {
-            return 2;
-        }
-        return points <= 5 ? 3 : 4;
+        int points = 0;
+        points += owner.getEmail() != null && !owner.getEmail().isBlank() ? 2 : 0;
+        points += Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0;
+        points += owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? 2 : 0;
+        points += ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365 ? 3 : 0;
+        return points;
     }
 }
