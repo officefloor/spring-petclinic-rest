@@ -158,8 +158,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         assignRegistrationAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
