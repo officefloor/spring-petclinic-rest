@@ -793,8 +793,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The single derived key all duplicate detection flows through: the lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, formed from the
+     * The single derived key all duplicate detection flows through. Under the version-2 owner
+     * identity it is the lower-case hex SHA-256 of {@code 'V2' + '|' + normalizedTelephone + '|' +
+     * lowerEmail + '|' + soundex(lastName)}, mixing in the fixed {@link Owner#IDENTITY_VERSION_TAG
+     * 'V2' version tag} so no key produced under version 1 is produced again. It is formed from the
      * owner's already-normalized fields (the email is already lower-cased, the telephone already in
      * E.164 form, and the last name reduced to its {@link #soundex(String) Soundex} code). Because
      * the telephone is part of the key, two owners with the same last name and postcode but
@@ -804,7 +806,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String keyMaterial = String.join("|", telephone, email, soundex(owner.getLastName()));
+        String keyMaterial = String.join("|",
+            Owner.IDENTITY_VERSION_TAG, telephone, email, soundex(owner.getLastName()));
         return Owner.sha256HexLower(keyMaterial);
     }
 
@@ -961,15 +964,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * A stable identifier shared by every owner in the same household, i.e. every owner with the
-     * same last name (compared case-insensitively with collapsed whitespace) and postcode. It is the
-     * first 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode} (the empty
-     * string standing in for a missing postcode), so housemates always resolve to the same value
-     * regardless of registration order, and owners sharing a last name and postcode share it
-     * automatically.
+     * same last name (compared case-insensitively with collapsed whitespace) and postcode. Under the
+     * version-2 owner identity it is the first 12 hex characters of SHA-256 over
+     * {@code 'V2' + '|' + normalizedLastName + '|' + postcode} (the empty string standing in for a
+     * missing postcode), mixing in the fixed {@link Owner#IDENTITY_VERSION_TAG 'V2' version tag} so
+     * no household id produced under version 1 is produced again. Housemates always resolve to the
+     * same value regardless of registration order, and owners sharing a last name and postcode share
+     * it automatically.
      */
     private static String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String keyMaterial = String.join("|", normalizeHouseholdField(owner.getLastName()), postcode);
+        String keyMaterial = String.join("|",
+            Owner.IDENTITY_VERSION_TAG, normalizeHouseholdField(owner.getLastName()), postcode);
         return Owner.sha256Hex(keyMaterial).substring(0, 12);
     }
 }

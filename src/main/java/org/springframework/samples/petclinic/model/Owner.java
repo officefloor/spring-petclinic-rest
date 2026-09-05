@@ -451,17 +451,24 @@ public class Owner extends Person {
         return "UNKNOWN";
     }
 
+    /** The fixed version tag mixed into every version-2 identifier so that no value produced under
+     *  version 1 is produced again. It appears only inside the identifiers (the region code stamped
+     *  in them, the household id, the identity key and the member id), never in the user-facing
+     *  {@link #getLocality() locality}, {@link #getTimezone() timezone} or
+     *  {@link #getOwnerSegment() owner segment}. */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     /**
      * The region code stamped inside the owner's identifiers - the leading REGION segment of the
-     * {@link #getMemberId() member id}. Defined here as the single source of the "region inside the
-     * identifiers", deliberately kept separate from the user-facing {@link #getRegion() region} and
-     * {@link #getLocality() locality} (which it currently equals) so the region baked into
-     * identifiers can be evolved on its own without disturbing the plain region shown to users.
-     * Today it is exactly the {@link #getRegion() region}.
+     * {@link #getMemberId() member id}. Under the version-2 owner identity it is the plain
+     * {@link #getRegion() region} with the fixed {@link #IDENTITY_VERSION_TAG 'V2' version tag}
+     * appended (e.g. region {@code "NSW"} -> {@code "NSWV2"}), so the region baked into
+     * identifiers differs from every version-1 value while the user-facing {@link #getRegion()
+     * region} and {@link #getLocality() locality} stay the plain region code.
      */
     @Transient
     public String getIdentityRegionCode() {
-        return getRegion();
+        return getRegion() + IDENTITY_VERSION_TAG;
     }
 
     /**
