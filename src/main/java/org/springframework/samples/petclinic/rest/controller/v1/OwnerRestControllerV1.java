@@ -102,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectBlankOwnerFields(ownerFieldsDto);
+        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -231,5 +232,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value != null && value.isBlank()) {
             blankFields.add(field);
         }
+    }
+
+    /**
+     * Normalizes a telephone number submitted to the create endpoint by removing every non-digit
+     * character. The result must contain exactly 10 digits; otherwise the submission is rejected as
+     * a 400 (via {@link InvalidOwnerFieldsException}, which the {@code ExceptionControllerAdvice}
+     * renders with {@code telephone} in its {@code errors} array).
+     *
+     * @param telephone the raw telephone value from the request
+     * @return the stripped, 10-digit telephone to store and return
+     * @throws InvalidOwnerFieldsException if the stripped value is not exactly 10 digits
+     */
+    private String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        return digits;
     }
 }
