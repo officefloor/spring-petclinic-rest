@@ -54,6 +54,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Transient
+    private String customerCode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -97,6 +100,14 @@ public class Owner extends Person {
     /** Default a missing registration date to the server's current date. */
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = (registrationDate == null) ? LocalDate.now() : registrationDate;
+    }
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
     }
 
     protected Set<Pet> getPetsInternal() {
