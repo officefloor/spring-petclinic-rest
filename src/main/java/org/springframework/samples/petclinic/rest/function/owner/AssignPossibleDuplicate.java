@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
@@ -17,14 +18,20 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * several match); otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf}
  * is left unset.
  *
+ * <p>A create that opts in with {@code sharesHousehold} is a <em>declared</em> household member,
+ * not a suspected one, so it is never flagged: {@code possibleDuplicate} stays false.
+ *
  * <p>Runs after {@link RejectDuplicateIdentity} (so a hard duplicate has already been rejected)
  * and within the create transaction, but before {@link SaveOwner}, so the new owner is not yet
  * persisted and cannot match itself.
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
         owner.setPossibleDuplicate(false);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = normalize(owner.getLastName());
         String postcode = normalize(owner.getPostcode());
         if (postcode.isEmpty()) {

@@ -1,60 +1,56 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns a shared {@code householdId} when a create-owner request opts in with
- * {@code sharesHousehold} and an existing owner shares its household: same last name
- * (compared case-insensitively with runs of whitespace collapsed to a single space) and
- * same address (compared in the normalized form of {@link AddressNormalizer}). Both the new owner and
- * every existing household member are assigned the same identifier, derived deterministically
- * from the normalized last name and address, so members always agree on it and it never
- * changes as more join.
+ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of
+ * {@code SHA-256(normalizedLastName + '|' + postcode)}. Because it is derived purely from
+ * the (last name, postcode) pair, any two owners sharing a last name (compared
+ * case-insensitively with runs of whitespace collapsed to a single space) and postcode
+ * receive the <em>same</em> identifier automatically — they are, by definition, the same
+ * household — and no owner ever has to look up or backfill another. The value never changes
+ * as more members join.
  *
- * <p>Runs after {@link BuildOwner} (so the Owner exists) and within the create transaction
- * (so any backfilled members commit with the new owner). When {@code sharesHousehold} is not
- * set, or no existing owner shares the household, no id is assigned.
+ * <p>Runs after {@link BuildOwner} (so the Owner exists) and within the create transaction,
+ * unconditionally: {@code sharesHousehold} no longer creates the link (the link is implicit
+ * in the identifier); it only bypasses the later household-duplicate block (see
+ * {@link RejectDuplicateIdentity}).
  */
 public class AssignHousehold {
 
-    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
+    public void service(@Val Owner owner) {
         String lastName = normalize(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        String householdId = householdId(lastName, address);
-        boolean shared = false;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (normalize(existing.getLastName()).equals(lastName)
-                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
-                shared = true;
-                if (!householdId.equals(existing.getHouseholdId())) {
-                    existing.setHouseholdId(householdId);
-                    ownerRepository.save(existing);
-                }
-            }
-        }
-        if (shared) {
-            owner.setHouseholdId(householdId);
-        }
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode().trim();
+        owner.setHouseholdId(householdId(lastName, postcode));
     }
 
-    private static String householdId(String lastName, String address) {
-        byte[] key = (lastName + "\n" + address).getBytes(StandardCharsets.UTF_8);
-        return UUID.nameUUIDFromBytes(key).toString();
+    private static String householdId(String lastName, String postcode) {
+        byte[] key = (lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8);
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+        byte[] hash = digest.digest(key);
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : hash) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.substring(0, 12);
     }
 
     private static String normalize(String value) {
         if (value == null) {
             return "";
         }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
