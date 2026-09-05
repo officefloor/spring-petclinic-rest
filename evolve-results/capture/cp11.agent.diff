@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fe6b7e7b7..00c8a0a36 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
++    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.service.HouseholdMatcher.householdId(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+index af2f6d746..88769190a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/HouseholdMatcher.java
+@@ -15,7 +15,9 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.nio.charset.StandardCharsets;
+ import java.util.Locale;
++import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+@@ -33,6 +35,16 @@ public final class HouseholdMatcher {
+             && normalize(a.getAddress()).equals(normalize(b.getAddress()));
+     }
+ 
++    /**
++     * A stable identifier shared by every owner in the same household. Derived purely from
++     * the normalised last name and address, so any two same-household owners produce the
++     * same value without coordination.
++     */
++    public static String householdId(Owner owner) {
++        String key = normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
++        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
++    }
++
+     private static String normalize(String value) {
+         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 909c219d4..e2460650a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2091,6 +2091,12 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: A stable identifier shared by owners in the same household (same last name and address).
++              type: string
++              example: '5b8e2a44-1f3c-3e9a-9c7d-0a1b2c3d4e5f'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
