@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -105,40 +106,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
+        return withOwner(ownerId, owner ->
+            new ResponseEntity<>(buildOwnerDto(owner), HttpStatus.OK));
+    }
+
+    /**
+     * Look up the owner identified by {@code ownerId} and, when it exists, produce the response with
+     * {@code onFound}; when no such owner exists, short-circuit with {@code 404 NOT_FOUND}. Centralizes
+     * the fetch-and-guard shared by the single-owner endpoints so it is written once, not copied.
+     */
+    private <T> ResponseEntity<T> withOwner(Integer ownerId, Function<Owner, ResponseEntity<T>> onFound) {
         Owner owner = this.clinicService.findOwnerById(ownerId);
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(isBulkSignupWarning());
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return onFound.apply(owner);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String address = normalizeAddress(owner.getAddress());
-        if (address.isEmpty()) {
+        if (!normalizeAndValidateFields(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        owner.setAddress(address);
-        if (owner.getEmail() != null) {
-            String email = owner.getEmail().trim().toLowerCase(Locale.ROOT);
-            if (!EMAIL_PATTERN.matcher(email).matches()) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-            }
-            owner.setEmail(email);
-        }
-        if (!isPostcodeValidForCity(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        String telephone = normalizeTelephone(owner.getTelephone());
-        if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        owner.setTelephone(telephone);
         LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
         if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -159,11 +150,54 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(buildOwnerDto(owner), headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Canonicalize an incoming owner's submitted contact and address fields into their stored forms
+     * and validate them, returning whether the owner may proceed to creation. On success the owner's
+     * address, email (when supplied) and telephone are replaced with their normalized values. Returns
+     * {@code false} - so the caller can reject the request with {@code 400 BAD_REQUEST} - when the
+     * address is blank after normalization, a supplied email is not syntactically valid, the postcode
+     * is not acceptable for the owner's city, or the telephone cannot form a valid E.164 number.
+     */
+    private boolean normalizeAndValidateFields(Owner owner) {
+        String address = normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
+        if (owner.getEmail() != null) {
+            String email = owner.getEmail().trim().toLowerCase(Locale.ROOT);
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return false;
+            }
+            owner.setEmail(email);
+        }
+        if (!isPostcodeValidForCity(owner)) {
+            return false;
+        }
+        String telephone = normalizeTelephone(owner.getTelephone());
+        if (telephone == null) {
+            return false;
+        }
+        owner.setTelephone(telephone);
+        return true;
+    }
+
+    /**
+     * Build the response DTO for a single owner, attaching the per-response derived flags that are
+     * computed against the owner population rather than carried on the owner itself (currently the
+     * {@code bulkSignupWarning}). Used by the single-owner read and create endpoints; the collection
+     * listing intentionally omits these flags.
+     */
+    private OwnerDto buildOwnerDto(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -194,12 +228,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Transactional
     @Override
     public ResponseEntity<OwnerDto> deleteOwner(Integer ownerId) {
-        Owner owner = this.clinicService.findOwnerById(ownerId);
-        if (owner == null) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        return withOwner(ownerId, owner -> {
+            this.clinicService.deleteOwner(owner);
+            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        });
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -271,20 +303,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
 
     /**
-     * Region -> inclusive 4-digit postcode range {low, high}. A city's region is derived from the
-     * fixed city-to-region table ({@link Owner#getRegion()}); a region absent from this map (i.e.
-     * {@code UNKNOWN}) carries no range rule and accepts any 4-digit postcode.
-     */
-    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
-    /**
      * Whether {@code owner}'s postcode is acceptable. Postcode is optional: a null postcode is always
      * accepted. When present it must be a 4-digit value and, when the owner's city maps to a known
      * region, must fall within that region's inclusive range (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099); a city with no known region accepts any 4-digit postcode.
+     * QLD 4000-4099); a city with no known region accepts any 4-digit postcode. The region-to-range
+     * table lives on {@link Owner#postcodeRangeForRegion(String)} and is shared, not duplicated here.
      */
     private static boolean isPostcodeValidForCity(Owner owner) {
         String postcode = owner.getPostcode();
@@ -294,7 +317,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
             return false;
         }
-        int[] range = REGION_POSTCODE_RANGES.get(owner.getRegion());
+        int[] range = Owner.postcodeRangeForRegion(owner.getRegion());
         if (range == null) {
             return true;
         }

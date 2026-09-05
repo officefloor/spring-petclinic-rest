@@ -291,6 +291,13 @@ public class Owner extends Person {
         return getRegion();
     }
 
+    /** The inclusive 4-digit postcode {@code {low, high}} range for {@code region}, or {@code null} when
+     *  the region carries no range rule (i.e. {@code UNKNOWN} or any region absent from the table:
+     *  {@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). */
+    public static int[] postcodeRangeForRegion(String region) {
+        return REGION_POSTCODE_RANGES.get(region);
+    }
+
     /** The region whose postcode range contains {@code postcode}, or {@code null} when the postcode is
      *  absent, not a 4-digit value, or in no known range. */
     private static String regionForPostcode(String postcode) {
