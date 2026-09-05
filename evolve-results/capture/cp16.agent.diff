@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b9fd504f0..3bfda36bc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.service.HouseholdMatcher;
+ import org.springframework.samples.petclinic.service.NamesakeCounter;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -113,8 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
+-        String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
+-        owner.setCustomerCode(String.format("%s-%04d", last3, owners.size() + 1));
++        owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+new file mode 100644
+index 000000000..6d8a446e9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Collection;
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Builds an owner's customerCode as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
++ * letters of the city, the first three of the last name, and a per-city 4-digit sequence
++ * that is one more than the owners already registered in that city.
++ */
++public final class CustomerCodeGenerator {
++
++    private CustomerCodeGenerator() {
++    }
++
++    public static String generate(Collection<Owner> existing, Owner owner) {
++        String city = owner.getCity();
++        String city3 = prefix(city);
++        String last3 = prefix(owner.getLastName());
++        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
++        return String.format("%s-%s-%04d", city3, last3, inCity + 1);
++    }
++
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
++    }
++}
