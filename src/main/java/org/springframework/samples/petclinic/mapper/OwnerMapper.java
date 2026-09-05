@@ -25,6 +25,7 @@ public interface OwnerMapper {
             + " + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality", expression = "java(owner.getLocality())")
     @Mapping(target = "timezone", expression = "java(owner.getTimezone())")
+    @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
