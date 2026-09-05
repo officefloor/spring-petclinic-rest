@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 206b04d89..a45dbb896 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -209,36 +209,62 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's numeric membership level, derived on read: it starts at 1, gains 1 when an email
+-     * is present, gains 1 when {@link #namesakeCount} is 0, and is capped at 3 by these pre-tenure
+-     * factors. Level 4 is reserved for tenure: it is reached only when the pre-tenure factors are
+-     * maxed and the owner's tenure (whole days from {@link #registrationDate} to today) exceeds 365.
+-     * Because a newly created owner has zero tenure, a new owner never exceeds level 3.
++     * The owner's membership points, derived on read: they start at 0, add 2 when an email is
++     * present, add 1 when {@link #namesakeCount} is 0, add 2 for a household of 3 or more
++     * ({@link #householdMemberCount}), and add 3 for tenure over 365 days (whole days from
++     * {@link #registrationDate} to today).
++     */
++    @Transient
++    public Integer getMembershipPoints() {
++        return membershipPoints(this.email, this.namesakeCount, this.householdMemberCount,
++            this.registrationDate);
++    }
++
++    /**
++     * The owner's numeric membership level, derived on read from {@link #getMembershipPoints()}:
++     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+-        return membershipLevel(this.email, this.namesakeCount, this.registrationDate);
++        return membershipLevel(getMembershipPoints());
+     }
+ 
+-    /** The numeric membership level (1-4) derived from the given factors: it starts at 1, gains 1
+-     *  when {@code email} is present, gains 1 when {@code namesakeCount} is 0, and is capped at 3 by
+-     *  these pre-tenure factors. Level 4 is reserved for tenure: it is reached only when the
+-     *  pre-tenure factors are maxed and tenure (whole days from {@code registrationDate} to today)
+-     *  exceeds 365. */
+-    private static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate) {
+-        int level = 1;
++    /** The membership points derived from the given factors: they start at 0, add 2 when
++     *  {@code email} is present, add 1 when {@code namesakeCount} is 0, add 2 for a household of 3 or
++     *  more ({@code householdMemberCount}), and add 3 for tenure over 365 days (whole days from
++     *  {@code registrationDate} to today). */
++    private static int membershipPoints(String email, Integer namesakeCount,
++            Integer householdMemberCount, LocalDate registrationDate) {
++        int points = 0;
+         if (email != null && !email.isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
++            points += 1;
++        }
++        if (householdMemberCount != null && householdMemberCount >= 3) {
++            points += 2;
+         }
+-        level = Math.min(level, 3);
+         if (registrationDate != null
+                 && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /** The numeric membership level (1-4) mapped from membership points: 1 for 0-1 points, 2 for
++     *  2-3, 3 for 4-5, and 4 for 6 or more. */
++    private static int membershipLevel(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0b5834eb8..4f20c1caf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2176,19 +2176,28 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW-1A2B3C4D-M26'
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points, derived on read. Starts at 0, adds 2 when
++                an email is present, adds 1 when namesakeCount is 0, adds 2 for a household of 3 or
++                more, and adds 3 for tenure over 365 days (whole days from registrationDate to
++                today).
++              type: integer
++              format: int32
++              minimum: 0
++              readOnly: true
++              example: 3
+             membershipLevel:
+               title: Membership level
+-              description: The owner's numeric membership level, derived on read. Starts at 1,
+-                gains 1 when an email is present, gains 1 when namesakeCount is 0, and is capped at 3
+-                by these pre-tenure factors. Level 4 is reserved for tenure - reached only when the
+-                pre-tenure factors are maxed and tenure (whole days from registrationDate to today)
+-                exceeds 365 - so a newly created owner never exceeds level 3.
++              description: The owner's numeric membership level, derived on read from
++                membershipPoints - level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or
++                more.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+               readOnly: true
+-              example: 3
++              example: 2
+             checkDigit:
+               title: Check digit
+               description: A single Luhn check digit (0-9) computed over the decimal digits of the
