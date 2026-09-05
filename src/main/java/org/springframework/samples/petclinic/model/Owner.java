@@ -353,17 +353,30 @@ public class Owner extends Person {
     }
 
     /**
+     * The two-digit fiscal-year segment for {@code date}: the last two digits of the fiscal year
+     * (starting 1 July) that contains it, zero-padded (e.g. a date of 2026-09-05 falls in fiscal year
+     * 2027 -> {@code "27"}). This is the bare numeric segment behind the {@code "FY"}-prefixed
+     * {@link #getFiscalYear()} and is also the segment the controller stamps into an owner's
+     * identifier; the fiscal-year rule itself lives in {@link #fiscalYear(LocalDate)} and is shared,
+     * not duplicated.
+     */
+    public static String fiscalYearSegment(LocalDate date) {
+        return String.format("%02d", fiscalYear(date) % 100);
+    }
+
+    /**
      * The owner's fiscal year, derived on read from the (business-day-adjusted)
-     * {@link #registrationDate} as {@code "FY<YY>"}, where YY is the last two digits of the fiscal
-     * year (starting 1 July) that contains the registration date (e.g. a date of 2026-09-05 yields
-     * {@code "FY27"}). Returns {@code null} when no registration date is available.
+     * {@link #registrationDate} as {@code "FY<YY>"}, where YY is the two-digit
+     * {@link #fiscalYearSegment(LocalDate) fiscal-year segment} of the registration date (e.g. a date
+     * of 2026-09-05 yields {@code "FY27"}). Returns {@code null} when no registration date is
+     * available.
      */
     @Transient
     public String getFiscalYear() {
         if (this.registrationDate == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYear(this.registrationDate) % 100);
+        return "FY" + fiscalYearSegment(this.registrationDate);
     }
 
     /** The numeric membership level (1-4) mapped from membership points: 1 for 0-1 points, 2 for
@@ -593,8 +606,10 @@ public class Owner extends Person {
 
     /** The single Luhn check digit (0-9) over the decimal digits contained in {@code value}, scanning
      *  right to left and doubling every second digit; non-digit characters are ignored and a null or
-     *  digit-free value yields {@code 0}. */
-    private static int luhnCheckDigit(String value) {
+     *  digit-free value yields {@code 0}. Shared by the derived {@link #getCheckDigit()} and the
+     *  controller that stamps a check digit into an owner's identifier, so the Luhn rule lives here
+     *  once and is not duplicated. */
+    public static int luhnCheckDigit(String value) {
         int sum = 0;
         boolean doubling = true;
         for (int i = (value == null ? 0 : value.length()) - 1; i >= 0; i--) {

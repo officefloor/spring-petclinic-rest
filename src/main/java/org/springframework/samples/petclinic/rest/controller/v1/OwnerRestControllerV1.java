@@ -214,14 +214,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         assignRegistrationAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
-        AUDIT.info(OwnerCreatedEvent.of(AUDIT_EVENT_SEQ.incrementAndGet(), owner).toJson());
+        auditOwnerCreated(owner);
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(buildOwnerDto(owner), headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emit the audit trail for a freshly persisted {@code owner} on the dedicated {@code AUDIT}
+     * logger: the human-readable line followed by the structured {@link OwnerCreatedEvent}. This is
+     * the one place a created owner's identifiers are read for the audit trail, so a change to which
+     * identifier is audited is confined here rather than woven through the create pipeline.
+     */
+    private void auditOwnerCreated(Owner owner) {
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
+        AUDIT.info(OwnerCreatedEvent.of(AUDIT_EVENT_SEQ.incrementAndGet(), owner).toJson());
     }
 
     /**
@@ -657,22 +667,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the membership number '<customerCode>-M<YY>' where YY is the
-     * {@link #membershipYearSegment(LocalDate) fiscal-year segment} of the {@code registrationDate}
-     * (e.g. 'NSW-1A2B3C4D-M27').
+     * Build the membership number '<customerCode>-M<YY>' where YY is the two-digit
+     * {@link Owner#fiscalYearSegment(LocalDate) fiscal-year segment} of the business-day-adjusted
+     * {@code registrationDate} (e.g. 'NSW-1A2B3C4D-M27'). The fiscal-year segment lives on
+     * {@link Owner} and is shared, not duplicated here.
      */
     private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        return customerCode + "-M" + membershipYearSegment(registrationDate);
-    }
-
-    /**
-     * The two-digit year segment stamped into a membership number: the last two digits of the
-     * fiscal year (starting 1 July) that contains the business-day-adjusted {@code registrationDate},
-     * zero-padded (e.g. a date of 2026-09-05 falls in fiscal year 2027 -> '27'). Shares the
-     * fiscal-year rule with {@link Owner#getFiscalYear()} via {@link Owner#fiscalYear(LocalDate)}.
-     */
-    private static String membershipYearSegment(LocalDate registrationDate) {
-        return String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
+        return customerCode + "-M" + Owner.fiscalYearSegment(registrationDate);
     }
 
     /**
