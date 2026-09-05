@@ -243,10 +243,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, derived on read: currently the owner's {@link #getRegion() region}.
+     * The owner's locality, derived on read from the region-and-hash {@link #getCustomerCode()
+     * customer code}: the region segment before the first '-' of the customer code
+     * ('<REGION>-<HASH8>'). Falls back to the owner's {@link #getRegion() region} when no customer
+     * code has been assigned yet.
      */
     @Transient
     public String getLocality() {
+        if (this.customerCode != null) {
+            int dash = this.customerCode.indexOf('-');
+            if (dash > 0) {
+                return this.customerCode.substring(0, dash);
+            }
+        }
         return getRegion();
     }
 

@@ -365,22 +365,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build {@code owner}'s customer code '<CITY3>-<LAST3>-<NNNN>': CITY3 is the upper-cased first
-     * three letters of the owner's city, LAST3 the upper-cased first three letters of the owner's
-     * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number
-     * of owners already registered in that city (e.g. 'SYD-SMI-0007').
+     * Build {@code owner}'s customer code '<REGION>-<HASH8>': REGION is the region code derived from
+     * the owner's postcode ({@link Owner#getRegion()}) and HASH8 the first 8 upper-case hex
+     * characters of SHA-256 over the owner's already-normalized telephone concatenated with the
+     * owner's last name (e.g. 'NSW-1A2B3C4D'). There are no sequence numbers: the identity is a pure
+     * function of the region and the (telephone, last name) pair.
      */
     private String generateCustomerCode(Owner owner) {
-        String city3 = firstThreeLetters(owner.getCity());
-        String last3 = firstThreeLetters(owner.getLastName());
-        int sequence = countOwnersInCity(owner.getCity()) + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
-    }
-
-    /** The upper-cased first three letters (ignoring non-letters) of {@code value}. */
-    private static String firstThreeLetters(String value) {
-        String letters = value == null ? "" : value.replaceAll("[^\\p{L}]", "");
-        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String hash8 = sha256Hex(telephone + lastName).substring(0, 8);
+        return owner.getRegion() + "-" + hash8;
     }
 
     /**
@@ -419,7 +414,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the membership number '<customerCode>-M<YY>' where YY is the last two digits of the
-     * {@code registrationDate} year (e.g. 'SMI-0007-M26').
+     * {@code registrationDate} year (e.g. 'NSW-1A2B3C4D-M26').
      */
     private static String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
         String yy = String.format("%02d", registrationDate.getYear() % 100);
