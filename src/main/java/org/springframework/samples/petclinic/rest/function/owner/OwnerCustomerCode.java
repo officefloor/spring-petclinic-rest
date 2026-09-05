@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Map;
 
@@ -70,6 +67,27 @@ public final class OwnerCustomerCode {
     }
 
     /**
+     * The region for a city by the fixed city-to-region table
+     * ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), or {@code null} when the city has
+     * no known region. Unlike {@link #region}, this does not fall back to {@code UNKNOWN}; it
+     * exposes the raw city table so callers such as {@code ValidatePostcode} share this one
+     * source of the region reference data.
+     */
+    public static String regionForCity(String city) {
+        return CITY_REGION.get(city);
+    }
+
+    /**
+     * The inclusive 4-digit postcode range {@code {low, high}} pinned for a region (NSW
+     * 2000-2099, VIC 3000-3099, QLD 4000-4099), or {@code null} when the region has no pinned
+     * range. The returned array is a copy, so callers cannot mutate the shared table.
+     */
+    public static int[] postcodeRange(String region) {
+        int[] range = REGION_POSTCODES.get(region);
+        return range == null ? null : range.clone();
+    }
+
+    /**
      * The first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone +
      * lastName}, where the telephone is normalized to E.164 (an absent or unparseable
      * telephone, or an absent last name, contributes an empty string).
@@ -78,21 +96,6 @@ public final class OwnerCustomerCode {
         String tel = E164Telephone.normalizeOrNull(telephone);
         String normalizedTelephone = tel == null ? "" : tel;
         String last = lastName == null ? "" : lastName;
-        return sha256Hex(normalizedTelephone + last).substring(0, 8).toUpperCase(Locale.ROOT);
-    }
-
-    private static String sha256Hex(String input) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+        return Sha256.hex(normalizedTelephone + last).substring(0, 8).toUpperCase(Locale.ROOT);
     }
 }

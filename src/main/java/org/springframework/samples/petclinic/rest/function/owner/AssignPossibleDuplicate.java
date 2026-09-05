@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.Objects;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
@@ -32,38 +33,55 @@ public class AssignPossibleDuplicate {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // a declared household member is not a suspected duplicate
         }
-        String lastName = normalize(owner.getLastName());
-        String postcode = normalize(owner.getPostcode());
-        if (postcode.isEmpty()) {
+        if (normalize(owner.getPostcode()).isEmpty()) {
             return; // no postcode to share on
         }
-        String telephone = E164Telephone.normalizeOrNull(owner.getTelephone());
+        Integer matchId = earliestSoftMatch(owner, ownerRepository);
+        if (matchId != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(matchId);
+        }
+    }
+
+    /**
+     * The id of the earliest existing owner (lowest id) that {@code owner} is a soft duplicate of,
+     * or {@code null} when none matches.
+     */
+    private static Integer earliestSoftMatch(Owner owner, OwnerRepository ownerRepository) {
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
-            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+            if (!isSoftMatch(owner, existing)) {
                 continue;
-            }
-            if (existing.isDeleted()) {
-                continue; // a soft-deleted owner is not a possible duplicate
-            }
-            if (!normalize(existing.getLastName()).equals(lastName)) {
-                continue;
-            }
-            if (!normalize(existing.getPostcode()).equals(postcode)) {
-                continue;
-            }
-            String existingTelephone = E164Telephone.normalizeOrNull(existing.getTelephone());
-            if (java.util.Objects.equals(telephone, existingTelephone)) {
-                continue; // same telephone is not a soft match (it would be a hard duplicate)
             }
             if (matchId == null || existing.getId() < matchId) {
                 matchId = existing.getId();
             }
         }
-        if (matchId != null) {
-            owner.setPossibleDuplicate(true);
-            owner.setPossibleDuplicateOf(matchId);
+        return matchId;
+    }
+
+    /**
+     * Whether {@code existing} makes {@code owner} a soft (possible) duplicate: a different,
+     * live owner sharing its last name and postcode but carrying a different telephone (the same
+     * telephone would be a hard duplicate, already rejected upstream).
+     */
+    private static boolean isSoftMatch(Owner owner, Owner existing) {
+        if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+            return false;
         }
+        if (existing.isDeleted()) {
+            return false; // a soft-deleted owner is not a possible duplicate
+        }
+        if (!normalize(existing.getLastName()).equals(normalize(owner.getLastName()))) {
+            return false;
+        }
+        if (!normalize(existing.getPostcode()).equals(normalize(owner.getPostcode()))) {
+            return false;
+        }
+        String telephone = E164Telephone.normalizeOrNull(owner.getTelephone());
+        String existingTelephone = E164Telephone.normalizeOrNull(existing.getTelephone());
+        // same telephone is not a soft match (it would be a hard duplicate)
+        return !Objects.equals(telephone, existingTelephone);
     }
 
     private static String normalize(String value) {

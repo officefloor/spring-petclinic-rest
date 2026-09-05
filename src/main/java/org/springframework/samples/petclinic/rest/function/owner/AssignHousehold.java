@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
@@ -31,20 +28,7 @@ public class AssignHousehold {
     }
 
     private static String householdId(String lastName, String postcode) {
-        byte[] key = (lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8);
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-        byte[] hash = digest.digest(key);
-        StringBuilder sb = new StringBuilder(64);
-        for (byte b : hash) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.substring(0, 12);
+        return Sha256.hex(lastName + "|" + postcode).substring(0, 12);
     }
 
     private static String normalize(String value) {

@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
@@ -16,14 +14,6 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeExce
  */
 public class ValidatePostcode {
 
-    /** City -> region, matching the fixed table used to derive an owner's locality. */
-    private static final Map<String, String> CITY_REGION = Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region -> inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
-
     public void service(@Val OwnerFieldsDto request) throws InvalidPostcodeException {
         String postcode = request.getPostcode();
         if (postcode == null) {
@@ -32,8 +22,9 @@ public class ValidatePostcode {
         if (!postcode.matches("^[0-9]{4}$")) {
             throw new InvalidPostcodeException("Postcode must be a 4-digit code");
         }
-        String region = CITY_REGION.get(request.getCity());
-        int[] range = region == null ? null : REGION_POSTCODES.get(region);
+        // Region reference data lives once in OwnerCustomerCode; share it rather than copy it.
+        String region = OwnerCustomerCode.regionForCity(request.getCity());
+        int[] range = region == null ? null : OwnerCustomerCode.postcodeRange(region);
         if (range == null) {
             return; // city with no known region accepts any 4-digit postcode
         }
