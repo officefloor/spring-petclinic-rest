@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index acd798766..9b31162c3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials",
+             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
++    @Mapping(target = "householdId",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+new file mode 100644
+index 000000000..c63db5fdf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++/**
++ * Derives an owner's {@code householdId}: a stable identifier shared by every owner with the same
++ * last name and address (one household). The last name and address are normalized the same way as
++ * {@link RejectDuplicateHousehold} (trim, collapse runs of whitespace to a single space, lower-case)
++ * before hashing, so owners created with {@code sharesHousehold} true — who by definition match an
++ * existing owner's last name and address — derive the identical value. Computed as the first 12
++ * upper-case hex characters of SHA-256 over the normalized pair, so it is stable across requests and
++ * needs no persisted column.
++ */
++public final class HouseholdId {
++
++    private HouseholdId() {
++    }
++
++    public static String of(String lastName, String address) {
++        String key = normalize(lastName) + "\n" + normalize(address);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(key.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                hex.append(String.format("%02x", b));
++            }
++            return hex.substring(0, 12).toUpperCase(Locale.ROOT);
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
++    }
++
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dac003624..2136da1fd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2087,6 +2087,12 @@ components:
+               type: string
+               example: "SMI-0007"
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: Server-assigned identifier shared by every owner with the same last name and address (one household), so owners created with sharesHousehold true share it. Derived deterministically from the last name and address, so it is stable across requests.
++              type: string
++              example: "A1B2C3D4E5F6"
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
