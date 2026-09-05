@@ -44,6 +44,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "selfLink",
             expression = "java(\"/api/owners/\" + owner.getId())")
+    @Mapping(target = "riskFlag",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
