@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 64562b636..b051db632 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +44,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form, e.g. +61412345678")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+new file mode 100644
+index 000000000..f01a0fc30
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Converts a raw telephone number to E.164 form: strip spaces, dashes and brackets; keep
++ * a leading '+' and country code when present, otherwise assume country code '+61' and
++ * drop a single leading '0' from the national digits. Requires 8 to 15 digits after the
++ * '+'. Returns {@code null} when no valid E.164 number can be formed.
++ */
++public final class E164Telephone {
++
++    private E164Telephone() {
++    }
++
++    public static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String cleaned = raw.replaceAll("[\\s()\\-]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        } else {
++            if (cleaned.startsWith("0")) {
++                cleaned = cleaned.substring(1);
++            }
++            digits = "61" + cleaned;
++        }
++        return digits.matches("\\d{8,15}") ? "+" + digits : null;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index 4079c8e01..e1f61ddec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -25,9 +25,9 @@ public class RequireOwnerFields {
+         if (!missing.isEmpty()) {
+             throw new MissingOwnerFieldsException(missing);
+         }
+-        // Normalise the telephone to its digits and require exactly 10 of them.
+-        String telephone = request.getTelephone().replaceAll("\\D", "");
+-        if (telephone.length() != 10) {
++        // Normalise the telephone to E.164 form; reject when it cannot be formed.
++        String telephone = E164Telephone.toE164(request.getTelephone());
++        if (telephone == null) {
+             throw new MissingOwnerFieldsException(List.of("telephone"));
+         }
+         request.setTelephone(telephone);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
+index 6a555c4c4..35aff2f53 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
+@@ -7,9 +7,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+ 
+ /**
+- * Rejects a create-owner request whose normalized telephone is already used by any other
+- * owner, before {@link BuildOwner} runs. The request telephone is already normalised to
+- * digits by {@link RequireOwnerFields}; existing telephones are normalised the same way.
++ * Rejects a create-owner request whose telephone is already used by any other owner,
++ * before {@link BuildOwner} runs. The request telephone is already normalised to E.164
++ * form by {@link RequireOwnerFields}, and existing telephones are stored the same way, so
++ * the E.164 strings are compared directly.
+  */
+ public class RequireUniqueTelephone {
+ 
+@@ -17,8 +18,7 @@ public class RequireUniqueTelephone {
+             throws DuplicateTelephoneException {
+         String telephone = request.getTelephone();
+         for (Owner existing : ownerRepository.findAll()) {
+-            String other = existing.getTelephone();
+-            if (other != null && telephone.equals(other.replaceAll("\\D", ""))) {
++            if (telephone.equals(existing.getTelephone())) {
+                 throw new DuplicateTelephoneException(telephone);
+             }
+         }
