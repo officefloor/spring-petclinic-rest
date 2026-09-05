@@ -22,4 +22,22 @@ public final class PostcodeRanges {
     public static int[] forRegion(String region) {
         return REGION_POSTCODES.get(region);
     }
+
+    /**
+     * The region whose range contains {@code postcode}, or {@code null} when the postcode is absent,
+     * not four digits, or in no known range.
+     */
+    public static String regionFor(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }
