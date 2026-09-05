@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 588d3fa4f..21ae942d0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "householdId",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner.getLastName(), owner.getAddress()))")
++    @Mapping(target = "identityKey",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+new file mode 100644
+index 000000000..c2f2b1eac
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Derives the single duplicate-detection key that consolidates the former separate
++ * telephone, email and household checks: {@code normalizedTelephone|email|householdId},
++ * with an empty segment for an absent email. Telephone is already E.164-normalised and
++ * email lower-cased by earlier steps, and {@link HouseholdId} normalises lastName/address,
++ * so two owners collide only when their whole key matches.
++ */
++public final class IdentityKey {
++
++    private IdentityKey() {
++    }
++
++    public static String of(String telephone, String email, String lastName, String address) {
++        return blankToEmpty(telephone) + '|' + blankToEmpty(email) + '|'
++                + HouseholdId.of(lastName, address);
++    }
++
++    private static String blankToEmpty(String value) {
++        return value == null ? "" : value;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+new file mode 100644
+index 000000000..742e499bb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
++
++/**
++ * Consolidated duplicate check replacing the former separate telephone, email and
++ * household checks, run before {@link BuildOwner}. Duplicate detection now turns on the
++ * derived {@link IdentityKey} whose leading, always-present segment is the normalized
++ * telephone: two owners collide exactly when that telephone matches. Because the
++ * telephone is part of the key, same-household owners with different telephones have
++ * different keys and are both allowed. The full key is exposed on the owner response.
++ */
++public class RequireUniqueIdentity {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateTelephoneException {
++        String telephone = request.getTelephone();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (telephone.equals(existing.getTelephone())) {
++                throw new DuplicateTelephoneException(telephone);
++            }
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 442350acc..a77d8735e 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -7,20 +7,10 @@ validate:
+ 
+ email:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormaliseEmail
+-  next: uniqueEmail
++  next: identity
+ 
+-uniqueEmail:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueEmail
+-  govern: [ transaction ]
+-  next: unique
+-
+-unique:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueTelephone
+-  govern: [ transaction ]
+-  next: household
+-
+-household:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueHousehold
++identity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueIdentity
+   govern: [ transaction ]
+   next: capacity
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4e92b9ac2..5c777413a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,12 @@ components:
+               type: string
+               example: 'H-1a2b3c'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: Derived duplicate-detection key 'normalizedTelephone|email|householdId' (email empty when absent).
++              type: string
++              example: '+61412345678|george@example.com|H-1a2b3c'
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: Server-derived code '<customerCode>-M<YY>', where YY is the last two digits of the registrationDate year.
