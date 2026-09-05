@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Transient
     private String customerCode;
 
@@ -120,6 +123,14 @@ public class Owner extends Person {
     /** Default a missing registration date to the server's current date. */
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = BusinessDay.adjust((registrationDate == null) ? LocalDate.now() : registrationDate);
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
