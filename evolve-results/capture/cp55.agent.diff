@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a7f959f32..02ed1628f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.level(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.points(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate())), owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))))")
+     @Mapping(target = "locality",
+             expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..4722af091
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++/**
++ * Derives the {@code ownerSegment} label {@code <TIER>_<AREA>}. TIER is {@code PREMIUM}
++ * when membershipLevel is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO}
++ * when the locality is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d0405aea9..6422f1334 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2187,6 +2187,12 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "'<TIER>_<AREA>': TIER is 'PREMIUM' when membershipLevel is 3+ else 'STANDARD'; AREA is 'METRO' for a known region (NSW/VIC/QLD) else 'REGIONAL'."
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             locality:
+               title: Locality
+               description: "Canonical region derived from city (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN'."
