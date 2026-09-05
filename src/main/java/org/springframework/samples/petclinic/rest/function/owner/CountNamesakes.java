@@ -5,25 +5,20 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Records how many existing owners share this owner's firstName and lastName
- * (case-insensitively) at create time, before the new owner is saved.
+ * Records this owner's household size at create time: how many existing owners resolve to
+ * the same {@link HouseholdId} (lastName and postcode), before the new owner is saved. This
+ * count feeds the membership level, so a new/sole household (count 0) earns the extra tier.
  */
 public class CountNamesakes {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String firstName = normalise(owner.getFirstName());
-        String lastName = normalise(owner.getLastName());
+        String householdId = HouseholdId.of(owner.getLastName(), owner.getPostcode());
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (firstName.equals(normalise(existing.getFirstName()))
-                    && lastName.equals(normalise(existing.getLastName()))) {
+            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
                 count++;
             }
         }
         owner.setNamesakeCount(count);
-    }
-
-    private static String normalise(String value) {
-        return value == null ? "" : value.trim().toLowerCase();
     }
 }

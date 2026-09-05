@@ -7,10 +7,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Rejects a create-owner request that shares both lastName and address with an existing
- * owner, before {@link BuildOwner} runs. Names and addresses are compared case-insensitively
- * with collapsed whitespace. A request may opt out by setting {@code sharesHousehold} true,
- * which permits deliberately co-resident owners (e.g. members of the same household).
+ * Rejects a create-owner request that resolves to the same {@link HouseholdId} (derived
+ * from lastName and postcode) as an existing owner, before {@link BuildOwner} runs. A
+ * request may opt out by setting {@code sharesHousehold} true, which permits a deliberately
+ * declared household member; the flag only bypasses this block and does not affect the
+ * derived householdId. Requests without a postcode have no household and are left untouched.
  */
 public class RequireUniqueHousehold {
 
@@ -19,17 +20,15 @@ public class RequireUniqueHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalise(request.getLastName());
-        String address = normalise(request.getAddress());
+        String postcode = request.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String householdId = HouseholdId.of(request.getLastName(), postcode);
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalise(existing.getLastName()))
-                    && address.equals(normalise(existing.getAddress()))) {
-                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
+                throw new DuplicateHouseholdException(request.getLastName(), postcode);
             }
         }
-    }
-
-    private static String normalise(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
