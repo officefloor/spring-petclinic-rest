@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+new file mode 100644
+index 000000000..ef46cdf67
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.function.owner.FutureRegistrationDateException;
++
++/**
++ * Responds 400 when a create-owner request supplies a {@code registrationDate} later than the server
++ * date.
++ */
++public class FutureRegistrationDateExceptionHandler {
++
++    public void handle(@Parameter FutureRegistrationDateException ex,
++            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
++        response.send(ResponseEntity.badRequest().body(Map.of("errors", ex.getMessage())));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..281eb3220
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FutureRegistrationDateException.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown by {@link RejectFutureRegistrationDate} when a create-owner request supplies a
++ * {@code registrationDate} later than the current server date. Handled globally by
++ * {@code FutureRegistrationDateExceptionHandler}, which responds 400. The date is optional, so a
++ * request that omits it never triggers this.
++ */
++public class FutureRegistrationDateException extends Exception {
++
++    public FutureRegistrationDateException(LocalDate supplied, LocalDate today) {
++        super("Registration date '" + supplied + "' is in the future; it must not be later than "
++                + today + ".");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFutureRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFutureRegistrationDate.java
+new file mode 100644
+index 000000000..93ece21c3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFutureRegistrationDate.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Rejects a create-owner request whose supplied {@code registrationDate} is later than the current
++ * server date. The date is optional: when absent the request is accepted unchanged (and
++ * {@link BuildOwner} defaults it to the server date). A future date is rejected via
++ * {@link FutureRegistrationDateException}, which the global handler turns into a 400. Runs before the
++ * owner is built and saved.
++ */
++public class RejectFutureRegistrationDate {
++
++    public void service(@Val OwnerFieldsDto request) throws FutureRegistrationDateException {
++        LocalDate supplied = request.getRegistrationDate();
++        if (supplied == null) {
++            return; // registrationDate is optional; nothing to validate when absent
++        }
++        LocalDate today = LocalDate.now();
++        if (supplied.isAfter(today)) {
++            throw new FutureRegistrationDateException(supplied, today);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.FutureRegistrationDateException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.FutureRegistrationDateException.yml
+new file mode 100644
+index 000000000..6a32d7ea8
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.FutureRegistrationDateException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 6bcc71150..402386cb5 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ normalizeAddress:
+ require:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireOwnerFields
+   govern: [ transaction ]
++  next: rejectFutureDate
++
++rejectFutureDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectFutureRegistrationDate
++  govern: [ transaction ]
+   next: validatePostcode
+ 
+ validatePostcode:
