@@ -6,12 +6,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Household duplicate detection for create-owner — "the duplicate block". Duplicate detection keys off
- * the household, which is now the deterministic {@link HouseholdId} derived from the last name and
- * postcode: two owners belong to the same household exactly when they share a {@code householdId}.
- * Because the household is keyed on {@code (lastName, postcode)}, a second owner matching an existing
- * owner's last name and postcode is a household duplicate and is rejected via
- * {@link DuplicateIdentityException}, which the global handler turns into a 409.
+ * Identity duplicate detection for create-owner — "the duplicate block". Detection keys off the full
+ * {@link IdentityKey} ({@code normalizedTelephone + '|' + email + '|' + householdId}): a create is
+ * rejected via {@link DuplicateIdentityException} (turned into a 409 by the global handler) only when
+ * its identityKey collides with an existing owner's. Because the telephone is part of the key, distinct
+ * members of the same household — same last name and postcode but different telephones — derive
+ * different identityKeys and coexist; only a genuine identity collision is rejected.
  *
  * <p>A request that sets {@code sharesHousehold} true bypasses this block: it is a declared household
  * member and is created (see {@link DetectPossibleDuplicate}, which does not flag a declared member as a
@@ -26,14 +26,16 @@ public class RejectDuplicateOwner {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member — bypass the duplicate block
         }
-        String householdId = HouseholdId.of(request.getLastName(), request.getPostcode());
+        String identityKey = IdentityKey.of(request.getTelephone(), request.getEmail(),
+                request.getLastName(), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // soft-deleted owners are ignored by the duplicate check
             }
-            if (householdId.equals(HouseholdId.of(existing.getLastName(), existing.getPostcode()))) {
-                throw new DuplicateIdentityException(IdentityKey.of(request.getTelephone(),
-                        request.getEmail(), request.getLastName(), request.getPostcode()));
+            String existingKey = IdentityKey.of(existing.getTelephone(), existing.getEmail(),
+                    existing.getLastName(), existing.getPostcode());
+            if (identityKey.equals(existingKey)) {
+                throw new DuplicateIdentityException(identityKey);
             }
         }
     }
