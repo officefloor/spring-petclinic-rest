@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RequestRejectedException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -202,33 +203,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * fields are mapped, normalized and validated, the registration date is resolved, the per-day,
      * identity and per-city gates are applied, the derived registration attributes are
      * assigned and the owner is saved and audited, yielding {@code 201 CREATED} with the new owner and
-     * its {@code Location}. A gate that trips short-circuits with its own status ({@code 400},
-     * {@code 429} or {@code 409}) and no owner is created. This is the single place an owner is created;
+     * its {@code Location}. A gate that trips raises a {@link RequestRejectedException} carrying its own
+     * status ({@code 400}, {@code 429} or {@code 409}) and no owner is created. This is the single place an owner is created;
      * {@link #addOwner} is the thin entry point that delegates here, so request-level concerns stay out
      * of the create pipeline.
      */
     private ResponseEntity<OwnerDto> createOwner(OwnerFieldsDto ownerFieldsDto) {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!normalizeAndValidateFields(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RequestRejectedException(HttpStatus.BAD_REQUEST,
+                "The submitted owner details are invalid");
         }
         LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
         if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RequestRejectedException(HttpStatus.BAD_REQUEST,
+                "The registration date cannot be in the future");
         }
         LocalDate registrationDate = resolveRegistrationDate(suppliedRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RequestRejectedException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner registration limit has been reached");
         }
         owner.setHouseholdId(householdId(owner));
         owner.setIdentityKey(identityKey(owner));
         if (isDuplicate(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RequestRejectedException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (countOwnersInCity(owner.getCity()) >= CITY_HARD_CAPACITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RequestRejectedException(HttpStatus.CONFLICT,
+                "The owner's city has reached its capacity");
         }
         assignRegistrationAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
@@ -438,7 +444,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null) {
             email = email.trim().toLowerCase(Locale.ROOT);
             if (!EMAIL_PATTERN.matcher(email).matches()) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new RequestRejectedException(HttpStatus.BAD_REQUEST,
+                    "The submitted email address is not valid");
             }
         }
         currentOwner.setEmail(email);
