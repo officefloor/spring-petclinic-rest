@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.service.DailyRegistrationLimit;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
+import org.springframework.samples.petclinic.service.IdentityKey;
 import org.springframework.samples.petclinic.service.NamesakeCounter;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -115,16 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (DailyRegistrationLimit.isReached(owners)) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        String telephone = owner.getTelephone();
-        if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        String email = owner.getEmail();
-        if (email != null && owners.stream().anyMatch(o -> email.equals(o.getEmail()))) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
+        if (IdentityKey.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (CityCapacity.isFull(owners, owner)) {
