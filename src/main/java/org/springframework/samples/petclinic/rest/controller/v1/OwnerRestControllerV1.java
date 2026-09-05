@@ -125,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -256,6 +257,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             e164 = "+61" + national;
         }
         return E164_PATTERN.matcher(e164).matches() ? e164 : null;
+    }
+
+    /**
+     * Build the customer code '<LAST3>-<NNNN>': LAST3 is the upper-cased first three letters
+     * of {@code lastName} and NNNN is a global 4-digit zero-padded sequence equal to one more
+     * than the current number of owners (e.g. 'SMI-0007').
+     */
+    private String generateCustomerCode(String lastName) {
+        String letters = lastName.replaceAll("[^\\p{L}]", "");
+        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
     }
 
     /** Whether any existing owner already uses the given (E.164) telephone number. */
