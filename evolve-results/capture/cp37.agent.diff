@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9d1250df3..ab95cf771 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,8 +27,19 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives the owner's {@code telephoneDisplay}: the stored E.164 {@code telephone} formatted
++     * for humans (see {@link org.springframework.samples.petclinic.rest.function.owner.E164Telephone#display}).
++     * The raw {@code telephone} is left in E.164 form.
++     */
++    default String toTelephoneDisplay(Owner owner) {
++        return org.springframework.samples.petclinic.rest.function.owner.E164Telephone
++                .display(owner.getTelephone());
++    }
++
+     /**
+      * Derives the owner's {@code ageBand} from its {@code birthDate} measured against its
+      * {@code registrationDate}: {@code MINOR} when under 18, {@code ADULT} from 18 to 64,
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+index b481ad7e4..070c9e505 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -65,6 +65,33 @@ public final class E164Telephone {
+         }
+     }
+ 
++    /**
++     * Formats a stored E.164 telephone for humans: the '+' and country dial code, a space, then
++     * the national digits grouped in threes and separated by spaces
++     * (e.g. {@code "+61412345678"} -> {@code "+61 412 345 678"}). The country code is recognised
++     * via the same pinned dial codes used for validation; when none is recognised (or the input
++     * is not E.164) the value is returned unchanged. Returns {@code null} when the input is null.
++     *
++     * @param e164 an E.164 telephone as produced by {@link #normalize} ('+' then 8 to 15 digits).
++     * @return the human-facing display form, or the input unchanged when it is not recognised E.164.
++     */
++    public static String display(String e164) {
++        if (e164 == null) {
++            return null;
++        }
++        String digits = e164.replaceAll("\\D", "");
++        CountryCode country = CountryCode.of(digits);
++        if (country == null || digits.length() <= country.digits.length()) {
++            return e164;
++        }
++        String national = digits.substring(country.digits.length());
++        StringBuilder sb = new StringBuilder("+").append(country.digits);
++        for (int i = 0; i < national.length(); i += 3) {
++            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return sb.toString();
++    }
++
+     /** E.164 form of a telephone, or {@code null} when it is absent or cannot be formed. */
+     public static String normalizeOrNull(String raw) {
+         if (raw == null) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5b476a4fd..ec73a388e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2183,6 +2183,12 @@ components:
+               type: string
+               example: "+61412345678||"
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans - the '+' and country code, a space, then the national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' stays in E.164 form.
++              type: string
++              example: "+61 412 345 678"
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: The owner's age band derived from birthDate against registrationDate; 'MINOR' when under 18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or older. Absent when no birthDate was supplied.
