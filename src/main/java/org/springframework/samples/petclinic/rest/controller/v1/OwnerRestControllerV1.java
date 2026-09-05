@@ -285,7 +285,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> deleteOwner(Integer ownerId) {
         return withOwner(ownerId, owner -> {
-            this.clinicService.deleteOwner(owner);
+            owner.setDeleted(true);
+            this.clinicService.saveOwner(owner);
             return new ResponseEntity<>(HttpStatus.NO_CONTENT);
         });
     }
@@ -486,6 +487,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String lastName = normalizeHouseholdField(owner.getLastName());
         String telephone = owner.getTelephone();
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> existing.getId() != null
                 && postcode.equals(existing.getPostcode())
                 && normalizeHouseholdField(existing.getLastName()).equals(lastName)
@@ -628,6 +630,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isDuplicate(Owner owner) {
         String key = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .map(Owner::getIdentityKey)
             .filter(existing -> existing != null)
             .anyMatch(key::equals);
@@ -681,6 +684,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private List<Owner> findHousemates(Owner owner) {
         String householdId = householdId(owner);
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId(existing).equals(householdId))
             .toList();
     }

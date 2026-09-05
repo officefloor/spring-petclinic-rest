@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
   possible_duplicate_of INT,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
+  deleted BOOLEAN DEFAULT FALSE NOT NULL,
   INDEX(last_name)
 ) engine=InnoDB;
 
