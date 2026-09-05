@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.service.CityCapacity;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.service.HouseholdMatcher;
@@ -111,6 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
                 && owners.stream().anyMatch(o -> HouseholdMatcher.sameHousehold(o, owner))) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (CityCapacity.isFull(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
