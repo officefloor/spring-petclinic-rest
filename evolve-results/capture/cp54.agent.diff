@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1975a06d5..784b65337 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    @Transient
++    private Boolean capacityWarning;
++
+     @Transient
+     private Integer householdSize;
+ 
+@@ -218,6 +221,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 121bf9987..2bfc9a13f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -127,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(NamesakeCounter.count(owners, owner));
+         owner.setCustomerCode(CustomerCodeGenerator.generate(owners, owner));
+         owner.setBulkSignupWarning(BulkSignupWarning.isTriggered(owners));
++        owner.setCapacityWarning(CityCapacity.isApproaching(owners, owner));
+         owner.setHouseholdSize(HouseholdMatcher.householdSize(owners, owner));
+         owner.setPossibleDuplicateOf(HouseholdMatcher.possibleDuplicateOf(owners, owner, ownerFieldsDto.getSharesHousehold()));
+         owner.setMembershipLevel(HouseholdLevelCap.cap(owners, owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java
+index c79d6efc7..c151b7601 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CityCapacity.java
+@@ -27,12 +27,22 @@ public final class CityCapacity {
+ 
+     public static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    public static final int WARN_THRESHOLD = 40;
++
+     private CityCapacity() {
+     }
+ 
+     public static boolean isFull(Collection<Owner> existing, Owner owner) {
++        return count(existing, owner) >= MAX_OWNERS_PER_CITY;
++    }
++
++    public static boolean isApproaching(Collection<Owner> existing, Owner owner) {
++        long inCity = count(existing, owner);
++        return inCity >= WARN_THRESHOLD && inCity < MAX_OWNERS_PER_CITY;
++    }
++
++    private static long count(Collection<Owner> existing, Owner owner) {
+         String city = owner.getCity();
+-        long inCity = existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
+-        return inCity >= MAX_OWNERS_PER_CITY;
++        return existing.stream().filter(o -> city.equalsIgnoreCase(o.getCity())).count();
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9eef0bea5..07498a389 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2231,6 +2231,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already held between 40 and 49 owners at this owner's creation (approaching the per-city capacity limit of 50), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when this owner shares an existing owner's last name and postcode but has a different telephone, otherwise false.
