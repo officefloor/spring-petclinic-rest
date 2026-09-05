@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -554,7 +551,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String generateCustomerCode(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = sha256Hex(telephone + lastName).substring(0, 8);
+        String hash8 = Owner.sha256Hex(telephone + lastName).substring(0, 8);
         String base = owner.getRegion() + "-" + hash8;
         return deduplicateCustomerCode(base);
     }
@@ -790,22 +787,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         String key = normalizeHouseholdField(owner.getLastName()) + "|" + postcode;
-        return sha256Hex(key).substring(0, 12);
-    }
-
-    /** The upper-case hex SHA-256 of the UTF-8 bytes of {@code input}, as 64 hex characters. */
-    private static String sha256Hex(String input) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Owner.sha256Hex(key).substring(0, 12);
     }
 }

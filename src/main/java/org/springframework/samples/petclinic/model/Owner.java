@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -596,6 +599,28 @@ public class Owner extends Person {
             doubling = !doubling;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /** The upper-case hex SHA-256 of the UTF-8 bytes of {@code input}, as 64 hex characters; the
+     *  upper-case rendering of {@link #sha256HexLower(String)}. */
+    public static String sha256Hex(String input) {
+        return sha256HexLower(input).toUpperCase(Locale.ROOT);
+    }
+
+    /** The lower-case hex SHA-256 of the UTF-8 bytes of {@code input}, as 64 hex characters. */
+    public static String sha256HexLower(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     protected Set<Pet> getPetsInternal() {
