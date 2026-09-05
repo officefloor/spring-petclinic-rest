@@ -53,6 +53,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+    private static final String ERROR_DUPLICATE_TELEPHONE = "The telephone number is already used by another owner";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -188,6 +189,28 @@ public class ExceptionControllerAdvice {
             e.getFields());
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", e.getFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerTelephoneException} raised when an owner submitted to the create
+     * endpoint has a normalized telephone that is already used by another existing owner. Returns a
+     * 409 Conflict.
+     *
+     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate owner telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getTelephone());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
+        detail.setProperty("errors", List.of("telephone"));
         return ResponseEntity.status(status).body(detail);
     }
 
