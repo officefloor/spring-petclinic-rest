@@ -31,7 +31,22 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code fiscalYear}: the fiscal year of the business-day-adjusted
+     * {@code registrationDate}, formatted {@code FY<YY>} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.FiscalYear}). Returns null
+     * when no registration date is present (e.g. unmigrated seed data).
+     */
+    default String toFiscalYear(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(registrationDate);
+    }
 
     /**
      * Derives the owner's {@code salutation}: the {@code title} followed by a single space and the
@@ -132,8 +147,9 @@ public interface OwnerMapper {
     /**
      * Derives the owner's membership points: start at 0; add 2 when an email is present; add 1
      * when the owner has no namesakes ({@code namesakeCount} is 0); add 2 for a household of 3 or
-     * more ({@code householdSize} at least 3); add 3 for tenure over 365 days (a
-     * {@code registrationDate} more than 365 days ago). A newly created owner has zero tenure.
+     * more ({@code householdSize} at least 3); add 3 for tenure of at least one elapsed fiscal
+     * year (the {@code registrationDate}'s fiscal year is earlier than the current fiscal year,
+     * fiscal years starting 1 July). A newly created owner has zero tenure.
      */
     default Integer toMembershipPoints(Owner owner) {
         int points = 0;
@@ -149,8 +165,8 @@ public interface OwnerMapper {
             points += 2;
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate != null && java.time.temporal.ChronoUnit.DAYS
-                .between(registrationDate, java.time.LocalDate.now()) > 365) {
+        if (registrationDate != null && org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+                .elapsed(registrationDate, java.time.LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;
@@ -176,15 +192,17 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number as {@code <customerCode>-M<YY>}, where YY is the
-     * last two digits of the registration-date year (e.g. {@code NSW-1A2B3C4D-M26}). Returns
-     * null when either the customer code or registration date is absent (e.g. unmigrated seed
-     * data).
+     * last two digits of the fiscal year of the registration date (fiscal years starting 1 July;
+     * e.g. {@code NSW-1A2B3C4D-M26}). Returns null when either the customer code or registration
+     * date is absent (e.g. unmigrated seed data).
      */
     default String toMembershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+                .of(owner.getRegistrationDate());
+        return owner.getCustomerCode() + "-M" + String.format("%02d", fiscalYear % 100);
     }
 
     /**
