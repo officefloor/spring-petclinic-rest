@@ -132,7 +132,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             org.springframework.samples.petclinic.service.MembershipLevel.of(owner),
-            owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100));
+            owner.getCustomerCode() + "-M"
+                + org.springframework.samples.petclinic.service.FiscalYear.label(owner.getRegistrationDate()).substring(2));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
