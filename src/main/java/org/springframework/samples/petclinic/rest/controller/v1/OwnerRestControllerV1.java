@@ -45,12 +45,14 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
+import org.springframework.samples.petclinic.rest.advice.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomains;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -86,13 +88,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final DisposableEmailDomains disposableEmailDomains;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 EmailNormalizer emailNormalizer) {
+                                 EmailNormalizer emailNormalizer,
+                                 DisposableEmailDomains disposableEmailDomains) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -100,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.disposableEmailDomains = disposableEmailDomains;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -129,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         rejectBlankOwnerFields(ownerFieldsDto);
+        rejectDisposableEmailDomain(ownerFieldsDto.getEmail());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectInvalidPostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
         rejectCityAtCapacity(ownerFieldsDto.getCity());
@@ -311,6 +318,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void addIfBlank(List<String> blankFields, String field, String value) {
         if (value != null && value.isBlank()) {
             blankFields.add(field);
+        }
+    }
+
+    /**
+     * Rejects an owner whose {@code email} domain is on the disposable-domain blocklist
+     * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Email is validated
+     * only when present, so an owner created without one is accepted unchanged; syntactic validity is
+     * already enforced by Bean Validation's {@code @Email} constraint on {@link OwnerFieldsDto}, so
+     * this only rejects an otherwise well-formed address that uses a throwaway provider (see
+     * {@link DisposableEmailDomains#isDisposable(String)} for the case-insensitive domain match). A
+     * blocklisted address is reported through a {@link DisposableEmailDomainException}, which the
+     * {@code ExceptionControllerAdvice} renders as a 400 response naming the {@code email} field.
+     *
+     * @param email the supplied email, or {@code null} when omitted
+     * @throws DisposableEmailDomainException if the email's domain is blocklisted
+     */
+    private void rejectDisposableEmailDomain(String email) {
+        if (disposableEmailDomains.isDisposable(email)) {
+            throw new DisposableEmailDomainException(email);
         }
     }
 

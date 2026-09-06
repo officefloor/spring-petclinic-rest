@@ -238,6 +238,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DisposableEmailDomainException} raised when an owner submitted to the create
+     * endpoint carries an {@code email} whose domain is on the disposable-domain blocklist
+     * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Returns a 400 Bad
+     * Request whose body carries an {@code errors} array naming the {@code email} field, mirroring
+     * the shape produced for Bean Validation failures.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Disposable owner email domain at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateOwnerIdentityException} raised when an owner submitted to the create
      * endpoint has a derived identity key (normalized telephone, email and household id) that exactly
      * equals an existing owner's. This single key consolidates the former separate telephone, email
