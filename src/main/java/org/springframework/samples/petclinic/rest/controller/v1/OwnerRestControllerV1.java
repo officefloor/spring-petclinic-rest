@@ -134,7 +134,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
         rejectDisposableEmailDomain(ownerFieldsDto.getEmail());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -296,6 +296,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Canonicalizes the submitted address in place before it is validated, stored and returned, so
+     * every later step - the required-field check, the persisted value and the response - sees the
+     * single normalized form produced by {@link AddressNormalizer#normalize(String)} (see that method
+     * for the trim/collapse/upper-case/abbreviation rules). Normalizing once here, at the head of the
+     * create flow, keeps address canonicalization in exactly one place rather than spread across the
+     * steps that read the address.
+     *
+     * @param ownerFieldsDto the submitted owner fields, whose address is replaced with its normalized form
+     */
+    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+    }
+
+    /**
      * Rejects an owner whose required text fields are blank (whitespace-only). Missing (null)
      * and empty fields are already rejected by Bean Validation on {@link OwnerFieldsDto}; this
      * closes the gap for {@code address} and {@code city}, whose values may be non-empty yet
@@ -310,7 +324,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<String> blankFields = new ArrayList<>();
         addIfBlank(blankFields, "firstName", ownerFieldsDto.getFirstName());
         addIfBlank(blankFields, "lastName", ownerFieldsDto.getLastName());
-        addIfBlank(blankFields, "address", ownerFieldsDto.getAddress());
+        addRequiredAddress(blankFields, ownerFieldsDto);
         addIfBlank(blankFields, "city", ownerFieldsDto.getCity());
         addIfBlank(blankFields, "telephone", ownerFieldsDto.getTelephone());
         if (!blankFields.isEmpty()) {
@@ -322,6 +336,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value != null && value.isBlank()) {
             blankFields.add(field);
         }
+    }
+
+    /**
+     * Records the address requirement's offending field name(s) into {@code blankFields}. An owner
+     * must supply an address: today that is the single flat {@code address} field, required non-blank
+     * exactly like the other required text fields (see {@link #addIfBlank(List, String, String)}).
+     * Holding the "an owner must have an address" rule in its own method - rather than a bare entry in
+     * the field list - gives it one place to live as the accepted address forms grow.
+     *
+     * @param blankFields the accumulating list of blank required-field names
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void addRequiredAddress(List<String> blankFields, OwnerFieldsDto ownerFieldsDto) {
+        addIfBlank(blankFields, "address", ownerFieldsDto.getAddress());
     }
 
     /**
