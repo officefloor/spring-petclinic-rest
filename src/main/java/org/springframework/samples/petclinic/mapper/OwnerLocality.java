@@ -7,8 +7,13 @@ import java.util.Map;
  * city-to-region table. Kept as a plain static helper - rather than a method on
  * {@link OwnerMapper} - so MapStruct does not mistake it for an implicit
  * String-to-String property mapping and apply it to unrelated fields.
+ *
+ * <p>Public, like its sibling {@link MembershipLevel}, so the single city-to-region
+ * table can be reused wherever an owner's region is needed rather than being
+ * duplicated - callers outside this package derive the region through
+ * {@link #forCity(String)} instead of holding their own copy of the table.
  */
-final class OwnerLocality {
+public final class OwnerLocality {
 
     /** City -> canonical region; anything not listed derives locality "UNKNOWN". */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -24,7 +29,7 @@ final class OwnerLocality {
      * @param city the owner's city
      * @return the derived locality (region)
      */
-    static String forCity(String city) {
+    public static String forCity(String city) {
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
