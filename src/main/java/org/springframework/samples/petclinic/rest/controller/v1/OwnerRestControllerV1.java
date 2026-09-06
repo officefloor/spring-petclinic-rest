@@ -216,6 +216,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(computeRiskFlag(owner));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -247,6 +248,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         long count = countOwnersInCity(city);
         return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_OWNER_LIMIT;
+    }
+
+    /**
+     * Determines whether the supplied city is over its soft capacity, i.e. it currently holds at
+     * least {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners - the soft limit that sits below the hard
+     * per-city limit of {@link #CITY_OWNER_LIMIT}. Unlike {@link #isApproachingCityCapacity}, which is
+     * a window that closes once the city is full, this stays {@code true} all the way up to and
+     * including the hard limit, so a city at capacity is still reported as over its soft capacity.
+     *
+     * @param city the city to inspect, or {@code null}
+     * @return {@code true} when the city holds at least {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners
+     */
+    private boolean isOverSoftCityCapacity(String city) {
+        return city != null && countOwnersInCity(city) >= CITY_CAPACITY_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Determines whether an owner's email address is disposable-adjacent, i.e. its domain (the part
+     * after the '@', compared case-insensitively) is a subdomain of one of the {@link
+     * #DISPOSABLE_EMAIL_DOMAINS} that are blocked outright at create time. An exact disposable domain
+     * is rejected with a 400 when the owner is created, so it never survives on a stored owner; a
+     * subdomain such as {@code mail.mailinator.com} is admitted but is close enough to a disposable
+     * provider to be flagged for review.
+     *
+     * @param email the owner's normalized email address, or {@code null}/blank when none is on file
+     * @return {@code true} when the email's domain is a subdomain of a known disposable domain
+     */
+    private boolean isDisposableAdjacentEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return false;
+        }
+        int at = email.indexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        return DISPOSABLE_EMAIL_DOMAINS.stream().anyMatch(blocked -> domain.endsWith("." + blocked));
+    }
+
+    /**
+     * Computes the owner's {@code riskFlag}, the review signal derived on read. It is {@code true}
+     * when any of these hold: the owner is a possible duplicate (see
+     * {@link #findPossibleDuplicate(Owner)}), the owner's email domain is disposable-adjacent (see
+     * {@link #isDisposableAdjacentEmail(String)}), or the owner's city is over its soft capacity (see
+     * {@link #isOverSoftCityCapacity(String)}); otherwise {@code false}.
+     *
+     * @param owner the owner to inspect
+     * @return {@code true} when any review signal trips, otherwise {@code false}
+     */
+    private boolean computeRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentEmail(owner.getEmail())
+            || isOverSoftCityCapacity(owner.getCity());
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -406,6 +460,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         enqueueWelcomeNotification(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(computeRiskFlag(owner));
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
