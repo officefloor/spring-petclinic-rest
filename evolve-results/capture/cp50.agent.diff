@@ -1,0 +1,166 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyKeyStore.java b/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyKeyStore.java
+new file mode 100644
+index 000000000..3158e330d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyKeyStore.java
+@@ -0,0 +1,69 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest;
++
++import java.util.Optional;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers the owner created for each seen {@code Idempotency-Key}, so that a create request
++ * repeated with an already-seen key returns the originally created owner instead of creating a
++ * duplicate. The store maps an idempotency key to the id of the owner it first created; a repeat of
++ * that key is served from the recorded id rather than re-running the create flow.
++ *
++ * <p>Keys are held in a process-wide, thread-safe map: the mapping must outlive the single request
++ * that established it so the next request carrying the same key can see it. Recording a key is
++ * idempotent - the first owner id recorded for a key is kept, so concurrent repeats all resolve to
++ * the same original owner.
++ */
++@Component
++public class IdempotencyKeyStore {
++
++    private final ConcurrentMap<String, Integer> ownerIdByKey = new ConcurrentHashMap<>();
++
++    /**
++     * Returns the id of the owner previously created for the given idempotency key, or empty when the
++     * key has not been seen (or is {@code null}/blank, i.e. no key was supplied).
++     *
++     * @param key the request's {@code Idempotency-Key}, or {@code null}/blank when none was supplied
++     * @return the recorded owner id for the key, or empty when the key is unknown or absent
++     */
++    public Optional<Integer> find(String key) {
++        if (key == null || key.isBlank()) {
++            return Optional.empty();
++        }
++        return Optional.ofNullable(ownerIdByKey.get(key));
++    }
++
++    /**
++     * Records that the given idempotency key first created the owner with {@code ownerId}, keeping the
++     * first id recorded for a key on repeated calls. A {@code null}/blank key is ignored (nothing to
++     * remember when no key was supplied).
++     *
++     * @param key the request's {@code Idempotency-Key}, or {@code null}/blank when none was supplied
++     * @param ownerId the id of the owner created for that key
++     */
++    public void record(String key, Integer ownerId) {
++        if (key == null || key.isBlank() || ownerId == null) {
++            return;
++        }
++        ownerIdByKey.putIfAbsent(key, ownerId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 970dc112f..daace3689 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Region;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.IdempotencyKeyStore;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -61,6 +62,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.context.request.RequestContextHolder;
++import org.springframework.web.context.request.ServletRequestAttributes;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -92,6 +95,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final DisposableEmailDomains disposableEmailDomains;
+ 
++    private final IdempotencyKeyStore idempotencyKeyStore;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -99,7 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  AddressNormalizer addressNormalizer,
+                                  EmailNormalizer emailNormalizer,
+-                                 DisposableEmailDomains disposableEmailDomains) {
++                                 DisposableEmailDomains disposableEmailDomains,
++                                 IdempotencyKeyStore idempotencyKeyStore) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -108,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.addressNormalizer = addressNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.disposableEmailDomains = disposableEmailDomains;
++        this.idempotencyKeyStore = idempotencyKeyStore;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -132,13 +139,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             new ResponseEntity<>(toOwnerDtoWithDerivedFields(owner), HttpStatus.OK));
+     }
+ 
++    /**
++     * The request header carrying the caller's idempotency key. When a create is repeated with a key
++     * already seen, the originally created owner is returned with 200 instead of a duplicate being
++     * created (see {@link #addOwner(OwnerFieldsDto)} and {@link IdempotencyKeyStore}).
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = currentIdempotencyKey();
++        Optional<Owner> existing = idempotencyKeyStore.find(idempotencyKey)
++            .map(this.clinicService::findOwnerById);
++        if (existing.isPresent()) {
++            return ownerResponse(existing.get(), HttpStatus.OK);
++        }
+         Owner owner = createOwner(ownerFieldsDto);
++        idempotencyKeyStore.record(idempotencyKey, owner.getId());
+         return ownerResponse(owner, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Reads the {@code Idempotency-Key} header from the current request, or {@code null} when no
++     * request is bound or the header is absent. Held in one place so the create endpoint can decide,
++     * from the key alone, whether a create is a first occurrence or a repeat to be served from the
++     * originally created owner.
++     *
++     * @return the request's idempotency key, or {@code null} when none was supplied
++     */
++    private String currentIdempotencyKey() {
++        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
++            return attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
++        }
++        return null;
++    }
++
+     /**
+      * Validates and normalizes the submitted owner fields, builds the owner, enforces the create-time
+      * duplicate rules and persists it, returning the saved owner. This holds the whole "make and store
