@@ -20,7 +20,24 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'},
+     * where {@code YY} is the last two digits of the {@code registrationDate} year (e.g.
+     * {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer code or the
+     * registration date is absent.
+     *
+     * @param owner the owner being mapped
+     * @return the formatted membership number, or {@code null} when it cannot be derived
+     */
+    default String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
