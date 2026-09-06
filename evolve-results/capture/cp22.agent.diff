@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f87393c09..acf208ebf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8390eec48..f5e0c848b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -117,7 +117,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
++        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -148,6 +150,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -417,6 +420,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * The soft daily create threshold above which the read-only {@code bulkSignupWarning} flag is
++     * raised. Once more than this many owners share a {@code registrationDate}, that day is flagged
++     * as unusually high volume - a warning well below the hard {@link #MAX_OWNERS_PER_DAY} cap.
++     */
++    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80L;
++
++    /**
++     * Derives the read-only {@code bulkSignupWarning} flag for an owner: {@code true} when more than
++     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have been created (counted by
++     * {@code registrationDate}) on the given day, otherwise {@code false}. Uses the same per-day
++     * accumulation as {@link #rejectDailyRegistrationLimit(LocalDate)}. A {@code null} date (an owner
++     * without a registration date, such as seed data) is never flagged.
++     *
++     * @param date the owner's registration date (the day it was created), or {@code null}
++     * @return {@code true} if the day already holds more than the warning threshold of owners
++     */
++    private boolean bulkSignupWarning(LocalDate date) {
++        if (date == null) {
++            return false;
++        }
++        long owners = this.clinicService.findAllOwners().stream()
++            .filter(owner -> date.equals(owner.getRegistrationDate()))
++            .count();
++        return owners > BULK_SIGNUP_WARNING_THRESHOLD;
++    }
++
+     /**
+      * Rejects a create request whose normalized telephone is already used by any existing owner.
+      * Existing owners' telephones are reduced to the same canonical form (via
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 93a8904ec..523041d47 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2162,6 +2162,17 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                A soft warning flag, derived on read: true when more than 80
++                owners have been created (by registrationDate) on the same day
++                as this owner, otherwise false. Signals unusually high signup
++                volume for the day before the hard per-day create limit is
++                reached.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
