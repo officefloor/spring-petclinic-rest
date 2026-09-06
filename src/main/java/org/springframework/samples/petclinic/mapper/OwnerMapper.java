@@ -19,6 +19,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
@@ -37,6 +38,18 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code selfLink}: the canonical link to the owner, formatted
+     * {@code '/api/owners/' + id}. Returns {@code null} when the owner has no id (e.g. an
+     * unpersisted owner), in which case the field is absent from the response.
+     *
+     * @param owner the owner being mapped
+     * @return the owner's self link, or {@code null} when the owner has no id
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives the owner's {@code salutation} from its optional {@code title} and its {@code lastName}:
