@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 74db97127..9f5019219 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -101,6 +101,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Dedicated logger for the welcome notification enqueued on a successful create. Emitting it on a
++     * well-known, separately named logger keeps the notification stream addressable independently of the
++     * audit records and the class's diagnostic logging.
++     */
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
+     /**
+      * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED}
+      * audit event. It is process-wide (static) so the ordering holds across every owner created,
+@@ -396,6 +403,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         logOwnerCreated(owner, ownerDto);
+         emitOwnerCreatedEvent(owner, ownerDto);
++        enqueueWelcomeNotification(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+         ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
+         HttpHeaders headers = new HttpHeaders();
+@@ -440,6 +448,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Enqueues the welcome notification for a freshly created owner by emitting a line on the
++     * {@code NOTIFY} logger that carries the owner's id and member id. Kept as its own method, alongside
++     * the audit emitters, so the response-builder stays focused on assembling the response and the
++     * notification format lives in one place.
++     *
++     * @param owner the owner that has just been saved, with its generated id populated
++     */
++    private void enqueueWelcomeNotification(Owner owner) {
++        NOTIFY.info("welcome notification enqueued for owner id={} memberId={}",
++            owner.getId(), owner.getMemberId());
++    }
++
+     /**
+      * Returns the owner's primary identifier - the value the structured audit event carries as its
+      * {@code memberId}. This is the owner's unified member id.
