@@ -184,10 +184,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        Owner owner = buildOwnerToCreate(ownerFieldsDto);
+        boolean bulkSignupWarning = enforceCreateLimits(owner) > BULK_SIGNUP_WARNING_THRESHOLD;
+        finalizeOwnerForCreate(owner);
+        this.clinicService.saveOwner(owner);
+        return createdOwnerResponse(owner, bulkSignupWarning);
+    }
+
+    /**
+     * Resolves, validates and maps a create request into a fully-normalized {@link Owner} that is
+     * ready to persist except for the derived fields assigned by {@link #finalizeOwnerForCreate}. The
+     * submitted address is canonicalized, the required fields and the optional postcode and
+     * registration date are validated, and the mapped owner's telephone and email are normalized. The
+     * registration date is defaulted to the server date when absent and rolled forward to a business
+     * day. The household id and identity key are derived; a create that would join an already-populated
+     * household is rejected unless it opts in with {@code sharesHousehold}, and otherwise a soft-match
+     * duplicate is flagged.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @return the normalized owner, not yet persisted
+     */
+    private Owner buildOwnerToCreate(OwnerFieldsDto ownerFieldsDto) {
         resolveAddressFields(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
@@ -205,6 +225,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        return owner;
+    }
+
+    /**
+     * Enforces the per-city and per-day capacity limits for a new owner, in that order. A create that
+     * would take the owner's city beyond {@link #CITY_OWNER_LIMIT} owners is rejected with a 409, and
+     * one that would take the owner's registration date beyond {@link #DAILY_OWNER_LIMIT} owners is
+     * rejected with a 429. The returned count is the number of owners already sharing the owner's
+     * registration date, measured before it is saved, which the caller uses to decide the response's
+     * {@code bulkSignupWarning}.
+     *
+     * @param owner the normalized owner about to be created
+     * @return the number of owners already registered on the owner's registration date
+     */
+    private long enforceCreateLimits(Owner owner) {
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new OwnerCityFullException(owner.getCity());
         }
@@ -212,16 +247,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersRegisteredOnDay >= DAILY_OWNER_LIMIT) {
             throw new OwnerDailyLimitException(owner.getRegistrationDate());
         }
-        boolean bulkSignupWarning = ownersRegisteredOnDay > BULK_SIGNUP_WARNING_THRESHOLD;
+        return ownersRegisteredOnDay;
+    }
+
+    /**
+     * Assigns the derived fields that only apply once the owner has cleared the create checks: its
+     * de-duplicated customer code, the number of existing namesakes, and the household size once the
+     * new owner is added.
+     *
+     * @param owner the normalized owner about to be created
+     */
+    private void finalizeOwnerForCreate(Owner owner) {
         owner.setCustomerCode(buildCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
-        this.clinicService.saveOwner(owner);
+    }
+
+    /**
+     * Builds the {@code 201 Created} response for a freshly persisted owner: maps it to a DTO, emits
+     * the audit record, sets the {@code bulkSignupWarning} the caller computed from the pre-save daily
+     * count, and adds the {@code Location} header pointing at the new owner.
+     *
+     * @param owner the owner that has just been saved, with its generated id populated
+     * @param bulkSignupWarning whether the response should flag an unusually high same-day sign-up volume
+     * @return the created-owner response
+     */
+    private ResponseEntity<OwnerDto> createdOwnerResponse(Owner owner, boolean bulkSignupWarning) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+        HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
