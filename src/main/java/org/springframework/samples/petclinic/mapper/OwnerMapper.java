@@ -36,7 +36,8 @@ public abstract class OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Memberships.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -100,64 +101,6 @@ public abstract class OwnerMapper {
             return region;
         }
         return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.region(owner);
-    }
-
-    /** The top membership level, reachable only with tenure. */
-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
-
-    /**
-     * The highest level reachable from the pre-tenure factors alone; the top level
-     * ({@value #MAX_MEMBERSHIP_LEVEL}) is unlocked only by tenure.
-     */
-    private static final int PRE_TENURE_MAX_LEVEL = MAX_MEMBERSHIP_LEVEL - 1;
-
-    /**
-     * Tenure, in days since {@code registrationDate}, that must be exceeded to reach the
-     * top membership level.
-     */
-    private static final int TENURE_DAYS_FOR_TOP_LEVEL = 365;
-
-    /**
-     * Returns the owner's membership level, a number from 1 to
-     * {@value #MAX_MEMBERSHIP_LEVEL}: it starts at 1, gains 1 when an email address is
-     * present, gains 1 when the owner has no namesakes (namesakeCount is 0), and these
-     * pre-tenure factors are capped at {@value #PRE_TENURE_MAX_LEVEL}. Level
-     * {@value #MAX_MEMBERSHIP_LEVEL} is reserved for tenure: it is reached only when the
-     * owner has more than {@value #TENURE_DAYS_FOR_TOP_LEVEL} days of tenure. A newly
-     * created owner registers as of the current day and so has zero tenure, meaning a new
-     * owner never exceeds level {@value #PRE_TENURE_MAX_LEVEL}.
-     */
-    public static int membershipLevel(Owner owner) {
-        int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
-            level++;
-        }
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (noNamesakes) {
-            level++;
-        }
-        // Level 4 is reserved for tenure: cap the pre-tenure factors, then let more than
-        // TENURE_DAYS_FOR_TOP_LEVEL days of tenure unlock the top level.
-        level = Math.min(level, PRE_TENURE_MAX_LEVEL);
-        if (hasTopLevelTenure(owner)) {
-            level++;
-        }
-        return level;
-    }
-
-    /**
-     * True when the owner's tenure (days between {@code registrationDate} and today)
-     * exceeds {@value #TENURE_DAYS_FOR_TOP_LEVEL}. An owner with no registration date
-     * (e.g. legacy seed owners) has no tenure.
-     */
-    private static boolean hasTopLevelTenure(Owner owner) {
-        LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate == null) {
-            return false;
-        }
-        long tenureDays = java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return tenureDays > TENURE_DAYS_FOR_TOP_LEVEL;
     }
 
     /**
