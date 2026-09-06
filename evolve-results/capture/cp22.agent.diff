@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d6858f344..450642f4b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -62,6 +62,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -129,6 +132,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public boolean isBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerBulkSignup.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerBulkSignup.java
+new file mode 100644
+index 000000000..977830ac3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerBulkSignup.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a create-owner request as part of a bulk signup surge: sets {@code bulkSignupWarning} true
++ * once more than {@value #BULK_SIGNUP_THRESHOLD} owners have already been created on the new
++ * owner's registrationDate, otherwise false. That date has already been rolled onto a business day
++ * by {@link BuildOwner}, so the count is per adjusted business day. Runs after {@link BuildOwner}
++ * and before the owner is saved, so the count reflects only pre-existing owners. Stamps the value
++ * on the owner via {@link Owner#setBulkSignupWarning(boolean)}; it is returned as
++ * {@code bulkSignupWarning}.
++ */
++public class CheckOwnerBulkSignup {
++
++    /** More than this many owners already created on the same day triggers the warning. */
++    private static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        // Count against the new owner's (already business-day-adjusted) registration date, matching
++        // the daily-limit rule, so the warning applies per adjusted business day.
++        LocalDate registrationDate = owner.getRegistrationDate();
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
++                continue; // the owner being created is not counted against the threshold
++            }
++            if (registrationDate.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        owner.setBulkSignupWarning(count > BULK_SIGNUP_THRESHOLD);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index aa945722d..e69e9fb9b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 893aa49a8..189ccbfbd 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a1f74718d..6284c214f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INT,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 7024d474f..f860a3420 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-  namesake_count INT
++  namesake_count INT,
++  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index bfb789fe3..7ac21d3bc 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -24,6 +24,11 @@ checkCityCapacity:
+ checkDailyLimit:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerDailyLimit
+   govern: [ transaction ]
++  next: checkBulkSignup
++
++checkBulkSignup:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerBulkSignup
++  govern: [ transaction ]
+   next: countNamesakes
+ 
+ countNamesakes:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4da789a7a..e8c7a1a9c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2144,6 +2144,15 @@ components:
+                 - BRONZE
+               example: 'SILVER'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created on this owner's
++                (business-day-adjusted) registration date before this owner was created,
++                signalling a bulk signup surge; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
