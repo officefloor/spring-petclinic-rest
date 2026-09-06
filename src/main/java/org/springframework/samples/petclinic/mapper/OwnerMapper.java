@@ -43,16 +43,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} as its canonical region code, resolved from the owner's
-     * {@code postcode} and {@code city} through the shared {@link Region#code(String, String)}
-     * (postcode preferred, then city, otherwise {@link Region#UNKNOWN_CODE}). Resolving region in
-     * that single place keeps the locality consistent with every other region-keyed rule.
+     * Derives the owner's {@code locality} as the {@code REGION} segment of its {@code customerCode}
+     * (the part before the {@code '-'}), which is the owner's canonical region code baked into the
+     * region-and-hash identity {@code '<REGION>-<HASH8>'}. When no customer code is present (e.g. seed
+     * data) it falls back to resolving the region directly from the owner's {@code postcode} and
+     * {@code city} through the shared {@link Region#code(String, String)}. Reading the region from the
+     * identity keeps the locality consistent with the code an owner is issued.
      *
      * @param owner the owner being mapped
      * @return the derived locality
      */
     default String locality(Owner owner) {
-        return Region.code(owner.getPostcode(), owner.getCity());
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return Region.code(owner.getPostcode(), owner.getCity());
+        }
+        int dash = code.indexOf('-');
+        return dash >= 0 ? code.substring(0, dash) : code;
     }
 
     /**
@@ -80,7 +87,7 @@ public interface OwnerMapper {
     /**
      * Builds the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'},
      * where {@code YY} is the last two digits of the {@code registrationDate} year (e.g.
-     * {@code 'MEL-SMI-0007-M26'}). Returns {@code null} when either the customer code or the
+     * {@code 'NSW-1A2B3C4D-M26'}). Returns {@code null} when either the customer code or the
      * registration date is absent.
      *
      * @param owner the owner being mapped
@@ -95,8 +102,9 @@ public interface OwnerMapper {
 
     /**
      * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
-     * contained in the {@code customerCode} (non-digit characters, such as the {@code '<LAST3>-'}
-     * prefix and the separator, are ignored). Returns {@code null} when the customer code is absent.
+     * contained in the {@code customerCode} (non-digit characters, such as the {@code '<REGION>-'}
+     * prefix, the separator and the hex letters {@code A-F}, are ignored). Returns {@code null} when
+     * the customer code is absent.
      *
      * @param owner the owner being mapped
      * @return the Luhn check digit, or {@code null} when no customer code is present

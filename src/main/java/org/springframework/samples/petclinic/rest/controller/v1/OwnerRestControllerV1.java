@@ -140,7 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
@@ -335,21 +335,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Number of leading hex characters of the identity hash retained as the {@code HASH8} segment of
+     * the {@code customerCode}.
+     */
+    private static final int CUSTOMER_CODE_HASH_LENGTH = 8;
+
+    /**
      * Builds the {@code customerCode} assigned to a newly created owner, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'}: {@code CITY3} is the upper-cased first three letters of the
-     * owner's {@code city}, {@code LAST3} is the upper-cased first three letters of the owner's
-     * {@code lastName}, and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one
-     * more than the number of owners already in that city (e.g. {@code 'MEL-SMI-0007'}).
+     * {@code '<REGION>-<HASH8>'}: {@code REGION} is the owner's canonical region code resolved from
+     * its {@code postcode} (falling back to its {@code city}) through the shared
+     * {@link Region#code(String, String)}, and {@code HASH8} is the first 8 upper-case hex characters
+     * of the SHA-256 digest of the owner's normalized telephone followed by its last name
+     * (e.g. {@code 'NSW-1A2B3C4D'}). The code carries no sequence number, so it is a deterministic
+     * function of the owner's region and telephone-plus-name identity.
      *
-     * @param city the city of the owner being created
-     * @param lastName the last name of the owner being created
+     * @param owner the owner being created, with its telephone already normalized
      * @return the formatted customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(java.util.Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
-        long sequence = ownersInCity(city) + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String customerCode(Owner owner) {
+        String region = Region.code(owner.getPostcode(), owner.getCity());
+        String hash8 = hashPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
+        return region + "-" + hash8;
     }
 
     /**
@@ -399,9 +405,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Counts the existing owners whose {@code city} matches the given city, compared
-     * case-insensitively (see {@link #equalsIgnoreCase(String, String)}). Shared by the per-city
-     * customer-code sequence ({@link #nextCustomerCode(String, String)}) and the per-city capacity
-     * check ({@link #rejectCityAtCapacity(String)}) so both count a city's owners identically.
+     * case-insensitively (see {@link #equalsIgnoreCase(String, String)}). Used by the per-city
+     * capacity check ({@link #rejectCityAtCapacity(String)}) to count a city's owners.
      *
      * @param city the city to count owners for
      * @return the number of existing owners in that city
