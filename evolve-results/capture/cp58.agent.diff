@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9eafdaaba..67942eee7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -455,9 +455,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
+         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
++        ownerDto.setRiskFlag(riskFlag(owner));
+         return ownerDto;
+     }
+ 
++    /**
++     * Derives the read-only {@code riskFlag} for an owner: {@code true} when any of the soft risk
++     * signals hold, otherwise {@code false}. The owner is at risk when it is a possible duplicate
++     * (its {@link Owner#getPossibleDuplicateOf() possibleDuplicateOf} is set), when its email domain
++     * is {@linkplain DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or when
++     * its city is over its soft capacity (the same {@link #capacityWarning(String)} band that raises
++     * {@code capacityWarning}). Combining the existing signals here keeps {@code riskFlag} as a single
++     * derived summary computed in exactly one place alongside the fields it aggregates.
++     *
++     * @param owner the persisted owner to assess
++     * @return {@code true} when any risk signal holds, otherwise {@code false}
++     */
++    private boolean riskFlag(Owner owner) {
++        return owner.getPossibleDuplicateOf() != null
++            || disposableEmailDomains.isDisposableAdjacent(owner.getEmail())
++            || capacityWarning(owner.getCity());
++    }
++
+     /**
+      * The {@code membershipLevel} reported for a single owner. Starts from the owner-local derivation
+      * in {@link OwnerMapper#membershipLevel(Owner)} (the level from the owner's own membership points),
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomains.java
+index df5eecc9d..0b27f47f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomains.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomains.java
+@@ -31,14 +31,62 @@ public class DisposableEmailDomains {
+      * @return {@code true} when the email's domain is blocklisted
+      */
+     public boolean isDisposable(String email) {
+-        if (email == null) {
++        String domain = domainOf(email);
++        return domain != null && BLOCKED_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Reports whether the given email's domain is <em>disposable-adjacent</em>: not itself a
++     * blocklisted disposable domain (an exact match is the stronger {@link #isDisposable(String)}
++     * signal and is rejected outright at create time), but closely related to one. A domain is
++     * adjacent to a blocklisted domain when it is a subdomain of it (for example
++     * {@code inbox.mailinator.com} relative to {@code mailinator.com}) or when it shares that
++     * blocklisted domain's second-level label under a different suffix (for example
++     * {@code mailinator.net} relative to {@code mailinator.com}). As with the blocklist match this is
++     * case-insensitive ({@link Locale#ROOT}) and looks only at the domain part after the final
++     * {@code '@'}; a {@code null}, blank, or {@code '@'}-less value has no comparable domain and is
++     * treated as not adjacent.
++     *
++     * @param email the email value to inspect, or {@code null} when omitted
++     * @return {@code true} when the email's domain is disposable-adjacent
++     */
++    public boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null || BLOCKED_DOMAINS.contains(domain)) {
+             return false;
+         }
++        String label = secondLevelLabel(domain);
++        for (String blocked : BLOCKED_DOMAINS) {
++            if (domain.endsWith("." + blocked) || label.equals(secondLevelLabel(blocked))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * Extracts the lower-cased domain part after the final {@code '@'} of an email, or {@code null}
++     * when the value is {@code null} or carries no {@code '@'}. Shared by the disposable and
++     * disposable-adjacent checks so both read the domain identically.
++     */
++    private String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
+         int at = email.lastIndexOf('@');
+         if (at < 0) {
+-            return false;
++            return null;
+         }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        return BLOCKED_DOMAINS.contains(domain);
++        return email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * The registrable second-level label of a domain: the label immediately before its final dot
++     * (for example {@code mailinator} for both {@code mailinator.com} and {@code inbox.mailinator.com}),
++     * or the whole value when it has no dot.
++     */
++    private String secondLevelLabel(String domain) {
++        String[] parts = domain.split("\\.");
++        return parts.length >= 2 ? parts[parts.length - 2] : domain;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1c8940939..06b5f195a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2389,6 +2389,20 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                A soft risk indicator, derived on read: true when any of the
++                following hold - the owner is a possible duplicate
++                ('possibleDuplicate' is true), the email domain is
++                disposable-adjacent (not itself a blocklisted disposable domain
++                but a subdomain of one, or sharing a blocklisted domain's
++                second-level label under a different suffix), or the city is
++                over its soft capacity ('capacityWarning' is true); otherwise
++                false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
