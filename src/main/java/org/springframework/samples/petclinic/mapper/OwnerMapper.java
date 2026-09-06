@@ -42,8 +42,20 @@ public interface OwnerMapper {
      * @return the derived contact preference
      */
     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+        return hasEmail(owner) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Reports whether the owner has a usable {@code email}: present and not blank (whitespace-only).
+     * The presence of an email drives several derived fields (such as the {@code contactPreference}
+     * and the {@code membershipLevel}), so the "has an email" test is written in exactly one place
+     * rather than repeated at each use.
+     *
+     * @param owner the owner being mapped
+     * @return {@code true} when the owner has a non-blank email
+     */
+    default boolean hasEmail(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank();
     }
 
     /**
@@ -108,8 +120,7 @@ public interface OwnerMapper {
      */
     default Integer membershipLevel(Owner owner) {
         int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
+        if (hasEmail(owner)) {
             level++;
         }
         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;

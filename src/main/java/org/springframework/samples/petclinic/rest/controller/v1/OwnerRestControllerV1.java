@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -401,10 +402,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners with the same first and last name (case-insensitive)
      */
     private int namesakeCount(String firstName, String lastName) {
-        return (int) this.clinicService.findAllOwners().stream()
-            .filter(owner -> equalsIgnoreCase(owner.getFirstName(), firstName)
-                && equalsIgnoreCase(owner.getLastName(), lastName))
-            .count();
+        return (int) countOwners(owner -> equalsIgnoreCase(owner.getFirstName(), firstName)
+            && equalsIgnoreCase(owner.getLastName(), lastName));
     }
 
     private boolean equalsIgnoreCase(String a, String b) {
@@ -443,9 +442,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners in that city
      */
     private long ownersInCity(String city) {
-        return this.clinicService.findAllOwners().stream()
-            .filter(owner -> equalsIgnoreCase(owner.getCity(), city))
-            .count();
+        return countOwners(owner -> equalsIgnoreCase(owner.getCity(), city));
     }
 
     /**
@@ -533,9 +530,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners registered on that day
      */
     private long ownersRegisteredOn(LocalDate date) {
-        return this.clinicService.findAllOwners().stream()
-            .filter(owner -> date.equals(owner.getRegistrationDate()))
-            .count();
+        return countOwners(owner -> date.equals(owner.getRegistrationDate()));
     }
 
     /**
@@ -690,6 +685,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean existingOwnerMatches(Function<Owner, String> keyExtractor, String key) {
         return findExistingOwner(keyExtractor, key).isPresent();
+    }
+
+    /**
+     * Counts the existing owners that satisfy the given {@code predicate}. The create endpoint's
+     * count-based rules - the per-city capacity, the per-day create limit and the derived
+     * {@code namesakeCount} - all accumulate owners over {@link ClinicService#findAllOwners()} and
+     * differ only in the predicate they count by, so the scan-and-count is written in exactly one
+     * place and each rule supplies just its own predicate.
+     *
+     * @param predicate the condition an owner must satisfy to be counted
+     * @return the number of existing owners that satisfy the predicate
+     */
+    private long countOwners(Predicate<Owner> predicate) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(predicate)
+            .count();
     }
 
     /**
