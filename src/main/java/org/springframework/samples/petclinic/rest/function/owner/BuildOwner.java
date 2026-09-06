@@ -45,7 +45,11 @@ public class BuildOwner {
         String telephone = normalizeTelephone(request.getTelephone());
         request.setTelephone(telephone);
         request.setEmail(normalizeEmail(request.getEmail()));
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
+        built.set(owner);
     }
 
     /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
