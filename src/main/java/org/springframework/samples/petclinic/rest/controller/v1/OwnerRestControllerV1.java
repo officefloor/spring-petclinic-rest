@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
@@ -131,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectInvalidPostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
         rejectCityAtCapacity(ownerFieldsDto.getCity());
+        rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = businessDay(effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate()));
         rejectDailyRegistrationLimit(registrationDate);
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
@@ -434,6 +436,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private LocalDate effectiveRegistrationDate(LocalDate suppliedDate) {
         return suppliedDate != null ? suppliedDate : LocalDate.now();
+    }
+
+    /**
+     * Rejects a create request whose supplied {@code registrationDate} lies after the server's
+     * current date. A registration date may be supplied to backdate a create - and is defaulted to
+     * today when omitted - but it may never be in the future. The check is applied to the raw
+     * supplied value before the business-day adjustment ({@link #businessDay(LocalDate)}), so a
+     * future date is rejected regardless of how that adjustment would move it. A future date is
+     * reported through a {@link FutureRegistrationDateException}, which the
+     * {@code ExceptionControllerAdvice} renders as a 400 Bad Request response naming the
+     * {@code registrationDate} field.
+     *
+     * @param suppliedDate the registration date from the request, or {@code null} when omitted
+     * @throws FutureRegistrationDateException if the supplied date is later than the server date
+     */
+    private void rejectFutureRegistrationDate(LocalDate suppliedDate) {
+        if (suppliedDate != null && suppliedDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(suppliedDate);
+        }
     }
 
     /**
