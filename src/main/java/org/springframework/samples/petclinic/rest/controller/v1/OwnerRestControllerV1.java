@@ -21,7 +21,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -576,20 +576,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Finds the first existing owner that already carries the given comparison {@code key}, derived
+     * from each owner by {@code keyExtractor}. Owners for which the extractor yields {@code null} are
+     * ignored (a {@code null} key never equals the sought key). The create endpoint's duplicate
+     * checks reduce both an existing owner and the owner being created to the same canonical key;
+     * this returns the matched existing owner itself, so a caller can either reject the collision or
+     * record which owner was matched.
+     *
+     * @param keyExtractor derives an owner's canonical comparison key (may return {@code null})
+     * @param key the canonical key of the owner being created
+     * @return the first existing owner sharing the key, or empty when none does
+     */
+    private Optional<Owner> findExistingOwner(Function<Owner, String> keyExtractor, String key) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(owner -> key.equals(keyExtractor.apply(owner)))
+            .findFirst();
+    }
+
+    /**
      * Reports whether any existing owner already carries the given comparison {@code key}, derived
-     * from each owner by {@code keyExtractor}. Owners for which the extractor yields {@code null}
-     * are ignored. The create endpoint's duplicate checks use this to reduce both an existing owner
-     * and the owner being created to the same canonical key and reject a match.
+     * from each owner by {@code keyExtractor} (see {@link #findExistingOwner(Function, String)}).
+     * The create endpoint's duplicate checks use this to reduce both an existing owner and the owner
+     * being created to the same canonical key and reject a match.
      *
      * @param keyExtractor derives an owner's canonical comparison key (may return {@code null})
      * @param key the canonical key of the owner being created
      * @return {@code true} if some existing owner shares the key
      */
     private boolean existingOwnerMatches(Function<Owner, String> keyExtractor, String key) {
-        return this.clinicService.findAllOwners().stream()
-            .map(keyExtractor)
-            .filter(Objects::nonNull)
-            .anyMatch(key::equals);
+        return findExistingOwner(keyExtractor, key).isPresent();
     }
 
     /**
