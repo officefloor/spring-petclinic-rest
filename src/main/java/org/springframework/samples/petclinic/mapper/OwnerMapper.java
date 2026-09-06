@@ -19,6 +19,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -35,6 +36,22 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code salutation} from its optional {@code title} and its {@code lastName}:
+     * the title, a single space and the last name when a title is present (e.g. {@code 'DR Franklin'}),
+     * otherwise just the last name. A {@code null} or blank title yields the bare last name.
+     *
+     * @param owner the owner being mapped
+     * @return the derived salutation
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
+    }
 
     /**
      * Derives the owner's {@code contactPreference} from the owner's own fields:
