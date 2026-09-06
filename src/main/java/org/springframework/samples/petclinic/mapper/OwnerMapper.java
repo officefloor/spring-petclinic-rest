@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -95,6 +96,39 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
+     * contained in the {@code customerCode} (non-digit characters, such as the {@code '<LAST3>-'}
+     * prefix and the separator, are ignored). Returns {@code null} when the customer code is absent.
+     *
+     * @param owner the owner being mapped
+     * @return the Luhn check digit, or {@code null} when no customer code is present
+     */
+    default Integer checkDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);
