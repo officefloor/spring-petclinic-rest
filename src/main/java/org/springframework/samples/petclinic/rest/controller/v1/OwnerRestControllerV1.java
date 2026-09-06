@@ -117,6 +117,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int CITY_OWNER_LIMIT = 50;
 
     /**
+     * Number of owners a city must already hold for a create response and owner read to flag that the
+     * city is approaching capacity. When the city holds between this many and {@link #CITY_OWNER_LIMIT}
+     * minus one owners (40-49), the owner's {@code capacityWarning} is {@code true}; the hard rejection
+     * at {@link #CITY_OWNER_LIMIT} is unchanged.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Maximum number of owners that may be registered on a single day. A create that would take the
      * number of owners sharing a {@code registrationDate} beyond this many - i.e. that many owners
      * have already been created that day - is rejected with a 429.
@@ -199,6 +207,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+        ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -213,6 +222,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isBulkSignupDay(LocalDate registrationDate) {
         return registrationDate != null
             && countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Determines whether the supplied city is approaching its per-city capacity, i.e. it currently
+     * holds between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and {@link #CITY_OWNER_LIMIT} minus one
+     * owners (40-49). This flags a city nearing the hard limit of {@link #CITY_OWNER_LIMIT}; that hard
+     * rejection is unchanged.
+     *
+     * @param city the city to inspect, or {@code null}
+     * @return {@code true} when the city holds 40-49 owners
+     */
+    private boolean isApproachingCityCapacity(String city) {
+        if (city == null) {
+            return false;
+        }
+        long count = countOwnersInCity(city);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_OWNER_LIMIT;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -372,6 +398,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         emitOwnerCreatedEvent(owner, ownerDto);
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+        ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
