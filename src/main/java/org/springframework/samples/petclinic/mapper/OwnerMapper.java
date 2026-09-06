@@ -29,6 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "identityKey", ignore = true)
+    @Mapping(target = "possibleDuplicate", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

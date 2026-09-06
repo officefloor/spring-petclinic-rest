@@ -148,6 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
         rejectDuplicateIdentity(owner);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -279,6 +280,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         ownerDto.setIdentityKey(identityKey(owner));
+        Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
+        ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+        ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
         return ownerDto;
     }
 
@@ -552,6 +556,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (duplicate) {
             throw new DuplicateOwnerIdentityException(key);
         }
+    }
+
+    /**
+     * Computes the soft-match {@code possibleDuplicateOf} for a newly created owner: the id of the
+     * first existing owner that shares this owner's {@code lastName} (compared case-insensitively) and
+     * {@code postcode} while carrying a <em>different</em> telephone (compared by canonical E.164 form,
+     * see {@link TelephoneNormalizer#canonicalize(String)}), or {@code null} when no such owner exists.
+     * The check runs only after the exact-identity duplicate check ({@link #rejectDuplicateIdentity(Owner)})
+     * has passed, so a shared last-name-and-postcode with the same telephone has already been rejected as
+     * a hard duplicate and can never surface here. A blank {@code postcode} never matches, since two
+     * owners without a postcode do not share one. The captured id is stored on the new owner and surfaced
+     * as the read-only {@code possibleDuplicate} / {@code possibleDuplicateOf} fields.
+     *
+     * @param owner the fully-populated owner being created (telephone normalized)
+     * @return the id of the first soft-matching existing owner, or {@code null} when none matches
+     */
+    private Integer possibleDuplicateOf(Owner owner) {
+        if (owner.getPostcode() == null || owner.getPostcode().isBlank()) {
+            return null;
+        }
+        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !java.util.Objects.equals(telephone, telephoneNormalizer.canonicalize(existing.getTelephone())))
+            .map(Owner::getId)
+            .filter(java.util.Objects::nonNull)
+            .findFirst()
+            .orElse(null);
     }
 
     /**
