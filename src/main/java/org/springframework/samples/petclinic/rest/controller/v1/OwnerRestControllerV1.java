@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -569,25 +570,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Adjusts a date so it falls on a business day. A Saturday is rolled forward to the following
-     * Monday and a Sunday to the next day (Monday); any weekday is returned unchanged. Applied to
-     * the effective registration date so that a weekend value - whether supplied in the request or
-     * defaulted to the server date - is stored as the next Monday, and every value derived from the
-     * registration date (such as the membership number's year segment and the daily create-limit
-     * bucket) uses the adjusted business day.
+     * The fixed list of public holidays that are not business days. A registration date that lands
+     * on one of these is rolled forward by {@link #businessDay(LocalDate)} to the next non-holiday
+     * business day, exactly as it is rolled forward off a weekend.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
+     * Adjusts a date so it falls on a business day, rolling forward off weekends and public
+     * holidays. A Saturday, Sunday or {@link #PUBLIC_HOLIDAYS listed public holiday} is rolled
+     * forward one day at a time until the first non-holiday weekday is reached; any other weekday is
+     * returned unchanged. Applied to the effective registration date so that a weekend or holiday
+     * value - whether supplied in the request or defaulted to the server date - is stored as the
+     * next business day, and every value derived from the registration date (such as the membership
+     * number's year segment and the daily create-limit bucket) uses the adjusted business day.
      *
      * @param date the effective registration date
-     * @return the same date when it is a weekday, otherwise the next Monday
+     * @return the same date when it is a non-holiday weekday, otherwise the next business day
      */
     private LocalDate businessDay(LocalDate date) {
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (dayOfWeek == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (isNonBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
+    }
+
+    /**
+     * Whether the given date is a weekend day or a listed public holiday, and so not a business day.
+     *
+     * @param date the date to test
+     * @return {@code true} for a Saturday, Sunday or {@link #PUBLIC_HOLIDAYS listed public holiday}
+     */
+    private boolean isNonBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        return dayOfWeek == DayOfWeek.SATURDAY
+            || dayOfWeek == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(date);
     }
 
     /**
