@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsExcep
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.advice.OwnerDailyLimitException;
 import org.springframework.samples.petclinic.mapper.MembershipLevel;
+import org.springframework.samples.petclinic.mapper.OwnerLocality;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -73,6 +75,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /** An owner's postcode, when supplied, must be exactly four digits. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
+    /**
+     * Region -> inclusive 4-digit postcode range {low, high}. A postcode supplied for an owner whose
+     * city maps (via {@link OwnerLocality#forCity}) to one of these regions must fall within the
+     * region's range; a city with no known region ("UNKNOWN") accepts any 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     /**
      * Dedicated logger for audit side-effects. Emitting audit records on a well-known, separately
@@ -163,6 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
+        validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
@@ -225,6 +241,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
+        }
+    }
+
+    /**
+     * Validates an owner's optional postcode. Postcode is optional, so a missing or blank value is
+     * accepted unchanged. When a value is supplied it must be exactly four digits; and when the owner's
+     * city maps to a known region (via {@link OwnerLocality#forCity}) the postcode must fall within that
+     * region's inclusive range ({@link #REGION_POSTCODE_RANGES}). A city with no known region accepts any
+     * 4-digit postcode. A malformed or out-of-range postcode is rejected with a 400 whose {@code errors}
+     * array lists {@code postcode}.
+     *
+     * @param postcode the submitted postcode, or {@code null} when none was supplied
+     * @param city the owner's city, whose region determines the acceptable postcode range
+     * @throws InvalidOwnerFieldsException if a supplied postcode is not four digits or is out of range
+     */
+    private void validatePostcode(String postcode, String city) {
+        if (!StringUtils.hasText(postcode)) {
+            return;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(OwnerLocality.forCity(city));
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                throw new InvalidOwnerFieldsException(List.of("postcode"));
+            }
         }
     }
 
