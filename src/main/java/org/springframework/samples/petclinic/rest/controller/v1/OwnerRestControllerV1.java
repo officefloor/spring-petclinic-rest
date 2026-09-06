@@ -211,7 +211,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(householdSize(owner));
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+            membershipLevel(owner), ownerMapper.membershipNumber(owner));
         return owner;
     }
 
@@ -344,10 +344,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
-     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} flag
-     * and the {@code identityKey}). Both the create endpoint and the single-owner read endpoint
-     * return their owner through this method, so an owner is decorated identically on either path
-     * and each derived field is computed in exactly one place.
+     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} flag,
+     * the {@code identityKey} and the {@code possibleDuplicate} pair), and re-applies the owner's
+     * {@code membershipLevel} through the controller ({@link #membershipLevel(Owner)}). Both the
+     * create endpoint and the single-owner read endpoint return their owner through this method, so
+     * an owner is decorated identically on either path and each derived field is computed in exactly
+     * one place.
      *
      * @param owner the persisted owner to represent
      * @return the owner DTO with its derived read-only fields populated
@@ -355,12 +357,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private OwnerDto toOwnerDtoWithDerivedFields(Owner owner) {
         owner.setHouseholdSize(householdSize(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setMembershipLevel(membershipLevel(owner));
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         ownerDto.setIdentityKey(identityKey(owner));
         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
         return ownerDto;
+    }
+
+    /**
+     * The {@code membershipLevel} reported for a single owner. Delegates to the owner-local
+     * derivation in {@link OwnerMapper#membershipLevel(Owner)} (the level from the owner's own
+     * membership points), routed through the controller so the create audit log and the single-owner
+     * response agree on one value. Unlike the mapper - which sees only the owner - the controller can
+     * reach the rest of the clinic, so this is the single place a reported membership level is shaped
+     * by cross-owner context (such as the owner's {@link #householdMembers(Owner) household}).
+     *
+     * @param owner the owner whose reported membership level is wanted
+     * @return the owner's membership level
+     */
+    private Integer membershipLevel(Owner owner) {
+        return ownerMapper.membershipLevel(owner);
     }
 
     /**
@@ -920,11 +938,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of owners in the owner's household (at least {@code 1})
      */
     private int householdSize(Owner owner) {
-        String household = owner.getHouseholdId();
-        if (household == null) {
+        if (owner.getHouseholdId() == null) {
             return 1;
         }
-        return (int) countOwners(existing -> household.equals(existing.getHouseholdId()));
+        return householdMembers(owner).size();
+    }
+
+    /**
+     * The existing owners that make up the given owner's household: those sharing its
+     * {@code householdId} (see {@link #householdId(Owner)}). An owner with no {@code householdId}
+     * (e.g. no postcode) belongs to no shared household, so the result is empty. Whether the owner
+     * itself appears depends on when the scan runs relative to the create's save: a scan taken after
+     * the owner is persisted (as the {@link #householdSize(Owner) household size} derivation is)
+     * counts it among its household, while one taken before the save sees only the owners already
+     * present. Holding the household lookup in one place lets every household-derived value read the
+     * same set of members.
+     *
+     * @param owner the owner whose household members are wanted
+     * @return the owners sharing the owner's household, or an empty list when it has no household
+     */
+    private List<Owner> householdMembers(Owner owner) {
+        String household = owner.getHouseholdId();
+        if (household == null) {
+            return List.of();
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> household.equals(existing.getHouseholdId()))
+            .toList();
     }
 
     private String householdId(Owner owner) {
