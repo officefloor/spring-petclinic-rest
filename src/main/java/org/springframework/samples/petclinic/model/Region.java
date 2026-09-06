@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * The Australian region an owner's city belongs to. Each constant's name is the canonical region
@@ -67,15 +68,7 @@ public enum Region {
      *         known timezone (such as {@link #UNKNOWN_CODE})
      */
     public static String timezoneForCode(String code) {
-        if (code == null) {
-            return null;
-        }
-        for (Region region : values()) {
-            if (region.name().equals(code)) {
-                return region.timezone();
-            }
-        }
-        return null;
+        return forCode(code).map(Region::timezone).orElse(null);
     }
 
     /** Fixed city -> region table; a city absent from this map has no known region. */
@@ -98,6 +91,24 @@ public enum Region {
      */
     public boolean acceptsPostcode(int postcode) {
         return postcode >= this.minPostcode && postcode <= this.maxPostcode;
+    }
+
+    /**
+     * Resolves the region named by the given canonical region code (e.g. {@code "NSW"}) by matching it
+     * against the region constants' {@linkplain #name() names}. This is the by-code counterpart of
+     * {@link #forCity(String)} and {@link #forPostcode(String)}, for a value that is already a region
+     * code rather than a city or postcode, and is the one place a code is turned back into its
+     * {@link Region}, so every rule that keys off a region code resolves it identically.
+     *
+     * @param code the canonical region code (e.g. {@code "NSW"}), or {@code null}
+     * @return the matching region, or empty when the code is {@code null} or names no known region
+     *         (such as {@link #UNKNOWN_CODE})
+     */
+    public static Optional<Region> forCode(String code) {
+        if (code == null) {
+            return Optional.empty();
+        }
+        return firstMatching(region -> region.name().equals(code));
     }
 
     /**
@@ -128,8 +139,21 @@ public enum Region {
         } catch (NumberFormatException ex) {
             return Optional.empty();
         }
+        return firstMatching(region -> region.acceptsPostcode(value));
+    }
+
+    /**
+     * Returns the first region constant matching the given predicate, or empty when none does. This is
+     * the one place the "scan {@link #values()} for the first matching region" loop lives, so
+     * {@link #forCode(String)} and {@link #forPostcode(String)} resolve a region identically, each
+     * supplying only its own match condition.
+     *
+     * @param predicate the condition a region must satisfy to be selected
+     * @return the first matching region, or empty when none matches
+     */
+    private static Optional<Region> firstMatching(Predicate<Region> predicate) {
         for (Region region : values()) {
-            if (region.acceptsPostcode(value)) {
+            if (predicate.test(region)) {
                 return Optional.of(region);
             }
         }

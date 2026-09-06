@@ -95,6 +95,26 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Builds a 400 Bad Request response for a create request rejected on a single owner field. The body
+     * is a {@link ProblemDetail} carrying the generic invalid-request detail and an {@code errors} array
+     * naming the single offending {@code field}, mirroring the shape produced for Bean Validation
+     * failures. {@code logContext} labels the rejection in the debug log.
+     *
+     * @param e Object referring to the thrown exception.
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @param logContext a short label describing the rejection, for the debug log.
+     * @param field the name of the single field that was rejected.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    private ResponseEntity<ProblemDetail> invalidField(Exception e, HttpServletRequest request, String logContext, String field) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("{} at {} {}: {}", logContext, request.getMethod(), request.getRequestURI(), e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of(field));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Re-throws {@link AccessDeniedException} so Spring Security's {@code ExceptionTranslationFilter}
      * translates it as it normally would - 403 for an authenticated user lacking the required role,
      * or the configured entry point for an anonymous one. Without this, {@link #handleGeneralException}
@@ -227,14 +247,7 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(InvalidOwnerPostcodeException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidOwnerPostcodeException(InvalidOwnerPostcodeException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        logger.debug("Invalid owner postcode at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("postcode"));
-        return ResponseEntity.status(status).body(detail);
+        return this.invalidField(e, request, "Invalid owner postcode", "postcode");
     }
 
     /**
@@ -251,14 +264,7 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DisposableEmailDomainException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        logger.debug("Disposable owner email domain at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("email"));
-        return ResponseEntity.status(status).body(detail);
+        return this.invalidField(e, request, "Disposable owner email domain", "email");
     }
 
     /**
