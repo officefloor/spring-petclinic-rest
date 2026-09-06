@@ -49,7 +49,16 @@ public abstract class OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The canonical API path to this owner: {@code /api/owners/} followed by the owner's id.
+     * Returns {@code null} when the owner has no id (e.g. before it has been persisted).
+     */
+    protected String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * The owner's {@code membershipPoints}: the raw loyalty score (see
