@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/AddressNormalizer.java
+new file mode 100644
+index 000000000..77f3155ae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/AddressNormalizer.java
+@@ -0,0 +1,86 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++/**
++ * Normalizes a submitted postal address into the canonical form that is stored for an owner and
++ * compared when detecting duplicate households. Kept apart from {@link OwnerRestControllerV1} so the
++ * request handler stays focused on orchestration while the rules for how an address is canonicalized
++ * live in one place.
++ *
++ * <p>The rule trims leading and trailing whitespace, collapses every internal run of whitespace to a
++ * single space, upper-cases the result and expands the common abbreviations {@code ST -> STREET},
++ * {@code RD -> ROAD} and {@code AVE -> AVENUE} (each matched as a whole word). That upper-cased,
++ * expanded value is what gets stored and returned, and it is the form every address comparison uses.
++ */
++final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Normalizes a raw address value for owner creation. The normalized value is what gets stored and
++     * returned, and it is what household duplicate detection and the shared household id compare
++     * against, so two inputs that canonicalize to the same value belong to the same household.
++     *
++     * <p>Leading and trailing whitespace is trimmed, internal runs of whitespace are collapsed to a
++     * single space, the value is upper-cased, and the whole-word abbreviations {@code ST}, {@code RD}
++     * and {@code AVE} are expanded to {@code STREET}, {@code ROAD} and {@code AVENUE}.
++     *
++     * @param address the raw address value submitted by the client, or {@code null}
++     * @return the normalized address, or the empty string when {@code address} is {@code null} or blank
++     */
++    static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(expandAbbreviation(tokens[i]));
++        }
++        return sb.toString();
++    }
++
++    /**
++     * Expands a single upper-cased address token when it is one of the common abbreviations, leaving
++     * every other token unchanged.
++     *
++     * @param token an upper-cased whitespace-delimited address token
++     * @return the expanded word, or the original token when it is not a recognized abbreviation
++     */
++    private static String expandAbbreviation(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 53773eee1..1212440e2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+         validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+@@ -142,7 +143,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Rejects an owner payload that is missing or blank in any required field. Collects the name of
+      * every offending field and, if there is at least one, raises a {@link MissingOwnerFieldsException}
+-     * so the client receives a 400 whose {@code errors} array lists each missing field.
++     * so the client receives a 400 whose {@code errors} array lists each missing field. The address is
++     * checked in its {@link AddressNormalizer#normalize normalized} form, so a value that is blank only
++     * after normalization is still rejected.
+      *
+      * @param ownerFieldsDto the submitted owner fields
+      */
