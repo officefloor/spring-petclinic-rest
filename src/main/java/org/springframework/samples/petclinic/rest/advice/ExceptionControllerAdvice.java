@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "The telephone number is already used by another owner";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -248,6 +249,25 @@ public class ExceptionControllerAdvice {
             e.getLastName(),
             e.getAddress());
         return this.conflict(e, request, ERROR_DUPLICATE_HOUSEHOLD, List.of("lastName", "address"));
+    }
+
+    /**
+     * Handles {@link OwnerCityAtCapacityException} raised when an owner submitted to the create
+     * endpoint would be placed in a city that already contains the maximum number of owners (50 or
+     * more). Returns a 409 Conflict.
+     *
+     * @param e The {@link OwnerCityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(OwnerCityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityAtCapacityException(OwnerCityAtCapacityException e, HttpServletRequest request) {
+        logger.debug("Owner city at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        return this.conflict(e, request, ERROR_CITY_AT_CAPACITY, List.of("city"));
     }
 
 }
