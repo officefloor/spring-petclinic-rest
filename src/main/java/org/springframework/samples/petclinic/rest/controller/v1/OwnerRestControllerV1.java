@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -142,7 +143,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
-        ownerFieldsDto.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+        String normalizedEmail = emailNormalizer.normalize(ownerFieldsDto.getEmail());
+        rejectDuplicateEmail(normalizedEmail);
+        ownerFieldsDto.setEmail(normalizedEmail);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
@@ -456,6 +459,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             normalizedTelephone);
         if (duplicate) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
+    }
+
+    /**
+     * Rejects a create request whose normalized (lower-cased) email is already used by any existing
+     * owner. Existing owners' emails are reduced to the same canonical form (via
+     * {@link EmailNormalizer#normalize(String)}, i.e. lower-cased) before comparison, so addresses
+     * that differ only in casing still collide. Owners without an email are ignored, and a request
+     * without an email is never rejected. A collision is reported through a
+     * {@link DuplicateOwnerEmailException}, which the {@code ExceptionControllerAdvice} renders as a
+     * 409 Conflict response.
+     *
+     * @param normalizedEmail the canonical (lower-cased) email of the owner being created, or
+     * {@code null} when none was supplied
+     * @throws DuplicateOwnerEmailException if another owner already uses this email
+     */
+    private void rejectDuplicateEmail(String normalizedEmail) {
+        if (normalizedEmail == null) {
+            return;
+        }
+        boolean duplicate = existingOwnerMatches(
+            owner -> emailNormalizer.normalize(owner.getEmail()),
+            normalizedEmail);
+        if (duplicate) {
+            throw new DuplicateOwnerEmailException(normalizedEmail);
         }
     }
 
