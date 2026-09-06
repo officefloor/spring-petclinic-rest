@@ -256,6 +256,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        resolveHouseholdIdentity(owner, sharesHousehold);
+        return owner;
+    }
+
+    /**
+     * Places the owner about to be created into its household and settles its identity against the
+     * owners already on file. The owner's {@code householdId} is derived deterministically from its
+     * last name and postcode and its {@code identityKey} is composed from that household and the
+     * normalized contact details. Unless the request opted into a shared household, a household that
+     * already has a member is rejected with a 409; and, again only when the household was not opted
+     * into, a soft-match against an existing owner flags the new owner as a possible duplicate.
+     *
+     * @param owner the normalized owner about to be created, with its contact details already normalized
+     * @param sharesHousehold whether the request opted into joining an existing household
+     */
+    private void resolveHouseholdIdentity(Owner owner, boolean sharesHousehold) {
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
         owner.setIdentityKey(buildIdentityKey(owner));
         if (!sharesHousehold) {
@@ -264,7 +280,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
-        return owner;
     }
 
     /**
@@ -435,12 +450,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param householdId the derived household identifier of the owner about to be created
      */
     private void rejectHouseholdDuplicate(String householdId) {
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (duplicate) {
+        if (!activeHouseholdMembers(householdId).isEmpty()) {
             throw new DuplicateOwnerIdentityException(householdId);
         }
+    }
+
+    /**
+     * Returns the owners that currently belong to the household identified by {@code householdId} -
+     * those sharing that derived id that have not been soft-deleted. Soft-deleted owners are excluded
+     * because they no longer count as present members, so this is the household as it stands for the
+     * owner being created. This is the single lookup of a household's current members behind the
+     * household checks that reason about who is already there.
+     *
+     * @param householdId the derived household identifier to look up
+     * @return the existing, non-deleted owners sharing that household, in no particular order
+     */
+    private List<Owner> activeHouseholdMembers(String householdId) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .collect(Collectors.toList());
     }
 
     /**
