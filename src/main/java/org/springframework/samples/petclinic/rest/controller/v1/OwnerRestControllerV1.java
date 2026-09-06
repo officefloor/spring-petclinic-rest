@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsExcep
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.advice.OwnerDailyLimitException;
+import org.springframework.samples.petclinic.mapper.MembershipLevel;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -191,8 +192,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            MembershipLevel.forOwner(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -303,7 +305,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Counts how many existing owners already belong to the supplied household, identified by its
      * {@code householdId}. Used when creating an owner to determine the household's size once the new
-     * owner is added (this count plus one), which in turn drives the {@code GOLD} membership tier.
+     * owner is added (this count plus one).
      *
      * @param householdId the normalized household identifier of the owner being created
      * @return the number of existing owners already sharing that {@code householdId}
