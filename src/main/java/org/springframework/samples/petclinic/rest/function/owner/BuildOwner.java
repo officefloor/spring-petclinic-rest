@@ -42,8 +42,7 @@ public class BuildOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String telephone = normalizeTelephone(request.getTelephone());
-        request.setTelephone(telephone);
+        request.setTelephone(TelephoneNormalizer.normalize(request.getTelephone()));
         request.setEmail(normalizeEmail(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
@@ -62,15 +61,6 @@ public class BuildOwner {
             throw new InvalidEmailException(email);
         }
         return trimmed.toLowerCase(java.util.Locale.ROOT);
-    }
-
-    /** Strip every non-digit character and require exactly 10 digits, else reject with 400. */
-    private static String normalizeTelephone(String telephone) throws InvalidTelephoneException {
-        String digits = telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException(telephone);
-        }
-        return digits;
     }
 
     private static boolean isBlank(String value) {

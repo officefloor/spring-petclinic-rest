@@ -13,18 +13,14 @@ public class CheckOwnerTelephoneUnique {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DuplicateTelephoneException {
-        String telephone = normalize(owner.getTelephone());
+        String telephone = TelephoneNormalizer.comparisonKey(owner.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // same record (e.g. re-save), not a conflict
             }
-            if (telephone.equals(normalize(existing.getTelephone()))) {
+            if (telephone.equals(TelephoneNormalizer.comparisonKey(existing.getTelephone()))) {
                 throw new DuplicateTelephoneException(owner.getTelephone());
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
