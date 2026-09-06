@@ -27,6 +27,19 @@ public abstract class OwnerMapper {
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * The hard per-city capacity limit: a city already holding this many owners rejects further
+     * creates (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.EnsureCityCapacity}).
+     */
+    private static final int CITY_CAPACITY_LIMIT = 50;
+
+    /**
+     * A city already holding at least this many (but fewer than {@link #CITY_CAPACITY_LIMIT})
+     * owners raises the {@code capacityWarning} on responses, signalling it is approaching the limit.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     @Autowired
     protected OwnerRepository ownerRepository;
 
@@ -43,6 +56,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
@@ -198,6 +212,26 @@ public abstract class OwnerMapper {
                 .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
                 .count();
         return count > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
+     * True when the owner's city already holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD}
+     * and {@code CITY_CAPACITY_LIMIT - 1} owners (the owner itself excluded), signalling the city
+     * is approaching the hard capacity limit of {@value #CITY_CAPACITY_LIMIT}; otherwise false. The
+     * city is compared case-insensitively with runs of whitespace collapsed to a single space,
+     * mirroring {@link org.springframework.samples.petclinic.rest.function.owner.EnsureCityCapacity}.
+     */
+    protected boolean capacityWarning(Owner owner) {
+        String city = normalizeCity(owner.getCity());
+        long count = ownerRepository.findAll().stream()
+                .filter(existing -> !existing.getId().equals(owner.getId()))
+                .filter(existing -> normalizeCity(existing.getCity()).equals(city))
+                .count();
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY_LIMIT;
+    }
+
+    private static String normalizeCity(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**
