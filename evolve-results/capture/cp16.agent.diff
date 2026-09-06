@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 66d28a867..f8704eb97 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,7 +40,7 @@ public interface OwnerMapper {
+     /**
+      * Builds the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'},
+      * where {@code YY} is the last two digits of the {@code registrationDate} year (e.g.
+-     * {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer code or the
++     * {@code 'MEL-SMI-0007-M26'}). Returns {@code null} when either the customer code or the
+      * registration date is absent.
+      *
+      * @param owner the owner being mapped
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3031e2f8d..9cb12db12 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -131,7 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+@@ -282,17 +282,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Builds the {@code customerCode} assigned to a newly created owner, formatted
+-     * {@code '<LAST3>-<NNNN>'}: {@code LAST3} is the upper-cased first three letters of the
+-     * owner's {@code lastName}, and {@code NNNN} is a global 4-digit zero-padded sequence equal
+-     * to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
++     * {@code '<CITY3>-<LAST3>-<NNNN>'}: {@code CITY3} is the upper-cased first three letters of the
++     * owner's {@code city}, {@code LAST3} is the upper-cased first three letters of the owner's
++     * {@code lastName}, and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one
++     * more than the number of owners already in that city (e.g. {@code 'MEL-SMI-0007'}).
+      *
++     * @param city the city of the owner being created
+      * @param lastName the last name of the owner being created
+      * @return the formatted customer code
+      */
+-    private String nextCustomerCode(String lastName) {
++    private String nextCustomerCode(String city, String lastName) {
++        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(java.util.Locale.ROOT);
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
+-        long sequence = this.clinicService.findAllOwners().size() + 1L;
+-        return String.format("%s-%04d", last3, sequence);
++        long sequence = this.clinicService.findAllOwners().stream()
++            .filter(owner -> equalsIgnoreCase(owner.getCity(), city))
++            .count() + 1L;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
+     }
+ 
+     /**
