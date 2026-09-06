@@ -60,6 +60,9 @@ public class Owner extends Person {
     @Column(name = "household_id")
     private String householdId;
 
+    @Column(name = "identity_key")
+    private String identityKey;
+
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
@@ -123,6 +126,14 @@ public class Owner extends Person {
 
     public void setHouseholdId(String householdId) {
         this.householdId = householdId;
+    }
+
+    public String getIdentityKey() {
+        return this.identityKey;
+    }
+
+    public void setIdentityKey(String identityKey) {
+        this.identityKey = identityKey;
     }
 
     public Integer getNamesakeCount() {
