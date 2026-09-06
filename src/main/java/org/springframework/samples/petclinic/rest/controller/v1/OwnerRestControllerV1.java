@@ -329,6 +329,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void rejectHouseholdDuplicate(String householdId) {
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (duplicate) {
             throw new DuplicateOwnerIdentityException(householdId);
@@ -368,6 +369,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
@@ -538,7 +540,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
