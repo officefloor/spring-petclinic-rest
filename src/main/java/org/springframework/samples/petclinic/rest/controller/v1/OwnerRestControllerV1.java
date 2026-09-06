@@ -133,6 +133,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(buildCustomerCode(owner.getLastName()));
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -213,6 +214,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param address the submitted owner's address
      * @return {@code true} if another owner already has the same normalized last name and address
      */
+    /**
+     * Counts how many owners already exist that share the supplied first and last name, compared
+     * case-insensitively. This reflects the number of namesakes present <em>before</em> the current
+     * owner is created and is stored on the new owner as its {@code namesakeCount}.
+     *
+     * @param firstName the submitted owner's first name
+     * @param lastName the submitted owner's last name
+     * @return the number of existing owners with the same first and last name, ignoring case
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
     private boolean isDuplicateHousehold(String lastName, String address) {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> HouseholdNormalizer.sameHousehold(
