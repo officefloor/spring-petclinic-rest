@@ -8,6 +8,7 @@ import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
-            throws MissingOwnerFieldsException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -36,7 +37,18 @@ public class BuildOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
+        String telephone = normalizeTelephone(request.getTelephone());
+        request.setTelephone(telephone);
         built.set(ownerMapper.toOwner(request));
+    }
+
+    /** Strip every non-digit character and require exactly 10 digits, else reject with 400. */
+    private static String normalizeTelephone(String telephone) throws InvalidTelephoneException {
+        String digits = telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidTelephoneException(telephone);
+        }
+        return digits;
     }
 
     private static boolean isBlank(String value) {
