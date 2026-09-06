@@ -8,14 +8,14 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Turns an {@link InvalidTelephoneException} into a 400 when a create-owner
- * telephone does not normalize to exactly 10 digits.
+ * telephone cannot be normalized to valid E.164 form.
  */
 public class InvalidTelephoneExceptionHandler {
 
     public void handle(@Parameter InvalidTelephoneException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
-                "The telephone must contain exactly 10 digits after removing non-digit characters");
+                "The telephone must form valid E.164: '+' followed by 8 to 15 digits");
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
