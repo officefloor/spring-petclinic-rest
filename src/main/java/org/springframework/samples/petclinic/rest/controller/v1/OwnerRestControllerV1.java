@@ -112,7 +112,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectBlankOwnerFields(ownerFieldsDto);
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold) {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
@@ -125,6 +126,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        if (sharesHousehold) {
+            owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -359,5 +363,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String canonicalizeHousehold(String value) {
         return value == null ? null : value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Derives the stable, shared {@code householdId} for an owner joining a household via
+     * {@code sharesHousehold}. The identifier is a deterministic function of the canonical
+     * {@code lastName} and {@code address} (see {@link #canonicalizeHousehold(String)}), so every
+     * owner with the same last name at the same address - regardless of casing or spacing - is
+     * assigned the identical value. It is the first 16 upper-case hex characters of the SHA-256 hash
+     * of the two canonical fields joined by a delimiter that cannot occur in the input.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @return the shared household identifier
+     */
+    private String householdId(String lastName, String address) {
+        String key = canonicalizeHousehold(lastName) + "\n" + canonicalizeHousehold(address);
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, 16);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 }
