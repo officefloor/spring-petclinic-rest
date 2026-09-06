@@ -145,7 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
-            owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+            owner.setHouseholdId(householdId(owner));
         }
         rejectDuplicateIdentity(owner);
         owner.setPossibleDuplicateOf(possibleDuplicateOf(owner));
@@ -669,12 +669,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * assigned the identical value. It is the first 16 upper-case hex characters of the SHA-256 hash
      * of the two canonical fields joined by a delimiter that cannot occur in the input.
      *
-     * @param lastName the last name of the owner being created
-     * @param address the address of the owner being created
+     * @param owner the owner being created
      * @return the shared household identifier
      */
-    private String householdId(String lastName, String address) {
-        String key = canonicalizeHousehold(lastName) + HOUSEHOLD_KEY_DELIMITER + canonicalizeHousehold(address);
+    private String householdId(Owner owner) {
+        String key = canonicalizeHousehold(owner.getLastName())
+            + HOUSEHOLD_KEY_DELIMITER + canonicalizeHousehold(owner.getAddress());
         return hashPrefix(key, HOUSEHOLD_ID_LENGTH);
     }
 
