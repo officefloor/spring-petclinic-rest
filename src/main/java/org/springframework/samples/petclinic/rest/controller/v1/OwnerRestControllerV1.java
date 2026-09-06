@@ -144,11 +144,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
-        if (sharesHousehold) {
-            owner.setHouseholdId(householdId(owner));
-        }
+        owner.setHouseholdId(householdId(owner));
         rejectDuplicateIdentity(owner);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf(owner));
+        rejectHouseholdDuplicate(owner, sharesHousehold);
+        owner.setPossibleDuplicateOf(sharesHousehold ? null : possibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -559,6 +558,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects a create request that would join an existing household unless it declares the shared
+     * household with {@code sharesHousehold}. The household is keyed on {@code (lastName, postcode)}
+     * through the deterministic {@link #householdId(Owner)}, so any existing owner with the same last
+     * name and postcode is a member of the same household. A second such owner is a household
+     * duplicate and is rejected with a 409 (via {@link DuplicateOwnerIdentityException}); setting
+     * {@code sharesHousehold} bypasses this block, so the owner is created as a declared household
+     * member instead. Owners without a {@code householdId} (e.g. no postcode) have no household to
+     * collide with and are always allowed.
+     *
+     * @param owner the fully-populated owner being created (household id set)
+     * @param sharesHousehold whether the request declared it shares an existing household
+     * @throws DuplicateOwnerIdentityException if the household already exists and was not declared
+     */
+    private void rejectHouseholdDuplicate(Owner owner, boolean sharesHousehold) {
+        if (sharesHousehold) {
+            return;
+        }
+        String household = owner.getHouseholdId();
+        if (household == null) {
+            return;
+        }
+        if (existingOwnerMatches(this::householdId, household)) {
+            throw new DuplicateOwnerIdentityException(identityKey(owner));
+        }
+    }
+
+    /**
      * Computes the soft-match {@code possibleDuplicateOf} for a newly created owner: the id of the
      * first existing owner that shares this owner's {@code lastName} (compared case-insensitively) and
      * {@code postcode} while carrying a <em>different</em> telephone (compared by canonical E.164 form,
@@ -641,18 +667,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Delimiter joining the canonical household fields when deriving the shared {@code householdId}.
-     * A run of whitespace is collapsed to a single space by {@link #canonicalizeHousehold(String)}, so
-     * this newline can never occur inside a canonical value and the two fields cannot bleed into one
-     * another across the join.
+     * Delimiter joining the canonical {@code lastName} and the {@code postcode} when deriving the
+     * shared {@code householdId}.
      */
-    private static final String HOUSEHOLD_KEY_DELIMITER = "\n";
+    private static final String HOUSEHOLD_KEY_DELIMITER = "|";
 
     /**
-     * Reduces a household field ({@code lastName} or {@code address}) to a canonical form for
-     * case-insensitive, whitespace-insensitive comparison: leading and trailing whitespace is
-     * trimmed, every run of internal whitespace is collapsed to a single space, and the result is
-     * lower-cased using {@link java.util.Locale#ROOT} so comparison is locale-independent.
+     * Reduces the household {@code lastName} to a canonical form for case-insensitive,
+     * whitespace-insensitive comparison: leading and trailing whitespace is trimmed, every run of
+     * internal whitespace is collapsed to a single space, and the result is lower-cased using
+     * {@link java.util.Locale#ROOT} so comparison is locale-independent.
      *
      * @param value the raw field value, or {@code null}
      * @return the canonical value, or {@code null} when {@code value} is {@code null}
@@ -662,19 +686,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the stable, shared {@code householdId} for an owner joining a household via
-     * {@code sharesHousehold}. The identifier is a deterministic function of the canonical
-     * {@code lastName} and {@code address} (see {@link #canonicalizeHousehold(String)}), so every
-     * owner with the same last name at the same address - regardless of casing or spacing - is
-     * assigned the identical value. It is the first 16 upper-case hex characters of the SHA-256 hash
-     * of the two canonical fields joined by a delimiter that cannot occur in the input.
+     * Derives the deterministic, shared {@code householdId} for an owner from its {@code lastName}
+     * and {@code postcode}. The identifier is the first 12 upper-case hex characters of the SHA-256
+     * hash of {@code normalizedLastName + '|' + postcode} (see {@link #canonicalizeHousehold(String)}
+     * for the last-name normalization), so every owner with the same last name and postcode -
+     * regardless of casing or spacing - is automatically assigned the identical value. Owners without
+     * a postcode have no household basis and are given no household id ({@code null}).
      *
      * @param owner the owner being created
-     * @return the shared household identifier
+     * @return the shared household identifier, or {@code null} when the owner has no postcode
      */
     private String householdId(Owner owner) {
-        String key = canonicalizeHousehold(owner.getLastName())
-            + HOUSEHOLD_KEY_DELIMITER + canonicalizeHousehold(owner.getAddress());
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String key = canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
         return hashPrefix(key, HOUSEHOLD_ID_LENGTH);
     }
 
@@ -682,7 +709,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Number of leading hex characters of the household hash retained as the shared
      * {@code householdId}.
      */
-    private static final int HOUSEHOLD_ID_LENGTH = 16;
+    private static final int HOUSEHOLD_ID_LENGTH = 12;
 
     /**
      * Computes the leading {@code length} upper-case hex characters of the SHA-256 digest of the
