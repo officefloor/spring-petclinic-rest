@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+new file mode 100644
+index 000000000..86d80b656
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's numeric membership level (1 to 3) from the state captured
++ * when the owner was created. Kept as a plain static helper - rather than a
++ * method on {@link OwnerMapper} - so MapStruct does not mistake it for an
++ * implicit property mapping.
++ *
++ * <p>The level starts at 1, gains 1 when an email address is present, gains a
++ * further 1 when the name was unique on create ({@code namesakeCount} is 0), and
++ * is capped at 3. Level 4 is reserved for tenure and is never assigned here.
++ */
++public final class MembershipLevel {
++
++    /** The lowest membership level, assigned to every owner. */
++    private static final int BASE_LEVEL = 1;
++
++    /** The highest level assignable on creation; level 4 is reserved for tenure. */
++    private static final int MAX_LEVEL = 3;
++
++    private MembershipLevel() {
++    }
++
++    /**
++     * Computes the owner's membership level: 1, plus 1 when an email address is
++     * present, plus 1 when {@code namesakeCount} is 0, capped at {@link #MAX_LEVEL}.
++     *
++     * @param owner the owner whose level to derive
++     * @return the numeric membership level between 1 and 3 inclusive
++     */
++    public static int forOwner(Owner owner) {
++        int level = BASE_LEVEL;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        return Math.min(level, MAX_LEVEL);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1b16a4875..8e3a81b87 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,10 +26,8 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" "
+             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
+-            + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.forOwner(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forCity(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9a1fcb342..5f3821229 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsExcep
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
+ import org.springframework.samples.petclinic.rest.advice.OwnerDailyLimitException;
++import org.springframework.samples.petclinic.mapper.MembershipLevel;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -191,8 +192,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            MembershipLevel.forOwner(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -303,7 +305,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Counts how many existing owners already belong to the supplied household, identified by its
+      * {@code householdId}. Used when creating an owner to determine the household's size once the new
+-     * owner is added (this count plus one), which in turn drives the {@code GOLD} membership tier.
++     * owner is added (this count plus one).
+      *
+      * @param householdId the normalized household identifier of the owner being created
+      * @return the number of existing owners already sharing that {@code householdId}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index df628cc88..70b4488d3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2132,16 +2132,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members after
+-                the owner was created. Otherwise 'SILVER' when the name was unique
+-                on create (namesakeCount is 0) and an email address is present, and
+-                'BRONZE' in all other cases.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned on creation. Starts
++                at 1, gains 1 when an email address is present, gains a further 1
++                when the name was unique on create (namesakeCount is 0), and is
++                capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
