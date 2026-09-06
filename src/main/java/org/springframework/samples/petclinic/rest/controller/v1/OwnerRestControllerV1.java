@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -125,6 +126,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && isDuplicateHousehold(owner.getLastName(), owner.getAddress())) {
+            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+        }
         owner.setCustomerCode(buildCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -193,6 +198,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Determines whether an existing owner already shares a household with the supplied last name and
+     * address. Two owners belong to the same household when their last names match and their addresses
+     * match, both compared case-insensitively after collapsing runs of whitespace to a single space
+     * and trimming, so trivial differences in spacing or letter case still count as a match.
+     *
+     * @param lastName the submitted owner's last name
+     * @param address the submitted owner's address
+     * @return {@code true} if another owner already has the same normalized last name and address
+     */
+    private boolean isDuplicateHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForHousehold(lastName);
+        String normalizedAddress = normalizeForHousehold(address);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
+    }
+
+    /**
+     * Normalizes a value for household duplicate comparison: leading and trailing whitespace is
+     * trimmed, every internal run of whitespace is collapsed to a single space, and the result is
+     * lower-cased so the comparison is case-insensitive.
+     *
+     * @param value the raw last name or address value, or {@code null}
+     * @return the normalized value, or the empty string when {@code value} is {@code null}
+     */
+    private String normalizeForHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

@@ -220,6 +220,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateOwnerHouseholdException} raised when an owner is created with a last
+     * name and address that, compared case-insensitively with collapsed whitespace, already belong
+     * to another owner and the request did not opt in with {@code sharesHousehold}. Returns a 409
+     * Conflict.
+     *
+     * @param e The {@link DuplicateOwnerHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerHouseholdException(DuplicateOwnerHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate owner household at {} {}: {}, {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("lastName", "address"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Describes a single rejected field from a Bean Validation {@link BindingResult} as a
      * {@link ValidationMessageDto}, carrying both a formatted, human-readable message and the field
      * name, rejected value and default message as individual properties.
