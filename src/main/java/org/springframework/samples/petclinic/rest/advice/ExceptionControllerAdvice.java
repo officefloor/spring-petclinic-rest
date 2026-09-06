@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
@@ -91,7 +92,7 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
         problemDetail.setProperty("errors", errors);
-        return ResponseEntity.status(status).body(problemDetail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problemDetail);
     }
 
     /**
@@ -111,7 +112,7 @@ public class ExceptionControllerAdvice {
         logger.debug("{} at {} {}: {}", logContext, request.getMethod(), request.getRequestURI(), e.getMessage());
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of(field));
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -205,9 +206,9 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
-            return ResponseEntity.status(status).body(detail);
+            return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
         }
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -230,7 +231,7 @@ public class ExceptionControllerAdvice {
             e.getFields());
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", e.getFields());
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -328,7 +329,7 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT);
         detail.setProperty("errors", List.of("registrationDate"));
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -352,7 +353,7 @@ public class ExceptionControllerAdvice {
             e.getRegistrationDate());
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_FUTURE_REGISTRATION_DATE);
         detail.setProperty("errors", List.of("registrationDate"));
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
 }
