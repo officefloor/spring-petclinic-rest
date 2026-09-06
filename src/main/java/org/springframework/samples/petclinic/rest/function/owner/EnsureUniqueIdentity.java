@@ -24,6 +24,7 @@ public class EnsureUniqueIdentity {
         String householdId = owner.getHouseholdId();
         boolean inUse = ownerRepository.findAll().stream()
                 .filter(existing -> !existing.getId().equals(owner.getId()))
+                .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted())) // ignore soft-deleted owners
                 .anyMatch(existing -> householdId.equals(Households.id(existing)));
         if (inUse) {
             throw new DuplicateIdentityException(

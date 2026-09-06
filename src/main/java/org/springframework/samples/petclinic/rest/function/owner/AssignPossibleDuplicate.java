@@ -30,6 +30,7 @@ public class AssignPossibleDuplicate {
         String telephone = owner.getTelephone();
         Owner match = ownerRepository.findAll().stream()
                 .filter(existing -> !existing.getId().equals(owner.getId()))
+                .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted())) // ignore soft-deleted owners
                 .filter(existing -> householdId.equals(Households.id(existing))
                         && !equalsIgnoreCase(existing.getTelephone(), telephone))
                 .min(java.util.Comparator.comparing(Owner::getId))
