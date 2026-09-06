@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -373,13 +374,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Assigns the owner's customer code, formatted {@code <REGION>-<HASH8>}. The region is derived
      * from the owner's postcode (falling back to its city), and the code itself - region plus the
      * hash of the owner's normalized telephone and last name - is composed by {@link CustomerCode}.
+     * When the composed code collides with an existing owner's customer code, it is de-duplicated by
+     * appending {@code -<n>} with the smallest {@code n} of two or more that makes it unique.
      *
      * @param owner the normalized owner about to be created
-     * @return the assigned customer code
+     * @return the assigned, de-duplicated customer code
      */
     private String buildCustomerCode(Owner owner) {
         String region = OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity());
-        return CustomerCode.forRegionAndIdentity(region, owner.getTelephone(), owner.getLastName());
+        String code = CustomerCode.forRegionAndIdentity(region, owner.getTelephone(), owner.getLastName());
+        return deduplicateCustomerCode(code);
+    }
+
+    /**
+     * De-duplicates a freshly composed customer code against the codes of all existing owners. When
+     * the code is already unique it is returned unchanged; otherwise {@code -<n>} is appended, using
+     * the smallest {@code n} of two or more that yields a code no existing owner holds.
+     *
+     * @param code the composed customer code, before de-duplication
+     * @return the same code when unique, otherwise the code with the smallest available {@code -<n>} suffix
+     */
+    private String deduplicateCustomerCode(String code) {
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(existing -> existing != null)
+            .collect(Collectors.toSet());
+        if (!existingCodes.contains(code)) {
+            return code;
+        }
+        int suffix = 2;
+        while (existingCodes.contains(code + "-" + suffix)) {
+            suffix++;
+        }
+        return code + "-" + suffix;
     }
 
     /**
