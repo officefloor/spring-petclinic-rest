@@ -1,0 +1,113 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ddcc51529..2214a0b0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +44,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164 form: '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+index f76e7ea9c..a7d6d5c4d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+@@ -8,14 +8,14 @@ import org.springframework.http.ResponseEntity;
+ 
+ /**
+  * Turns an {@link InvalidTelephoneException} into a 400 when a create-owner
+- * telephone does not normalize to exactly 10 digits.
++ * telephone cannot be normalized to valid E.164 form.
+  */
+ public class InvalidTelephoneExceptionHandler {
+ 
+     public void handle(@Parameter InvalidTelephoneException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+-                "The telephone must contain exactly 10 digits after removing non-digit characters");
++                "The telephone must form valid E.164: '+' followed by 8 to 15 digits");
+         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
+index b13ea41a6..d65486af2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
+@@ -13,27 +13,55 @@ final class TelephoneNormalizer {
+     private TelephoneNormalizer() {
+     }
+ 
++    /** Default country code assumed when the supplied number carries no explicit '+'. */
++    private static final String DEFAULT_COUNTRY_CODE = "61";
++
+     /**
+-     * Canonical form to store for a supplied telephone. Strips every non-digit character
+-     * and requires exactly 10 digits, else rejects the request with a 400.
++     * Canonical E.164 form to store for a supplied telephone. Spaces, dashes and brackets
++     * are stripped. A leading '+' with its country code is kept; otherwise country code
++     * '+61' is assumed and a single leading '0' is dropped from the national digits. The
++     * result must have 8 to 15 digits after the '+', else the request is rejected with a
++     * 400. So '0412 345 678' becomes '+61412345678'.
+      */
+     static String normalize(String telephone) throws InvalidTelephoneException {
+-        String digits = digitsOf(telephone);
+-        if (digits.length() != 10) {
++        String e164 = toE164(telephone);
++        if (e164 == null) {
+             throw new InvalidTelephoneException(telephone);
+         }
+-        return digits;
++        return e164;
+     }
+ 
+     /**
+-     * Comparison key used to detect duplicate telephones. Lenient (never throws) so that
+-     * whatever is already stored on existing owners still compares.
++     * Comparison key used to detect duplicate telephones — the E.164 form. Lenient (never
++     * throws) so whatever is already stored on existing owners still compares; when a value
++     * cannot form valid E.164 it falls back to its stripped characters.
+      */
+     static String comparisonKey(String telephone) {
+-        return digitsOf(telephone);
++        String e164 = toE164(telephone);
++        return e164 != null ? e164 : stripSeparators(telephone);
++    }
++
++    /**
++     * Produce the E.164 string for a telephone, or {@code null} when it cannot form a valid
++     * one (non-digit content remaining, or not 8 to 15 digits after the '+').
++     */
++    private static String toE164(String telephone) {
++        String cleaned = stripSeparators(telephone);
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = DEFAULT_COUNTRY_CODE + national;
++        }
++        if (!digits.matches("\\d{8,15}")) {
++            return null;
++        }
++        return "+" + digits;
+     }
+ 
+-    private static String digitsOf(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    private static String stripSeparators(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("[\\s()\\-]", "");
+     }
+ }
