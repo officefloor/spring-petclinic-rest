@@ -189,6 +189,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(buildCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -297,6 +298,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> HouseholdNormalizer.sameHousehold(
                 lastName, address, existing.getLastName(), existing.getAddress()));
+    }
+
+    /**
+     * Counts how many existing owners already belong to the supplied household, identified by its
+     * {@code householdId}. Used when creating an owner to determine the household's size once the new
+     * owner is added (this count plus one), which in turn drives the {@code GOLD} membership tier.
+     *
+     * @param householdId the normalized household identifier of the owner being created
+     * @return the number of existing owners already sharing that {@code householdId}
+     */
+    private int countHouseholdMembers(String householdId) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
     }
 
     /**
