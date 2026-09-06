@@ -172,6 +172,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        validateRegistrationDate(owner.getRegistrationDate());
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -254,6 +255,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!OwnerLocality.postcodeMatchesCity(postcode, city)) {
             throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+    }
+
+    /**
+     * Validates an owner's optional registration date. Registration date is optional, so a missing
+     * value is accepted (the create later defaults it to the server date). When a value is supplied
+     * it may not lie in the future: a date later than the server's current date is rejected with a
+     * 400 whose {@code errors} array lists {@code registrationDate}.
+     *
+     * @param registrationDate the submitted registration date, or {@code null} when none was supplied
+     * @throws InvalidOwnerFieldsException if a supplied date is later than the server date
+     */
+    private void validateRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new InvalidOwnerFieldsException(List.of("registrationDate"));
         }
     }
 
