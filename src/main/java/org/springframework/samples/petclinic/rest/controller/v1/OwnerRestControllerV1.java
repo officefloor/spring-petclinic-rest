@@ -181,6 +181,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setIdentityKey(buildIdentityKey(owner,
             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())));
         rejectDuplicateOwner(owner.getIdentityKey());
+        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new OwnerCityFullException(owner.getCity());
         }
@@ -306,6 +309,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String email = StringUtils.hasText(owner.getEmail()) ? owner.getEmail() : "";
         String household = sharesHousehold ? owner.getHouseholdId() : "";
         return owner.getTelephone() + "|" + email + "|" + household;
+    }
+
+    /**
+     * Detects a soft-match duplicate for the owner about to be created. A soft match is an owner that
+     * is not a hard duplicate (its {@code identityKey} did not collide) but that shares an existing
+     * owner's {@code lastName} (case-insensitively) and {@code postcode} while having a different
+     * normalized {@code telephone}. Such an owner is still created, but is flagged as a possible
+     * duplicate of the matching owner. The comparison only applies when a postcode was supplied, since
+     * both owners must share one; when several existing owners match, the earliest (lowest id) is used.
+     *
+     * @param owner the normalized owner about to be created, with its telephone already normalized
+     * @return the id of the matching existing owner, or {@code null} when there is no soft match
+     */
+    private Integer findPossibleDuplicate(Owner owner) {
+        if (!StringUtils.hasText(owner.getPostcode())) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .map(Owner::getId)
+            .filter(id -> id != null)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**
