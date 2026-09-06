@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -142,7 +143,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects an owner payload that is missing or blank in any required field. Collects the name of
      * every offending field and, if there is at least one, raises a {@link MissingOwnerFieldsException}
-     * so the client receives a 400 whose {@code errors} array lists each missing field.
+     * so the client receives a 400 whose {@code errors} array lists each missing field. The address is
+     * checked in its {@link AddressNormalizer#normalize normalized} form, so a value that is blank only
+     * after normalization is still rejected.
      *
      * @param ownerFieldsDto the submitted owner fields
      */
