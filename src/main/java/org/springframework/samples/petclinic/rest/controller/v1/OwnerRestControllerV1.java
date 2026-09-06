@@ -303,10 +303,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * create flow, keeps address canonicalization in exactly one place rather than spread across the
      * steps that read the address.
      *
-     * @param ownerFieldsDto the submitted owner fields, whose address is replaced with its normalized form
+     * <p>An address may be supplied either as the structured {@code addressLine1} (with an optional
+     * {@code addressLine2}) or as the single flat {@code address}, the latter kept for backward
+     * compatibility. Whichever address fields are supplied are normalized, and the structured fields
+     * are preferred when present: the flat {@code address} returned is composed as the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended when an
+     * {@code addressLine2} is present; only when no {@code addressLine1} is supplied does the flat
+     * {@code address} retain its own normalized value.
+     *
+     * @param ownerFieldsDto the submitted owner fields, whose address fields are replaced with their normalized form
      */
     private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        String addressLine1 = addressNormalizer.normalize(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = addressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+        String flatAddress = addressNormalizer.normalize(ownerFieldsDto.getAddress());
+        ownerFieldsDto.setAddressLine1(addressLine1);
+        ownerFieldsDto.setAddressLine2(addressLine2);
+        if (addressLine1 != null && !addressLine1.isBlank()) {
+            String composed = addressLine2 != null && !addressLine2.isBlank()
+                ? addressLine1 + " " + addressLine2
+                : addressLine1;
+            ownerFieldsDto.setAddress(composed);
+        } else {
+            ownerFieldsDto.setAddress(flatAddress);
+        }
     }
 
     /**
@@ -340,16 +360,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Records the address requirement's offending field name(s) into {@code blankFields}. An owner
-     * must supply an address: today that is the single flat {@code address} field, required non-blank
-     * exactly like the other required text fields (see {@link #addIfBlank(List, String, String)}).
-     * Holding the "an owner must have an address" rule in its own method - rather than a bare entry in
-     * the field list - gives it one place to live as the accepted address forms grow.
+     * must supply an address in EITHER accepted form: the structured {@code addressLine1} or the flat
+     * {@code address} (kept for backward compatibility). The requirement is satisfied when at least one
+     * of those is present and non-blank; only when both are missing or blank is {@code address} reported
+     * as the offending field. Holding the "an owner must have an address" rule in its own method - rather
+     * than a bare entry in the field list - gives it one place to live as the accepted address forms grow.
      *
      * @param blankFields the accumulating list of blank required-field names
      * @param ownerFieldsDto the submitted owner fields
      */
     private void addRequiredAddress(List<String> blankFields, OwnerFieldsDto ownerFieldsDto) {
-        addIfBlank(blankFields, "address", ownerFieldsDto.getAddress());
+        if (isBlank(ownerFieldsDto.getAddressLine1()) && isBlank(ownerFieldsDto.getAddress())) {
+            blankFields.add("address");
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**
