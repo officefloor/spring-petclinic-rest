@@ -455,7 +455,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
+        ownerDto.setRiskFlag(riskFlag(owner));
         return ownerDto;
+    }
+
+    /**
+     * Derives the read-only {@code riskFlag} for an owner: {@code true} when any of the soft risk
+     * signals hold, otherwise {@code false}. The owner is at risk when it is a possible duplicate
+     * (its {@link Owner#getPossibleDuplicateOf() possibleDuplicateOf} is set), when its email domain
+     * is {@linkplain DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or when
+     * its city is over its soft capacity (the same {@link #capacityWarning(String)} band that raises
+     * {@code capacityWarning}). Combining the existing signals here keeps {@code riskFlag} as a single
+     * derived summary computed in exactly one place alongside the fields it aggregates.
+     *
+     * @param owner the persisted owner to assess
+     * @return {@code true} when any risk signal holds, otherwise {@code false}
+     */
+    private boolean riskFlag(Owner owner) {
+        return owner.getPossibleDuplicateOf() != null
+            || disposableEmailDomains.isDisposableAdjacent(owner.getEmail())
+            || capacityWarning(owner.getCity());
     }
 
     /**
