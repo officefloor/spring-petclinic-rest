@@ -119,7 +119,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
-        ownerDto.setMembershipTier(applyHouseholdTier(owner, ownerDto.getMembershipTier()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -148,11 +147,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
-        ownerDto.setMembershipTier(applyHouseholdTier(owner, ownerDto.getMembershipTier()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -538,38 +537,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param address the address of the owner being created
      * @return the shared household identifier
      */
-    /**
-     * The household size at which an owner is upgraded to the {@code GOLD} membership tier. Once an
-     * owner's household - the set of owners sharing the same {@code householdId} - contains this many
-     * or more members, every member of that household reads back as {@code GOLD}.
-     */
-    private static final long GOLD_HOUSEHOLD_SIZE = 3L;
-
-    /**
-     * Applies the household-based {@code GOLD} membership tier override. When the owner belongs to a
-     * household (has a non-null {@code householdId}) whose membership has reached
-     * {@link #GOLD_HOUSEHOLD_SIZE}, the derived tier is {@code GOLD}; otherwise the {@code base} tier
-     * derived by {@link OwnerMapper#membershipTier(Owner)} (the existing {@code SILVER}/{@code BRONZE}
-     * rules) is returned unchanged. Household members are counted by matching {@code householdId}
-     * across all owners, so the count reflects every owner that has joined the household - including
-     * the owner just created.
-     *
-     * @param owner the owner being mapped
-     * @param base the tier derived from the owner's own fields (never {@code GOLD})
-     * @return {@code GOLD} when the owner's household has {@link #GOLD_HOUSEHOLD_SIZE} or more members,
-     *         otherwise {@code base}
-     */
-    private OwnerDto.MembershipTierEnum applyHouseholdTier(Owner owner, OwnerDto.MembershipTierEnum base) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return base;
-        }
-        long members = this.clinicService.findAllOwners().stream()
-            .filter(other -> householdId.equals(other.getHouseholdId()))
-            .count();
-        return members >= GOLD_HOUSEHOLD_SIZE ? OwnerDto.MembershipTierEnum.GOLD : base;
-    }
-
     private String householdId(String lastName, String address) {
         String key = canonicalizeHousehold(lastName) + "\n" + canonicalizeHousehold(address);
         try {

@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -49,18 +49,25 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's base {@code membershipTier} from the owner's own fields. Returns
-     * {@code SILVER} when the owner's {@code namesakeCount} is {@code 0} and an email is present,
-     * otherwise {@code BRONZE}. The household-based {@code GOLD} upgrade (3+ members sharing a
-     * {@code householdId}) requires the full owner set and is applied by the controller on read.
+     * Derives the owner's numeric {@code membershipLevel} from the owner's own fields. Starts at
+     * {@code 1}, adds {@code 1} when an email is present, adds {@code 1} when the owner's
+     * {@code namesakeCount} is {@code 0}, and is capped at {@code 3} (level {@code 4} is reserved
+     * for tenure).
      *
      * @param owner the owner being mapped
-     * @return the derived membership tier
+     * @return the derived membership level, between {@code 1} and {@code 3}
      */
-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
-        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return uniqueName && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        if (hasEmail) {
+            level++;
+        }
+        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (uniqueName) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
