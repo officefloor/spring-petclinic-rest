@@ -72,6 +72,14 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * The number of owners in this owner's household (owners sharing the same {@code householdId},
+     * including this owner). Derived at read time and not persisted; an owner with no household
+     * counts as a household of one. Feeds the household factor of the membership points.
+     */
+    @Transient
+    private int householdSize = 1;
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -156,6 +164,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public int getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(int householdSize) {
+        this.householdSize = householdSize;
     }
 
     public Integer getPossibleDuplicateOf() {

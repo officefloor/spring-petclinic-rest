@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -107,31 +108,54 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's numeric {@code membershipLevel} from the owner's own fields. Starts at
-     * {@code 1}, adds {@code 1} when an email is present, and adds {@code 1} when the owner's
-     * {@code namesakeCount} is {@code 0}. These pre-tenure factors are capped at {@code 3}. Level
-     * {@code 4} is reserved for tenure: it is granted only when the owner's tenure &mdash; the number
+     * Derives the owner's {@code membershipPoints} from the owner's factors. Starts at {@code 0},
+     * adds {@code 2} when an email is present, adds {@code 1} when the owner's {@code namesakeCount}
+     * is {@code 0}, adds {@code 2} for a household of {@code 3} or more (see
+     * {@link Owner#getHouseholdSize()}), and adds {@code 3} when the owner's tenure &mdash; the number
      * of whole days between its {@code registrationDate} and the current date &mdash; exceeds
-     * {@code 365}. Because a newly created owner has zero tenure, a new owner never exceeds level
-     * {@code 3}, even with an email and a {@code namesakeCount} of {@code 0}.
+     * {@code 365}.
+     *
+     * @param owner the owner being mapped
+     * @return the derived membership points
+     */
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
+        if (hasEmail(owner)) {
+            points += 2;
+        }
+        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (uniqueName) {
+            points += 1;
+        }
+        if (owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
+        if (tenureDays(owner) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Maps the owner's {@code membershipPoints} to its numeric {@code membershipLevel}: level
+     * {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
+     * {@code 4} for {@code 6} or more points.
      *
      * @param owner the owner being mapped
      * @return the derived membership level, between {@code 1} and {@code 4}
      */
     default Integer membershipLevel(Owner owner) {
-        int level = 1;
-        if (hasEmail(owner)) {
-            level++;
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
         }
-        boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (uniqueName) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        if (tenureDays(owner) > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**

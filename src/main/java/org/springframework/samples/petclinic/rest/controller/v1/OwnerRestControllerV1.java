@@ -157,6 +157,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectHouseholdDuplicate(owner, sharesHousehold);
         owner.setPossibleDuplicateOf(sharesHousehold ? null : possibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
+        owner.setHouseholdSize(householdSize(owner));
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner));
@@ -284,6 +285,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the owner DTO with its derived read-only fields populated
      */
     private OwnerDto toOwnerDtoWithDerivedFields(Owner owner) {
+        owner.setHouseholdSize(householdSize(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         ownerDto.setIdentityKey(identityKey(owner));
@@ -733,6 +735,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the owner being created
      * @return the shared household identifier, or {@code null} when the owner has no postcode
      */
+    /**
+     * Counts the owners in the given owner's household: the existing owners that share its
+     * {@code householdId} (see {@link #householdId(Owner)}), which - because the owner being counted is
+     * itself persisted before it is decorated - includes the owner. An owner with no {@code householdId}
+     * (e.g. no postcode) has no shared household and counts as a household of one. The value feeds the
+     * household factor of the owner's membership points.
+     *
+     * @param owner the owner whose household size is being derived
+     * @return the number of owners in the owner's household (at least {@code 1})
+     */
+    private int householdSize(Owner owner) {
+        String household = owner.getHouseholdId();
+        if (household == null) {
+            return 1;
+        }
+        return (int) countOwners(existing -> household.equals(existing.getHouseholdId()));
+    }
+
     private String householdId(Owner owner) {
         String postcode = owner.getPostcode();
         if (postcode == null || postcode.isBlank()) {
