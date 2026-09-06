@@ -59,6 +59,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -151,6 +152,22 @@ public abstract class OwnerMapper {
             return region;
         }
         return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.region(owner);
+    }
+
+    /** The lowest {@code membershipLevel} that grades an owner's segment TIER as {@code PREMIUM}. */
+    private static final int PREMIUM_MIN_LEVEL = 3;
+
+    /**
+     * The owner's {@code ownerSegment} formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is
+     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is
+     * {@value #PREMIUM_MIN_LEVEL} or more, otherwise {@code STANDARD}. AREA is {@code METRO} when
+     * the {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code REGIONAL}.
+     */
+    protected OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(locality(owner)) ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /** Fixed region -> IANA timezone table. */
