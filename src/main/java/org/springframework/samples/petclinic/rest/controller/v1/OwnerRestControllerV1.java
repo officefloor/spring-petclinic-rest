@@ -236,9 +236,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * submitted address is canonicalized, the required fields and the optional postcode and
      * registration date are validated, and the mapped owner's telephone and email are normalized. The
      * registration date is defaulted to the server date when absent and rolled forward to a business
-     * day. The household id and identity key are derived; a create that would join an already-populated
-     * household is rejected unless it opts in with {@code sharesHousehold}, and otherwise a soft-match
-     * duplicate is flagged.
+     * day. The household id and identity key are derived; a create whose identity key matches an
+     * existing, non-deleted owner is rejected with a 409 unless it opts in with {@code sharesHousehold},
+     * and otherwise a soft-match duplicate is flagged.
      *
      * @param ownerFieldsDto the submitted owner fields
      * @return the normalized owner, not yet persisted
@@ -262,13 +262,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Places the owner about to be created into its household and settles its identity against the
-     * owners already on file. The owner's {@code householdId} is derived deterministically from its
-     * last name and postcode and its {@code identityKey} is composed from that household and the
-     * normalized contact details. Unless the request opted into a shared household, an owner whose
-     * identity key exactly matches an existing household member is rejected with a 409; and, again only
-     * when the household was not opted into, a soft-match against an existing owner flags the new owner
-     * as a possible duplicate. Distinct people sharing a household are admitted, with their membership
-     * level later capped by {@link #applyMembershipLevelCap(Owner)}.
+     * owners already on file. The owner's {@code householdId} is still derived deterministically from
+     * its last name and postcode (it drives the household size and membership-level cap), but identity
+     * is now decided solely by the {@code identityKey}, the SHA-256 digest over the normalized
+     * telephone, email and the last name's Soundex code. Unless the request opted into a shared
+     * household, an owner whose identity key matches any existing, non-deleted owner is rejected with a
+     * 409; and, again only when the household was not opted into, a soft-match against an existing owner
+     * flags the new owner as a possible duplicate. Two owners sharing a last name and postcode but with
+     * different telephones now derive different identity keys, so they are admitted (as a soft match)
+     * rather than rejected, with their membership level later capped by
+     * {@link #applyMembershipLevelCap(Owner)}.
      *
      * @param owner the normalized owner about to be created, with its contact details already normalized
      * @param sharesHousehold whether the request opted into joining an existing household
@@ -277,7 +280,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
         owner.setIdentityKey(buildIdentityKey(owner));
         if (!sharesHousehold) {
-            rejectHouseholdDuplicate(owner);
+            rejectDuplicateIdentity(owner);
         }
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
@@ -462,18 +465,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a submitted owner whose derived {@code identityKey} exactly matches that of an existing
-     * member of the same household - the same normalized telephone, email and household, which marks
-     * the same person being entered twice. Distinct people who merely share a household (a different
-     * telephone or email) are not duplicates: they are admitted so the household can hold more than one
-     * member, with the joiner's membership level capped by {@link #applyMembershipLevelCap(Owner)}. A
-     * genuine identity collision is reported to the client as a 409 Conflict. A request may knowingly
-     * bypass this check by opting in with {@code sharesHousehold}, in which case it is not performed.
+     * Rejects a submitted owner whose derived {@code identityKey} matches that of any existing,
+     * non-deleted owner - the same normalized telephone, email and last-name Soundex, which marks the
+     * same person being entered twice. This single identity key is the whole of duplicate detection:
+     * because the telephone is part of the key, distinct people who merely share a last name and
+     * postcode (but differ in telephone) derive a different key and so are admitted rather than
+     * rejected. Soft-deleted owners are ignored, and the email-domain blocklist has already been
+     * applied when the email was normalized. A genuine identity collision is reported to the client as
+     * a 409 Conflict. A request may knowingly bypass this check by opting in with
+     * {@code sharesHousehold}, in which case it is not performed.
      *
      * @param owner the normalized owner about to be created, with its {@code identityKey} already set
      */
-    private void rejectHouseholdDuplicate(Owner owner) {
-        boolean identityInUse = activeHouseholdMembers(owner.getHouseholdId()).stream()
+    private void rejectDuplicateIdentity(Owner owner) {
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> owner.getIdentityKey().equals(existing.getIdentityKey()));
         if (identityInUse) {
             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
@@ -498,42 +504,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the owner's {@code identityKey}, formatted
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
-     * and email have already been normalized. The household segment always carries the owner's
-     * deterministic {@code householdId}, since owners with the same last name and postcode belong to
-     * the same household automatically.
+     * Derives the owner's {@code identityKey} as the SHA-256 hex digest over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the telephone
+     * and email have already been normalized (the email lower-cased, or the empty string when none was
+     * supplied) and the last name is reduced to its {@link Soundex} code. Because the normalized
+     * telephone is part of the key, two owners who differ only in telephone derive different identity
+     * keys, so they are not the same identity even when they share a household.
      *
-     * @param owner the normalized owner about to be created, with its {@code householdId} already set
-     * @return the derived identity key
+     * @param owner the normalized owner about to be created, with its contact details already normalized
+     * @return the derived identity key, as 64 lower-case hex characters
      */
     private String buildIdentityKey(Owner owner) {
         String email = StringUtils.hasText(owner.getEmail()) ? owner.getEmail() : "";
-        return owner.getTelephone() + "|" + email + "|" + owner.getHouseholdId();
+        return Sha256.hex(owner.getTelephone() + "|" + email + "|" + Soundex.encode(owner.getLastName()));
     }
 
     /**
-     * Detects a soft-match duplicate for the owner about to be created. A soft match is an owner that
-     * shares an existing owner's {@code lastName} (case-insensitively) and {@code postcode} while
-     * having a different normalized {@code telephone}. Such an owner is still created, but is flagged
-     * as a possible duplicate of the matching owner. This is only consulted for owners that did not
-     * opt into a shared household: an owner that declares {@code sharesHousehold} is a known household
-     * member, not a suspected duplicate, so it is never flagged. The comparison only applies when a
-     * postcode was supplied, since both owners must share one; when several existing owners match, the
-     * earliest (lowest id) is used.
+     * Detects a soft-match duplicate for the owner about to be created. A soft match is an owner whose
+     * derived {@code identityKey} differs from an existing owner's - so it is not the same identity, and
+     * not a 409 - yet shares that owner's last-name {@link Soundex} code and {@code postcode}. Such an
+     * owner is still created, but is flagged as a possible duplicate of the matching owner. In
+     * particular, two owners with the same last name and postcode but different telephones now derive
+     * different identity keys, so instead of the old hard household-duplicate rejection they surface
+     * here as a soft match. This is only consulted for owners that did not opt into a shared household:
+     * an owner that declares {@code sharesHousehold} is a known household member, not a suspected
+     * duplicate, so it is never flagged. The comparison only applies when a postcode was supplied, since
+     * both owners must share one; when several existing owners match, the earliest (lowest id) is used.
      *
-     * @param owner the normalized owner about to be created, with its telephone already normalized
+     * @param owner the normalized owner about to be created, with its {@code identityKey} already set
      * @return the id of the matching existing owner, or {@code null} when there is no soft match
      */
     private Integer findPossibleDuplicate(Owner owner) {
         if (!StringUtils.hasText(owner.getPostcode())) {
             return null;
         }
+        String soundex = Soundex.encode(owner.getLastName());
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> !owner.getIdentityKey().equals(existing.getIdentityKey()))
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
             .map(Owner::getId)
             .filter(id -> id != null)
             .min(Integer::compareTo)
