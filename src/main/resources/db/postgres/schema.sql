@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       identity_key TEXT,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
-                                      birth_date DATE
+                                      birth_date DATE,
+                                      address_line1 TEXT,
+                                      address_line2 TEXT
 );
 CREATE INDEX ON owners (last_name);
 

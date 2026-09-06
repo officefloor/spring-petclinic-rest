@@ -219,24 +219,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Canonicalizes the submitted address fields into the form that is validated, stored and
      * returned, before any required-field check or mapping runs. This is the single place a create
-     * request's address input is resolved: the submitted {@code address} is replaced in place with
-     * its {@link AddressNormalizer#normalize normalized} value, so everything downstream - the
-     * required-field check, the mapping onto {@link Owner} and the response - sees the canonical
-     * address rather than the raw input. A value that is blank only after normalization is left
-     * blank here and rejected later by {@link #validateRequiredFields}.
+     * request's address input is resolved.
+     *
+     * <p>The structured fields are preferred over the flat input for backward compatibility: when a
+     * non-blank {@code addressLine1} is supplied, {@code addressLine1} and the optional
+     * {@code addressLine2} are {@link AddressNormalizer#normalize normalized} in place and the flat
+     * {@code address} is set to the composed value - the normalized {@code addressLine1}, with a
+     * single space and the normalized {@code addressLine2} appended when {@code addressLine2} is
+     * present. When no structured line is supplied the flat {@code address} is normalized in place,
+     * exactly as before. Either way everything downstream - the required-field check, the mapping onto
+     * {@link Owner} and the response - sees the canonical address rather than the raw input. A value
+     * that is blank only after normalization is left blank here and rejected later by
+     * {@link #validateRequiredFields}.
      *
      * @param ownerFieldsDto the submitted owner fields, mutated in place with the resolved address
      */
     private void resolveAddressFields(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        String line1 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+        if (!line1.isEmpty()) {
+            ownerFieldsDto.setAddressLine1(line1);
+            ownerFieldsDto.setAddressLine2(line2.isEmpty() ? null : line2);
+            ownerFieldsDto.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+        }
+        else {
+            ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
     }
 
     /**
      * Rejects an owner payload that is missing or blank in any required field. Collects the name of
      * every offending field and, if there is at least one, raises a {@link MissingOwnerFieldsException}
      * so the client receives a 400 whose {@code errors} array lists each missing field. The address is
-     * checked in its {@link AddressNormalizer#normalize normalized} form, so a value that is blank only
-     * after normalization is still rejected.
+     * checked in its resolved form (see {@link #resolveAddressFields}), which is satisfied by either a
+     * non-blank {@code addressLine1} or the flat {@code address}, so a value that is blank only after
+     * normalization is still rejected.
      *
      * @param ownerFieldsDto the submitted owner fields
      */
