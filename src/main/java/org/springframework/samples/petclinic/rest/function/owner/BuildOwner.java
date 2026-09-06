@@ -9,6 +9,7 @@ import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
@@ -22,7 +23,7 @@ public class BuildOwner {
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
             Out<Boolean> sharesHousehold)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
-            InvalidPostcodeException {
+            InvalidPostcodeException, FutureRegistrationDateException {
         // Publish the request-only 'sharesHousehold' flag for the household duplicate check.
         // Not part of the Owner entity, so it travels as a separate variable.
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
@@ -64,6 +65,10 @@ public class BuildOwner {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             registrationDate = LocalDate.now();
+        } else if (registrationDate.isAfter(LocalDate.now())) {
+            // A supplied registration date may not be in the future.
+            throw new FutureRegistrationDateException(
+                    "registrationDate " + registrationDate + " is later than the server date");
         }
         owner.setRegistrationDate(toBusinessDay(registrationDate));
         built.set(owner);
