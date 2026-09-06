@@ -21,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -163,6 +164,38 @@ public interface OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Formats the owner's stored E.164 {@code telephone} for human display: the country calling
+     * code, a space, then the national-significant digits grouped in threes separated by spaces
+     * (e.g. {@code '+61412345678'} becomes {@code '+61 412 345 678'}). The raw {@code telephone}
+     * field keeps the unformatted E.164 value. The split between the country code and the national
+     * digits mirrors the recognised calling codes of the {@code TelephoneNormalizer}: Australian
+     * {@code +61} (9 national digits) and North American {@code +1} (10); an unrecognised or
+     * malformed value falls back to a single leading digit. Returns the value unchanged when it is
+     * {@code null}, blank, or not in E.164 form.
+     *
+     * @param owner the owner being mapped
+     * @return the human-formatted telephone, or the raw value when it cannot be formatted
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || telephone.isBlank() || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int codeLength = (digits.startsWith("61") && digits.length() == 2 + 9) ? 2 : 1;
+        String countryCode = digits.substring(0, codeLength);
+        String national = digits.substring(codeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     Owner toOwner(OwnerDto ownerDto);
