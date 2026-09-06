@@ -48,6 +48,16 @@ public interface OwnerRepository {
     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
 
     /**
+     * Retrieve <code>Owner</code>s from the data store whose telephone matches the given value exactly.
+     * Used to enforce that a telephone number is not shared between owners.
+     *
+     * @param telephone the (normalized) telephone value to search for
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for
