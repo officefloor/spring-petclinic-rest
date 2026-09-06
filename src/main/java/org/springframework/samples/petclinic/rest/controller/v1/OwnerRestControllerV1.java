@@ -135,6 +135,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        Owner owner = createOwner(ownerFieldsDto);
+        return ownerResponse(owner, HttpStatus.CREATED);
+    }
+
+    /**
+     * Validates and normalizes the submitted owner fields, builds the owner, enforces the create-time
+     * duplicate rules and persists it, returning the saved owner. This holds the whole "make and store
+     * a new owner" flow in one place, separate from turning that owner into an HTTP response
+     * ({@link #ownerResponse(Owner, HttpStatus)}), so the create endpoint reads as "create the owner,
+     * then respond" and the persisted owner is available to callers that need it beyond the response.
+     *
+     * @param ownerFieldsDto the submitted owner fields, normalized in place as part of the create
+     * @return the persisted owner, with its derived fields populated
+     */
+    private Owner createOwner(OwnerFieldsDto ownerFieldsDto) {
         normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
         rejectDisposableEmailDomain(ownerFieldsDto.getEmail());
@@ -148,7 +163,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(normalizedTelephone);
         String normalizedEmail = emailNormalizer.normalize(ownerFieldsDto.getEmail());
         ownerFieldsDto.setEmail(normalizedEmail);
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCode(owner));
@@ -162,10 +176,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        return owner;
+    }
+
+    /**
+     * Builds the response for an owner: its derived-field DTO (see
+     * {@link #toOwnerDtoWithDerivedFields(Owner)}) as the body and a {@code Location} header pointing at
+     * the owner's canonical URL, returned with the given {@code status}. Assembling the response in one
+     * place keeps "what to return for an owner" separate from the create flow that produced it, so any
+     * path that returns an owner does so identically (differing only in the status it carries).
+     *
+     * @param owner the persisted owner to represent
+     * @param status the HTTP status to return
+     * @return the owner response with its body, {@code Location} header and status
+     */
+    private ResponseEntity<OwnerDto> ownerResponse(Owner owner, HttpStatus status) {
         OwnerDto ownerDto = toOwnerDtoWithDerivedFields(owner);
+        HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(ownerDto, headers, status);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
