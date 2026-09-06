@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 683d33c53..d2e4cc086 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     @Mapping(target = "identityKey", ignore = true)
+     @Mapping(target = "possibleDuplicate", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 315ea9bf7..d2ddd9413 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -399,8 +399,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
+-     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} flag,
+-     * the {@code identityKey} and the {@code possibleDuplicate} pair), and re-applies the owner's
++     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} and
++     * {@code capacityWarning} flags, the {@code identityKey} and the {@code possibleDuplicate} pair),
++     * and re-applies the owner's
+      * {@code membershipLevel} through the controller ({@link #membershipLevel(Owner)}). Both the
+      * create endpoint and the single-owner read endpoint return their owner through this method, so
+      * an owner is decorated identically on either path and each derived field is computed in exactly
+@@ -414,6 +415,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setMembershipLevel(membershipLevel(owner));
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
++        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
+         ownerDto.setIdentityKey(identityKey(owner));
+         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
+         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+@@ -687,6 +689,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * The soft per-city threshold at or above which the read-only {@code capacityWarning} flag is
++     * raised. Once a city already holds this many owners (but fewer than the hard
++     * {@link #MAX_OWNERS_PER_CITY} cap), it is flagged as approaching capacity - a warning well
++     * below the hard rejection at {@link #MAX_OWNERS_PER_CITY}.
++     */
++    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
++
++    /**
++     * Derives the read-only {@code capacityWarning} flag for an owner: {@code true} when the owner's
++     * city already holds between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and
++     * {@link #MAX_OWNERS_PER_CITY} minus one owners (40 to 49, approaching the hard per-city capacity
++     * limit of {@link #MAX_OWNERS_PER_CITY}), otherwise {@code false}. Uses the same per-city
++     * accumulation as the hard capacity check ({@link #rejectCityAtCapacity(String)}), so the warning
++     * band sits directly below the rejection at {@link #MAX_OWNERS_PER_CITY}.
++     *
++     * @param city the owner's city
++     * @return {@code true} if the city is approaching, but has not reached, its owner capacity
++     */
++    private boolean capacityWarning(String city) {
++        long owners = ownersInCity(city);
++        return owners >= CITY_CAPACITY_WARNING_THRESHOLD && owners < MAX_OWNERS_PER_CITY;
++    }
++
+     /**
+      * Counts the existing owners whose {@code city} matches the given city, compared
+      * case-insensitively (see {@link #equalsIgnoreCase(String, String)}). Used by the per-city
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index adf87c720..0ac95ff96 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2324,6 +2324,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                A soft warning flag, derived on read: true when the owner's city
++                already holds between 40 and 49 owners (approaching the hard
++                per-city capacity limit of 50), otherwise false. Signals a city
++                nearing capacity before the hard rejection at 50 is reached.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
