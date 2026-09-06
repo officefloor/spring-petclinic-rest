@@ -173,16 +173,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
-        if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
-            throw new DuplicateOwnerTelephoneException(owner.getTelephone());
-        }
-        if (isDuplicateEmail(owner.getEmail())) {
-            throw new DuplicateOwnerEmailException(owner.getEmail());
-        }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && isDuplicateHousehold(owner.getLastName(), owner.getAddress())) {
-            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
-        }
+        rejectDuplicateOwner(owner, ownerFieldsDto);
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new OwnerCityFullException(owner.getCity());
         }
@@ -234,6 +225,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
+        }
+    }
+
+    /**
+     * Rejects a submitted owner that would duplicate an existing one. An owner may not reuse another
+     * owner's telephone or email, and - unless the request opts in with {@code sharesHousehold} - may
+     * not join a last name and address that already form a household; each collision is reported to the
+     * client as a 409 Conflict through its own exception. The owner's telephone and email have already
+     * been normalized, so the comparisons run against their canonical forms.
+     *
+     * @param owner the normalized owner about to be created
+     * @param ownerFieldsDto the submitted owner fields, consulted for the {@code sharesHousehold} opt-in
+     */
+    private void rejectDuplicateOwner(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (isDuplicateTelephone(owner.getTelephone())) {
+            throw new DuplicateOwnerTelephoneException(owner.getTelephone());
+        }
+        if (isDuplicateEmail(owner.getEmail())) {
+            throw new DuplicateOwnerEmailException(owner.getEmail());
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && isDuplicateHousehold(owner.getLastName(), owner.getAddress())) {
+            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
         }
     }
 
@@ -298,6 +312,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Determines whether an existing owner already uses the supplied telephone, compared by its
+     * normalized form. The submitted value has already been canonicalized by
+     * {@link TelephoneNormalizer#normalize}, so this looks up owners holding that exact stored value.
+     *
+     * @param telephone the submitted owner's normalized telephone
+     * @return {@code true} if another owner already uses the same normalized telephone
+     */
+    private boolean isDuplicateTelephone(String telephone) {
+        return !this.clinicService.findOwnerByTelephone(telephone).isEmpty();
     }
 
     /**
