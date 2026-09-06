@@ -144,7 +144,34 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            List<String> errors = bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
+            detail.setProperty("errors", errors);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException} raised when an owner is created or updated with a
+     * required field missing or blank. Returns a 400 Bad Request whose {@code errors} array lists the
+     * name of each offending field.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Missing owner fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMissingFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getMissingFields());
         return ResponseEntity.status(status).body(detail);
     }
 
