@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -154,6 +155,39 @@ public interface OwnerMapper {
      */
     default String timezone(Owner owner) {
         return Region.timezoneForCode(locality(owner));
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. {@code TIER} is
+     * {@code PREMIUM} when the owner's {@link #membershipLevel(Owner) membershipLevel} is {@code 3} or
+     * more, otherwise {@code STANDARD}. {@code AREA} is {@code METRO} when the owner's
+     * {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code REGIONAL}. Deriving both parts from the same locality and membership level keeps the
+     * segment consistent with those fields.
+     *
+     * @param owner the owner being mapped
+     * @return the derived owner segment
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        return ownerSegment(owner, membershipLevel(owner));
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment} for a given reported {@code membershipLevel}, so a
+     * caller that has shaped the level with cross-owner context (such as the controller's household
+     * cap) can keep the segment's {@code TIER} consistent with the level it reports. {@code TIER} is
+     * {@code PREMIUM} when {@code membershipLevel} is {@code 3} or more, otherwise {@code STANDARD};
+     * {@code AREA} is {@code METRO} when the owner's {@link #locality(Owner) locality} is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     *
+     * @param owner the owner being mapped
+     * @param membershipLevel the membership level to base the tier on
+     * @return the derived owner segment
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner, int membershipLevel) {
+        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
+        String area = Region.forCode(locality(owner)).isPresent() ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**

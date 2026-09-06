@@ -415,6 +415,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         int membershipLevel = membershipLevel(owner);
         ownerDto.setMembershipLevel(membershipLevel);
+        ownerDto.setOwnerSegment(ownerMapper.ownerSegment(owner, membershipLevel));
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
         ownerDto.setIdentityKey(identityKey(owner));
