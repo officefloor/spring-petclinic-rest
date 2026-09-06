@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fdc081501..98b0416b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -21,7 +21,9 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+@@ -57,6 +59,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -123,6 +126,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         LocalDate.of(2026, 12, 25),
+         LocalDate.of(2026, 12, 28));
+ 
++    /**
++     * Request header carrying the client-supplied idempotency key. When a create repeats with a key
++     * already seen, the originally created owner is returned instead of creating a duplicate.
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -131,14 +140,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final HttpServletRequest request;
++
++    /**
++     * Remembers the owner produced by each previously seen {@code Idempotency-Key}, so a repeated
++     * create with an already-seen key returns the originally created owner rather than a duplicate.
++     */
++    private final Map<String, OwnerDto> idempotencyStore = new ConcurrentHashMap<>();
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -184,11 +203,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = idempotencyKey();
++        if (idempotencyKey != null) {
++            OwnerDto existing = this.idempotencyStore.get(idempotencyKey);
++            if (existing != null) {
++                return new ResponseEntity<>(existing, HttpStatus.OK);
++            }
++        }
+         Owner owner = buildOwnerToCreate(ownerFieldsDto);
+         boolean bulkSignupWarning = enforceCreateLimits(owner) > BULK_SIGNUP_WARNING_THRESHOLD;
+         finalizeOwnerForCreate(owner);
+         this.clinicService.saveOwner(owner);
+-        return createdOwnerResponse(owner, bulkSignupWarning);
++        ResponseEntity<OwnerDto> response = createdOwnerResponse(owner, bulkSignupWarning);
++        if (idempotencyKey != null) {
++            this.idempotencyStore.put(idempotencyKey, response.getBody());
++        }
++        return response;
++    }
++
++    /**
++     * Returns the client-supplied {@code Idempotency-Key} for the current request, or {@code null}
++     * when the header is absent or blank.
++     */
++    private String idempotencyKey() {
++        String key = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
++        return StringUtils.hasText(key) ? key : null;
+     }
+ 
+     /**
