@@ -96,12 +96,15 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's numeric {@code membershipLevel} from the owner's own fields. Starts at
-     * {@code 1}, adds {@code 1} when an email is present, adds {@code 1} when the owner's
-     * {@code namesakeCount} is {@code 0}, and is capped at {@code 3} (level {@code 4} is reserved
-     * for tenure).
+     * {@code 1}, adds {@code 1} when an email is present, and adds {@code 1} when the owner's
+     * {@code namesakeCount} is {@code 0}. These pre-tenure factors are capped at {@code 3}. Level
+     * {@code 4} is reserved for tenure: it is granted only when the owner's tenure &mdash; the number
+     * of whole days between its {@code registrationDate} and the current date &mdash; exceeds
+     * {@code 365}. Because a newly created owner has zero tenure, a new owner never exceeds level
+     * {@code 3}, even with an email and a {@code namesakeCount} of {@code 0}.
      *
      * @param owner the owner being mapped
-     * @return the derived membership level, between {@code 1} and {@code 3}
+     * @return the derived membership level, between {@code 1} and {@code 4}
      */
     default Integer membershipLevel(Owner owner) {
         int level = 1;
@@ -113,7 +116,27 @@ public interface OwnerMapper {
         if (uniqueName) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (tenureDays(owner) > 365) {
+            level++;
+        }
+        return level;
+    }
+
+    /**
+     * Computes the owner's tenure in whole days: the number of complete days between the owner's
+     * {@code registrationDate} and the current date. Returns {@code 0} when no registration date is
+     * present, so an owner without a registration date has no tenure.
+     *
+     * @param owner the owner being mapped
+     * @return the owner's tenure in whole days, or {@code 0} when no registration date is present
+     */
+    default long tenureDays(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
     }
 
     /**
