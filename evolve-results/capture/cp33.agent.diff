@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 42cb7e990..7222a098c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -56,6 +56,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the same identity (telephone, email and household) already exists";
+     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+     private static final String ERROR_DAILY_LIMIT = "The maximum number of owners for today has already been reached";
++    private static final String ERROR_FUTURE_REGISTRATION_DATE = "The registration date must not be later than the current server date";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -300,4 +301,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException} raised when an owner submitted to the create
++     * endpoint carries a {@code registrationDate} that is later than the server's current date.
++     * Returns a 400 Bad Request whose body carries an {@code errors} array naming the
++     * {@code registrationDate} field, mirroring the shape produced for the other owner-creation
++     * error responses.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        logger.debug("Future registration date at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getRegistrationDate());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_FUTURE_REGISTRATION_DATE);
++        detail.setProperty("errors", List.of("registrationDate"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..16a162c0f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.time.LocalDate;
++
++/**
++ * Raised when an owner submitted to the create endpoint carries a {@code registrationDate} that is
++ * later than the server's current date. A registration date may be supplied to backdate a create,
++ * but it may never be in the future; this closes the gap for a well-formed date that lies after
++ * today. The {@code ExceptionControllerAdvice} renders it as a 400 response naming the
++ * {@code registrationDate} field.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    private final LocalDate registrationDate;
++
++    public FutureRegistrationDateException(LocalDate registrationDate) {
++        super("Registration date '" + registrationDate + "' is later than the current server date");
++        this.registrationDate = registrationDate;
++    }
++
++    /**
++     * @return the rejected future registration date
++     */
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index dc8968abc..5ee9758f1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
++import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerPostcodeException;
+ import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
+@@ -131,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         rejectInvalidPostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
+         rejectCityAtCapacity(ownerFieldsDto.getCity());
++        rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
+         LocalDate registrationDate = businessDay(effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate()));
+         rejectDailyRegistrationLimit(registrationDate);
+         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+@@ -436,6 +438,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return suppliedDate != null ? suppliedDate : LocalDate.now();
+     }
+ 
++    /**
++     * Rejects a create request whose supplied {@code registrationDate} lies after the server's
++     * current date. A registration date may be supplied to backdate a create - and is defaulted to
++     * today when omitted - but it may never be in the future. The check is applied to the raw
++     * supplied value before the business-day adjustment ({@link #businessDay(LocalDate)}), so a
++     * future date is rejected regardless of how that adjustment would move it. A future date is
++     * reported through a {@link FutureRegistrationDateException}, which the
++     * {@code ExceptionControllerAdvice} renders as a 400 Bad Request response naming the
++     * {@code registrationDate} field.
++     *
++     * @param suppliedDate the registration date from the request, or {@code null} when omitted
++     * @throws FutureRegistrationDateException if the supplied date is later than the server date
++     */
++    private void rejectFutureRegistrationDate(LocalDate suppliedDate) {
++        if (suppliedDate != null && suppliedDate.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(suppliedDate);
++        }
++    }
++
+     /**
+      * Adjusts a date so it falls on a business day. A Saturday is rolled forward to the following
+      * Monday and a Sunday to the next day (Monday); any weekday is returned unchanged. Applied to
