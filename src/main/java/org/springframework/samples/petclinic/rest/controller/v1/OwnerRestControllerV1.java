@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -125,16 +126,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         rejectCityAtCapacity(ownerFieldsDto.getCity());
-        rejectDailyRegistrationLimit(LocalDate.now());
+        LocalDate registrationDate = businessDay(effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate()));
+        rejectDailyRegistrationLimit(registrationDate);
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
@@ -358,6 +358,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link #rejectDailyRegistrationLimit(LocalDate)}.
      */
     private static final long MAX_OWNERS_PER_DAY = 100L;
+
+    /**
+     * Resolves the effective registration date for a create request: the value supplied in the
+     * request when present, otherwise the server's current date. The result is the raw effective
+     * date before the business-day adjustment applied by {@link #businessDay(LocalDate)}.
+     *
+     * @param suppliedDate the registration date from the request, or {@code null} when omitted
+     * @return the supplied date, or today when none was supplied
+     */
+    private LocalDate effectiveRegistrationDate(LocalDate suppliedDate) {
+        return suppliedDate != null ? suppliedDate : LocalDate.now();
+    }
+
+    /**
+     * Adjusts a date so it falls on a business day. A Saturday is rolled forward to the following
+     * Monday and a Sunday to the next day (Monday); any weekday is returned unchanged. Applied to
+     * the effective registration date so that a weekend value - whether supplied in the request or
+     * defaulted to the server date - is stored as the next Monday, and every value derived from the
+     * registration date (such as the membership number's year segment and the daily create-limit
+     * bucket) uses the adjusted business day.
+     *
+     * @param date the effective registration date
+     * @return the same date when it is a weekday, otherwise the next Monday
+     */
+    private LocalDate businessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
+    }
 
     /**
      * Rejects a create request once {@link #MAX_OWNERS_PER_DAY} or more owners have already been
