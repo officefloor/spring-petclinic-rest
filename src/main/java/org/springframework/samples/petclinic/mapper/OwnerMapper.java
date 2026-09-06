@@ -35,7 +35,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
@@ -56,30 +56,28 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * A household of at least this many owners sharing the same {@code householdId} earns the
-     * {@code "GOLD"} tier.
+     * The membership level is capped at this value; level 4 is reserved for tenure.
      */
-    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+    private static final int MAX_MEMBERSHIP_LEVEL = 3;
 
     /**
-     * Returns the owner's membership tier: {@code "GOLD"} when the owner belongs to a household
-     * (owners sharing the same {@code householdId}) of at least {@value #GOLD_HOUSEHOLD_SIZE}
-     * members; otherwise {@code "SILVER"} when the owner has no namesakes (namesakeCount is 0) and
-     * an email address is present, else {@code "BRONZE"}.
+     * Returns the owner's membership level, a number from 1 to
+     * {@value #MAX_MEMBERSHIP_LEVEL} assigned at creation: it starts at 1, gains 1 when
+     * an email address is present, gains 1 when the owner has no namesakes
+     * (namesakeCount is 0), and is capped at {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is
+     * reserved for tenure).
      */
-    protected String membershipTier(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId != null && !householdId.isBlank()) {
-            long members = ownerRepository.findAll().stream()
-                    .filter(existing -> householdId.equals(existing.getHouseholdId()))
-                    .count();
-            if (members >= GOLD_HOUSEHOLD_SIZE) {
-                return "GOLD";
-            }
-        }
+    public static int membershipLevel(Owner owner) {
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
+        }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
     }
 
     /**
