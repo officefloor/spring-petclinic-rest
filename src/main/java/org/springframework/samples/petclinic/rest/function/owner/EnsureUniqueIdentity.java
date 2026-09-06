@@ -6,22 +6,28 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * Rejects creating an owner whose whole {@code identityKey} already belongs to another owner.
- * This is the single, consolidated duplicate check: the former separate telephone, email and
- * household checks are all expressed through {@link OwnerIdentity#key(Owner)}. Runs after
- * {@link AssignHousehold} so the new owner's {@code householdId} is part of the compared key.
+ * The household duplicate block. Because the household is keyed on (last name, postcode) through the
+ * deterministic {@link Households#id(Owner) householdId}, a second owner in a household that already
+ * has a member is a duplicate and is rejected (409).
+ *
+ * <p>The request's {@code sharesHousehold} flag bypasses this block: a declared household member is
+ * created even though its household already exists. Runs after {@link AssignHousehold} so the new
+ * owner's {@code householdId} is set; existing owners are compared by their own computed household.
  */
 public class EnsureUniqueIdentity {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository)
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String identityKey = OwnerIdentity.key(owner);
+        if (Boolean.TRUE.equals(sharesHousehold)) {
+            return; // declared household member: allowed to join an existing household
+        }
+        String householdId = owner.getHouseholdId();
         boolean inUse = ownerRepository.findAll().stream()
                 .filter(existing -> !existing.getId().equals(owner.getId()))
-                .anyMatch(existing -> OwnerIdentity.key(existing).equals(identityKey));
+                .anyMatch(existing -> householdId.equals(Households.id(existing)));
         if (inUse) {
             throw new DuplicateIdentityException(
-                    "An owner with identityKey " + identityKey + " already exists");
+                    "An owner in household " + householdId + " already exists");
         }
     }
 }

@@ -6,14 +6,16 @@ build:
   govern: [ transaction ]
   next: assignHousehold
 
-# Assign the householdId first: it is part of the identityKey, so the single duplicate
-# check below must see it. Only an exact full-key match (telephone + email + householdId)
-# is a duplicate; household members with different telephones have different keys.
+# Assign the deterministic householdId first (SHA-256 over lastName + postcode), so the
+# household duplicate check below can compare it. Owners at the same last name and postcode
+# are the same household.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
   govern: [ transaction ]
   next: ensureUniqueIdentity
 
+# Reject a second owner in an existing household (same householdId) with 409, unless the
+# request set 'sharesHousehold' to declare it a household member.
 ensureUniqueIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueIdentity
   govern: [ transaction ]
@@ -39,8 +41,8 @@ ensureDailyOwnerLimit:
   govern: [ transaction ]
   next: assignPossibleDuplicate
 
-# Not a hard duplicate (EnsureUniqueIdentity above already rejected that), but a soft-match on
-# last name + postcode with a different telephone: create it, flagging possibleDuplicate(Of).
+# A declared household member is not flagged. Any other owner reaching here is not a household
+# duplicate (EnsureUniqueIdentity already rejected those), so possibleDuplicate stays false.
 assignPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
   govern: [ transaction ]
