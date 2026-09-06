@@ -36,8 +36,8 @@ public abstract class OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipLevel",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Memberships.membershipLevel(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -47,6 +47,27 @@ public abstract class OwnerMapper {
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's {@code membershipPoints}: the raw loyalty score (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.Memberships}), built from a
+     * present email, no namesakes, a household of 3 or more and tenure over 365 days.
+     */
+    protected int membershipPoints(Owner owner) {
+        long householdSize = org.springframework.samples.petclinic.rest.function.owner.Households
+                .size(owner, ownerRepository);
+        return org.springframework.samples.petclinic.rest.function.owner.Memberships
+                .membershipPoints(owner, householdSize);
+    }
+
+    /**
+     * The owner's {@code membershipLevel}: the grade {@code membershipPoints} buckets into — 1 for
+     * 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
+     */
+    protected int membershipLevel(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.Memberships
+                .membershipLevel(membershipPoints(owner));
+    }
 
     /**
      * The owner's preferred contact channel: {@code EMAIL} when an email address is

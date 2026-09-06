@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Derives the deterministic {@code householdId}: the first 12 hex characters of
@@ -40,6 +41,20 @@ public final class Households {
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * The size of the owner's household: the number of persisted owners sharing this owner's
+     * {@code householdId} (members inclusive). Returns 0 when the owner has no household id.
+     */
+    public static long size(Owner owner, OwnerRepository repository) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 0;
+        }
+        return repository.findAll().stream()
+                .filter(existing -> householdId.equals(existing.getHouseholdId()))
+                .count();
     }
 
     private static String normalize(String value) {
