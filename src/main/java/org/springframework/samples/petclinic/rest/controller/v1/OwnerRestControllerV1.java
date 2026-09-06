@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.IdempotencyKeyStore;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -61,6 +62,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -92,6 +95,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DisposableEmailDomains disposableEmailDomains;
 
+    private final IdempotencyKeyStore idempotencyKeyStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -99,7 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 DisposableEmailDomains disposableEmailDomains) {
+                                 DisposableEmailDomains disposableEmailDomains,
+                                 IdempotencyKeyStore idempotencyKeyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -108,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomains = disposableEmailDomains;
+        this.idempotencyKeyStore = idempotencyKeyStore;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -132,11 +139,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
             new ResponseEntity<>(toOwnerDtoWithDerivedFields(owner), HttpStatus.OK));
     }
 
+    /**
+     * The request header carrying the caller's idempotency key. When a create is repeated with a key
+     * already seen, the originally created owner is returned with 200 instead of a duplicate being
+     * created (see {@link #addOwner(OwnerFieldsDto)} and {@link IdempotencyKeyStore}).
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = currentIdempotencyKey();
+        Optional<Owner> existing = idempotencyKeyStore.find(idempotencyKey)
+            .map(this.clinicService::findOwnerById);
+        if (existing.isPresent()) {
+            return ownerResponse(existing.get(), HttpStatus.OK);
+        }
         Owner owner = createOwner(ownerFieldsDto);
+        idempotencyKeyStore.record(idempotencyKey, owner.getId());
         return ownerResponse(owner, HttpStatus.CREATED);
+    }
+
+    /**
+     * Reads the {@code Idempotency-Key} header from the current request, or {@code null} when no
+     * request is bound or the header is absent. Held in one place so the create endpoint can decide,
+     * from the key alone, whether a create is a first occurrence or a repeat to be served from the
+     * originally created owner.
+     *
+     * @return the request's idempotency key, or {@code null} when none was supplied
+     */
+    private String currentIdempotencyKey() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            return attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        }
+        return null;
     }
 
     /**
