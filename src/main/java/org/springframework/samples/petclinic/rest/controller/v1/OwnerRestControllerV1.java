@@ -93,6 +93,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int DAILY_OWNER_LIMIT = 100;
 
+    /**
+     * Number of owners that must already have been created for a given day before the create
+     * response flags a bulk sign-up. When more than this many owners already share a
+     * {@code registrationDate}, the response's {@code bulkSignupWarning} is {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -133,7 +140,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+    }
+
+    /**
+     * Determines whether the supplied day currently holds more than {@link #BULK_SIGNUP_WARNING_THRESHOLD}
+     * owners sharing that {@code registrationDate}, which flags an unusually high volume of same-day
+     * owner sign-ups.
+     *
+     * @param registrationDate the day to inspect, or {@code null}
+     * @return {@code true} when more than the threshold of owners are registered on that day
+     */
+    private boolean isBulkSignupDay(LocalDate registrationDate) {
+        return registrationDate != null
+            && countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -159,9 +181,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new OwnerCityFullException(owner.getCity());
         }
-        if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= DAILY_OWNER_LIMIT) {
+        long ownersRegisteredOnDay = countOwnersRegisteredOn(owner.getRegistrationDate());
+        if (ownersRegisteredOnDay >= DAILY_OWNER_LIMIT) {
             throw new OwnerDailyLimitException(owner.getRegistrationDate());
         }
+        boolean bulkSignupWarning = ownersRegisteredOnDay > BULK_SIGNUP_WARNING_THRESHOLD;
         owner.setCustomerCode(buildCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -169,6 +193,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
