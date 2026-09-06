@@ -44,7 +44,7 @@ public class CheckOwnerHouseholdUnique {
         }
         // Explicitly allowed to share: assign the same stable household identifier to all members,
         // and record the household's size (existing members plus this new owner) on every member so
-        // the derived membership tier reflects the household as it stands after this create.
+        // it reflects the household as it stands after this create.
         String householdId = householdId(lastName, address, household);
         int householdSize = household.size() + 1;
         owner.setHouseholdId(householdId);
