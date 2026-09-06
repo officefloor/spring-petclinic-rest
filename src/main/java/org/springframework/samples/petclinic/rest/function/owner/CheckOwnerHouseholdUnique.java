@@ -36,19 +36,23 @@ public class CheckOwnerHouseholdUnique {
             }
         }
         if (household.isEmpty()) {
+            owner.setHouseholdSize(1); // a household of one: just this new owner
             return; // no existing owner at this last name + address
         }
         if (!Boolean.TRUE.equals(sharesHousehold)) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
-        // Explicitly allowed to share: assign the same stable household identifier to all members.
+        // Explicitly allowed to share: assign the same stable household identifier to all members,
+        // and record the household's size (existing members plus this new owner) on every member so
+        // the derived membership tier reflects the household as it stands after this create.
         String householdId = householdId(lastName, address, household);
+        int householdSize = household.size() + 1;
         owner.setHouseholdId(householdId);
+        owner.setHouseholdSize(householdSize);
         for (Owner member : household) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
+            member.setHouseholdId(householdId);
+            member.setHouseholdSize(householdSize);
+            ownerRepository.save(member);
         }
     }
 
