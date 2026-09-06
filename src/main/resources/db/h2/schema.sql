@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(40),
   namesake_count INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER,
   birth_date DATE
 );
 

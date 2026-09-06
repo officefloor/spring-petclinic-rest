@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(40),
   namesake_count INT,
+  possible_duplicate BIT,
+  possible_duplicate_of INT,
   birth_date DATE,
   INDEX(last_name)
 ) engine=InnoDB;
