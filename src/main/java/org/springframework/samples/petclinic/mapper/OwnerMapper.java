@@ -49,8 +49,10 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code membershipTier}. Returns {@code SILVER} when the owner's
-     * {@code namesakeCount} is {@code 0} and an email is present, otherwise {@code BRONZE}.
+     * Derives the owner's base {@code membershipTier} from the owner's own fields. Returns
+     * {@code SILVER} when the owner's {@code namesakeCount} is {@code 0} and an email is present,
+     * otherwise {@code BRONZE}. The household-based {@code GOLD} upgrade (3+ members sharing a
+     * {@code householdId}) requires the full owner set and is applied by the controller on read.
      *
      * @param owner the owner being mapped
      * @return the derived membership tier
