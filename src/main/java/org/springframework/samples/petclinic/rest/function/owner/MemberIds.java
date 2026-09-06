@@ -14,8 +14,8 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The id is {@code <REGION><FY><HASH8><CHK>} (no separators) where:
  * <ul>
- * <li>REGION is the {@link #region(Owner) region} derived from the owner's postcode (falling back to
- * the city, then {@code "UNKNOWN"});</li>
+ * <li>REGION is the {@link #identifierRegion(Owner) identifier region} for the owner (currently the
+ * plain region derived from the owner's postcode, falling back to the city, then {@code "UNKNOWN"});</li>
  * <li>FY is the two-digit fiscal year (starting 1 July) containing the {@code registrationDate};</li>
  * <li>HASH8 is the first eight upper-case hex characters of
  * {@code SHA-256(normalizedTelephone + lastName)};</li>
@@ -48,7 +48,7 @@ public final class MemberIds {
         if (owner.getRegistrationDate() == null) {
             return null;
         }
-        String base = region(owner) + fiscalYear(owner) + hash8(owner);
+        String base = identifierRegion(owner) + fiscalYear(owner) + hash8(owner);
         return base + Luhn.checkDigit(base);
     }
 
@@ -62,16 +62,30 @@ public final class MemberIds {
     }
 
     /**
-     * The region for the owner: the region whose inclusive postcode range contains the owner's
-     * postcode wins; otherwise the fixed city-to-region table ({@code Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD}); otherwise {@code "UNKNOWN"}.
+     * The plain, user-facing region for the owner: the region whose inclusive postcode range contains
+     * the owner's postcode wins; otherwise the fixed city-to-region table ({@code Sydney->NSW,
+     * Melbourne->VIC, Brisbane->QLD}); otherwise {@code "UNKNOWN"}.
+     *
+     * <p>This is the region shown to callers — the {@code locality}, and (through it) the
+     * {@code timezone} and the owner segment's AREA. It is never dressed up for use inside an
+     * identifier; that is {@link #identifierRegion(Owner)}.
      */
-    public static String region(Owner owner) {
+    public static String plainRegionOf(Owner owner) {
         String region = regionFromPostcode(owner.getPostcode());
         if (region != null) {
             return region;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The region baked into the owner's identifiers — the REGION segment of the {@code memberId}.
+     * Currently identical to the {@link #plainRegionOf(Owner) plain region}: it is the single seam
+     * through which every identifier reads its region, so an identifier-only transform of the region
+     * can be applied in one place without leaking into the user-facing {@code locality}.
+     */
+    public static String identifierRegion(Owner owner) {
+        return plainRegionOf(owner);
     }
 
     /** The two-digit fiscal-year (FY) segment of the memberId, e.g. "27" for a FY ending in 2027. */

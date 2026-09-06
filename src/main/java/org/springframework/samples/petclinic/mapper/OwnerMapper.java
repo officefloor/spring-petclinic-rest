@@ -138,12 +138,13 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} (canonical region string) from the region-and-hash
-     * identity: the REGION segment of the {@code memberId}, which is the region derived from the
-     * owner's postcode (falling back to the city, then {@code "UNKNOWN"}).
+     * Derives the owner's {@code locality} (canonical region string): the plain, user-facing region
+     * derived from the owner's postcode (falling back to the city, then {@code "UNKNOWN"}). This is
+     * the region as shown to callers, never the identifier-dressed form baked into the
+     * {@code memberId}.
      */
     protected String locality(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.MemberIds.region(owner);
+        return org.springframework.samples.petclinic.rest.function.owner.MemberIds.plainRegionOf(owner);
     }
 
     /** The lowest {@code membershipLevel} that grades an owner's segment TIER as {@code PREMIUM}. */
