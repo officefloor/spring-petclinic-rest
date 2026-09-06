@@ -119,13 +119,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
-        Owner owner = this.clinicService.findOwnerById(ownerId);
-        if (owner == null) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return withOwner(ownerId, owner ->
+            new ResponseEntity<>(toOwnerDtoWithDerivedFields(owner), HttpStatus.OK));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -158,8 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        OwnerDto ownerDto = toOwnerDtoWithDerivedFields(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -168,49 +162,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
-        Owner currentOwner = this.clinicService.findOwnerById(ownerId);
-        if (currentOwner == null) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        currentOwner.setAddress(ownerFieldsDto.getAddress());
-        currentOwner.setCity(ownerFieldsDto.getCity());
-        currentOwner.setFirstName(ownerFieldsDto.getFirstName());
-        currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
-        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
-        this.clinicService.saveOwner(currentOwner);
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+        return withOwner(ownerId, currentOwner -> {
+            currentOwner.setAddress(ownerFieldsDto.getAddress());
+            currentOwner.setCity(ownerFieldsDto.getCity());
+            currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+            currentOwner.setLastName(ownerFieldsDto.getLastName());
+            currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+            currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+            this.clinicService.saveOwner(currentOwner);
+            return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+        });
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Transactional
     @Override
     public ResponseEntity<OwnerDto> deleteOwner(Integer ownerId) {
-        Owner owner = this.clinicService.findOwnerById(ownerId);
-        if (owner == null) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        return withOwner(ownerId, owner -> {
+            this.clinicService.deleteOwner(owner);
+            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        });
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<PetDto> addPetToOwner(Integer ownerId, PetFieldsDto petFieldsDto) {
-        Owner owner = this.clinicService.findOwnerById(ownerId);
-        if (owner == null) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        HttpHeaders headers = new HttpHeaders();
-        Pet pet = petMapper.toPet(petFieldsDto);
-        owner.setId(ownerId);
-        pet.setOwner(owner);
-        pet.getType().setName(null);
-        this.clinicService.savePet(pet);
-        PetDto petDto = petMapper.toPetDto(pet);
-        headers.setLocation(UriComponentsBuilder.newInstance().path("/api/pets/{id}")
-            .buildAndExpand(pet.getId()).toUri());
-        return new ResponseEntity<>(petDto, headers, HttpStatus.CREATED);
+        return withOwner(ownerId, owner -> {
+            HttpHeaders headers = new HttpHeaders();
+            Pet pet = petMapper.toPet(petFieldsDto);
+            owner.setId(ownerId);
+            pet.setOwner(owner);
+            pet.getType().setName(null);
+            this.clinicService.savePet(pet);
+            PetDto petDto = petMapper.toPetDto(pet);
+            headers.setLocation(UriComponentsBuilder.newInstance().path("/api/pets/{id}")
+                .buildAndExpand(pet.getId()).toUri());
+            return new ResponseEntity<>(petDto, headers, HttpStatus.CREATED);
+        });
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -260,6 +248,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Loads the owner with the given id and, when it exists, produces the response through
+     * {@code action}; when no such owner exists a {@code 404 Not Found} is returned instead. The
+     * single-owner endpoints share this "find the owner or report 404" preamble, so the lookup and
+     * the not-found response are written in exactly one place rather than copied into each method.
+     *
+     * @param ownerId the id of the owner to load
+     * @param action builds the response for an existing owner
+     * @param <T> the response body type
+     * @return the result of {@code action} for an existing owner, otherwise a 404 response
+     */
+    private <T> ResponseEntity<T> withOwner(Integer ownerId, Function<Owner, ResponseEntity<T>> action) {
+        Owner owner = this.clinicService.findOwnerById(ownerId);
+        if (owner == null) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+        return action.apply(owner);
+    }
+
+    /**
+     * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
+     * derived from server-side state rather than stored columns (currently the
+     * {@code bulkSignupWarning} flag). Both the create endpoint and the single-owner read endpoint
+     * return their owner through this method, so an owner is decorated identically on either path
+     * and each derived field is computed in exactly one place.
+     *
+     * @param owner the persisted owner to represent
+     * @return the owner DTO with its derived read-only fields populated
+     */
+    private OwnerDto toOwnerDtoWithDerivedFields(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        return ownerDto;
+    }
+
+    /**
      * Rejects an owner whose required text fields are blank (whitespace-only). Missing (null)
      * and empty fields are already rejected by Bean Validation on {@link OwnerFieldsDto}; this
      * closes the gap for {@code address} and {@code city}, whose values may be non-empty yet
@@ -302,9 +325,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String nextCustomerCode(String city, String lastName) {
         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(java.util.Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
-        long sequence = this.clinicService.findAllOwners().stream()
-            .filter(owner -> equalsIgnoreCase(owner.getCity(), city))
-            .count() + 1L;
+        long sequence = ownersInCity(city) + 1L;
         return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
@@ -348,12 +369,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws OwnerCityAtCapacityException if the city already holds the maximum number of owners
      */
     private void rejectCityAtCapacity(String city) {
-        long owners = this.clinicService.findAllOwners().stream()
-            .filter(owner -> equalsIgnoreCase(owner.getCity(), city))
-            .count();
-        if (owners >= MAX_OWNERS_PER_CITY) {
+        if (ownersInCity(city) >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityAtCapacityException(city);
         }
+    }
+
+    /**
+     * Counts the existing owners whose {@code city} matches the given city, compared
+     * case-insensitively (see {@link #equalsIgnoreCase(String, String)}). Shared by the per-city
+     * customer-code sequence ({@link #nextCustomerCode(String, String)}) and the per-city capacity
+     * check ({@link #rejectCityAtCapacity(String)}) so both count a city's owners identically.
+     *
+     * @param city the city to count owners for
+     * @return the number of existing owners in that city
+     */
+    private long ownersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(owner -> equalsIgnoreCase(owner.getCity(), city))
+            .count();
     }
 
     /**
@@ -407,12 +440,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DailyOwnerRegistrationLimitException if the day already holds the maximum number of owners
      */
     private void rejectDailyRegistrationLimit(LocalDate date) {
-        long owners = this.clinicService.findAllOwners().stream()
-            .filter(owner -> date.equals(owner.getRegistrationDate()))
-            .count();
-        if (owners >= MAX_OWNERS_PER_DAY) {
+        if (ownersRegisteredOn(date) >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerRegistrationLimitException(date);
         }
+    }
+
+    /**
+     * Counts the existing owners whose {@code registrationDate} equals the given day. Shared by the
+     * hard daily create limit ({@link #rejectDailyRegistrationLimit(LocalDate)}) and the soft
+     * {@code bulkSignupWarning} flag ({@link #bulkSignupWarning(LocalDate)}) so both accumulate a
+     * day's owners identically.
+     *
+     * @param date the registration date to count owners for
+     * @return the number of existing owners registered on that day
+     */
+    private long ownersRegisteredOn(LocalDate date) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(owner -> date.equals(owner.getRegistrationDate()))
+            .count();
     }
 
     /**
@@ -436,10 +481,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (date == null) {
             return false;
         }
-        long owners = this.clinicService.findAllOwners().stream()
-            .filter(owner -> date.equals(owner.getRegistrationDate()))
-            .count();
-        return owners > BULK_SIGNUP_WARNING_THRESHOLD;
+        return ownersRegisteredOn(date) > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
@@ -520,15 +562,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateHousehold(String lastName, String address) {
         String canonicalLastName = canonicalizeHousehold(lastName);
         String canonicalAddress = canonicalizeHousehold(address);
-        if (canonicalLastName == null || canonicalAddress == null) {
+        String key = householdKey(lastName, address);
+        if (key == null) {
             return;
         }
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(owner -> canonicalLastName.equals(canonicalizeHousehold(owner.getLastName()))
-                && canonicalAddress.equals(canonicalizeHousehold(owner.getAddress())));
+        boolean duplicate = existingOwnerMatches(
+            owner -> householdKey(owner.getLastName(), owner.getAddress()), key);
         if (duplicate) {
             throw new DuplicateOwnerHouseholdException(canonicalLastName, canonicalAddress);
         }
+    }
+
+    /**
+     * Delimiter joining the canonical household fields into a single comparison key. A run of
+     * whitespace is collapsed to a single space by {@link #canonicalizeHousehold(String)}, so this
+     * newline can never occur inside a canonical value and the two fields cannot bleed into one
+     * another across the join.
+     */
+    private static final String HOUSEHOLD_KEY_DELIMITER = "\n";
+
+    /**
+     * Reduces an owner's household fields ({@code lastName} and {@code address}) to a single
+     * canonical comparison key - the two canonical fields (see {@link #canonicalizeHousehold(String)})
+     * joined by {@link #HOUSEHOLD_KEY_DELIMITER} - or {@code null} when either field is absent. Two
+     * owners share a household exactly when their household keys are equal, so
+     * {@link #rejectDuplicateHousehold(String, String)} can detect a collision by comparing this one
+     * key through {@link #existingOwnerMatches(Function, String)} rather than the two fields separately.
+     *
+     * @param lastName the owner's last name, or {@code null}
+     * @param address the owner's address, or {@code null}
+     * @return the canonical household key, or {@code null} when either field is {@code null}
+     */
+    private String householdKey(String lastName, String address) {
+        String canonicalLastName = canonicalizeHousehold(lastName);
+        String canonicalAddress = canonicalizeHousehold(address);
+        if (canonicalLastName == null || canonicalAddress == null) {
+            return null;
+        }
+        return canonicalLastName + HOUSEHOLD_KEY_DELIMITER + canonicalAddress;
     }
 
     /**
@@ -557,7 +628,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the shared household identifier
      */
     private String householdId(String lastName, String address) {
-        String key = canonicalizeHousehold(lastName) + "\n" + canonicalizeHousehold(address);
+        String key = canonicalizeHousehold(lastName) + HOUSEHOLD_KEY_DELIMITER + canonicalizeHousehold(address);
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
