@@ -23,8 +23,21 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code contactPreference} from the owner's own fields:
+     * {@code EMAIL} when an email is present, otherwise {@code PHONE}.
+     *
+     * @param owner the owner being mapped
+     * @return the derived contact preference
+     */
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
 
     /**
      * Derives the owner's {@code locality} from the {@code city} using a fixed city-to-region
