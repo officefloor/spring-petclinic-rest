@@ -178,10 +178,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
-        owner.setIdentityKey(buildIdentityKey(owner, sharesHousehold));
-        rejectDuplicateOwner(owner.getIdentityKey());
-        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
+        owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
+        owner.setIdentityKey(buildIdentityKey(owner));
+        if (!sharesHousehold) {
+            rejectHouseholdDuplicate(owner.getHouseholdId());
+        }
+        Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
@@ -277,47 +279,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a submitted owner whose derived {@code identityKey} exactly matches an existing owner's.
-     * All duplicate detection is consolidated into this single key, so a collision is reported to the
-     * client as a 409 Conflict regardless of which field(s) coincide. Because the telephone is part of
-     * the key, two owners that differ in telephone can never collide even when they share every other
-     * component (for example two members of the same household).
+     * Rejects a submitted owner that would join a household which already has a member. Because the
+     * {@code householdId} is derived deterministically from the owner's last name and postcode, any
+     * existing owner sharing that id is the same household, so a second such owner is reported to the
+     * client as a 409 Conflict. A request may knowingly bypass this block by opting in with
+     * {@code sharesHousehold}, in which case this check is not performed.
      *
-     * @param identityKey the derived identity key of the owner about to be created
+     * @param householdId the derived household identifier of the owner about to be created
      */
-    private void rejectDuplicateOwner(String identityKey) {
+    private void rejectHouseholdDuplicate(String householdId) {
         boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (duplicate) {
-            throw new DuplicateOwnerIdentityException(identityKey);
+            throw new DuplicateOwnerIdentityException(householdId);
         }
     }
 
     /**
-     * Derives the owner's {@code identityKey}, the single value through which all duplicate detection is
-     * expressed. The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId},
-     * where the telephone and email have already been normalized. The household segment carries the
-     * owner's {@code householdId} only when the owner knowingly belongs to a shared household (the
-     * request opted in with {@code sharesHousehold}); otherwise it is empty, so an owner is identified
-     * by telephone and email alone.
+     * Derives the owner's {@code identityKey}, formatted
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
+     * and email have already been normalized. The household segment always carries the owner's
+     * deterministic {@code householdId}, since owners with the same last name and postcode belong to
+     * the same household automatically.
      *
      * @param owner the normalized owner about to be created, with its {@code householdId} already set
-     * @param sharesHousehold whether the request opted into a shared household
      * @return the derived identity key
      */
-    private String buildIdentityKey(Owner owner, boolean sharesHousehold) {
+    private String buildIdentityKey(Owner owner) {
         String email = StringUtils.hasText(owner.getEmail()) ? owner.getEmail() : "";
-        String household = sharesHousehold ? owner.getHouseholdId() : "";
-        return owner.getTelephone() + "|" + email + "|" + household;
+        return owner.getTelephone() + "|" + email + "|" + owner.getHouseholdId();
     }
 
     /**
      * Detects a soft-match duplicate for the owner about to be created. A soft match is an owner that
-     * is not a hard duplicate (its {@code identityKey} did not collide) but that shares an existing
-     * owner's {@code lastName} (case-insensitively) and {@code postcode} while having a different
-     * normalized {@code telephone}. Such an owner is still created, but is flagged as a possible
-     * duplicate of the matching owner. The comparison only applies when a postcode was supplied, since
-     * both owners must share one; when several existing owners match, the earliest (lowest id) is used.
+     * shares an existing owner's {@code lastName} (case-insensitively) and {@code postcode} while
+     * having a different normalized {@code telephone}. Such an owner is still created, but is flagged
+     * as a possible duplicate of the matching owner. This is only consulted for owners that did not
+     * opt into a shared household: an owner that declares {@code sharesHousehold} is a known household
+     * member, not a suspected duplicate, so it is never flagged. The comparison only applies when a
+     * postcode was supplied, since both owners must share one; when several existing owners match, the
+     * earliest (lowest id) is used.
      *
      * @param owner the normalized owner about to be created, with its telephone already normalized
      * @return the id of the matching existing owner, or {@code null} when there is no soft match
