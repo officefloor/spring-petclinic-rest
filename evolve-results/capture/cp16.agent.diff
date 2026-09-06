@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 65d42b3fb..b7bc77ff3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -55,21 +55,32 @@ public class BuildOwner {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(java.time.LocalDate.now());
+         }
+-        owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
++        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
+         built.set(owner);
+         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+     }
+ 
+     /**
+-     * Build a customer code '<LAST3>-<NNNN>': the upper-cased first three letters of the last
+-     * name, a hyphen, then a global 4-digit zero-padded sequence equal to one more than the
+-     * current number of owners (e.g. 'SMI-0007').
++     * Build a customer code '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three letters of the
++     * city, a hyphen, the upper-cased first three letters of the last name, a hyphen, then a
++     * per-city 4-digit zero-padded sequence equal to one more than the number of owners already
++     * in that city (e.g. 'LON-SMI-0007').
+      */
+-    private static String nextCustomerCode(String lastName, OwnerRepository ownerRepository) {
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length()))
+-                .toUpperCase(java.util.Locale.ROOT);
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        return String.format("%s-%04d", last3, sequence);
++    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
++        String city3 = prefix3(city);
++        String last3 = prefix3(lastName);
++        int sequence = 1;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getCity() != null && existing.getCity().equalsIgnoreCase(city)) {
++                sequence++;
++            }
++        }
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /** Upper-cased first three letters (fewer if the value is shorter) of {@code value}. */
++    private static String prefix3(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase(java.util.Locale.ROOT);
+     }
+ 
+     /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7e5cca257..563ccb18d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2091,10 +2091,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                Assigned on create as '<LAST3>-<NNNN>': the upper-cased first three letters of the
+-                last name, a hyphen, then a global 4-digit zero-padded sequence.
++                Assigned on create as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three letters
++                of the city, a hyphen, the upper-cased first three letters of the last name, a
++                hyphen, then a per-city 4-digit zero-padded sequence (one more than the owners
++                already in that city).
+               type: string
+-              example: 'SMI-0007'
++              example: 'LON-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+@@ -2102,7 +2104,7 @@ components:
+                 Assigned on create as '<customerCode>-M<YY>', where YY is the last two
+                 digits of the registrationDate year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'LON-SMI-0007-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
