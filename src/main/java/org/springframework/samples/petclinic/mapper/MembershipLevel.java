@@ -3,7 +3,6 @@ package org.springframework.samples.petclinic.mapper;
 import org.springframework.samples.petclinic.model.Owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's membership standing from the state captured when the owner
@@ -16,7 +15,8 @@ import java.time.temporal.ChronoUnit;
  * household of 3 or more members is worth 2, and tenure exceeding
  * {@link #TENURE_DAYS_FOR_BONUS} days is worth 3. Those points map to a numeric
  * membership level: 1 (0-1 points), 2 (2-3 points), 3 (4-5 points) and 4 (6 or
- * more points).
+ * more points). Tenure is measured in elapsed fiscal years (fiscal years start
+ * on 1 July).
  */
 public final class MembershipLevel {
 
@@ -29,14 +29,14 @@ public final class MembershipLevel {
     /** Points awarded for a household of 3 or more members. */
     private static final int LARGE_HOUSEHOLD_POINTS = 2;
 
-    /** Points awarded when tenure exceeds {@link #TENURE_DAYS_FOR_BONUS} days. */
+    /** Points awarded when tenure exceeds {@link #TENURE_FISCAL_YEARS_FOR_BONUS} fiscal years. */
     private static final int TENURE_POINTS = 3;
 
     /** Household size, in members, at or above which the household bonus applies. */
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Tenure, in days, that must be exceeded to earn the tenure bonus. */
-    private static final int TENURE_DAYS_FOR_BONUS = 365;
+    /** Tenure, in elapsed fiscal years, that must be exceeded to earn the tenure bonus. */
+    private static final int TENURE_FISCAL_YEARS_FOR_BONUS = 1;
 
     private MembershipLevel() {
     }
@@ -47,7 +47,7 @@ public final class MembershipLevel {
      * {@code namesakeCount} is 0, plus {@value #LARGE_HOUSEHOLD_POINTS} for a
      * household of {@value #LARGE_HOUSEHOLD_SIZE} or more members, plus
      * {@value #TENURE_POINTS} when the owner's tenure exceeds
-     * {@link #TENURE_DAYS_FOR_BONUS} days.
+     * {@link #TENURE_FISCAL_YEARS_FOR_BONUS} elapsed fiscal years.
      *
      * @param owner the owner whose points to derive
      * @return the owner's membership points
@@ -101,8 +101,9 @@ public final class MembershipLevel {
     }
 
     /**
-     * Returns whether the tenure elapsed since {@code registrationDate} is more
-     * than {@link #TENURE_DAYS_FOR_BONUS} days. A {@code null} or future
+     * Returns whether the tenure elapsed since {@code registrationDate}, counted
+     * in whole fiscal years (fiscal years start on 1 July), is more than
+     * {@link #TENURE_FISCAL_YEARS_FOR_BONUS} fiscal years. A {@code null} or future
      * registration date yields zero (or negative) tenure and therefore never
      * qualifies.
      *
@@ -113,8 +114,9 @@ public final class MembershipLevel {
         if (registrationDate == null) {
             return false;
         }
-        long tenureDays = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return tenureDays > TENURE_DAYS_FOR_BONUS;
+        int elapsedFiscalYears = FiscalYear.startYear(LocalDate.now())
+            - FiscalYear.startYear(registrationDate);
+        return elapsedFiscalYears > TENURE_FISCAL_YEARS_FOR_BONUS;
     }
 
 }

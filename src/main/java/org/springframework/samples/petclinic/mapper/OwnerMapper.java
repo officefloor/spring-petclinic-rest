@@ -30,7 +30,10 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.LuhnCheckDigit.forDigits(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            + "+ String.format(\"%02d\", "
+            + "org.springframework.samples.petclinic.mapper.FiscalYear.twoDigit(owner.getRegistrationDate())))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.labelForOwner(owner))")
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.pointsForOwner(owner))")
     @Mapping(target = "membershipLevel",
