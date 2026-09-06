@@ -14,7 +14,7 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Enforces the household rule on create. An owner sharing an existing owner's last name and
- * address (compared case-insensitively with collapsed whitespace) is a 409 Conflict — unless the
+ * address (compared in the normalized address form, see {@link AddressNormalizer}) is a 409 Conflict — unless the
  * request opted in with {@code sharesHousehold} true. When it did opt in, the two are allowed to
  * share a household and are given the same stable {@code householdId}: it is stamped on the new
  * owner and on every existing member of that household. Runs after {@link BuildOwner}.
@@ -24,14 +24,14 @@ public class CheckOwnerHouseholdUnique {
     public void service(@Val Owner owner, @Val Boolean sharesHousehold,
             OwnerRepository ownerRepository) throws DuplicateHouseholdException {
         String lastName = key(owner.getLastName());
-        String address = key(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // same record (e.g. re-save), not a conflict
             }
             if (lastName.equals(key(existing.getLastName()))
-                    && address.equals(key(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 household.add(existing);
             }
         }

@@ -26,13 +26,17 @@ public class BuildOwner {
             OwnerRepository ownerRepository, Out<Owner> built, Out<Boolean> sharesHousehold)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> missing = new ArrayList<>();
+        // Normalize the address up front so the required-field check rejects an address that is
+        // blank once trimmed/collapsed, and every later step (and the stored value) sees the
+        // canonical form.
+        String normalizedAddress = AddressNormalizer.normalize(request.getAddress());
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
         }
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        if (normalizedAddress.isEmpty()) {
             missing.add("address");
         }
         if (isBlank(request.getCity())) {
@@ -45,6 +49,7 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(missing);
         }
         request.setTelephone(TelephoneNormalizer.normalize(request.getTelephone()));
+        request.setAddress(normalizedAddress);
         request.setEmail(normalizeEmail(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
