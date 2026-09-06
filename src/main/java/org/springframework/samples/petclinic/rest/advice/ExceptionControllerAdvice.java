@@ -56,6 +56,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "The telephone number is already used by another owner";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+    private static final String ERROR_DAILY_LIMIT = "The maximum number of owners for today has already been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -268,6 +269,31 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getCity());
         return this.conflict(e, request, ERROR_CITY_AT_CAPACITY, List.of("city"));
+    }
+
+    /**
+     * Handles {@link DailyOwnerRegistrationLimitException} raised when an owner submitted to the
+     * create endpoint would exceed the maximum number of owners that may be registered on a single
+     * day (100 or more owners already carry today's {@code registrationDate}). Returns a
+     * 429 Too Many Requests whose body carries an {@code errors} array naming the
+     * {@code registrationDate} field, matching the shape produced for the other owner-creation error
+     * responses.
+     *
+     * @param e The {@link DailyOwnerRegistrationLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerRegistrationLimitException(DailyOwnerRegistrationLimitException e, HttpServletRequest request) {
+        logger.debug("Daily owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
     }
 
 }
