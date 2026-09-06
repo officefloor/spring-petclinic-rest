@@ -13,7 +13,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * When the request opted into a shared household ({@code sharesHousehold} true), assigns the new
  * owner a stable {@code householdId} shared by everyone at the same last name and address (the last
  * name compared case-insensitively with runs of whitespace collapsed, and the address in its
- * normalized form, matching {@link EnsureUniqueHousehold}).
+ * normalized form).
  *
  * <p>The identifier is derived deterministically from the normalized last name and address, so every
  * owner in the household resolves to the same value even across separate requests. If an existing

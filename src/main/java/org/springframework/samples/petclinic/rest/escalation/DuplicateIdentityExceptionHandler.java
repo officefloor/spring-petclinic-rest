@@ -6,13 +6,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateEmailExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateEmailException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "The email is already used by another owner");
-        detail.setProperty("errors", java.util.List.of("email"));
+                "An owner with the same identityKey already exists");
+        detail.setProperty("errors", java.util.List.of("identityKey"));
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }

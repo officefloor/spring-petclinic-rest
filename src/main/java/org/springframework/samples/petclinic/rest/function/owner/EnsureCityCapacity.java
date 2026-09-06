@@ -7,9 +7,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Rejects creating an owner when the owner's city already contains 50 or more owners. The city is
- * compared case-insensitively with runs of whitespace collapsed to a single space, matching how
- * {@link EnsureUniqueHousehold} normalizes text. The owner being created is not yet persisted, so
- * it is not part of the count.
+ * compared case-insensitively with runs of whitespace collapsed to a single space. The owner being
+ * created is not yet persisted, so it is not part of the count.
  */
 public class EnsureCityCapacity {
 
