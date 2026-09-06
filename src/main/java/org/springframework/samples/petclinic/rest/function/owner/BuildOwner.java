@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import jakarta.validation.Valid;
 import net.officefloor.plugin.variable.Out;
@@ -66,9 +67,10 @@ public class BuildOwner {
         Postcodes.validate(request.getCity(), request.getPostcode());
         Owner owner = ownerMapper.toOwner(request);
         // The effective registration date is the supplied value, or the server's current date when
-        // none is supplied. Either way it must fall on a business day: a Saturday or Sunday rolls
-        // forward to the next Monday. Everything derived from the registration date (membership
-        // number year, daily create-limit) then sees this adjusted business day.
+        // none is supplied. Either way it must fall on a business day: a Saturday, Sunday or listed
+        // public holiday rolls forward to the next non-holiday business day. Everything derived from
+        // the registration date (membership number year, daily create-limit) then sees this adjusted
+        // business day.
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             registrationDate = LocalDate.now();
@@ -81,12 +83,29 @@ public class BuildOwner {
         built.set(owner);
     }
 
-    /** Roll a weekend date forward to the next Monday; business days are returned unchanged. */
+    /** The fixed public-holiday calendar; a date landing on one of these rolls forward. */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+            LocalDate.of(2026, 1, 1),
+            LocalDate.of(2026, 1, 26),
+            LocalDate.of(2026, 4, 25),
+            LocalDate.of(2026, 12, 25),
+            LocalDate.of(2026, 12, 28));
+
+    /**
+     * Roll a date forward to the next non-holiday business day; a date already on a business day
+     * (a weekday that is not a listed public holiday) is returned unchanged.
+     */
     private static LocalDate toBusinessDay(LocalDate date) {
+        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
+        }
+        return date;
+    }
+
+    private static boolean isWeekend(LocalDate date) {
         return switch (date.getDayOfWeek()) {
-            case SATURDAY -> date.plusDays(2);
-            case SUNDAY -> date.plusDays(1);
-            default -> date;
+            case SATURDAY, SUNDAY -> true;
+            default -> false;
         };
     }
 
