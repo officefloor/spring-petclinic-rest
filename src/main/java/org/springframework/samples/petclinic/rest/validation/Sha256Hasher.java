@@ -38,13 +38,14 @@ public class Sha256Hasher {
 
     /**
      * The full lower-case hex encoding of the SHA-256 digest of the UTF-8 bytes of {@code input}.
-     * This is the shared digest computation; callers that keep only a leading, upper-case run of it
-     * go through {@link #hexPrefix(String, int)}.
+     * This is the shared digest computation used directly by callers that keep the whole 64-character
+     * digest (such as the owner {@code identityKey}); callers that keep only a leading, upper-case run
+     * of it go through {@link #hexPrefix(String, int)}.
      *
      * @param input the value to hash
      * @return the SHA-256 digest as a lower-case hex string
      */
-    private String hex(String input) {
+    public String hex(String input) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(input.getBytes(StandardCharsets.UTF_8));

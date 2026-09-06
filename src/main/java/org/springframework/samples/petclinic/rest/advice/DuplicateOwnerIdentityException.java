@@ -17,11 +17,11 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Raised when an owner submitted to the create endpoint has a derived identity key
- * ({@code normalizedTelephone + '|' + email + '|' + householdId}) that exactly equals an existing
- * owner's. This single key consolidates the former separate telephone, email and household duplicate
- * checks: only an exact full-key match is a duplicate. The {@code ExceptionControllerAdvice} renders
- * this as a 409 Conflict response.
+ * Raised when an owner submitted to the create endpoint has a derived identity key - the SHA-256 hex
+ * digest over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} - that exactly
+ * equals an existing owner's. This single key is the sole duplicate check, subsuming the former separate
+ * telephone, email and household duplicate blocks: only an exact full-key match is a duplicate. The
+ * {@code ExceptionControllerAdvice} renders this as a 409 Conflict response.
  */
 public class DuplicateOwnerIdentityException extends RuntimeException {
 
