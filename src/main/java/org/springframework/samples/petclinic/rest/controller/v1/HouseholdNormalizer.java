@@ -16,10 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 /**
  * Captures the rules for what makes two owners the same household. Kept apart from
  * {@link OwnerRestControllerV1} so the request handler stays focused on orchestration while the rules
@@ -62,18 +58,7 @@ final class HouseholdNormalizer {
      */
     static String householdId(String lastName, String address) {
         String key = normalize(lastName) + "\n" + normalize(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(32);
-            for (int i = 0; i < 16; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            // SHA-256 is a required algorithm on every JVM, so this cannot happen.
-            throw new IllegalStateException("SHA-256 is not available", ex);
-        }
+        return Sha256.hex(key).substring(0, 32);
     }
 
     /**

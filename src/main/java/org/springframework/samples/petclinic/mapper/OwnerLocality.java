@@ -59,6 +59,39 @@ public final class OwnerLocality {
     }
 
     /**
+     * Returns whether the given postcode falls within the postcode range of the
+     * region derived from the city. A city whose region has no fixed range (locality
+     * "UNKNOWN") accepts any postcode. A postcode that is absent or non-numeric is
+     * treated as not matching a ranged region.
+     *
+     * <p>Callers validate a supplied postcode's four-digit shape separately; this
+     * method only answers whether the value sits in the city's region range, so the
+     * single region table is not duplicated at the call site.
+     *
+     * @param postcode the owner's postcode, or {@code null} when none was supplied
+     * @param city the owner's city, whose region determines the acceptable range
+     * @return {@code true} when the city's region has no fixed range, or the postcode
+     *         lies within it
+     */
+    public static boolean postcodeMatchesCity(String postcode, String city) {
+        int[] range = REGION_POSTCODES.get(forCity(city));
+        if (range == null) {
+            return true;
+        }
+        if (postcode == null) {
+            return false;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException e) {
+            return false;
+        }
+        return value >= range[0] && value <= range[1];
+    }
+
+    /**
      * Returns the region whose postcode range contains the given postcode, or
      * {@code null} when the postcode is missing, non-numeric or in no known range.
      */

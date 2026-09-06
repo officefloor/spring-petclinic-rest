@@ -21,7 +21,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -78,16 +77,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** An owner's postcode, when supplied, must be exactly four digits. */
     private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
-
-    /**
-     * Region -> inclusive 4-digit postcode range {low, high}. A postcode supplied for an owner whose
-     * city maps (via {@link OwnerLocality#forCity}) to one of these regions must fall within the
-     * region's range; a city with no known region ("UNKNOWN") accepts any 4-digit postcode.
-     */
-    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
 
     /**
      * Dedicated logger for audit side-effects. Emitting audit records on a well-known, separately
@@ -199,7 +188,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new OwnerDailyLimitException(owner.getRegistrationDate());
         }
         boolean bulkSignupWarning = ownersRegisteredOnDay > BULK_SIGNUP_WARNING_THRESHOLD;
-        owner.setCustomerCode(buildCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(buildCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         this.clinicService.saveOwner(owner);
@@ -247,10 +236,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Validates an owner's optional postcode. Postcode is optional, so a missing or blank value is
      * accepted unchanged. When a value is supplied it must be exactly four digits; and when the owner's
-     * city maps to a known region (via {@link OwnerLocality#forCity}) the postcode must fall within that
-     * region's inclusive range ({@link #REGION_POSTCODE_RANGES}). A city with no known region accepts any
-     * 4-digit postcode. A malformed or out-of-range postcode is rejected with a 400 whose {@code errors}
-     * array lists {@code postcode}.
+     * city maps to a known region the postcode must fall within that region's inclusive range (checked
+     * via {@link OwnerLocality#postcodeMatchesCity}, which owns the region table). A city with no known
+     * region accepts any 4-digit postcode. A malformed or out-of-range postcode is rejected with a 400
+     * whose {@code errors} array lists {@code postcode}.
      *
      * @param postcode the submitted postcode, or {@code null} when none was supplied
      * @param city the owner's city, whose region determines the acceptable postcode range
@@ -263,12 +252,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
             throw new InvalidOwnerFieldsException(List.of("postcode"));
         }
-        int[] range = REGION_POSTCODE_RANGES.get(OwnerLocality.forCity(city));
-        if (range != null) {
-            int value = Integer.parseInt(postcode);
-            if (value < range[0] || value > range[1]) {
-                throw new InvalidOwnerFieldsException(List.of("postcode"));
-            }
+        if (!OwnerLocality.postcodeMatchesCity(postcode, city)) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
         }
     }
 
@@ -327,22 +312,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the owner's customer code formatted {@code <CITY3>-<LAST3>-<NNNN>}, where CITY3 is the
-     * upper-cased first three letters of the city, LAST3 is the upper-cased first three letters of the
-     * last name and NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number
-     * of owners already in that city (e.g. {@code SYD-SMI-0007}).
+     * Assigns the owner's customer code. The per-city sequence - one more than the number of owners
+     * already in the owner's city - is drawn from stored state here, and the code itself is composed
+     * by {@link CustomerCode}.
      *
-     * @param city the owner's city
-     * @param lastName the owner's last name
+     * @param owner the normalized owner about to be created
      * @return the assigned customer code
      */
-    private String buildCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String buildCustomerCode(Owner owner) {
+        int sequence = (int) countOwnersInCity(owner.getCity()) + 1;
+        return CustomerCode.forSequence(owner.getCity(), owner.getLastName(), sequence);
     }
 
     /**
