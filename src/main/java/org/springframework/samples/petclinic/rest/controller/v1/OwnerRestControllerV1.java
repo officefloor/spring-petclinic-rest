@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -175,6 +176,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
+        if (isDuplicateEmail(owner.getEmail())) {
+            throw new DuplicateOwnerEmailException(owner.getEmail());
+        }
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
             && isDuplicateHousehold(owner.getLastName(), owner.getAddress())) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
@@ -294,6 +298,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Determines whether an existing owner already uses the supplied email, compared by its
+     * lower-cased form. Email is optional, so a missing or blank value is never considered a
+     * duplicate. The submitted value has already been lower-cased by {@link #normalizeEmail}, and
+     * every existing owner's email is compared case-insensitively.
+     *
+     * @param email the submitted owner's normalized email, or {@code null}
+     * @return {@code true} if another owner already uses the same email, ignoring case
+     */
+    private boolean isDuplicateEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> email.equalsIgnoreCase(existing.getEmail()));
     }
 
     private boolean isDuplicateHousehold(String lastName, String address) {
