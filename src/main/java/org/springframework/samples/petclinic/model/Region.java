@@ -70,4 +70,30 @@ public enum Region {
     public static Optional<Region> forCity(String city) {
         return city == null ? Optional.empty() : Optional.ofNullable(BY_CITY.get(city));
     }
+
+    /**
+     * Resolves the region whose postcode range contains the given 4-digit postcode
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     *
+     * @param postcode the owner's 4-digit postcode, or {@code null}
+     * @return the matching region, or empty when the postcode is {@code null}, not numeric, or in no
+     *         known range
+     */
+    public static Optional<Region> forPostcode(String postcode) {
+        if (postcode == null) {
+            return Optional.empty();
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
+        for (Region region : values()) {
+            if (region.acceptsPostcode(value)) {
+                return Optional.of(region);
+            }
+        }
+        return Optional.empty();
+    }
 }

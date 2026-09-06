@@ -42,16 +42,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} from the {@code city} using the shared
-     * {@link Region#forCity(String) city-to-region} table ({@code Sydney -> NSW},
-     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns the canonical region code, or
-     * {@code UNKNOWN} when the city is absent or has no known region.
+     * Derives the owner's {@code locality} by preferring the {@code postcode}: it first looks up the
+     * region by {@link Region#forPostcode(String) postcode range} (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), and only falls back to the shared {@link Region#forCity(String) city-to-region}
+     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) when the
+     * postcode is absent or in no known range. Returns the canonical region code, or {@code UNKNOWN}
+     * when neither the postcode nor the city resolves to a known region.
      *
      * @param owner the owner being mapped
      * @return the derived locality
      */
     default String locality(Owner owner) {
-        return Region.forCity(owner.getCity()).map(Region::name).orElse("UNKNOWN");
+        return Region.forPostcode(owner.getPostcode())
+            .or(() -> Region.forCity(owner.getCity()))
+            .map(Region::name)
+            .orElse("UNKNOWN");
     }
 
     /**
