@@ -24,6 +24,9 @@ public class BuildOwner {
         // Publish the request-only 'sharesHousehold' flag for the household duplicate check.
         // Not part of the Owner entity, so it travels as a separate variable.
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+        // Normalize the address up front so the required-field check below rejects an address that
+        // is blank once normalized, and every later comparison sees the stored normalized form.
+        request.setAddress(Addresses.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");

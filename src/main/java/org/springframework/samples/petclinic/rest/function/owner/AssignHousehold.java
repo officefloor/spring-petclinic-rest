@@ -11,8 +11,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * When the request opted into a shared household ({@code sharesHousehold} true), assigns the new
- * owner a stable {@code householdId} shared by everyone at the same last name and address (compared
- * case-insensitively with runs of whitespace collapsed, matching {@link EnsureUniqueHousehold}).
+ * owner a stable {@code householdId} shared by everyone at the same last name and address (the last
+ * name compared case-insensitively with runs of whitespace collapsed, and the address in its
+ * normalized form, matching {@link EnsureUniqueHousehold}).
  *
  * <p>The identifier is derived deterministically from the normalized last name and address, so every
  * owner in the household resolves to the same value even across separate requests. If an existing
@@ -26,11 +27,11 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = Addresses.normalize(owner.getAddress());
         List<Owner> members = ownerRepository.findAll().stream()
                 .filter(existing -> !existing.getId().equals(owner.getId()))
                 .filter(existing -> normalize(existing.getLastName()).equals(lastName)
-                        && normalize(existing.getAddress()).equals(address))
+                        && Addresses.normalize(existing.getAddress()).equals(address))
                 .toList();
         // Reuse an id already held by a household member for stability; otherwise derive one.
         String householdId = members.stream()
