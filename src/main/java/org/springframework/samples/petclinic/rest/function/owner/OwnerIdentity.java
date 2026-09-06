@@ -9,7 +9,11 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Derives the single {@code identityKey} that every owner duplicate check is expressed through: the
- * lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+ * lower-case hex SHA-256 of
+ * {@code identifierRegion + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+ * The version-2 {@link MemberIds#identifierRegion(Owner) identifier region} leads the input, so the
+ * key is rederived under version 2 and never reproduces a version-1 value; existing owners recompute
+ * their key the same way, so duplicate detection stays consistent.
  *
  * <p>Two owners are duplicates only when their WHOLE keys are equal. Because the normalized telephone
  * is part of the key, two owners with the same last name and postcode but DIFFERENT telephones have
@@ -24,8 +28,8 @@ public final class OwnerIdentity {
     }
 
     public static String key(Owner owner) {
-        String input = segment(owner.getTelephone()) + '|' + lower(owner.getEmail()) + '|'
-                + Soundex.of(owner.getLastName());
+        String input = MemberIds.identifierRegion(owner) + '|' + segment(owner.getTelephone()) + '|'
+                + lower(owner.getEmail()) + '|' + Soundex.of(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(input.getBytes(StandardCharsets.UTF_8));

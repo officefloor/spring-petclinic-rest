@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Emits, once the owner has been persisted, both a human-readable audit line and an immutable
  * structured {@link OwnerCreatedEvent} to the dedicated {@code AUDIT} logger. The line records the
  * assigned id, the {@code memberId}, the {@code registrationDate}, the {@code membershipPoints} and
- * the {@code membershipLevel}; the event carries the sequence, the owner id, the primary identifier
- * (the {@code memberId}) and the membership level as JSON.
+ * the {@code membershipLevel}; the schema-version-2 event carries the schema version, the sequence,
+ * the owner id, the primary identifier (the version-2 {@code memberId}), the membership level and the
+ * owner segment as JSON.
  */
 public class AuditOwnerCreated {
 

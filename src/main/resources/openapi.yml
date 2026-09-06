@@ -2119,6 +2119,49 @@ components:
         - lastName
         - city
         - telephone
+    Identity:
+      title: Identity
+      description: >-
+        An owner's grouped identifiers. The region code mixed inside each identifier is
+        rederived under a version-2 algorithm (a fixed 'V2' version tag is mixed in), so
+        every identifier changes and no value produced under version 1 recurs. This region
+        dressing never leaks into the user-facing 'locality', 'timezone' or 'ownerSegment'.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member id formatted '<REGION><FY><HASH8><CHK>' (no
+            separators): REGION is the version-2 identifier region derived from the owner's
+            postcode (falling back to the city, then 'UNKNOWN') with the 'V2' tag mixed in;
+            FY is the two-digit fiscal year (starting 1 July) containing the
+            registrationDate; HASH8 is the first eight upper-case hex characters of SHA-256
+            over the normalized telephone and last name; and CHK is a single Luhn check
+            digit (0-9) over the digits of '<REGION><FY><HASH8>'.
+          type: string
+          example: 'NSWV2271A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A deterministic identifier shared by every owner in the same household: the
+            first 12 hex characters of SHA-256 over the version-2 identifier region, the
+            normalized last name and the postcode. Assigned to every owner, so owners at the
+            same last name and postcode share it automatically.
+          type: string
+          example: '3f2a1b0c9d8e'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The single derived key all duplicate detection is expressed through: the
+            lower-case hex SHA-256 of the version-2 identifier region, the normalized
+            telephone, the email (or empty when absent) and the Soundex code of the last
+            name, joined with '|'. A create is rejected with 409 only when a new owner's
+            whole identityKey equals an existing (non-deleted) owner's.
+          type: string
+          example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2173,39 +2216,26 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The owner's unified member id formatted '<REGION><FY><HASH8><CHK>' (no
-                separators): REGION is the region derived from the owner's postcode (falling
-                back to the city, then 'UNKNOWN'); FY is the two-digit fiscal year (starting
-                1 July) containing the registrationDate; HASH8 is the first eight upper-case
-                hex characters of SHA-256 over the normalized telephone and last name; and CHK
-                is a single Luhn check digit (0-9) over the digits of '<REGION><FY><HASH8>'.
-              type: string
-              example: 'NSW271A2B3C4D5'
+                The identity contract version of this owner representation. Version 2 groups
+                the owner's identifiers under the 'identity' object and rederives the region
+                baked inside those identifiers (see 'identity').
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
+            identity:
+              title: Identity
               description: >-
-                A deterministic identifier shared by every owner in the same household: the
-                first 12 hex characters of SHA-256 over the normalized last name and postcode.
-                Assigned to every owner, so owners at the same last name and postcode share it
-                automatically.
-              type: string
-              example: '3f2a1b0c9d8e'
+                The owner's grouped identifiers (memberId, householdId, identityKey). The
+                region mixed inside each identifier is rederived under a version-2 algorithm,
+                so no value produced under version 1 recurs; the user-facing 'locality',
+                'timezone' and 'ownerSegment' keep the plain region.
               readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The single derived key all duplicate detection is expressed through: the
-                lower-case hex SHA-256 of the normalized telephone, the email (or empty when
-                absent) and the Soundex code of the last name, joined with '|'. A create is
-                rejected with 409 only when a new owner's whole identityKey equals an existing
-                (non-deleted) owner's.
-              type: string
-              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
-              readOnly: true
+              allOf:
+                - $ref: '#/components/schemas/Identity'
             namesakeCount:
               title: Namesake count
               description: >-

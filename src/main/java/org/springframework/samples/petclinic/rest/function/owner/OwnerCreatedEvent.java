@@ -8,20 +8,24 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Immutable structured audit event emitted once an owner has been created, alongside the
- * human-readable audit line. It is serialized to a JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event}} on the dedicated {@code AUDIT}
- * logger (see {@link AuditOwnerCreated}).
+ * human-readable audit line. Under schema version 2 it is serialized to a JSON object
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment, event}} on the
+ * dedicated {@code AUDIT} logger (see {@link AuditOwnerCreated}).
  *
  * <p>{@code seq} is a monotonically increasing integer allocated across every create for the life
  * of the application (see {@link #SEQUENCE}). The event carries the owner's <em>current primary
- * identifier</em> — the {@code memberId}. That choice lives in one place,
- * {@link #primaryIdentifier(Owner)}.
+ * identifier</em> — the version-2 {@code memberId}. That choice lives in one place,
+ * {@link #primaryIdentifier(Owner)}. {@code ownerSegment} is the owner's {@code <TIER>_<AREA>}
+ * segment, recomputed from the version-2 identity (see {@link OwnerSegments}).
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
-        String event) {
+public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+        int membershipLevel, String ownerSegment, String event) {
 
     /** The single kind of event this record represents. */
     public static final String OWNER_CREATED = "OWNER_CREATED";
+
+    /** The audit schema version this event is emitted under: version 2 adds {@code ownerSegment}. */
+    public static final int SCHEMA_VERSION = 2;
 
     /** Application-wide source of the monotonically increasing {@code seq}, shared across creates. */
     private static final AtomicLong SEQUENCE = new AtomicLong();
@@ -30,11 +34,13 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int 
 
     /**
      * The next event for {@code owner}, allocating the next {@code seq} from the shared
-     * application-wide sequence. {@code membershipLevel} is the owner's capped membership level.
+     * application-wide sequence. {@code membershipLevel} is the owner's capped membership level, from
+     * which — with the owner's plain region — the {@code ownerSegment} is recomputed.
      */
     public static OwnerCreatedEvent next(Owner owner, int membershipLevel) {
-        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                primaryIdentifier(owner), membershipLevel, OWNER_CREATED);
+        return new OwnerCreatedEvent(SCHEMA_VERSION, SEQUENCE.incrementAndGet(), owner.getId(),
+                primaryIdentifier(owner), membershipLevel, OwnerSegments.label(owner, membershipLevel),
+                OWNER_CREATED);
     }
 
     /**

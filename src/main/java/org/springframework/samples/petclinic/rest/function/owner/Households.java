@@ -9,26 +9,24 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Derives the deterministic {@code householdId}: the first 12 hex characters of
- * {@code SHA-256(normalizedLastName + '|' + postcode)}.
+ * {@code SHA-256(identifierRegion + '|' + normalizedLastName + '|' + postcode)}.
  *
- * <p>Because it depends only on the last name and postcode, every owner sharing those two values
+ * <p>Because it depends only on the region, last name and postcode, every owner sharing those values
  * resolves to the same id automatically, without any request opting in and without back-filling
- * other members. The last name is normalized case-insensitively with runs of whitespace collapsed;
- * the postcode is trimmed and contributes an empty segment when absent.
+ * other members. The version-2 {@link MemberIds#identifierRegion(Owner) identifier region} is mixed
+ * in so the id is rederived under version 2 and never reproduces a version-1 value. The last name is
+ * normalized case-insensitively with runs of whitespace collapsed; the postcode is trimmed and
+ * contributes an empty segment when absent.
  */
 public final class Households {
 
     private Households() {
     }
 
-    /** The householdId for the owner, derived from its last name and postcode. */
+    /** The householdId for the owner, derived from its version-2 identifier region, last name and postcode. */
     public static String id(Owner owner) {
-        return id(owner.getLastName(), owner.getPostcode());
-    }
-
-    /** The householdId for the given last name and postcode. */
-    public static String id(String lastName, String postcode) {
-        String input = normalize(lastName) + '|' + segment(postcode);
+        String input = MemberIds.identifierRegion(owner) + '|' + normalize(owner.getLastName()) + '|'
+                + segment(owner.getPostcode());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(input.getBytes(StandardCharsets.UTF_8));

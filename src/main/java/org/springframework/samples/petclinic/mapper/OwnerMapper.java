@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -40,6 +41,9 @@ public abstract class OwnerMapper {
      */
     private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
 
+    /** The identity contract version this mapper produces: version 2 groups the identifiers. */
+    protected static final int API_VERSION = 2;
+
     @Autowired
     protected OwnerRepository ownerRepository;
 
@@ -59,8 +63,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
+    @Mapping(target = "apiVersion", expression = "java(API_VERSION)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
@@ -72,6 +76,22 @@ public abstract class OwnerMapper {
      */
     protected String selfLink(Owner owner) {
         return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
+
+    /**
+     * The owner's grouped {@code identity}: the {@code memberId} and {@code householdId} assigned at
+     * creation, plus the {@code identityKey} recomputed from the owner's fields (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity#key}). All three
+     * carry the version-2 identifier region; the user-facing {@code locality}, {@code timezone} and
+     * {@code ownerSegment} keep the plain region.
+     */
+    protected IdentityDto identity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+                org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner));
+        return identity;
     }
 
     /**
@@ -147,20 +167,18 @@ public abstract class OwnerMapper {
         return org.springframework.samples.petclinic.rest.function.owner.MemberIds.plainRegionOf(owner);
     }
 
-    /** The lowest {@code membershipLevel} that grades an owner's segment TIER as {@code PREMIUM}. */
-    private static final int PREMIUM_MIN_LEVEL = 3;
-
     /**
      * The owner's {@code ownerSegment} formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is
-     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is
-     * {@value #PREMIUM_MIN_LEVEL} or more, otherwise {@code STANDARD}. AREA is {@code METRO} when
-     * the {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
-     * {@code REGIONAL}.
+     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the {@link #locality(Owner) locality} is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}. Derived from the plain region, so the
+     * version-2 identifier tag never reaches it (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerSegments}).
      */
     protected OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
-        String tier = membershipLevel(owner) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
-        String area = REGION_TIMEZONE.containsKey(locality(owner)) ? "METRO" : "REGIONAL";
-        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+        return OwnerDto.OwnerSegmentEnum.fromValue(
+                org.springframework.samples.petclinic.rest.function.owner.OwnerSegments
+                        .label(owner, membershipLevel(owner)));
     }
 
     /** Fixed region -> IANA timezone table. */

@@ -14,8 +14,9 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The id is {@code <REGION><FY><HASH8><CHK>} (no separators) where:
  * <ul>
- * <li>REGION is the {@link #identifierRegion(Owner) identifier region} for the owner (currently the
- * plain region derived from the owner's postcode, falling back to the city, then {@code "UNKNOWN"});</li>
+ * <li>REGION is the {@link #identifierRegion(Owner) identifier region} for the owner (the plain
+ * region derived from the owner's postcode, falling back to the city, then {@code "UNKNOWN"}, with
+ * the version-2 {@code "V2"} tag mixed in);</li>
  * <li>FY is the two-digit fiscal year (starting 1 July) containing the {@code registrationDate};</li>
  * <li>HASH8 is the first eight upper-case hex characters of
  * {@code SHA-256(normalizedTelephone + lastName)};</li>
@@ -40,7 +41,7 @@ public final class MemberIds {
     }
 
     /**
-     * Builds the {@code <REGION><FY><HASH8><CHK>} memberId for the owner (e.g. 'NSW271A2B3C4D5').
+     * Builds the {@code <REGION><FY><HASH8><CHK>} memberId for the owner (e.g. 'NSWV2271A2B3C4D5').
      * Returns {@code null} when the registration date is absent (e.g. legacy seed owners), since the
      * FY segment cannot be formed without it.
      */
@@ -79,13 +80,23 @@ public final class MemberIds {
     }
 
     /**
-     * The region baked into the owner's identifiers — the REGION segment of the {@code memberId}.
-     * Currently identical to the {@link #plainRegionOf(Owner) plain region}: it is the single seam
-     * through which every identifier reads its region, so an identifier-only transform of the region
-     * can be applied in one place without leaking into the user-facing {@code locality}.
+     * The fixed version tag mixed into the region baked inside every identifier. Bumping it
+     * rederives the {@code memberId}, {@code householdId} and {@code identityKey} in one place so
+     * every identifier changes and no value produced under an earlier version recurs, while the
+     * user-facing region is untouched.
+     */
+    static final String IDENTIFIER_VERSION_TAG = "V2";
+
+    /**
+     * The region baked into the owner's identifiers — the REGION segment of the {@code memberId} and
+     * the region mixed into the {@code householdId} and {@code identityKey}. It is the
+     * {@link #plainRegionOf(Owner) plain region} dressed with the {@link #IDENTIFIER_VERSION_TAG}
+     * version tag (version 2), so it differs from every version-1 value. This is the single seam
+     * through which every identifier reads its region; the transform stays inside the identifiers and
+     * never leaks into the user-facing {@code locality}.
      */
     public static String identifierRegion(Owner owner) {
-        return plainRegionOf(owner);
+        return plainRegionOf(owner) + IDENTIFIER_VERSION_TAG;
     }
 
     /** The two-digit fiscal-year (FY) segment of the memberId, e.g. "27" for a FY ending in 2027. */
