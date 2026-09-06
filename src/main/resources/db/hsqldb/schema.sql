@@ -46,7 +46,8 @@ CREATE TABLE owners (
   registration_date DATE,
   customer_code VARCHAR(20),
   household_id VARCHAR(40),
-  namesake_count INTEGER
+  namesake_count INTEGER,
+  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

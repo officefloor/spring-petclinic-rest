@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       registration_date DATE,
                                       customer_code TEXT,
                                       household_id TEXT,
-  namesake_count INT
+  namesake_count INT,
+  bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX ON owners (last_name);
 
