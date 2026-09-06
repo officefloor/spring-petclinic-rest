@@ -657,9 +657,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the unified {@code memberId} assigned to a newly created owner, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'}: {@code REGION} is the owner's canonical region code resolved
-     * from its {@code postcode} (falling back to its {@code city}) through the shared
-     * {@link Region#code(String, String)}; {@code FY} is the two-digit fiscal year of the owner's
+     * {@code '<REGION><FY><HASH8><CHK>'}: {@code REGION} is the owner's
+     * {@linkplain #identityRegionCode(Owner) identity region code}; {@code FY} is the two-digit fiscal year of the owner's
      * (business-day-adjusted) {@code registrationDate} ({@link OwnerMapper#fiscalYearSegment(Owner)});
      * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the owner's
      * normalized telephone followed by its last name; and {@code CHK} is a single Luhn check digit over
@@ -673,12 +672,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the formatted, de-duplicated member id
      */
     private String memberId(Owner owner) {
-        String region = Region.code(owner.getPostcode(), owner.getCity());
+        String region = identityRegionCode(owner);
         String fiscalYear = ownerMapper.fiscalYearSegment(owner);
         String hash8 = sha256Hasher.hexPrefix(owner.getTelephone() + owner.getLastName(), MEMBER_ID_HASH_LENGTH);
         String core = region + fiscalYear + hash8;
         String base = core + Luhn.checkDigit(core);
         return deduplicate(base, Owner::getMemberId);
+    }
+
+    /**
+     * The canonical region code baked into an owner's identifiers, resolved from the owner's
+     * {@code postcode} (falling back to its {@code city}) through the shared
+     * {@link Region#code(String, String)} - the same one place an owner's postcode and city are turned
+     * into a region code. This is the region code as it is embedded <em>inside</em> the identifiers an
+     * owner is issued (the {@code REGION} segment of its {@link #memberId(Owner) memberId}), held in one
+     * place so every identifier derived for an owner keys off the identical region. It is distinct from
+     * the user-facing region reported as the owner's {@code locality} (see
+     * {@link OwnerMapper#locality(Owner)}), which is read back from the issued identity.
+     *
+     * @param owner the owner whose identity region code is wanted
+     * @return the canonical region code embedded in the owner's identifiers, or
+     *         {@link Region#UNKNOWN_CODE} when neither the postcode nor the city resolves
+     */
+    private String identityRegionCode(Owner owner) {
+        return Region.code(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -1072,6 +1089,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Number of leading hex characters of the household hash retained as the shared
+     * {@code householdId}.
+     */
+    private static final int HOUSEHOLD_ID_LENGTH = 12;
+
+    /**
      * Derives the deterministic, shared {@code householdId} for an owner from its {@code lastName}
      * and {@code postcode}. The identifier is the first 12 upper-case hex characters of the SHA-256
      * hash of {@code normalizedLastName + '|' + postcode} (see {@link #canonicalizeHousehold(String)}
@@ -1082,6 +1105,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the owner being created
      * @return the shared household identifier, or {@code null} when the owner has no postcode
      */
+    private String householdId(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String key = canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
+        return sha256Hasher.hexPrefix(key, HOUSEHOLD_ID_LENGTH);
+    }
+
     /**
      * Counts the owners in the given owner's household: the existing owners that share its
      * {@code householdId} (see {@link #householdId(Owner)}), which - because the owner being counted is
@@ -1121,19 +1153,4 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> household.equals(existing.getHouseholdId()))
             .toList();
     }
-
-    private String householdId(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode == null || postcode.isBlank()) {
-            return null;
-        }
-        String key = canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
-        return sha256Hasher.hexPrefix(key, HOUSEHOLD_ID_LENGTH);
-    }
-
-    /**
-     * Number of leading hex characters of the household hash retained as the shared
-     * {@code householdId}.
-     */
-    private static final int HOUSEHOLD_ID_LENGTH = 12;
 }
