@@ -55,6 +55,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -225,6 +226,21 @@ public abstract class OwnerMapper {
 
     private static String normalizeCity(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * The owner's {@code riskFlag}: true when the owner warrants a manual review because any one of
+     * these holds — the owner is a possible duplicate ({@code possibleDuplicate} is true), the email
+     * domain is disposable-adjacent (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerEmails#isDisposableAdjacent}),
+     * or the city is over its soft capacity (the same 40-and-over threshold that raises
+     * {@link #capacityWarning(Owner) capacityWarning}); otherwise false.
+     */
+    protected boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner.OwnerEmails
+                .isDisposableAdjacent(owner.getEmail());
+        return possibleDuplicate || disposableAdjacent || capacityWarning(owner);
     }
 
     /**
