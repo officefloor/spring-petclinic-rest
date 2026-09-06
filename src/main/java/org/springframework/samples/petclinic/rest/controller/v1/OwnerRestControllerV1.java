@@ -173,7 +173,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        resolveAddressFields(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
@@ -214,6 +214,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Canonicalizes the submitted address fields into the form that is validated, stored and
+     * returned, before any required-field check or mapping runs. This is the single place a create
+     * request's address input is resolved: the submitted {@code address} is replaced in place with
+     * its {@link AddressNormalizer#normalize normalized} value, so everything downstream - the
+     * required-field check, the mapping onto {@link Owner} and the response - sees the canonical
+     * address rather than the raw input. A value that is blank only after normalization is left
+     * blank here and rejected later by {@link #validateRequiredFields}.
+     *
+     * @param ownerFieldsDto the submitted owner fields, mutated in place with the resolved address
+     */
+    private void resolveAddressFields(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
     }
 
     /**
