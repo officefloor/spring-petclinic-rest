@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -65,14 +66,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final TelephoneNormalizer telephoneNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 TelephoneNormalizer telephoneNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.telephoneNormalizer = telephoneNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -104,7 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectBlankOwnerFields(ownerFieldsDto);
-        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -244,24 +249,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number submitted to the create endpoint by removing every non-digit
-     * character. The result must contain exactly 10 digits; otherwise the submission is rejected as
-     * a 400 (via {@link InvalidOwnerFieldsException}, which the {@code ExceptionControllerAdvice}
-     * renders with {@code telephone} in its {@code errors} array).
-     *
-     * @param telephone the raw telephone value from the request
-     * @return the stripped, 10-digit telephone to store and return
-     * @throws InvalidOwnerFieldsException if the stripped value is not exactly 10 digits
-     */
-    private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidOwnerFieldsException(List.of("telephone"));
-        }
-        return digits;
-    }
-
-    /**
      * Normalizes an owner's optional email address. When present it is stored and returned
      * lower-cased (using {@link Locale#ROOT} so normalization is locale-independent). A missing
      * (null) email is left as-is. Syntactic validity is enforced by Bean Validation ({@code @Email}
@@ -277,19 +264,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a create request whose normalized telephone is already used by any existing owner.
-     * Existing owners' telephones are normalized the same way (non-digit characters stripped) before
-     * comparison, so numbers that differ only in formatting still collide. A collision is reported
-     * through a {@link DuplicateOwnerTelephoneException}, which the {@code ExceptionControllerAdvice}
-     * renders as a 409 Conflict response.
+     * Existing owners' telephones are reduced to the same canonical form (via
+     * {@link TelephoneNormalizer#canonicalize(String)}) before comparison, so numbers that differ
+     * only in formatting still collide. A collision is reported through a
+     * {@link DuplicateOwnerTelephoneException}, which the {@code ExceptionControllerAdvice} renders
+     * as a 409 Conflict response.
      *
-     * @param normalizedTelephone the stripped, 10-digit telephone of the owner being created
+     * @param normalizedTelephone the canonical telephone of the owner being created
      * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
      */
     private void rejectDuplicateTelephone(String normalizedTelephone) {
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
+            .map(telephoneNormalizer::canonicalize)
             .anyMatch(normalizedTelephone::equals);
         if (duplicate) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
