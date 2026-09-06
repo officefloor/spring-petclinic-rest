@@ -187,7 +187,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> deleteOwner(Integer ownerId) {
         return withOwner(ownerId, owner -> {
-            this.clinicService.deleteOwner(owner);
+            owner.setDeleted(true);
+            this.clinicService.saveOwner(owner);
             return new ResponseEntity<>(HttpStatus.NO_CONTENT);
         });
     }
@@ -745,7 +746,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * ignored (a {@code null} key never equals the sought key). The create endpoint's duplicate
      * checks reduce both an existing owner and the owner being created to the same canonical key;
      * this returns the matched existing owner itself, so a caller can either reject the collision or
-     * record which owner was matched.
+     * record which owner was matched. Owners flagged deleted (soft-deleted) are excluded, so a
+     * collision with only a deleted owner is not reported and the create is allowed.
      *
      * @param keyExtractor derives an owner's canonical comparison key (may return {@code null})
      * @param key the canonical key of the owner being created
@@ -753,6 +755,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private Optional<Owner> findExistingOwner(Function<Owner, String> keyExtractor, String key) {
         return this.clinicService.findAllOwners().stream()
+            .filter(owner -> !owner.isDeleted())
             .filter(owner -> key.equals(keyExtractor.apply(owner)))
             .findFirst();
     }
