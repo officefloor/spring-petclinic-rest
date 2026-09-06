@@ -202,35 +202,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether an existing owner already shares a household with the supplied last name and
-     * address. Two owners belong to the same household when their last names match and their addresses
-     * match, both compared case-insensitively after collapsing runs of whitespace to a single space
-     * and trimming, so trivial differences in spacing or letter case still count as a match.
+     * address. Two owners belong to the same household when {@link HouseholdNormalizer#sameHousehold}
+     * considers their last name and address a match.
      *
      * @param lastName the submitted owner's last name
      * @param address the submitted owner's address
      * @return {@code true} if another owner already has the same normalized last name and address
      */
     private boolean isDuplicateHousehold(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeForHousehold(address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
-    }
-
-    /**
-     * Normalizes a value for household duplicate comparison: leading and trailing whitespace is
-     * trimmed, every internal run of whitespace is collapsed to a single space, and the result is
-     * lower-cased so the comparison is case-insensitive.
-     *
-     * @param value the raw last name or address value, or {@code null}
-     * @return the normalized value, or the empty string when {@code value} is {@code null}
-     */
-    private String normalizeForHousehold(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+            .anyMatch(existing -> HouseholdNormalizer.sameHousehold(
+                lastName, address, existing.getLastName(), existing.getAddress()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
