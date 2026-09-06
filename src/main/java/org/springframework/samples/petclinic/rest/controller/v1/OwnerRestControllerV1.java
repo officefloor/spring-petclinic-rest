@@ -264,9 +264,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Places the owner about to be created into its household and settles its identity against the
      * owners already on file. The owner's {@code householdId} is derived deterministically from its
      * last name and postcode and its {@code identityKey} is composed from that household and the
-     * normalized contact details. Unless the request opted into a shared household, a household that
-     * already has a member is rejected with a 409; and, again only when the household was not opted
-     * into, a soft-match against an existing owner flags the new owner as a possible duplicate.
+     * normalized contact details. Unless the request opted into a shared household, an owner whose
+     * identity key exactly matches an existing household member is rejected with a 409; and, again only
+     * when the household was not opted into, a soft-match against an existing owner flags the new owner
+     * as a possible duplicate. Distinct people sharing a household are admitted, with their membership
+     * level later capped by {@link #applyMembershipLevelCap(Owner)}.
      *
      * @param owner the normalized owner about to be created, with its contact details already normalized
      * @param sharesHousehold whether the request opted into joining an existing household
@@ -275,7 +277,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
         owner.setIdentityKey(buildIdentityKey(owner));
         if (!sharesHousehold) {
-            rejectHouseholdDuplicate(owner.getHouseholdId());
+            rejectHouseholdDuplicate(owner);
         }
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
@@ -306,8 +308,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the derived fields that only apply once the owner has cleared the create checks: its
-     * de-duplicated customer code, the number of existing namesakes, and the household size once the
-     * new owner is added.
+     * de-duplicated customer code, the number of existing namesakes, the household size once the
+     * new owner is added, and the membership-level ceiling imposed by the household the owner joins.
      *
      * @param owner the normalized owner about to be created
      */
@@ -315,6 +317,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(buildCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
+        applyMembershipLevelCap(owner);
+    }
+
+    /**
+     * Caps the membership level of an owner about to be created so it cannot exceed one above the
+     * current maximum membership level among the owner's existing household members. The owner is not
+     * yet persisted, so {@link #activeHouseholdMembers(String)} returns exactly the members already on
+     * file; each member's effective (already-capped) level is read via
+     * {@link org.springframework.samples.petclinic.mapper.MembershipLevel#forOwner(Owner)}. When the
+     * household has no existing member no ceiling applies and the cap is left unset, so the owner keeps
+     * its fully-derived level.
+     *
+     * @param owner the normalized owner about to be created, with its {@code householdId} already set
+     */
+    private void applyMembershipLevelCap(Owner owner) {
+        activeHouseholdMembers(owner.getHouseholdId()).stream()
+            .mapToInt(org.springframework.samples.petclinic.mapper.MembershipLevel::forOwner)
+            .max()
+            .ifPresent(maxLevel -> owner.setMembershipLevelCap(maxLevel + 1));
     }
 
     /**
@@ -441,17 +462,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a submitted owner that would join a household which already has a member. Because the
-     * {@code householdId} is derived deterministically from the owner's last name and postcode, any
-     * existing owner sharing that id is the same household, so a second such owner is reported to the
-     * client as a 409 Conflict. A request may knowingly bypass this block by opting in with
-     * {@code sharesHousehold}, in which case this check is not performed.
+     * Rejects a submitted owner whose derived {@code identityKey} exactly matches that of an existing
+     * member of the same household - the same normalized telephone, email and household, which marks
+     * the same person being entered twice. Distinct people who merely share a household (a different
+     * telephone or email) are not duplicates: they are admitted so the household can hold more than one
+     * member, with the joiner's membership level capped by {@link #applyMembershipLevelCap(Owner)}. A
+     * genuine identity collision is reported to the client as a 409 Conflict. A request may knowingly
+     * bypass this check by opting in with {@code sharesHousehold}, in which case it is not performed.
      *
-     * @param householdId the derived household identifier of the owner about to be created
+     * @param owner the normalized owner about to be created, with its {@code identityKey} already set
      */
-    private void rejectHouseholdDuplicate(String householdId) {
-        if (!activeHouseholdMembers(householdId).isEmpty()) {
-            throw new DuplicateOwnerIdentityException(householdId);
+    private void rejectHouseholdDuplicate(Owner owner) {
+        boolean identityInUse = activeHouseholdMembers(owner.getHouseholdId()).stream()
+            .anyMatch(existing -> owner.getIdentityKey().equals(existing.getIdentityKey()));
+        if (identityInUse) {
+            throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
         }
     }
 

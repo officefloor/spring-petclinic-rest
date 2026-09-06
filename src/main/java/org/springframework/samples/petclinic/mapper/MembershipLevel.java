@@ -73,11 +73,20 @@ public final class MembershipLevel {
      * Maps the owner's membership points to a numeric membership level: 1 for
      * 0-1 points, 2 for 2-3 points, 3 for 4-5 points and 4 for 6 or more points.
      *
+     * <p>The level is then held down to the owner's membership-level cap when one
+     * was fixed at creation: a new owner joining a household may not exceed one
+     * above the highest membership level already present in that household, and
+     * that ceiling is captured in {@link Owner#getMembershipLevelCap()}. A
+     * {@code null} cap - the first member of a household, or an owner created
+     * before the rule existed - leaves the derived level unchanged.
+     *
      * @param owner the owner whose level to derive
-     * @return the numeric membership level between 1 and 4 inclusive
+     * @return the numeric membership level between 1 and 4 inclusive, capped when applicable
      */
     public static int forOwner(Owner owner) {
-        return levelForPoints(pointsForOwner(owner));
+        int level = levelForPoints(pointsForOwner(owner));
+        Integer cap = owner.getMembershipLevelCap();
+        return cap != null ? Math.min(level, cap) : level;
     }
 
     /**

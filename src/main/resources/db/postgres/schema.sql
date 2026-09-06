@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_id TEXT,
                                       namesake_count INTEGER,
                                       household_size INTEGER,
+                                      membership_level_cap INTEGER,
                                       identity_key TEXT,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
