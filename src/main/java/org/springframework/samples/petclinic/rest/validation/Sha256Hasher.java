@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>The digest is taken over the UTF-8 bytes of the input; {@link #hexPrefix(String, int)} keeps a
  * leading run of upper-case hex characters, as used by the household-scoped {@code householdId} and
- * the {@code customerCode}'s hash segment.
+ * the {@code memberId}'s {@code HASH8} segment.
  */
 @Component
 public class Sha256Hasher {
@@ -24,7 +24,7 @@ public class Sha256Hasher {
     /**
      * The leading {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8 bytes
      * of {@code input}. Used by the derived identifiers that keep only a short hash prefix - the
-     * household-scoped {@code householdId} and the {@code customerCode}'s {@code HASH8} segment - so
+     * household-scoped {@code householdId} and the {@code memberId}'s {@code HASH8} segment - so
      * each is produced by the same algorithm and differs only in the value it hashes and the number
      * of hex characters it keeps.
      *

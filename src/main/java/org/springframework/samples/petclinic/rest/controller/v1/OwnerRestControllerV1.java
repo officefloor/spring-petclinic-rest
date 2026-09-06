@@ -60,6 +60,7 @@ import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityExce
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomains;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.Luhn;
 import org.springframework.samples.petclinic.rest.validation.Sha256Hasher;
 import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -228,7 +229,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setEmail(normalizedEmail);
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(customerCode(owner));
+        owner.setMemberId(memberId(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdId(householdId(owner));
         rejectDuplicateIdentity(owner);
@@ -249,9 +250,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the persisted owner just created, with its derived fields populated
      */
     private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel(owner));
         emitOwnerCreatedEvent(owner);
     }
 
@@ -271,16 +271,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The owner's current primary identifier carried by the structured {@link OwnerCreatedEvent}.
-     * Today an owner is identified by its {@code customerCode}; when the customer code is later
-     * unified into the member id, this single method returns the member id instead, so the emitted
-     * event switches to the new primary identifier without any other change to the create flow.
+     * The owner's primary identifier carried by the structured {@link OwnerCreatedEvent}: the owner's
+     * unified {@code memberId}. Held in one place so the emitted event's primary identifier has a single
+     * source shared with the human-readable audit line.
      *
      * @param owner the owner being audited
-     * @return the owner's current primary identifier
+     * @return the owner's primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
@@ -612,29 +611,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Number of leading hex characters of the identity hash retained as the {@code HASH8} segment of
-     * the {@code customerCode}.
+     * the {@code memberId}.
      */
-    private static final int CUSTOMER_CODE_HASH_LENGTH = 8;
+    private static final int MEMBER_ID_HASH_LENGTH = 8;
 
     /**
-     * Builds the {@code customerCode} assigned to a newly created owner, formatted
-     * {@code '<REGION>-<HASH8>'}: {@code REGION} is the owner's canonical region code resolved from
-     * its {@code postcode} (falling back to its {@code city}) through the shared
-     * {@link Region#code(String, String)}, and {@code HASH8} is the first 8 upper-case hex characters
-     * of the SHA-256 digest of the owner's normalized telephone followed by its last name
-     * (e.g. {@code 'NSW-1A2B3C4D'}). When this base code collides with an existing owner's
-     * {@code customerCode}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that
-     * makes the result unique (e.g. {@code 'NSW-1A2B3C4D-2'}), so distinct owners always receive
-     * distinct customer codes.
+     * Builds the unified {@code memberId} assigned to a newly created owner, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'}: {@code REGION} is the owner's canonical region code resolved
+     * from its {@code postcode} (falling back to its {@code city}) through the shared
+     * {@link Region#code(String, String)}; {@code FY} is the two-digit fiscal year of the owner's
+     * (business-day-adjusted) {@code registrationDate} ({@link OwnerMapper#fiscalYearSegment(Owner)});
+     * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the owner's
+     * normalized telephone followed by its last name; and {@code CHK} is a single Luhn check digit over
+     * the digits of {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW261A2B3C4D5'}). When this base id
+     * collides with an existing owner's {@code memberId}, {@code '-<n>'} is appended with the smallest
+     * {@code n} of 2 or more that makes the result unique (e.g. {@code 'NSW261A2B3C4D5-2'}), so distinct
+     * owners always receive distinct member ids.
      *
-     * @param owner the owner being created, with its telephone already normalized
-     * @return the formatted, de-duplicated customer code
+     * @param owner the owner being created, with its telephone already normalized and its registration
+     *              date set
+     * @return the formatted, de-duplicated member id
      */
-    private String customerCode(Owner owner) {
+    private String memberId(Owner owner) {
         String region = Region.code(owner.getPostcode(), owner.getCity());
-        String hash8 = sha256Hasher.hexPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
-        String base = region + "-" + hash8;
-        return deduplicate(base, Owner::getCustomerCode);
+        String fiscalYear = ownerMapper.fiscalYearSegment(owner);
+        String hash8 = sha256Hasher.hexPrefix(owner.getTelephone() + owner.getLastName(), MEMBER_ID_HASH_LENGTH);
+        String core = region + fiscalYear + hash8;
+        String base = core + Luhn.checkDigit(core);
+        return deduplicate(base, Owner::getMemberId);
     }
 
     /**
@@ -696,7 +700,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Rejects a create request whose city already contains {@link #MAX_OWNERS_PER_CITY} or more
      * owners. Existing owners are matched to the requested city case-insensitively (using
      * {@link java.util.Locale#ROOT}-independent {@link String#equalsIgnoreCase(String)}), mirroring
-     * the per-city counting used for the customer code. A city at capacity is reported through an
+     * the per-city counting used for the member id. A city at capacity is reported through an
      * {@link OwnerCityAtCapacityException}, which the {@code ExceptionControllerAdvice} renders as a
      * 409 Conflict response.
      *

@@ -19,30 +19,28 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 /**
  * Immutable structured audit event emitted, alongside the human-readable audit line, when an owner
  * is created. Serialized to the {@code AUDIT} logger as a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event}}.
  *
  * <p>{@code seq} is a monotonically increasing sequence number assigned across owner creates, so the
- * ordering of creates can be reconstructed from the audit stream. {@code customerCode} carries the
- * owner's <em>current primary identifier</em>: the {@code customerCode} today, and whatever replaces
- * it later (when the customer code is unified into the member id, this field carries the member id
- * instead) - the field is populated from that single primary-identifier source in the controller so
- * the switch is made in exactly one place.
+ * ordering of creates can be reconstructed from the audit stream. {@code memberId} carries the owner's
+ * primary identifier, its unified member id - populated from that single primary-identifier source in
+ * the controller so the audit's identifier has one home.
  *
  * <p>Being a record, the event is immutable once constructed: an emitted event can never be mutated.
  *
  * @param seq the monotonically increasing create sequence number
  * @param ownerId the created owner's id
- * @param customerCode the owner's current primary identifier
+ * @param memberId the owner's primary identifier (its unified member id)
  * @param membershipLevel the owner's reported membership level
  * @param event the event type discriminator, always {@code "OWNER_CREATED"}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
                                String event) {
 
     /** The event-type discriminator carried by every owner-created event. */
     public static final String OWNER_CREATED = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
-        this(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+        this(seq, ownerId, memberId, membershipLevel, OWNER_CREATED);
     }
 }

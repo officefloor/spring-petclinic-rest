@@ -9,7 +9,6 @@ import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.rest.validation.Luhn;
 
 import java.util.Collection;
 import java.util.List;
@@ -26,8 +25,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -123,41 +120,46 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} as the {@code REGION} segment of its {@code customerCode}
-     * (the part before the {@code '-'}), which is the owner's canonical region code baked into the
-     * region-and-hash identity {@code '<REGION>-<HASH8>'}. When no customer code is present (e.g. seed
-     * data) it falls back to resolving the region directly from the owner's {@code postcode} and
-     * {@code city} through the shared {@link Region#code(String, String)}. Reading the region from the
-     * identity keeps the locality consistent with the code an owner is issued.
+     * Derives the owner's {@code locality} as the {@code REGION} segment of its {@code memberId} (the
+     * leading region-code prefix of the {@code '<REGION><FY><HASH8><CHK>'} identity). When no member id
+     * is present (e.g. seed data) it falls back to resolving the region directly from the owner's
+     * {@code postcode} and {@code city} through the shared {@link Region#code(String, String)}. Reading
+     * the region from the identity keeps the locality consistent with the id an owner is issued.
      *
      * @param owner the owner being mapped
      * @return the derived locality
      */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
+        String memberId = owner.getMemberId();
+        if (memberId == null) {
             return Region.code(owner.getPostcode(), owner.getCity());
         }
-        return regionPrefix(code);
+        return regionPrefix(memberId);
     }
 
     /**
-     * The {@code REGION} segment of a region-and-hash identity {@code code}: the part before the first
-     * {@code '-'} (e.g. {@code 'NSW'} for {@code 'NSW-1A2B3C4D'}), or the whole {@code code} when it
-     * carries no {@code '-'}. Holding the "read the region back out of the identity code" rule in one
-     * place keeps the derived {@link #locality(Owner) locality} consistent with the code an owner is
-     * issued, and gives the region parse a single home as the identity code's format evolves.
+     * The {@code REGION} segment of a member id {@code '<REGION><FY><HASH8><CHK>'}: the leading
+     * region-code prefix it was built from (e.g. {@code 'NSW'} for {@code 'NSW261A2B3C4D5'}). The region
+     * code is one of the known {@link Region} names, otherwise {@link Region#UNKNOWN_CODE}, both of which
+     * the member id always begins with, so the prefix is recovered by matching those known codes rather
+     * than by a separator (the format carries none). Holding the "read the region back out of the
+     * identity" rule in one place keeps the derived {@link #locality(Owner) locality} consistent with the
+     * id an owner is issued.
      *
      * <p>Declared {@code private} so MapStruct treats it as an internal helper of {@link #locality(Owner)}
      * rather than as an implicit {@code String}-to-{@code String} mapping method it might auto-apply to
      * unrelated string properties.
      *
-     * @param code the region-and-hash identity code the region is read from
-     * @return the leading {@code REGION} segment of the code
+     * @param memberId the member id the region is read from
+     * @return the leading {@code REGION} segment of the member id
      */
-    private String regionPrefix(String code) {
-        int dash = code.indexOf('-');
-        return dash >= 0 ? code.substring(0, dash) : code;
+    private String regionPrefix(String memberId) {
+        for (Region region : Region.values()) {
+            if (memberId.startsWith(region.name())) {
+                return region.name();
+            }
+        }
+        return Region.UNKNOWN_CODE;
     }
 
     /**
@@ -294,25 +296,48 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'}, where {@code YY} is the last
-     * two digits of the fiscal year of the (business-day-adjusted) {@code registrationDate} (e.g.
-     * {@code 'FY26'}). Returns {@code null} when no registration date is present.
+     * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'}, where {@code YY} is the
+     * {@code FY} segment of the owner's {@code memberId} (the two-digit fiscal year of the
+     * business-day-adjusted {@code registrationDate} baked into the id, e.g. {@code 'FY26'}). When no
+     * member id is present (e.g. seed data) it falls back to the segment derived directly from the
+     * {@code registrationDate}. Returns {@code null} when neither is available.
      *
      * @param owner the owner being mapped
-     * @return the formatted fiscal year, or {@code null} when no registration date is present
+     * @return the formatted fiscal year, or {@code null} when it cannot be derived
      */
     default String fiscalYear(Owner owner) {
-        String segment = fiscalYearSegment(owner);
+        String segment = memberIdFiscalYearSegment(owner);
         return segment == null ? null : "FY" + segment;
+    }
+
+    /**
+     * The two-digit {@code FY} segment of the owner's {@code fiscalYear}, read from the owner's
+     * {@code memberId} when present so the reported fiscal year references the id an owner is issued: it
+     * is the two characters immediately following the id's {@linkplain #regionPrefix(String) region
+     * prefix}. When no member id is present (e.g. seed data) it falls back to the segment derived
+     * directly from the {@code registrationDate} ({@link #fiscalYearSegment(Owner)}). Returns
+     * {@code null} when neither is available.
+     *
+     * @param owner the owner being mapped
+     * @return the two-digit fiscal-year segment, or {@code null} when it cannot be derived
+     */
+    default String memberIdFiscalYearSegment(Owner owner) {
+        String memberId = owner.getMemberId();
+        if (memberId == null) {
+            return fiscalYearSegment(owner);
+        }
+        int start = regionPrefix(memberId).length();
+        return memberId.substring(start, start + 2);
     }
 
     /**
      * The two-digit {@code YY} fiscal-year segment of the owner's business-day-adjusted
      * {@code registrationDate}: the last two digits of its
      * {@linkplain #fiscalYearNumber(java.time.LocalDate) fiscal year}, zero-padded (e.g. {@code '26'}).
-     * This is the single {@code YY} shared by the {@code fiscalYear} field ({@code 'FY<YY>'}) and the
-     * {@code membershipNumber} ({@code '<customerCode>-M<YY>'}), so the two derive the fiscal year
-     * identically. Returns {@code null} when no registration date is present.
+     * This is the {@code YY} baked into the {@code memberId} as its {@code FY} segment when the id is
+     * built, and the fallback used by {@link #memberIdFiscalYearSegment(Owner)} for owners without a
+     * member id, so the fiscal year derives identically either way. Returns {@code null} when no
+     * registration date is present.
      *
      * @param owner the owner being mapped
      * @return the two-digit fiscal-year segment, or {@code null} when no registration date is present
@@ -322,39 +347,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%02d", fiscalYearNumber(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Builds the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'},
-     * where {@code YY} is the last two digits of the fiscal year of the (business-day-adjusted)
-     * {@code registrationDate} (e.g. {@code 'NSW-1A2B3C4D-M26'}). Returns {@code null} when either the
-     * customer code or the registration date is absent.
-     *
-     * @param owner the owner being mapped
-     * @return the formatted membership number, or {@code null} when it cannot be derived
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return owner.getCustomerCode() + "-M" + fiscalYearSegment(owner);
-    }
-
-    /**
-     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
-     * contained in the {@code customerCode} (non-digit characters, such as the {@code '<REGION>-'}
-     * prefix, the separator and the hex letters {@code A-F}, are ignored). Returns {@code null} when
-     * the customer code is absent.
-     *
-     * @param owner the owner being mapped
-     * @return the Luhn check digit, or {@code null} when no customer code is present
-     */
-    default Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
-        return Luhn.checkDigit(code);
     }
 
     /**

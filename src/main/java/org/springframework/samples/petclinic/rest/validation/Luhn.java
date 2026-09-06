@@ -2,7 +2,7 @@ package org.springframework.samples.petclinic.rest.validation;
 
 /**
  * Computes the single Luhn check digit ({@code 0-9}) over the digits contained in a string. Non-digit
- * characters (such as a {@code '<REGION>-'} prefix, a separator or the hex letters {@code A-F} of an
+ * characters (such as a {@code '<REGION>'} prefix or the hex letters {@code A-F} of an
  * identity code) are ignored, so a check digit can be taken directly over a formatted identifier.
  * Keeping the algorithm in one place lets every derived identifier that carries a Luhn digit compute it
  * identically, differing only in the value it is taken over.
@@ -21,7 +21,7 @@ public final class Luhn {
      * The single Luhn check digit ({@code 0-9}) over the digits contained in {@code value}. Characters
      * that are not decimal digits are skipped, so the digit is taken only over the {@code 0-9} runs of a
      * formatted identifier. The rightmost digit is doubled first (the classic Luhn parity), matching the
-     * scheme used to check the derived customer code.
+     * scheme used to check the derived member id.
      *
      * @param value the string to take the check digit over
      * @return the Luhn check digit, between {@code 0} and {@code 9}
