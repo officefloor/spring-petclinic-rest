@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -41,25 +42,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} from the {@code city} using a fixed city-to-region
-     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns
-     * the canonical region string, or {@code UNKNOWN} when the city is absent or not in the table.
+     * Derives the owner's {@code locality} from the {@code city} using the shared
+     * {@link Region#forCity(String) city-to-region} table ({@code Sydney -> NSW},
+     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns the canonical region code, or
+     * {@code UNKNOWN} when the city is absent or has no known region.
      *
      * @param owner the owner being mapped
      * @return the derived locality
      */
     default String locality(Owner owner) {
-        String city = owner.getCity();
-        if ("Sydney".equals(city)) {
-            return "NSW";
-        }
-        if ("Melbourne".equals(city)) {
-            return "VIC";
-        }
-        if ("Brisbane".equals(city)) {
-            return "QLD";
-        }
-        return "UNKNOWN";
+        return Region.forCity(owner.getCity()).map(Region::name).orElse("UNKNOWN");
     }
 
     /**
