@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "The telephone number is already used by another owner";
+    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -227,6 +228,26 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getTelephone());
         return this.conflict(e, request, ERROR_DUPLICATE_TELEPHONE, List.of("telephone"));
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerHouseholdException} raised when an owner submitted to the create
+     * endpoint shares a household with an existing owner (same last name and address) without opting
+     * in via {@code sharesHousehold}. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateOwnerHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerHouseholdException(DuplicateOwnerHouseholdException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner household at {} {}: {}, {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
+        return this.conflict(e, request, ERROR_DUPLICATE_HOUSEHOLD, List.of("lastName", "address"));
     }
 
 }

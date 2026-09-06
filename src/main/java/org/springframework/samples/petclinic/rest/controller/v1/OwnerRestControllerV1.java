@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -111,6 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectBlankOwnerFields(ownerFieldsDto);
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
@@ -315,5 +319,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(keyExtractor)
             .filter(Objects::nonNull)
             .anyMatch(key::equals);
+    }
+
+    /**
+     * Rejects a create request that shares a household with an existing owner: another owner already
+     * has the same {@code lastName} and the same {@code address}. Both values are compared in
+     * canonical form (case-insensitive with surrounding and internal whitespace collapsed to a single
+     * space, see {@link #canonicalizeHousehold(String)}), so values that differ only in casing or
+     * spacing still collide. A collision is reported through a {@link DuplicateOwnerHouseholdException},
+     * which the {@code ExceptionControllerAdvice} renders as a 409 Conflict response. Callers skip this
+     * check when the request opts in via {@code sharesHousehold}.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @throws DuplicateOwnerHouseholdException if another owner already shares the household
+     */
+    private void rejectDuplicateHousehold(String lastName, String address) {
+        String canonicalLastName = canonicalizeHousehold(lastName);
+        String canonicalAddress = canonicalizeHousehold(address);
+        if (canonicalLastName == null || canonicalAddress == null) {
+            return;
+        }
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .anyMatch(owner -> canonicalLastName.equals(canonicalizeHousehold(owner.getLastName()))
+                && canonicalAddress.equals(canonicalizeHousehold(owner.getAddress())));
+        if (duplicate) {
+            throw new DuplicateOwnerHouseholdException(canonicalLastName, canonicalAddress);
+        }
+    }
+
+    /**
+     * Reduces a household field ({@code lastName} or {@code address}) to a canonical form for
+     * case-insensitive, whitespace-insensitive comparison: leading and trailing whitespace is
+     * trimmed, every run of internal whitespace is collapsed to a single space, and the result is
+     * lower-cased using {@link java.util.Locale#ROOT} so comparison is locale-independent.
+     *
+     * @param value the raw field value, or {@code null}
+     * @return the canonical value, or {@code null} when {@code value} is {@code null}
+     */
+    private String canonicalizeHousehold(String value) {
+        return value == null ? null : value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 }
