@@ -1,0 +1,200 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9a098ffb2..cded99967 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+@@ -107,31 +108,54 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's numeric {@code membershipLevel} from the owner's own fields. Starts at
+-     * {@code 1}, adds {@code 1} when an email is present, and adds {@code 1} when the owner's
+-     * {@code namesakeCount} is {@code 0}. These pre-tenure factors are capped at {@code 3}. Level
+-     * {@code 4} is reserved for tenure: it is granted only when the owner's tenure &mdash; the number
++     * Derives the owner's {@code membershipPoints} from the owner's factors. Starts at {@code 0},
++     * adds {@code 2} when an email is present, adds {@code 1} when the owner's {@code namesakeCount}
++     * is {@code 0}, adds {@code 2} for a household of {@code 3} or more (see
++     * {@link Owner#getHouseholdSize()}), and adds {@code 3} when the owner's tenure &mdash; the number
+      * of whole days between its {@code registrationDate} and the current date &mdash; exceeds
+-     * {@code 365}. Because a newly created owner has zero tenure, a new owner never exceeds level
+-     * {@code 3}, even with an email and a {@code namesakeCount} of {@code 0}.
++     * {@code 365}.
+      *
+      * @param owner the owner being mapped
+-     * @return the derived membership level, between {@code 1} and {@code 4}
++     * @return the derived membership points
+      */
+-    default Integer membershipLevel(Owner owner) {
+-        int level = 1;
++    default Integer membershipPoints(Owner owner) {
++        int points = 0;
+         if (hasEmail(owner)) {
+-            level++;
++            points += 2;
+         }
+         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         if (uniqueName) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() >= 3) {
++            points += 2;
+         }
+-        level = Math.min(level, 3);
+         if (tenureDays(owner) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Maps the owner's {@code membershipPoints} to its numeric {@code membershipLevel}: level
++     * {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
++     * {@code 4} for {@code 6} or more points.
++     *
++     * @param owner the owner being mapped
++     * @return the derived membership level, between {@code 1} and {@code 4}
++     */
++    default Integer membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        return level;
++        return 4;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cfef2ab37..5ad75dce3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,14 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    /**
++     * The number of owners in this owner's household (owners sharing the same {@code householdId},
++     * including this owner). Derived at read time and not persisted; an owner with no household
++     * counts as a household of one. Feeds the household factor of the membership points.
++     */
++    @Transient
++    private int householdSize = 1;
++
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
+@@ -158,6 +166,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public int getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(int householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Integer getPossibleDuplicateOf() {
+         return this.possibleDuplicateOf;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6b249bdcf..283c8aa36 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -157,6 +157,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         rejectHouseholdDuplicate(owner, sharesHousehold);
+         owner.setPossibleDuplicateOf(sharesHousehold ? null : possibleDuplicateOf(owner));
+         this.clinicService.saveOwner(owner);
++        owner.setHouseholdSize(householdSize(owner));
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner));
+@@ -284,6 +285,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return the owner DTO with its derived read-only fields populated
+      */
+     private OwnerDto toOwnerDtoWithDerivedFields(Owner owner) {
++        owner.setHouseholdSize(householdSize(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         ownerDto.setIdentityKey(identityKey(owner));
+@@ -733,6 +735,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param owner the owner being created
+      * @return the shared household identifier, or {@code null} when the owner has no postcode
+      */
++    /**
++     * Counts the owners in the given owner's household: the existing owners that share its
++     * {@code householdId} (see {@link #householdId(Owner)}), which - because the owner being counted is
++     * itself persisted before it is decorated - includes the owner. An owner with no {@code householdId}
++     * (e.g. no postcode) has no shared household and counts as a household of one. The value feeds the
++     * household factor of the owner's membership points.
++     *
++     * @param owner the owner whose household size is being derived
++     * @return the number of owners in the owner's household (at least {@code 1})
++     */
++    private int householdSize(Owner owner) {
++        String household = owner.getHouseholdId();
++        if (household == null) {
++            return 1;
++        }
++        return (int) countOwners(existing -> household.equals(existing.getHouseholdId()));
++    }
++
+     private String householdId(Owner owner) {
+         String postcode = owner.getPostcode();
+         if (postcode == null || postcode.isBlank()) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9cce2035e..9e3a8b764 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2199,18 +2199,29 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, derived from the owner's factors.
++                Starts at 0, plus 2 when an email is present, plus 1 when the
++                owner's namesakeCount is 0, plus 2 for a household of 3 or more,
++                plus 3 when tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, derived on creation.
+-                Starts at 1, plus 1 when an email is present, plus 1 when the
+-                owner's namesakeCount is 0, capped at 3. Level 4 is reserved
+-                for tenure.
++                The owner's numeric membership level, mapped from
++                membershipPoints: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and
++                4 for 6 or more points.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
