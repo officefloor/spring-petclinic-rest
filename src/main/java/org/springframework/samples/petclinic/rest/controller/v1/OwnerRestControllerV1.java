@@ -112,6 +112,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * Fixed list of public holidays. A registration date that lands on one of these dates is treated
+     * like a weekend and rolled forward to the next non-holiday business day.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -494,19 +505,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     /**
      * Rolls a registration date forward to a business day. A registration date must fall on a
-     * business day, so when the supplied or defaulted date lands on a Saturday or Sunday it is
-     * moved forward to the following Monday; a weekday is returned unchanged. Every value derived
-     * from the registration date (such as the membership number's year segment) and the daily
-     * create-limit therefore use the adjusted date.
+     * business day, so when the supplied or defaulted date lands on a Saturday, Sunday or a listed
+     * public holiday it is moved forward to the next non-holiday weekday; a plain weekday is
+     * returned unchanged. Every value derived from the registration date (such as the membership
+     * number's year segment) and the daily create-limit therefore use the adjusted date.
      *
      * @param date the effective registration date, whether supplied or defaulted to the server date
-     * @return the same date when it is a weekday, otherwise the next Monday
+     * @return the same date when it is a business day, otherwise the next non-holiday weekday
      */
     private LocalDate toBusinessDay(LocalDate date) {
-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
+    }
+
+    private boolean isWeekend(LocalDate date) {
+        return date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY;
     }
 
     private long countOwnersRegisteredOn(LocalDate registrationDate) {
