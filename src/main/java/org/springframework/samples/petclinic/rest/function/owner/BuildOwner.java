@@ -39,13 +39,8 @@ public class BuildOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        // Normalize the telephone: strip every non-digit, then require exactly 10 digits.
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
-            throw new InvalidTelephoneException(
-                    "Telephone must be exactly 10 digits after removing non-digit characters");
-        }
-        request.setTelephone(telephone);
+        // Normalize the telephone to E.164 form (keep '+'/country code, else assume '+61').
+        request.setTelephone(Telephones.toE164(request.getTelephone()));
         // Email is optional; when present it must be syntactically valid and is stored lower-cased.
         request.setEmail(OwnerEmails.normalize(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
