@@ -34,7 +34,39 @@ public final class CustomerCodes {
 
     /** Builds the {@code <REGION>-<HASH8>} customer code for the owner. */
     public static String build(Owner owner) {
-        return region(owner) + "-" + hash8(owner.getTelephone(), owner.getLastName());
+        return region(owner) + "-" + hash8(owner);
+    }
+
+    /**
+     * The membership number {@code <customerCode>-M<YY>}, where YY is the last two digits of the
+     * fiscal year (starting 1 July) containing the {@code registrationDate} (e.g. 'NSW-1A2B3C4D-M27').
+     * Returns {@code null} when either the customer code or the registration date is absent (e.g.
+     * legacy seed owners). The single definition the owner response and the create audit line share.
+     */
+    public static String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+                FiscalYears.of(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * The Luhn {@link Luhn#checkDigit(String) check digit} (0-9) over the digits of the owner's
+     * {@code customerCode}. Returns {@code null} when the customer code is absent (e.g. legacy seed
+     * owners).
+     */
+    public static Integer checkDigit(Owner owner) {
+        return owner.getCustomerCode() == null ? null : Luhn.checkDigit(owner.getCustomerCode());
+    }
+
+    /**
+     * First eight upper-case hex characters of {@code SHA-256(normalizedTelephone + lastName)} for the
+     * owner — the HASH8 segment of the region-and-hash identity, independent of how that identity is
+     * formatted.
+     */
+    public static String hash8(Owner owner) {
+        return hash8(owner.getTelephone(), owner.getLastName());
     }
 
     /**

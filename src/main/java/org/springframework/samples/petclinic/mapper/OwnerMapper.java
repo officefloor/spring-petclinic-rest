@@ -205,12 +205,8 @@ public abstract class OwnerMapper {
      * legacy seed owners).
      */
     protected String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.FiscalYears
-                .of(owner.getRegistrationDate());
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear % 100);
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes
+                .membershipNumber(owner);
     }
 
     /**
@@ -257,28 +253,7 @@ public abstract class OwnerMapper {
      * legacy seed owners).
      */
     protected Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.checkDigit(owner);
     }
 
     /**
