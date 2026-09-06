@@ -18,8 +18,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class BuildOwner {
 
-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
+    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+            Out<Boolean> sharesHousehold)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+        // Publish the request-only 'sharesHousehold' flag for the household duplicate check.
+        // Not part of the Owner entity, so it travels as a separate variable.
+        sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
