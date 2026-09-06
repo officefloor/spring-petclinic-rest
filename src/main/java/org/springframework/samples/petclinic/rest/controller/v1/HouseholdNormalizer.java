@@ -56,16 +56,18 @@ final class HouseholdNormalizer {
 
     /**
      * Composes the canonical household key that is hashed to form the {@link #householdId household
-     * identifier}: the {@link #normalize(String) normalized} last name and the postcode joined by a
-     * {@code '|'} delimiter that a normalized last name can never contain, so two owners yield the
-     * same key exactly when they belong to the same household.
+     * identifier}: the fixed {@link OwnerIdentityVersion#TAG version tag}, the {@link #normalize(String)
+     * normalized} last name and the postcode joined by a {@code '|'} delimiter that a normalized last
+     * name can never contain, so two owners yield the same key exactly when they belong to the same
+     * household. The leading version tag is what makes every version-2 household id differ from the
+     * version-1 value for the same household.
      *
      * @param lastName the owner's last name
      * @param postcode the owner's postcode, or {@code null} when none was supplied
      * @return the canonical household key that identifies the household
      */
     private static String key(String lastName, String postcode) {
-        return normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        return OwnerIdentityVersion.TAG + "|" + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
     }
 
     /**

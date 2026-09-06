@@ -119,6 +119,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
 
     /**
+     * Schema version stamped onto every structured {@code OWNER_CREATED} audit event. Bumped to 2
+     * alongside the version-2 owner identity: the event now carries a {@code schemaVersion} field and
+     * its {@code memberId} is the version-2 member id.
+     */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
+
+    /**
      * Maximum number of owners a single city may contain. A create that would take the owner's city
      * to more than this many owners - i.e. the city already holds this many - is rejected with a 409.
      */
@@ -484,17 +491,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the immutable, structured {@code OWNER_CREATED} audit event on the {@code AUDIT} logger,
-     * alongside the human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code seq} is a
-     * process-wide, monotonically increasing sequence across all creates. Its {@code memberId}
-     * field carries the owner's primary identifier as returned by {@link #primaryIdentifier(Owner)}.
+     * alongside the human-readable audit line. The event is a schema-version-2 JSON object
+     * {@code {seq, schemaVersion, ownerId, memberId, membershipLevel, event}} where {@code seq} is a
+     * process-wide, monotonically increasing sequence across all creates and {@code schemaVersion} is
+     * {@value #AUDIT_SCHEMA_VERSION}. Its {@code memberId} field carries the owner's primary identifier
+     * as returned by {@link #primaryIdentifier(Owner)}, which under version 2 is the version-2 member id.
      *
      * @param owner the owner that has just been saved, with its generated id populated
      * @param ownerDto the mapped DTO, source of the derived membership level
      */
     private void emitOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(), "OWNER_CREATED");
+            AUDIT_SCHEMA_VERSION, owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(),
+            "OWNER_CREATED");
         try {
             AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
         }
@@ -528,10 +537,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Immutable structured payload of an {@code OWNER_CREATED} audit event. The {@code memberId}
+     * Immutable structured payload of an {@code OWNER_CREATED} audit event. The {@code schemaVersion}
+     * field records the audit schema version ({@value #AUDIT_SCHEMA_VERSION}); the {@code memberId}
      * field holds the owner's primary identifier (see {@link #primaryIdentifier(Owner)}).
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+    private record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
@@ -677,10 +687,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the owner's {@code identityKey} as the SHA-256 hex digest over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the telephone
-     * and email have already been normalized (the email lower-cased, or the empty string when none was
-     * supplied) and the last name is reduced to its {@link Soundex} code. Because the normalized
+     * Derives the owner's version-2 {@code identityKey} as the SHA-256 hex digest over
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+     * leading {@link OwnerIdentityVersion#TAG version tag} is mixed in so no key produced under version
+     * 1 recurs. The telephone and email have already been normalized (the email lower-cased, or the
+     * empty string when none was supplied) and the last name is reduced to its {@link Soundex} code.
+     * Because the normalized
      * telephone is part of the key, two owners who differ only in telephone derive different identity
      * keys, so they are not the same identity even when they share a household.
      *
@@ -689,7 +701,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String buildIdentityKey(Owner owner) {
         String email = StringUtils.hasText(owner.getEmail()) ? owner.getEmail() : "";
-        return Sha256.hex(owner.getTelephone() + "|" + email + "|" + Soundex.encode(owner.getLastName()));
+        return Sha256.hex(OwnerIdentityVersion.TAG + "|" + owner.getTelephone() + "|" + email + "|"
+            + Soundex.encode(owner.getLastName()));
     }
 
     /**
@@ -760,7 +773,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the assigned, de-duplicated member id
      */
     private String buildMemberId(Owner owner) {
-        String region = OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity());
+        String region = OwnerIdentityVersion.regionCode(
+            OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity()));
         int fiscalYear = FiscalYear.twoDigit(owner.getRegistrationDate());
         String id = MemberId.forRegionYearAndIdentity(region, fiscalYear, owner.getTelephone(), owner.getLastName());
         return deduplicateMemberId(id);

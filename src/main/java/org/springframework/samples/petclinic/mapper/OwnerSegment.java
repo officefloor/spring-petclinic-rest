@@ -37,7 +37,7 @@ public final class OwnerSegment {
      */
     public static String forOwner(Owner owner) {
         String tier = MembershipLevel.forOwner(owner) >= PREMIUM_MEMBERSHIP_LEVEL ? "PREMIUM" : "STANDARD";
-        String region = OwnerLocality.forMemberId(owner.getMemberId());
+        String region = OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity());
         String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
