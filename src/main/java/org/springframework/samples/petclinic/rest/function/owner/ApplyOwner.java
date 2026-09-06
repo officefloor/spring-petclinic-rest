@@ -12,5 +12,8 @@ public class ApplyOwner {
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
         owner.setTelephone(request.getTelephone());
+        String email = request.getEmail();
+        owner.setEmail(email == null || email.isBlank() ? null
+                : email.trim().toLowerCase(java.util.Locale.ROOT));
     }
 }

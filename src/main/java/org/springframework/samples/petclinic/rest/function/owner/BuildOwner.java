@@ -8,6 +8,7 @@ import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.validation.annotation.Validated;
@@ -16,8 +17,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class BuildOwner {
 
+    /** Simple syntactic email check: non-space local part, '@', non-space domain with a dot. */
+    private static final java.util.regex.Pattern EMAIL =
+            java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
-            throws MissingOwnerFieldsException, InvalidTelephoneException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -39,7 +44,20 @@ public class BuildOwner {
         }
         String telephone = normalizeTelephone(request.getTelephone());
         request.setTelephone(telephone);
+        request.setEmail(normalizeEmail(request.getEmail()));
         built.set(ownerMapper.toOwner(request));
+    }
+
+    /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
+    private static String normalizeEmail(String email) throws InvalidEmailException {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL.matcher(trimmed).matches()) {
+            throw new InvalidEmailException(email);
+        }
+        return trimmed.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Strip every non-digit character and require exactly 10 digits, else reject with 400. */
