@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Addresses.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Addresses.java
+new file mode 100644
+index 000000000..6007c10af
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Addresses.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Shared handling for the owner {@code address}. Addresses are stored in a normalized form:
++ * surrounding whitespace is trimmed, runs of internal whitespace collapse to a single space,
++ * the text is upper-cased and common street-type abbreviations are expanded
++ * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++ *
++ * <p>So {@code '  12  main  st '} is stored as {@code '12 MAIN STREET'}.
++ */
++final class Addresses {
++
++    // Common street-type abbreviations expanded to their full word (compared upper-cased).
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private Addresses() {
++    }
++
++    /**
++     * Normalize an address: trim, collapse whitespace, upper-case and expand common
++     * abbreviations. Returns an empty string for a {@code null} or blank value.
++     */
++    static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index f542d2620..32345b27c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -11,8 +11,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * When the request opted into a shared household ({@code sharesHousehold} true), assigns the new
+- * owner a stable {@code householdId} shared by everyone at the same last name and address (compared
+- * case-insensitively with runs of whitespace collapsed, matching {@link EnsureUniqueHousehold}).
++ * owner a stable {@code householdId} shared by everyone at the same last name and address (the last
++ * name compared case-insensitively with runs of whitespace collapsed, and the address in its
++ * normalized form, matching {@link EnsureUniqueHousehold}).
+  *
+  * <p>The identifier is derived deterministically from the normalized last name and address, so every
+  * owner in the household resolves to the same value even across separate requests. If an existing
+@@ -26,11 +27,11 @@ public class AssignHousehold {
+             return;
+         }
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
++        String address = Addresses.normalize(owner.getAddress());
+         List<Owner> members = ownerRepository.findAll().stream()
+                 .filter(existing -> !existing.getId().equals(owner.getId()))
+                 .filter(existing -> normalize(existing.getLastName()).equals(lastName)
+-                        && normalize(existing.getAddress()).equals(address))
++                        && Addresses.normalize(existing.getAddress()).equals(address))
+                 .toList();
+         // Reuse an id already held by a household member for stability; otherwise derive one.
+         String householdId = members.stream()
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 7a01eb345..c7f3b203a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -24,6 +24,9 @@ public class BuildOwner {
+         // Publish the request-only 'sharesHousehold' flag for the household duplicate check.
+         // Not part of the Owner entity, so it travels as a separate variable.
+         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
++        // Normalize the address up front so the required-field check below rejects an address that
++        // is blank once normalized, and every later comparison sees the stored normalized form.
++        request.setAddress(Addresses.normalize(request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         if (isBlank(request.getFirstName())) {
+             missing.add("firstName");
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+index febd0d75c..f18d9dfde 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+@@ -7,9 +7,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
+ 
+ /**
+  * Rejects creating an owner when another owner already has the same last name and the same
+- * address. Both are compared case-insensitively with runs of whitespace collapsed to a single
+- * space. The check is skipped when the request set {@code sharesHousehold} true, which permits
+- * multiple owners in one household.
++ * address. The last name is compared case-insensitively with runs of whitespace collapsed to a
++ * single space; the address is compared in its normalized form (see {@link Addresses}). The check
++ * is skipped when the request set {@code sharesHousehold} true, which permits multiple owners in
++ * one household.
+  */
+ public class EnsureUniqueHousehold {
+ 
+@@ -19,11 +20,11 @@ public class EnsureUniqueHousehold {
+             return;
+         }
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
++        String address = Addresses.normalize(owner.getAddress());
+         boolean inHousehold = ownerRepository.findAll().stream()
+                 .filter(existing -> !existing.getId().equals(owner.getId()))
+                 .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
+-                        && normalize(existing.getAddress()).equals(address));
++                        && Addresses.normalize(existing.getAddress()).equals(address));
+         if (inHousehold) {
+             throw new DuplicateHouseholdException(
+                     "An owner named " + owner.getLastName() + " already exists at " + owner.getAddress());
