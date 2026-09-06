@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
+import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -46,6 +47,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.InvalidOwnerPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -127,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         rejectBlankOwnerFields(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        rejectInvalidPostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         LocalDate registrationDate = businessDay(effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate()));
         rejectDailyRegistrationLimit(registrationDate);
@@ -304,6 +307,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value != null && value.isBlank()) {
             blankFields.add(field);
         }
+    }
+
+    /**
+     * Validates the owner's optional {@code postcode} against its {@code city} region. Postcode is
+     * validated only when present, so an owner created without one is accepted unchanged. A supplied
+     * postcode is already constrained to four digits by Bean Validation on {@link OwnerFieldsDto}; this
+     * additionally rejects a well-formed postcode that is out of range for the city's region using the
+     * shared {@link Region#acceptsPostcode(int) region-to-postcode} table ({@code NSW 2000-2099},
+     * {@code VIC 3000-3099}, {@code QLD 4000-4099}). A city with no known region accepts any 4-digit
+     * postcode. An out-of-range postcode is reported through an {@link InvalidOwnerPostcodeException},
+     * which the {@code ExceptionControllerAdvice} renders as a 400 response.
+     *
+     * @param city the city of the owner being created
+     * @param postcode the supplied postcode, or {@code null} when omitted
+     * @throws InvalidOwnerPostcodeException if the postcode is out of range for the city's region
+     */
+    private void rejectInvalidPostcode(String city, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        Region.forCity(city).ifPresent(region -> {
+            if (!region.acceptsPostcode(Integer.parseInt(postcode))) {
+                throw new InvalidOwnerPostcodeException(postcode, city);
+            }
+        });
     }
 
     /**

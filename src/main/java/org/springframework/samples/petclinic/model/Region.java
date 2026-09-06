@@ -29,15 +29,37 @@ import java.util.Optional;
  */
 public enum Region {
 
-    NSW,
-    VIC,
-    QLD;
+    NSW(2000, 2099),
+    VIC(3000, 3099),
+    QLD(4000, 4099);
+
+    private final int minPostcode;
+
+    private final int maxPostcode;
+
+    Region(int minPostcode, int maxPostcode) {
+        this.minPostcode = minPostcode;
+        this.maxPostcode = maxPostcode;
+    }
 
     /** Fixed city -> region table; a city absent from this map has no known region. */
     private static final Map<String, Region> BY_CITY = Map.of(
         "Sydney", NSW,
         "Melbourne", VIC,
         "Brisbane", QLD);
+
+    /**
+     * Reports whether the given 4-digit postcode falls within this region's inclusive postcode range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). This is the one place the region-to-postcode
+     * range lives, so every rule that validates a postcode against an owner's region resolves it
+     * identically.
+     *
+     * @param postcode the numeric value of the owner's 4-digit postcode
+     * @return {@code true} when the postcode is within this region's range
+     */
+    public boolean acceptsPostcode(int postcode) {
+        return postcode >= this.minPostcode && postcode <= this.maxPostcode;
+    }
 
     /**
      * Resolves the region for the given city from the fixed city-to-region table.

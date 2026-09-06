@@ -213,6 +213,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidOwnerPostcodeException} raised when an owner submitted to the create
+     * endpoint carries a well-formed 4-digit {@code postcode} that is out of range for the owner's
+     * city region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). Returns a 400 Bad Request whose body
+     * carries an {@code errors} array naming the {@code postcode} field, mirroring the shape produced
+     * for Bean Validation failures.
+     *
+     * @param e The {@link InvalidOwnerPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidOwnerPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidOwnerPostcodeException(InvalidOwnerPostcodeException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Invalid owner postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("postcode"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateOwnerIdentityException} raised when an owner submitted to the create
      * endpoint has a derived identity key (normalized telephone, email and household id) that exactly
      * equals an existing owner's. This single key consolidates the former separate telephone, email
