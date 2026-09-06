@@ -367,18 +367,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The {@code membershipLevel} reported for a single owner. Delegates to the owner-local
-     * derivation in {@link OwnerMapper#membershipLevel(Owner)} (the level from the owner's own
-     * membership points), routed through the controller so the create audit log and the single-owner
-     * response agree on one value. Unlike the mapper - which sees only the owner - the controller can
-     * reach the rest of the clinic, so this is the single place a reported membership level is shaped
-     * by cross-owner context (such as the owner's {@link #householdMembers(Owner) household}).
+     * The {@code membershipLevel} reported for a single owner. Starts from the owner-local derivation
+     * in {@link OwnerMapper#membershipLevel(Owner)} (the level from the owner's own membership points),
+     * routed through the controller so the create audit log and the single-owner response agree on one
+     * value. Unlike the mapper - which sees only the owner - the controller can reach the rest of the
+     * clinic, so this is the single place a reported membership level is shaped by cross-owner context.
+     *
+     * <p>Household ceiling: the reported level is capped at one above the current maximum
+     * {@linkplain #householdMemberLevel(Owner) level} among the owner's <em>existing</em>
+     * {@link #householdMembers(Owner) household members} (those sharing its {@code householdId}, other
+     * than the owner itself). With no existing household member no cap applies and the owner-local level
+     * is reported unchanged. The cap uses each member's own owner-local level (not their reported,
+     * capped level), so it depends only on the members' own points and cannot recurse.
      *
      * @param owner the owner whose reported membership level is wanted
-     * @return the owner's membership level
+     * @return the owner's membership level, capped at one above its household maximum
      */
     private Integer membershipLevel(Owner owner) {
-        return ownerMapper.membershipLevel(owner);
+        int ownLevel = ownerMapper.membershipLevel(owner);
+        java.util.OptionalInt maxHouseholdLevel = householdMembers(owner).stream()
+            .filter(member -> !java.util.Objects.equals(member.getId(), owner.getId()))
+            .mapToInt(this::householdMemberLevel)
+            .max();
+        if (maxHouseholdLevel.isEmpty()) {
+            return ownLevel;
+        }
+        return Math.min(ownLevel, maxHouseholdLevel.getAsInt() + 1);
+    }
+
+    /**
+     * The owner-local membership level of a household member, used only as an input to the household
+     * ceiling in {@link #membershipLevel(Owner)}. The member's {@link Owner#getHouseholdSize()
+     * household size} is set from its household before the level is derived, so the member's household
+     * factor is accounted for exactly as it is when the member is reported on its own; the level itself
+     * comes from the owner-local {@link OwnerMapper#membershipLevel(Owner)}.
+     *
+     * @param member an existing member of an owner's household
+     * @return the member's owner-local membership level
+     */
+    private int householdMemberLevel(Owner member) {
+        member.setHouseholdSize(householdSize(member));
+        return ownerMapper.membershipLevel(member);
     }
 
     /**
@@ -771,18 +800,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create request that would join an existing household unless it declares the shared
-     * household with {@code sharesHousehold}. The household is keyed on {@code (lastName, postcode)}
-     * through the deterministic {@link #householdId(Owner)}, so any existing owner with the same last
-     * name and postcode is a member of the same household. A second such owner is a household
-     * duplicate and is rejected with a 409 (via {@link DuplicateOwnerIdentityException}); setting
-     * {@code sharesHousehold} bypasses this block, so the owner is created as a declared household
-     * member instead. Owners without a {@code householdId} (e.g. no postcode) have no household to
-     * collide with and are always allowed.
+     * Rejects a create request that would re-register an existing household member unless it declares
+     * the shared household with {@code sharesHousehold}. The household is keyed on
+     * {@code (lastName, postcode)} through the deterministic {@link #householdId(Owner)}, so an existing
+     * owner with the same last name and postcode is a member of the same household. A new owner that
+     * matches an existing member of that household on its <em>canonical telephone</em> (see
+     * {@link TelephoneNormalizer#canonicalize(String)}) is a household duplicate and is rejected with a
+     * 409 (via {@link DuplicateOwnerIdentityException}). A member carrying a <em>different</em> telephone
+     * is a distinct person in the same household: it is allowed and surfaced instead as a soft
+     * {@code possibleDuplicate} (see {@link #possibleDuplicateOf(Owner)}), which is what lets a household
+     * hold more than one owner. Setting {@code sharesHousehold} bypasses this block, so the owner is
+     * created as a declared household member. Owners without a {@code householdId} (e.g. no postcode)
+     * have no household to collide with and are always allowed.
      *
-     * @param owner the fully-populated owner being created (household id set)
+     * @param owner the fully-populated owner being created (household id set, telephone normalized)
      * @param sharesHousehold whether the request declared it shares an existing household
-     * @throws DuplicateOwnerIdentityException if the household already exists and was not declared
+     * @throws DuplicateOwnerIdentityException if a household member with the same telephone exists and it was not declared
      */
     private void rejectHouseholdDuplicate(Owner owner, boolean sharesHousehold) {
         if (sharesHousehold) {
@@ -792,7 +825,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (household == null) {
             return;
         }
-        if (existingOwnerMatches(this::householdId, household)) {
+        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
+        boolean sameTelephoneMember = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> household.equals(existing.getHouseholdId()))
+            .anyMatch(existing -> java.util.Objects.equals(telephone,
+                telephoneNormalizer.canonicalize(existing.getTelephone())));
+        if (sameTelephoneMember) {
             throw new DuplicateOwnerIdentityException(identityKey(owner));
         }
     }
