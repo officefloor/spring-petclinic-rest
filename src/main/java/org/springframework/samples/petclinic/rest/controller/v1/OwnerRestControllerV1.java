@@ -601,14 +601,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String householdId(String lastName, String address) {
         String key = canonicalizeHousehold(lastName) + HOUSEHOLD_KEY_DELIMITER + canonicalizeHousehold(address);
+        return hashPrefix(key, HOUSEHOLD_ID_LENGTH);
+    }
+
+    /**
+     * Number of leading hex characters of the household hash retained as the shared
+     * {@code householdId}.
+     */
+    private static final int HOUSEHOLD_ID_LENGTH = 16;
+
+    /**
+     * Computes the leading {@code length} upper-case hex characters of the SHA-256 digest of the
+     * UTF-8 bytes of {@code input}. This is the shared hashing primitive behind the derived
+     * identifiers that fingerprint owner fields - such as the household-scoped {@code householdId} -
+     * so every such identifier is produced by the same algorithm and differs only in the value it
+     * hashes and the number of hex characters it keeps.
+     *
+     * @param input the value to hash
+     * @param length the number of leading hex characters to keep
+     * @return the leading {@code length} upper-case hex characters of the SHA-256 digest
+     */
+    private String hashPrefix(String input, int length) {
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02X", b));
             }
-            return sb.substring(0, 16);
+            return sb.substring(0, length);
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }

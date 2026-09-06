@@ -48,6 +48,9 @@ public enum Region {
         "Melbourne", VIC,
         "Brisbane", QLD);
 
+    /** Canonical region code returned when neither the postcode nor the city resolves to a region. */
+    public static final String UNKNOWN_CODE = "UNKNOWN";
+
     /**
      * Reports whether the given 4-digit postcode falls within this region's inclusive postcode range
      * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). This is the one place the region-to-postcode
@@ -95,5 +98,27 @@ public enum Region {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Resolves the canonical region code for an owner located at the given {@code postcode} and
+     * {@code city}, preferring the postcode: it first looks up the region by
+     * {@link #forPostcode(String) postcode range} (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and
+     * only falls back to the {@link #forCity(String) city-to-region} table ({@code Sydney -> NSW},
+     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) when the postcode is absent or in no known
+     * range. Returns the region's code, or {@link #UNKNOWN_CODE} when neither resolves.
+     *
+     * <p>This is the one place an owner's postcode and city are turned into a region code, so every
+     * rule that labels an owner by region resolves it identically.
+     *
+     * @param postcode the owner's 4-digit postcode, or {@code null}
+     * @param city the owner's city, or {@code null}
+     * @return the canonical region code, or {@link #UNKNOWN_CODE} when neither postcode nor city resolves
+     */
+    public static String code(String postcode, String city) {
+        return forPostcode(postcode)
+            .or(() -> forCity(city))
+            .map(Region::name)
+            .orElse(UNKNOWN_CODE);
     }
 }
