@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -13,8 +12,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>Points start at 0 and accumulate from the owner's factors: {@link #EMAIL_POINTS} for a present
  * email address, {@link #NO_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
  * {@link #LARGE_HOUSEHOLD_POINTS} for a household of {@link #LARGE_HOUSEHOLD_SIZE} or more, and
- * {@link #TENURE_POINTS} for more than {@link #TENURE_DAYS_FOR_POINTS} days of tenure since
- * {@code registrationDate}. A freshly created owner registers as of today and so has zero tenure.
+ * {@link #TENURE_POINTS} for more than {@link #TENURE_FISCAL_YEARS_FOR_POINTS} elapsed fiscal
+ * year(s) of tenure since {@code registrationDate}, where fiscal years start on 1 July (see
+ * {@link FiscalYears}). A freshly created owner registers as of today and so has zero tenure.
  *
  * <p>Points map to a level of 1 (0-1 points), 2 (2-3), 3 (4-5) or 4 (6 or more).
  */
@@ -32,10 +32,11 @@ public final class Memberships {
     /** Household size (members inclusive) at which {@link #LARGE_HOUSEHOLD_POINTS} is awarded. */
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Points awarded for more than {@link #TENURE_DAYS_FOR_POINTS} days of tenure. */
+    /** Points awarded for more than {@link #TENURE_FISCAL_YEARS_FOR_POINTS} elapsed fiscal years of tenure. */
     private static final int TENURE_POINTS = 3;
 
-    private static final int TENURE_DAYS_FOR_POINTS = 365;
+    /** Elapsed fiscal years of tenure that must be exceeded to earn {@link #TENURE_POINTS}. */
+    private static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     private Memberships() {
     }
@@ -86,7 +87,7 @@ public final class Memberships {
         if (registrationDate == null) {
             return false;
         }
-        long tenureDays = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return tenureDays > TENURE_DAYS_FOR_POINTS;
+        int tenureFiscalYears = FiscalYears.elapsed(registrationDate, LocalDate.now());
+        return tenureFiscalYears > TENURE_FISCAL_YEARS_FOR_POINTS;
     }
 }

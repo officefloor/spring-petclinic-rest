@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
@@ -53,7 +54,7 @@ public abstract class OwnerMapper {
     /**
      * The owner's {@code membershipPoints}: the raw loyalty score (see
      * {@link org.springframework.samples.petclinic.rest.function.owner.Memberships}), built from a
-     * present email, no namesakes, a household of 3 or more and tenure over 365 days.
+     * present email, no namesakes, a household of 3 or more and tenure over one elapsed fiscal year.
      */
     protected int membershipPoints(Owner owner) {
         long householdSize = org.springframework.samples.petclinic.rest.function.owner.Households
@@ -142,15 +143,31 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Builds the membership number '<customerCode>-M<YY>', where YY is the last two digits of
-     * the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Returns {@code null} when either the
-     * customer code or the registration date is absent (e.g. legacy seed owners).
+     * The owner's {@code fiscalYear}: the {@code FY<YY>} label for the fiscal year (starting 1 July)
+     * containing the business-day-adjusted {@code registrationDate} (e.g. 'FY27'). Returns
+     * {@code null} when the registration date is absent (e.g. legacy seed owners).
+     */
+    protected String fiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYears.label(registrationDate);
+    }
+
+    /**
+     * Builds the membership number '<customerCode>-M<YY>', where YY is the last two digits of the
+     * fiscal year (starting 1 July) containing the registrationDate (e.g. 'NSW-1A2B3C4D-M27').
+     * Returns {@code null} when either the customer code or the registration date is absent (e.g.
+     * legacy seed owners).
      */
     protected String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        int fiscalYear = org.springframework.samples.petclinic.rest.function.owner.FiscalYears
+                .of(owner.getRegistrationDate());
+        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear % 100);
     }
 
     /**
