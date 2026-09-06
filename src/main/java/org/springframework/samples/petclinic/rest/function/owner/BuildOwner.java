@@ -52,12 +52,33 @@ public class BuildOwner {
         request.setAddress(normalizedAddress);
         request.setEmail(normalizeEmail(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
+        // The EFFECTIVE registration date (supplied or defaulted to the server date) must fall on
+        // a business day: a Saturday or Sunday rolls forward to the next Monday. Every value
+        // derived from the registration date (e.g. the membership number's year segment, the daily
+        // create-limit's day) then uses this adjusted date.
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = java.time.LocalDate.now();
         }
+        owner.setRegistrationDate(toBusinessDay(registrationDate));
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
         built.set(owner);
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+    }
+
+    /**
+     * Roll a registration date off the weekend: a Saturday or Sunday moves forward to the next
+     * Monday; a weekday is returned unchanged.
+     */
+    private static java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
+        switch (date.getDayOfWeek()) {
+            case SATURDAY:
+                return date.plusDays(2);
+            case SUNDAY:
+                return date.plusDays(1);
+            default:
+                return date;
+        }
     }
 
     /**
