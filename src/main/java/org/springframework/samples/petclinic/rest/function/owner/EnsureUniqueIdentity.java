@@ -6,15 +6,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The owner duplicate block, expressed through the {@link OwnerIdentity#key(Owner) identityKey}
- * (normalized telephone + email + householdId). A second owner whose whole key matches an existing
- * one is a duplicate and is rejected (409); because the telephone is part of the key, two members of
- * the same household with different telephones have distinct keys and are both allowed.
+ * The single owner duplicate block, expressed through the {@link OwnerIdentity#key(Owner) identityKey}
+ * (SHA-256 over normalized telephone + lower-case email + soundex of the last name). A second owner
+ * whose whole key matches an existing one is a duplicate and is rejected (409); because the telephone
+ * is part of the key, two owners with the same last name and postcode but different telephones have
+ * distinct keys and are both allowed (they become a soft match — see {@link AssignPossibleDuplicate}).
+ * The email-domain blocklist is applied earlier, in {@link BuildOwner}.
  *
  * <p>The request's {@code sharesHousehold} flag bypasses this block: a declared household member is
- * created even when its identity key already exists. Runs after {@link AssignHousehold} so the new
- * owner's {@code householdId} (and hence its identity key) is set; existing owners are compared by
- * their own computed key.
+ * created even when its identity key already exists. Soft-deleted owners are ignored; existing owners
+ * are compared by their own computed key.
  */
 public class EnsureUniqueIdentity {
 

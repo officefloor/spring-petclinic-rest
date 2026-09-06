@@ -14,16 +14,17 @@ build:
   govern: [ transaction ]
   next: assignHousehold
 
-# Assign the deterministic householdId first (SHA-256 over lastName + postcode), so the
-# household duplicate check below can compare it. Owners at the same last name and postcode
-# are the same household.
+# Assign the deterministic householdId (SHA-256 over lastName + postcode). It no longer drives
+# duplicate detection; it is retained for household-size and membership derivations. Owners at the
+# same last name and postcode are the same household.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
   govern: [ transaction ]
   next: ensureUniqueIdentity
 
-# Reject a second owner in an existing household (same householdId) with 409, unless the
-# request set 'sharesHousehold' to declare it a household member.
+# The single duplicate block: reject a second owner whose identityKey (SHA-256 over normalized
+# telephone + lower-case email + soundex of the last name) matches an existing one with 409, unless
+# the request set 'sharesHousehold' to declare it a household member.
 ensureUniqueIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueIdentity
   govern: [ transaction ]
@@ -49,8 +50,8 @@ ensureDailyOwnerLimit:
   govern: [ transaction ]
   next: assignPossibleDuplicate
 
-# A declared household member is not flagged. Any other owner reaching here is not a household
-# duplicate (EnsureUniqueIdentity already rejected those), so possibleDuplicate stays false.
+# Soft match: flag an owner whose identityKey differs from an existing one but whose soundex(lastName)
+# and postcode match. A declared household member ('sharesHousehold') is never flagged.
 assignPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
   govern: [ transaction ]

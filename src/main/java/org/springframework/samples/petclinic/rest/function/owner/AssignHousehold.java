@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * characters of {@code SHA-256(normalizedLastName + '|' + postcode)}.
  *
  * <p>The id is derived from the last name and postcode alone, so every owner at the same last name
- * and postcode resolves to the same value automatically. It is assigned unconditionally — the
- * request's {@code sharesHousehold} flag no longer creates the link, it only bypasses the household
- * duplicate block in {@link EnsureUniqueIdentity}.
+ * and postcode resolves to the same value automatically. It is assigned unconditionally. Duplicate
+ * detection no longer depends on it (that is now the {@link OwnerIdentity#key(Owner) identityKey});
+ * the household id is retained for household-size and membership derivations (see {@link Households}).
  */
 public class AssignHousehold {
 
