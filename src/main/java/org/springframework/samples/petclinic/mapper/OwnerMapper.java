@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "identityKey", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -40,6 +41,34 @@ public interface OwnerMapper {
     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Derives the owner's {@code ageBand} from its {@code birthDate}, measured against the owner's
+     * {@code registrationDate}: {@code MINOR} when under 18, {@code ADULT} for 18 to 64, and
+     * {@code SENIOR} for 65 and over. Returns {@code null} when no birth date is present, in which
+     * case the field is absent from the response. The age in whole years is the number of complete
+     * years between the birth date and the registration date (see {@link java.time.Period}); when the
+     * registration date is somehow absent the current date is used as the reference.
+     *
+     * @param owner the owner being mapped
+     * @return the derived age band, or {@code null} when no birth date is present
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        java.time.LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        int age = java.time.Period.between(birthDate, reference).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
     }
 
     /**
