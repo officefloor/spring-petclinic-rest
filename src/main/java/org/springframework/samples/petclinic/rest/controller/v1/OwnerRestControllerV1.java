@@ -49,6 +49,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephone
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -81,18 +82,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -137,7 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        ownerFieldsDto.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
@@ -169,7 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
-        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -278,20 +283,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value != null && value.isBlank()) {
             blankFields.add(field);
         }
-    }
-
-    /**
-     * Normalizes an owner's optional email address. When present it is stored and returned
-     * lower-cased (using {@link Locale#ROOT} so normalization is locale-independent). A missing
-     * (null) email is left as-is. Syntactic validity is enforced by Bean Validation ({@code @Email}
-     * on {@link OwnerFieldsDto}), so an invalid address is already rejected as a 400 before this
-     * method runs.
-     *
-     * @param email the raw email value from the request, or {@code null} when omitted
-     * @return the lower-cased email, or {@code null} when none was supplied
-     */
-    private String normalizeEmail(String email) {
-        return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
