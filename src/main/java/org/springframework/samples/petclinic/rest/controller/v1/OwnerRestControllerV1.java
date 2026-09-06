@@ -44,9 +44,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
@@ -129,17 +127,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         rejectBlankOwnerFields(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold) {
-            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
-        }
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         LocalDate registrationDate = businessDay(effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate()));
         rejectDailyRegistrationLimit(registrationDate);
         String normalizedTelephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
-        rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
         String normalizedEmail = emailNormalizer.normalize(ownerFieldsDto.getEmail());
-        rejectDuplicateEmail(normalizedEmail);
         ownerFieldsDto.setEmail(normalizedEmail);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -149,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
+        rejectDuplicateIdentity(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -268,8 +262,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
-     * derived from server-side state rather than stored columns (currently the
-     * {@code bulkSignupWarning} flag). Both the create endpoint and the single-owner read endpoint
+     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} flag
+     * and the {@code identityKey}). Both the create endpoint and the single-owner read endpoint
      * return their owner through this method, so an owner is decorated identically on either path
      * and each derived field is computed in exactly one place.
      *
@@ -279,6 +273,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private OwnerDto toOwnerDtoWithDerivedFields(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        ownerDto.setIdentityKey(identityKey(owner));
         return ownerDto;
     }
 
@@ -485,48 +480,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create request whose normalized telephone is already used by any existing owner.
-     * Existing owners' telephones are reduced to the same canonical form (via
-     * {@link TelephoneNormalizer#canonicalize(String)}) before comparison, so numbers that differ
-     * only in formatting still collide. A collision is reported through a
-     * {@link DuplicateOwnerTelephoneException}, which the {@code ExceptionControllerAdvice} renders
-     * as a 409 Conflict response.
+     * Rejects a create request whose derived {@code identityKey} exactly equals an existing owner's.
+     * The identity key consolidates the former separate telephone, email and household duplicate
+     * checks into a single value: {@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * (householdId or empty)} (see {@link #identityKey(Owner)}). Because the telephone is part of the
+     * key, two members of the same household (same {@code householdId}) with different telephones have
+     * different identity keys and are both allowed; only an exact full-key match is a duplicate. A
+     * collision is reported through a {@link DuplicateOwnerIdentityException}, which the
+     * {@code ExceptionControllerAdvice} renders as a 409 Conflict response.
      *
-     * @param normalizedTelephone the canonical telephone of the owner being created
-     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
+     * @param owner the fully-populated owner being created (telephone, email and household id set)
+     * @throws DuplicateOwnerIdentityException if an existing owner has the same identity key
      */
-    private void rejectDuplicateTelephone(String normalizedTelephone) {
-        boolean duplicate = existingOwnerMatches(
-            owner -> owner.getTelephone() == null ? null : telephoneNormalizer.canonicalize(owner.getTelephone()),
-            normalizedTelephone);
+    private void rejectDuplicateIdentity(Owner owner) {
+        String key = identityKey(owner);
+        boolean duplicate = existingOwnerMatches(this::identityKey, key);
         if (duplicate) {
-            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+            throw new DuplicateOwnerIdentityException(key);
         }
     }
 
     /**
-     * Rejects a create request whose normalized (lower-cased) email is already used by any existing
-     * owner. Existing owners' emails are reduced to the same canonical form (via
-     * {@link EmailNormalizer#normalize(String)}, i.e. lower-cased) before comparison, so addresses
-     * that differ only in casing still collide. Owners without an email are ignored, and a request
-     * without an email is never rejected. A collision is reported through a
-     * {@link DuplicateOwnerEmailException}, which the {@code ExceptionControllerAdvice} renders as a
-     * 409 Conflict response.
+     * Reduces an owner to its derived {@code identityKey}, formatted
+     * {@code '<normalizedTelephone>|<email>|<householdId>'}: the owner's telephone reduced to its
+     * canonical E.164 form (see {@link TelephoneNormalizer#canonicalize(String)}), the owner's
+     * normalized (lower-cased) email or the empty string when absent (see
+     * {@link EmailNormalizer#normalize(String)}), and the owner's {@code householdId} or the empty
+     * string when absent, joined by {@code '|'}. Two owners are duplicates exactly when their whole
+     * identity keys are equal. The key never contains {@code null} segments, so the create endpoint's
+     * single duplicate check compares this one value across owners.
      *
-     * @param normalizedEmail the canonical (lower-cased) email of the owner being created, or
-     * {@code null} when none was supplied
-     * @throws DuplicateOwnerEmailException if another owner already uses this email
+     * @param owner the owner to derive the identity key for
+     * @return the owner's identity key
      */
-    private void rejectDuplicateEmail(String normalizedEmail) {
-        if (normalizedEmail == null) {
-            return;
-        }
-        boolean duplicate = existingOwnerMatches(
-            owner -> emailNormalizer.normalize(owner.getEmail()),
-            normalizedEmail);
-        if (duplicate) {
-            throw new DuplicateOwnerEmailException(normalizedEmail);
-        }
+    private String identityKey(Owner owner) {
+        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
+        String normalizedEmail = emailNormalizer.normalize(owner.getEmail());
+        String email = normalizedEmail == null ? "" : normalizedEmail;
+        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + household;
     }
 
     /**
@@ -547,60 +539,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create request that shares a household with an existing owner: another owner already
-     * has the same {@code lastName} and the same {@code address}. Both values are compared in
-     * canonical form (case-insensitive with surrounding and internal whitespace collapsed to a single
-     * space, see {@link #canonicalizeHousehold(String)}), so values that differ only in casing or
-     * spacing still collide. A collision is reported through a {@link DuplicateOwnerHouseholdException},
-     * which the {@code ExceptionControllerAdvice} renders as a 409 Conflict response. Callers skip this
-     * check when the request opts in via {@code sharesHousehold}.
-     *
-     * @param lastName the last name of the owner being created
-     * @param address the address of the owner being created
-     * @throws DuplicateOwnerHouseholdException if another owner already shares the household
-     */
-    private void rejectDuplicateHousehold(String lastName, String address) {
-        String canonicalLastName = canonicalizeHousehold(lastName);
-        String canonicalAddress = canonicalizeHousehold(address);
-        String key = householdKey(lastName, address);
-        if (key == null) {
-            return;
-        }
-        boolean duplicate = existingOwnerMatches(
-            owner -> householdKey(owner.getLastName(), owner.getAddress()), key);
-        if (duplicate) {
-            throw new DuplicateOwnerHouseholdException(canonicalLastName, canonicalAddress);
-        }
-    }
-
-    /**
-     * Delimiter joining the canonical household fields into a single comparison key. A run of
-     * whitespace is collapsed to a single space by {@link #canonicalizeHousehold(String)}, so this
-     * newline can never occur inside a canonical value and the two fields cannot bleed into one
+     * Delimiter joining the canonical household fields when deriving the shared {@code householdId}.
+     * A run of whitespace is collapsed to a single space by {@link #canonicalizeHousehold(String)}, so
+     * this newline can never occur inside a canonical value and the two fields cannot bleed into one
      * another across the join.
      */
     private static final String HOUSEHOLD_KEY_DELIMITER = "\n";
-
-    /**
-     * Reduces an owner's household fields ({@code lastName} and {@code address}) to a single
-     * canonical comparison key - the two canonical fields (see {@link #canonicalizeHousehold(String)})
-     * joined by {@link #HOUSEHOLD_KEY_DELIMITER} - or {@code null} when either field is absent. Two
-     * owners share a household exactly when their household keys are equal, so
-     * {@link #rejectDuplicateHousehold(String, String)} can detect a collision by comparing this one
-     * key through {@link #existingOwnerMatches(Function, String)} rather than the two fields separately.
-     *
-     * @param lastName the owner's last name, or {@code null}
-     * @param address the owner's address, or {@code null}
-     * @return the canonical household key, or {@code null} when either field is {@code null}
-     */
-    private String householdKey(String lastName, String address) {
-        String canonicalLastName = canonicalizeHousehold(lastName);
-        String canonicalAddress = canonicalizeHousehold(address);
-        if (canonicalLastName == null || canonicalAddress == null) {
-            return null;
-        }
-        return canonicalLastName + HOUSEHOLD_KEY_DELIMITER + canonicalAddress;
-    }
 
     /**
      * Reduces a household field ({@code lastName} or {@code address}) to a canonical form for

@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "identityKey", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**
