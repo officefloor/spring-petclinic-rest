@@ -44,8 +44,21 @@ final class CustomerCode {
      * @return the assembled customer code
      */
     static String forRegionAndIdentity(String region, String normalizedTelephone, String lastName) {
-        String hash8 = Sha256.hex(normalizedTelephone + lastName).substring(0, HASH_LENGTH).toUpperCase();
-        return region + "-" + hash8;
+        return region + "-" + hash8(normalizedTelephone, lastName);
+    }
+
+    /**
+     * Computes the HASH8 segment of an owner's identity code: the first {@value #HASH_LENGTH}
+     * upper-case hex characters of {@code SHA-256(normalizedTelephone + lastName)}. Exposed on its own,
+     * rather than only being inlined into {@link #forRegionAndIdentity}, so the single definition of the
+     * identity hash is reused wherever the code's hash segment is needed rather than being re-derived.
+     *
+     * @param normalizedTelephone the owner's already-normalized telephone, hashed with the last name
+     * @param lastName            the owner's last name, hashed with the normalized telephone
+     * @return the HASH8 segment, as {@value #HASH_LENGTH} upper-case hex characters
+     */
+    static String hash8(String normalizedTelephone, String lastName) {
+        return Sha256.hex(normalizedTelephone + lastName).substring(0, HASH_LENGTH).toUpperCase();
     }
 
 }

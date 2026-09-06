@@ -393,9 +393,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private ResponseEntity<OwnerDto> createdOwnerResponse(Owner owner, boolean bulkSignupWarning) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        logOwnerCreated(owner, ownerDto);
         emitOwnerCreatedEvent(owner, ownerDto);
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
@@ -403,6 +401,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the human-readable {@code OWNER_CREATED} audit line on the {@code AUDIT} logger, alongside
+     * the structured event written by {@link #emitOwnerCreatedEvent}. The line records the owner's id,
+     * customer code, registration date, membership level and membership number. Kept as its own method
+     * so the response-builder stays focused on assembling the response and the single audit-line format
+     * lives in one place.
+     *
+     * @param owner the owner that has just been saved, with its generated id populated
+     * @param ownerDto the mapped DTO, source of the derived membership level and number
+     */
+    private void logOwnerCreated(Owner owner, OwnerDto ownerDto) {
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
     }
 
     /**
