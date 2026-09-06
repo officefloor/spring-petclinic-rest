@@ -131,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
         }
         owner.setCustomerCode(buildCustomerCode(owner.getLastName()));
+        owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

@@ -16,6 +16,10 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 /**
  * Captures the rules for what makes two owners the same household. Kept apart from
  * {@link OwnerRestControllerV1} so the request handler stays focused on orchestration while the rules
@@ -44,6 +48,32 @@ final class HouseholdNormalizer {
     static boolean sameHousehold(String lastNameA, String addressA, String lastNameB, String addressB) {
         return normalize(lastNameA).equals(normalize(lastNameB))
             && normalize(addressA).equals(normalize(addressB));
+    }
+
+    /**
+     * Derives the stable household identifier shared by every owner that belongs to the same
+     * household. Because it is computed purely from the {@link #normalize(String) normalized} last
+     * name and address, two owners that {@link #sameHousehold match} always derive the same value,
+     * so joiners can be assigned a shared identifier without coordinating through stored state.
+     *
+     * @param lastName the owner's last name
+     * @param address  the owner's address
+     * @return a stable, opaque hex identifier for the household
+     */
+    static String householdId(String lastName, String address) {
+        String key = normalize(lastName) + "\n" + normalize(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(32);
+            for (int i = 0; i < 16; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            // SHA-256 is a required algorithm on every JVM, so this cannot happen.
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
     }
 
     /**
