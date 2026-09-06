@@ -59,4 +59,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Override
     @Query("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone")
     Collection<Owner> findByTelephone(@Param("telephone") String telephone);
+
+    @Override
+    @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = :email")
+    Collection<Owner> findByEmail(@Param("email") String email);
 }
