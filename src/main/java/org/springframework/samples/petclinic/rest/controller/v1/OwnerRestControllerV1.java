@@ -177,9 +177,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
-        owner.setIdentityKey(buildIdentityKey(owner,
-            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())));
+        owner.setIdentityKey(buildIdentityKey(owner, sharesHousehold));
         rejectDuplicateOwner(owner.getIdentityKey());
         Integer possibleDuplicateOf = findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);

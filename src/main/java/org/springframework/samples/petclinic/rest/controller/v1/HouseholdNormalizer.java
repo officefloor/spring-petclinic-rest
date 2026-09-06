@@ -27,13 +27,20 @@ package org.springframework.samples.petclinic.rest.controller.v1;
  */
 final class HouseholdNormalizer {
 
+    /**
+     * Number of leading hex characters of the household digest kept as the {@link #householdId
+     * household identifier}. The SHA-256 digest is far wider than a household id needs to be, so only
+     * this many characters are retained.
+     */
+    private static final int ID_LENGTH = 32;
+
     private HouseholdNormalizer() {
     }
 
     /**
      * Determines whether two owners, identified by their last name and address, belong to the same
-     * household. Both fields are compared using {@link #normalize(String)}, so the match ignores letter
-     * case and trivial differences in whitespace.
+     * household. Both owners are reduced to their household {@link #key(String, String) key}, so the
+     * match ignores letter case and trivial differences in whitespace.
      *
      * @param lastNameA the first owner's last name
      * @param addressA  the first owner's address
@@ -42,23 +49,36 @@ final class HouseholdNormalizer {
      * @return {@code true} if both owners share the same normalized last name and address
      */
     static boolean sameHousehold(String lastNameA, String addressA, String lastNameB, String addressB) {
-        return normalize(lastNameA).equals(normalize(lastNameB))
-            && normalize(addressA).equals(normalize(addressB));
+        return key(lastNameA, addressA).equals(key(lastNameB, addressB));
     }
 
     /**
      * Derives the stable household identifier shared by every owner that belongs to the same
-     * household. Because it is computed purely from the {@link #normalize(String) normalized} last
-     * name and address, two owners that {@link #sameHousehold match} always derive the same value,
-     * so joiners can be assigned a shared identifier without coordinating through stored state.
+     * household. Because it is computed purely from the household {@link #key(String, String) key},
+     * two owners that {@link #sameHousehold match} always derive the same value, so joiners can be
+     * assigned a shared identifier without coordinating through stored state.
      *
      * @param lastName the owner's last name
      * @param address  the owner's address
      * @return a stable, opaque hex identifier for the household
      */
     static String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "\n" + normalize(address);
-        return Sha256.hex(key).substring(0, 32);
+        return Sha256.hex(key(lastName, address)).substring(0, ID_LENGTH);
+    }
+
+    /**
+     * Composes the canonical household key: the value that is hashed to form the {@link #householdId
+     * household identifier} and compared to decide whether two owners {@link #sameHousehold match}.
+     * It joins the {@link #normalize(String) normalized} last name and address with a delimiter that
+     * a normalized value can never contain, so two owners yield the same key exactly when they belong
+     * to the same household.
+     *
+     * @param lastName the owner's last name
+     * @param address  the owner's address
+     * @return the canonical household key that identifies the household
+     */
+    private static String key(String lastName, String address) {
+        return normalize(lastName) + "\n" + normalize(address);
     }
 
     /**
