@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   household_size INT,
   identity_key VARCHAR(400),
+  birth_date DATE,
   INDEX(last_name)
 ) engine=InnoDB;
 
