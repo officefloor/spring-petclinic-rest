@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d2e4cc086..fbb2a8f57 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+@@ -156,6 +157,39 @@ public interface OwnerMapper {
+         return Region.timezoneForCode(locality(owner));
+     }
+ 
++    /**
++     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. {@code TIER} is
++     * {@code PREMIUM} when the owner's {@link #membershipLevel(Owner) membershipLevel} is {@code 3} or
++     * more, otherwise {@code STANDARD}. {@code AREA} is {@code METRO} when the owner's
++     * {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
++     * {@code REGIONAL}. Deriving both parts from the same locality and membership level keeps the
++     * segment consistent with those fields.
++     *
++     * @param owner the owner being mapped
++     * @return the derived owner segment
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        return ownerSegment(owner, membershipLevel(owner));
++    }
++
++    /**
++     * Derives the owner's {@code ownerSegment} for a given reported {@code membershipLevel}, so a
++     * caller that has shaped the level with cross-owner context (such as the controller's household
++     * cap) can keep the segment's {@code TIER} consistent with the level it reports. {@code TIER} is
++     * {@code PREMIUM} when {@code membershipLevel} is {@code 3} or more, otherwise {@code STANDARD};
++     * {@code AREA} is {@code METRO} when the owner's {@link #locality(Owner) locality} is a known
++     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     *
++     * @param owner the owner being mapped
++     * @param membershipLevel the membership level to base the tier on
++     * @return the derived owner segment
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner, int membershipLevel) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = Region.forCode(locality(owner)).isPresent() ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
++    }
++
+     /**
+      * Derives the owner's {@code membershipPoints} from the owner's factors. Starts at {@code 0},
+      * adds {@code 2} when an email is present, adds {@code 1} when the owner's {@code namesakeCount}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bc5a59012..641ec004f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -415,6 +415,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         int membershipLevel = membershipLevel(owner);
+         ownerDto.setMembershipLevel(membershipLevel);
++        ownerDto.setOwnerSegment(ownerMapper.ownerSegment(owner, membershipLevel));
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
+         ownerDto.setIdentityKey(identityKey(owner));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0ac95ff96..8c97b4f25 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2313,6 +2313,21 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, derived on read and formatted
++                '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or
++                more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is
++                a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
