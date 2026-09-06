@@ -57,6 +57,7 @@ import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityExce
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomains;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.Sha256Hasher;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DisposableEmailDomains disposableEmailDomains;
 
+    private final Sha256Hasher sha256Hasher;
+
     private final IdempotencyKeyStore idempotencyKeyStore;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -105,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  DisposableEmailDomains disposableEmailDomains,
+                                 Sha256Hasher sha256Hasher,
                                  IdempotencyKeyStore idempotencyKeyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -114,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomains = disposableEmailDomains;
+        this.sha256Hasher = sha256Hasher;
         this.idempotencyKeyStore = idempotencyKeyStore;
     }
 
@@ -560,7 +565,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String customerCode(Owner owner) {
         String region = Region.code(owner.getPostcode(), owner.getCity());
-        String hash8 = hashPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
+        String hash8 = sha256Hasher.hexPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
         String base = region + "-" + hash8;
         return deduplicateCustomerCode(base);
     }
@@ -1012,7 +1017,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String key = canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
-        return hashPrefix(key, HOUSEHOLD_ID_LENGTH);
+        return sha256Hasher.hexPrefix(key, HOUSEHOLD_ID_LENGTH);
     }
 
     /**
@@ -1020,29 +1025,4 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code householdId}.
      */
     private static final int HOUSEHOLD_ID_LENGTH = 12;
-
-    /**
-     * Computes the leading {@code length} upper-case hex characters of the SHA-256 digest of the
-     * UTF-8 bytes of {@code input}. This is the shared hashing primitive behind the derived
-     * identifiers that fingerprint owner fields - such as the household-scoped {@code householdId} -
-     * so every such identifier is produced by the same algorithm and differs only in the value it
-     * hashes and the number of hex characters it keeps.
-     *
-     * @param input the value to hash
-     * @param length the number of leading hex characters to keep
-     * @return the leading {@code length} upper-case hex characters of the SHA-256 digest
-     */
-    private String hashPrefix(String input, int length) {
-        try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, length);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
-        }
-    }
 }
