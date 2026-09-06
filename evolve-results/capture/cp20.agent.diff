@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index c7f3b203a..6848142e6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -51,13 +51,27 @@ public class BuildOwner {
+         // Email is optional; when present it must be syntactically valid and is stored lower-cased.
+         request.setEmail(OwnerEmails.normalize(request.getEmail()));
+         Owner owner = ownerMapper.toOwner(request);
+-        // Default the registration date to the server's current date when none is supplied.
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        // The effective registration date is the supplied value, or the server's current date when
++        // none is supplied. Either way it must fall on a business day: a Saturday or Sunday rolls
++        // forward to the next Monday. Everything derived from the registration date (membership
++        // number year, daily create-limit) then sees this adjusted business day.
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            registrationDate = LocalDate.now();
+         }
++        owner.setRegistrationDate(toBusinessDay(registrationDate));
+         built.set(owner);
+     }
+ 
++    /** Roll a weekend date forward to the next Monday; business days are returned unchanged. */
++    private static LocalDate toBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++
+     private static boolean isBlank(String value) {
+         return value == null || value.isBlank();
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
+index b2d153739..9d9d055df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
+@@ -8,9 +8,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
+ 
+ /**
+- * Rejects creating an owner when 100 or more owners have already been created today, counted by
+- * {@link Owner#getRegistrationDate()} against the server's current date. The owner being created is
+- * not yet persisted, so it is not part of the count.
++ * Rejects creating an owner when 100 or more owners already share this owner's registration date,
++ * counted by {@link Owner#getRegistrationDate()}. That date is the adjusted business day, so the
++ * cap is enforced per business day. The owner being created is not yet persisted, so it is not part
++ * of the count.
+  */
+ public class EnsureDailyOwnerLimit {
+ 
+@@ -18,14 +19,15 @@ public class EnsureDailyOwnerLimit {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DailyOwnerLimitException {
+-        LocalDate today = LocalDate.now();
++        LocalDate registrationDate = owner.getRegistrationDate();
+         long count = ownerRepository.findAll().stream()
+                 .filter(existing -> !existing.getId().equals(owner.getId()))
+-                .filter(existing -> today.equals(existing.getRegistrationDate()))
++                .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+                 .count();
+         if (count >= MAX_OWNERS_PER_DAY) {
+             throw new DailyOwnerLimitException(
+-                    MAX_OWNERS_PER_DAY + " or more owners have already been created today");
++                    MAX_OWNERS_PER_DAY + " or more owners have already been created for "
++                            + registrationDate);
+         }
+     }
+ }
