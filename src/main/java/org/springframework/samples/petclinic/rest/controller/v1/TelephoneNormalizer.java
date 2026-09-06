@@ -26,8 +26,10 @@ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsExcep
  * request handler stays focused on orchestration while the rules for what makes a telephone
  * acceptable, and how it is canonicalized, live in one place.
  *
- * <p>The current rule strips every non-digit character and requires exactly ten digits to remain;
- * that stripped, ten-digit value is what gets stored and returned.
+ * <p>The rule canonicalizes to E.164: spaces, dashes and brackets are stripped; a leading '+' with a
+ * country code is kept as-is, otherwise country code '+61' is assumed and a single leading '0' is
+ * dropped from the national digits. The result must be a '+' followed by 8 to 15 digits. That '+' and
+ * digit string is what gets stored and returned.
  */
 final class TelephoneNormalizer {
 
@@ -35,20 +37,34 @@ final class TelephoneNormalizer {
     }
 
     /**
-     * Normalizes a raw telephone value for owner creation. The normalized value is both what gets
-     * stored and what duplicate detection compares against, so two inputs that canonicalize to the
-     * same value are treated as the same telephone.
+     * Normalizes a raw telephone value for owner creation into E.164 form. The normalized value is both
+     * what gets stored and what duplicate detection compares against, so two inputs that canonicalize to
+     * the same value are treated as the same telephone.
+     *
+     * <p>Spaces, dashes and brackets are removed. A value beginning with '+' keeps its leading '+' and
+     * country code; any other value assumes country code '+61' and drops a single leading '0' from the
+     * national digits. The result must be a '+' followed by 8 to 15 digits.
      *
      * @param telephone the raw telephone value submitted by the client
-     * @return the normalized ten-digit telephone number
-     * @throws InvalidOwnerFieldsException if the value does not contain exactly ten digits after stripping
+     * @return the normalized E.164 telephone number (a '+' followed by 8 to 15 digits)
+     * @throws InvalidOwnerFieldsException if the value cannot form a valid E.164 number
      */
     static String normalize(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()\\[\\]{}]", "");
+
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = "+" + cleaned.substring(1);
+        }
+        else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            e164 = "+61" + national;
+        }
+
+        if (!e164.matches("^\\+[0-9]{8,15}$")) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
-        return digits;
+        return e164;
     }
 
 }
