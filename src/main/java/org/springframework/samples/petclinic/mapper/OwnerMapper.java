@@ -74,11 +74,14 @@ public abstract class OwnerMapper {
 
     /**
      * The owner's {@code membershipLevel}: the grade {@code membershipPoints} buckets into — 1 for
-     * 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
+     * 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more — after the household level ceiling, which
+     * caps a member at one above the current maximum level among the household members that already
+     * existed when it joined (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.Memberships#cappedLevel}).
      */
     protected int membershipLevel(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.Memberships
-                .membershipLevel(membershipPoints(owner));
+                .cappedLevel(owner, ownerRepository);
     }
 
     /**

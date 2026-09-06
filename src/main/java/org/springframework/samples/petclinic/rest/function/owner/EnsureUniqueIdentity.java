@@ -6,13 +6,15 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The household duplicate block. Because the household is keyed on (last name, postcode) through the
- * deterministic {@link Households#id(Owner) householdId}, a second owner in a household that already
- * has a member is a duplicate and is rejected (409).
+ * The owner duplicate block, expressed through the {@link OwnerIdentity#key(Owner) identityKey}
+ * (normalized telephone + email + householdId). A second owner whose whole key matches an existing
+ * one is a duplicate and is rejected (409); because the telephone is part of the key, two members of
+ * the same household with different telephones have distinct keys and are both allowed.
  *
  * <p>The request's {@code sharesHousehold} flag bypasses this block: a declared household member is
- * created even though its household already exists. Runs after {@link AssignHousehold} so the new
- * owner's {@code householdId} is set; existing owners are compared by their own computed household.
+ * created even when its identity key already exists. Runs after {@link AssignHousehold} so the new
+ * owner's {@code householdId} (and hence its identity key) is set; existing owners are compared by
+ * their own computed key.
  */
 public class EnsureUniqueIdentity {
 
@@ -21,14 +23,14 @@ public class EnsureUniqueIdentity {
         if (Boolean.TRUE.equals(sharesHousehold)) {
             return; // declared household member: allowed to join an existing household
         }
-        String householdId = owner.getHouseholdId();
+        String identityKey = OwnerIdentity.key(owner);
         boolean inUse = ownerRepository.findAll().stream()
                 .filter(existing -> !existing.getId().equals(owner.getId()))
                 .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted())) // ignore soft-deleted owners
-                .anyMatch(existing -> householdId.equals(Households.id(existing)));
+                .anyMatch(existing -> identityKey.equals(OwnerIdentity.key(existing)));
         if (inUse) {
             throw new DuplicateIdentityException(
-                    "An owner in household " + householdId + " already exists");
+                    "An owner with identity key " + identityKey + " already exists");
         }
     }
 }

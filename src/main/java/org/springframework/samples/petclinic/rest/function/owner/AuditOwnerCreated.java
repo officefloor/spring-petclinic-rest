@@ -21,7 +21,7 @@ public class AuditOwnerCreated {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipPoints={} "
                 + "membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                points, Memberships.membershipLevel(points), membershipNumber(owner));
+                points, Memberships.cappedLevel(owner, ownerRepository), membershipNumber(owner));
     }
 
     /**

@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
+import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Derives the owner's loyalty standing, exposed as two fields the create audit line and the owner
@@ -37,6 +39,12 @@ public final class Memberships {
 
     /** Elapsed fiscal years of tenure that must be exceeded to earn {@link #TENURE_POINTS}. */
     private static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
+
+    /**
+     * How far above the current household maximum a newly joining member's {@code membershipLevel}
+     * may sit: at most one level higher (see {@link #cappedLevel(Owner, OwnerRepository)}).
+     */
+    private static final int LEVEL_CEILING_ABOVE_HOUSEHOLD_MAX = 1;
 
     private Memberships() {
     }
@@ -80,6 +88,33 @@ public final class Memberships {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * The owner's {@code membershipLevel} after applying the household level ceiling: a member's
+     * level cannot exceed one above the current maximum {@code membershipLevel} among the household
+     * members that already existed when this owner joined (those sharing its {@code householdId} with
+     * a lower id, soft-deleted owners excluded). When the owner had no existing household member the
+     * uncapped level stands. The comparison uses each existing member's own capped level, so the
+     * ceiling holds transitively down the household.
+     */
+    public static int cappedLevel(Owner owner, OwnerRepository repository) {
+        int uncapped = membershipLevel(membershipPoints(owner, Households.size(owner, repository)));
+        String householdId = owner.getHouseholdId();
+        Integer id = owner.getId();
+        if (householdId == null || id == null) {
+            return uncapped;
+        }
+        OptionalInt householdMax = repository.findAll().stream()
+                .filter(existing -> existing.getId() != null && existing.getId() < id)
+                .filter(existing -> householdId.equals(existing.getHouseholdId()))
+                .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
+                .mapToInt(existing -> cappedLevel(existing, repository))
+                .max();
+        if (householdMax.isEmpty()) {
+            return uncapped;
+        }
+        return Math.min(uncapped, householdMax.getAsInt() + LEVEL_CEILING_ABOVE_HOUSEHOLD_MAX);
     }
 
     private static boolean hasTenureForPoints(Owner owner) {
