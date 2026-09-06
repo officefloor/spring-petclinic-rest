@@ -23,11 +23,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -80,6 +83,20 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Serializes {@link OwnerCreatedEvent}s to the JSON carried on the {@code AUDIT} logger. A single
+     * shared, thread-safe mapper so every structured audit event is rendered identically.
+     */
+    private static final ObjectMapper AUDIT_MAPPER = new ObjectMapper();
+
+    /**
+     * Monotonically increasing sequence assigned to each owner create, carried as the {@code seq} of
+     * the emitted {@link OwnerCreatedEvent} so the ordering of creates can be reconstructed from the
+     * audit stream. Held per JVM and incremented atomically so concurrent creates receive distinct,
+     * strictly increasing values.
+     */
+    private static final AtomicLong CREATE_SEQUENCE = new AtomicLong();
 
     private final ClinicService clinicService;
 
@@ -221,7 +238,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        emitOwnerCreatedEvent(owner);
         return owner;
+    }
+
+    /**
+     * Emits the immutable structured {@link OwnerCreatedEvent} for a just-created owner as a JSON
+     * object on the {@code AUDIT} logger, alongside the human-readable audit line. The event is
+     * stamped with the next {@link #CREATE_SEQUENCE} value and carries the owner's current
+     * {@linkplain #primaryIdentifier(Owner) primary identifier} and reported
+     * {@linkplain #membershipLevel(Owner) membership level}.
+     *
+     * @param owner the persisted owner just created
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(CREATE_SEQUENCE.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), membershipLevel(owner));
+        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * The owner's current primary identifier carried by the structured {@link OwnerCreatedEvent}.
+     * Today an owner is identified by its {@code customerCode}; when the customer code is later
+     * unified into the member id, this single method returns the member id instead, so the emitted
+     * event switches to the new primary identifier without any other change to the create flow.
+     *
+     * @param owner the owner being audited
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
