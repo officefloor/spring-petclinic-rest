@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHousehold
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -68,6 +69,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * Maximum number of owners a single city may contain. A create that would take the owner's city
+     * to more than this many owners - i.e. the city already holds this many - is rejected with a 409.
+     */
+    private static final int CITY_OWNER_LIMIT = 50;
 
     private final ClinicService clinicService;
 
@@ -130,6 +137,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
             && isDuplicateHousehold(owner.getLastName(), owner.getAddress())) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+        if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
+            throw new OwnerCityFullException(owner.getCity());
         }
         owner.setCustomerCode(buildCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(HouseholdNormalizer.householdId(owner.getLastName(), owner.getAddress()));
@@ -239,6 +249,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> HouseholdNormalizer.sameHousehold(
                 lastName, address, existing.getLastName(), existing.getAddress()));
+    }
+
+    /**
+     * Counts how many owners already live in the supplied city, compared case-insensitively. Used to
+     * enforce the per-city capacity limit when a new owner is created.
+     *
+     * @param city the submitted owner's city
+     * @return the number of existing owners in that city, ignoring case
+     */
+    private long countOwnersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

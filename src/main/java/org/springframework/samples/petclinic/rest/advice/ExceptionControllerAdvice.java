@@ -244,6 +244,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link OwnerCityFullException} raised when an owner is created in a city that already
+     * contains 50 or more owners. Returns a 409 Conflict.
+     *
+     * @param e The {@link OwnerCityFullException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(OwnerCityFullException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityFullException(OwnerCityFullException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Owner city at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Describes a single rejected field from a Bean Validation {@link BindingResult} as a
      * {@link ValidationMessageDto}, carrying both a formatted, human-readable message and the field
      * name, rejected value and default message as individual properties.
