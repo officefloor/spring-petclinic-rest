@@ -312,16 +312,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the owner's customer code. The per-city sequence - one more than the number of owners
-     * already in the owner's city - is drawn from stored state here, and the code itself is composed
-     * by {@link CustomerCode}.
+     * Assigns the owner's customer code, formatted {@code <REGION>-<HASH8>}. The region is derived
+     * from the owner's postcode (falling back to its city), and the code itself - region plus the
+     * hash of the owner's normalized telephone and last name - is composed by {@link CustomerCode}.
      *
      * @param owner the normalized owner about to be created
      * @return the assigned customer code
      */
     private String buildCustomerCode(Owner owner) {
-        int sequence = (int) countOwnersInCity(owner.getCity()) + 1;
-        return CustomerCode.forSequence(owner.getCity(), owner.getLastName(), sequence);
+        String region = OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity());
+        return CustomerCode.forRegionAndIdentity(region, owner.getTelephone(), owner.getLastName());
     }
 
     /**

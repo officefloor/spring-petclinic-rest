@@ -19,37 +19,33 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 /**
  * Composes an owner's customer code. Kept apart from {@link OwnerRestControllerV1} so the request
  * handler stays focused on orchestration while the rule for how a customer code is composed lives in
- * one place, alongside the other owner-field derivations. The controller supplies the pieces that
- * depend on stored state (such as the per-city sequence); this helper only assembles the code.
+ * one place, alongside the other owner-field derivations. The controller supplies the region (derived
+ * from the owner's postcode) and the identity fields; this helper assembles the code.
  *
- * <p>The code is formatted {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three
- * letters of the city, LAST3 the upper-cased first three letters of the last name, and NNNN a
- * per-city 4-digit zero-padded sequence (for example {@code SYD-SMI-0007}).
+ * <p>The code is formatted {@code <REGION>-<HASH8>}: REGION is the owner's region code (derived from
+ * the postcode) and HASH8 is the first eight upper-case hex characters of the SHA-256 digest over the
+ * owner's normalized telephone followed by its last name (for example {@code NSW-1A2B3C4D}).
  */
 final class CustomerCode {
+
+    /** Number of upper-case hex characters of the SHA-256 digest that form the HASH8 segment. */
+    private static final int HASH_LENGTH = 8;
 
     private CustomerCode() {
     }
 
     /**
-     * Assembles the customer code for an owner from its city, last name and the per-city sequence
-     * number the owner is being assigned.
+     * Assembles the customer code for an owner from its region and identity fields. The HASH8 segment
+     * is the first eight upper-case hex characters of {@code SHA-256(normalizedTelephone + lastName)}.
      *
-     * @param city     the owner's city, whose first three letters form the CITY3 segment
-     * @param lastName the owner's last name, whose first three letters form the LAST3 segment
-     * @param sequence the owner's per-city sequence number, rendered as the 4-digit NNNN segment
+     * @param region              the owner's region code, forming the REGION segment
+     * @param normalizedTelephone the owner's already-normalized telephone, hashed with the last name
+     * @param lastName            the owner's last name, hashed with the normalized telephone
      * @return the assembled customer code
      */
-    static String forSequence(String city, String lastName, int sequence) {
-        return String.format("%s-%s-%04d", prefix3(city), prefix3(lastName), sequence);
-    }
-
-    /**
-     * Returns the upper-cased first three letters of {@code value} (fewer when {@code value} is
-     * shorter than three characters).
-     */
-    private static String prefix3(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    static String forRegionAndIdentity(String region, String normalizedTelephone, String lastName) {
+        String hash8 = Sha256.hex(normalizedTelephone + lastName).substring(0, HASH_LENGTH).toUpperCase();
+        return region + "-" + hash8;
     }
 
 }

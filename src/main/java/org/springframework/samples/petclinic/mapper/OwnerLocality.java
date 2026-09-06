@@ -48,6 +48,23 @@ public final class OwnerLocality {
     }
 
     /**
+     * Returns the owner's locality (region) as recorded in its customer code, whose
+     * leading segment (before the first {@code '-'}) is the region derived when the
+     * owner was created. Deriving the locality from the customer code keeps it in step
+     * with the region-and-hash identity rather than re-deriving it independently.
+     *
+     * @param customerCode the owner's customer code, formatted {@code <REGION>-<HASH8>}
+     * @return the REGION segment of the customer code, or "UNKNOWN" when it is absent
+     */
+    public static String forCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? customerCode : customerCode.substring(0, dash);
+    }
+
+    /**
      * Returns the canonical region for the given city, or "UNKNOWN" when the city
      * is not in the fixed table (or is {@code null}).
      *
