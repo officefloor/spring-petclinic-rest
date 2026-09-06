@@ -51,11 +51,25 @@ public class BuildOwner {
         // Email is optional; when present it must be syntactically valid and is stored lower-cased.
         request.setEmail(OwnerEmails.normalize(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
-        // Default the registration date to the server's current date when none is supplied.
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
+        // The effective registration date is the supplied value, or the server's current date when
+        // none is supplied. Either way it must fall on a business day: a Saturday or Sunday rolls
+        // forward to the next Monday. Everything derived from the registration date (membership
+        // number year, daily create-limit) then sees this adjusted business day.
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = LocalDate.now();
         }
+        owner.setRegistrationDate(toBusinessDay(registrationDate));
         built.set(owner);
+    }
+
+    /** Roll a weekend date forward to the next Monday; business days are returned unchanged. */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     private static boolean isBlank(String value) {
