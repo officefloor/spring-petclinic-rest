@@ -1,6 +1,14 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Runs first. When the 'Idempotency-Key' header repeats a key already seen, short-circuit with a
+# 200 replay of the originally created owner (before the duplicate check below would 409); otherwise
+# publish the key for RecordIdempotency and continue building.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
+  govern: [ transaction ]
+  next: build
+
 build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
@@ -50,6 +58,13 @@ assignPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Owner is now persisted (id assigned); remember it against the Idempotency-Key (if any) so a repeat
+# replays this owner. No-op when the request carried no key.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
   govern: [ transaction ]
   next: audit
 
