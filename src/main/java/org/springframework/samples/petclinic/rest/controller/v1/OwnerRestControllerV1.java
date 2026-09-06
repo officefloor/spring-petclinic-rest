@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -57,6 +58,14 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Basic syntactic check for an email address: a non-empty local part, an '@', and a domain with
+     * at least one dot and a two-or-more letter top-level label. Case is ignored here; accepted
+     * addresses are lower-cased before being stored.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     private final ClinicService clinicService;
 
@@ -108,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
@@ -164,6 +174,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return digits;
     }
 
+    /**
+     * Normalizes an optional email address for owner creation. Email is optional, so a missing or
+     * blank value is left untouched. When a value is supplied it must be a syntactically valid
+     * address; the accepted value is lower-cased before it is stored and returned.
+     *
+     * @param email the raw email value submitted by the client, or {@code null}
+     * @return the lower-cased email, or the original blank/{@code null} value when none was supplied
+     * @throws InvalidOwnerFieldsException if a non-blank value is not a syntactically valid address
+     */
+    private String normalizeEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return email;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return email.toLowerCase();
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
@@ -176,6 +205,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
