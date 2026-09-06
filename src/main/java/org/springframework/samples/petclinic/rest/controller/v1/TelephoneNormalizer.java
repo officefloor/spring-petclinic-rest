@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 
@@ -30,8 +31,23 @@ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsExcep
  * country code is kept as-is, otherwise country code '+61' is assumed and a single leading '0' is
  * dropped from the national digits. The result must be a '+' followed by 8 to 15 digits. That '+' and
  * digit string is what gets stored and returned.
+ *
+ * <p>For the country codes with a known fixed-length numbering plan the national number (the digits
+ * that follow the country code) must additionally be exactly the expected length: '+61' (Australia)
+ * requires 9 national digits and '+1' (NANP) requires 10. A value whose national-number length is
+ * wrong for its country is rejected as an invalid telephone.
  */
 final class TelephoneNormalizer {
+
+    /**
+     * Country codes (including the leading '+') whose numbering plan fixes the national-number length,
+     * mapped to that required number of national digits. A normalized number beginning with one of
+     * these country codes must carry exactly this many digits after the country code. Country codes
+     * absent from this map are not length-checked beyond the general 8-to-15 digit E.164 bound.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY_CODE = Map.of(
+        "+61", 9,
+        "+1", 10);
 
     private TelephoneNormalizer() {
     }
@@ -63,6 +79,16 @@ final class TelephoneNormalizer {
 
         if (!e164.matches("^\\+[0-9]{8,15}$")) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        for (Map.Entry<String, Integer> plan : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
+            String countryCode = plan.getKey();
+            if (e164.startsWith(countryCode)) {
+                int nationalLength = e164.length() - countryCode.length();
+                if (nationalLength != plan.getValue()) {
+                    throw new InvalidOwnerFieldsException(List.of("telephone"));
+                }
+                break;
+            }
         }
         return e164;
     }
