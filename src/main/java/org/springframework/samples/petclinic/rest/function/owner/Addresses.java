@@ -42,4 +42,28 @@ final class Addresses {
         }
         return sb.toString();
     }
+
+    /**
+     * Normalize a single address line, returning {@code null} (rather than an empty string) for a
+     * {@code null} or blank value — so an absent structured line is stored as {@code null}.
+     */
+    static String normalizeToNull(String value) {
+        String normalized = normalize(value);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Compose the effective address, preferring the structured fields when present. When
+     * {@code addressLine1} is non-blank the result is its normalized form, with a single space and
+     * the normalized {@code addressLine2} appended when that line is present; otherwise it falls back
+     * to the normalized flat {@code address}. Returns an empty string when none is supplied.
+     */
+    static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (!line1.isEmpty()) {
+            String line2 = normalize(addressLine2);
+            return line2.isEmpty() ? line1 : line1 + " " + line2;
+        }
+        return normalize(address);
+    }
 }

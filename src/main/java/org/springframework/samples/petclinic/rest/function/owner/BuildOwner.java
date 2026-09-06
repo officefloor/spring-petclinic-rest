@@ -27,9 +27,16 @@ public class BuildOwner {
         // Publish the request-only 'sharesHousehold' flag for the household duplicate check.
         // Not part of the Owner entity, so it travels as a separate variable.
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
-        // Normalize the address up front so the required-field check below rejects an address that
-        // is blank once normalized, and every later comparison sees the stored normalized form.
-        request.setAddress(Addresses.normalize(request.getAddress()));
+        // Normalize the address fields up front. The structured 'addressLine1'/'addressLine2' are
+        // preferred over the flat 'address' when supplied; the composed 'address' is the normalized
+        // 'addressLine1' with the normalized 'addressLine2' appended (single space) when present, and
+        // falls back to the normalized flat 'address' otherwise. Composing here means the required
+        // check below rejects an address that is blank in both forms, and every later comparison sees
+        // the stored normalized form.
+        request.setAddressLine1(Addresses.normalizeToNull(request.getAddressLine1()));
+        request.setAddressLine2(Addresses.normalizeToNull(request.getAddressLine2()));
+        request.setAddress(Addresses.compose(
+                request.getAddressLine1(), request.getAddressLine2(), request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");

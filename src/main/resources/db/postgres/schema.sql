@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       first_name TEXT,
                                       last_name  TEXT,
                                       address    TEXT,
+                                      address_line_1 TEXT,
+                                      address_line_2 TEXT,
                                       city       TEXT,
                                       telephone  TEXT,
                                       email      TEXT,
