@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5171ca52c..5ae00c5d0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -51,6 +51,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplay.forE164(owner.getTelephone()))")
+     @Mapping(target = "ageBand",
+         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.forOwner(owner))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegment.forOwner(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 000000000..b68cb9b89
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++import java.util.Set;
++
++/**
++ * Derives an owner's segment, formatted {@code <TIER>_<AREA>}, from the owner's
++ * membership level and locality (region). Kept as a plain static helper - rather
++ * than a method on {@link OwnerMapper} - so MapStruct does not mistake it for an
++ * implicit property mapping.
++ *
++ * <p>TIER is {@code PREMIUM} when the owner's {@link MembershipLevel} is
++ * {@value #PREMIUM_MEMBERSHIP_LEVEL} or more, otherwise {@code STANDARD}. AREA is
++ * {@code METRO} when the owner's {@link OwnerLocality locality} is one of the
++ * known regions ({@code NSW}, {@code VIC} or {@code QLD}), otherwise
++ * {@code REGIONAL}. The result is therefore one of {@code PREMIUM_METRO},
++ * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    /** Membership level at or above which the owner is in the PREMIUM tier. */
++    private static final int PREMIUM_MEMBERSHIP_LEVEL = 3;
++
++    /** Known regions that place the owner in the METRO area. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Returns the owner's segment, formatted {@code <TIER>_<AREA>}.
++     *
++     * @param owner the owner whose segment to derive
++     * @return one of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
++     *         {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}
++     */
++    public static String forOwner(Owner owner) {
++        String tier = MembershipLevel.forOwner(owner) >= PREMIUM_MEMBERSHIP_LEVEL ? "PREMIUM" : "STANDARD";
++        String region = OwnerLocality.forCustomerCode(owner.getCustomerCode());
++        String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0f10c41a4..43c3c8469 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2313,6 +2313,18 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, derived on read and formatted
++                '<TIER>_<AREA>': one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL',
++                'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD),
++                otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
