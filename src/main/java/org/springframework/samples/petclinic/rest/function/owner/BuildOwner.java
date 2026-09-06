@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -47,7 +48,12 @@ public class BuildOwner {
         request.setTelephone(telephone);
         // Email is optional; when present it must be syntactically valid and is stored lower-cased.
         request.setEmail(OwnerEmails.normalize(request.getEmail()));
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        // Default the registration date to the server's current date when none is supplied.
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        built.set(owner);
     }
 
     private static boolean isBlank(String value) {
