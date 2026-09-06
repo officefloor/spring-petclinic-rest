@@ -235,11 +235,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicateOf(sharesHousehold ? null : possibleDuplicateOf(owner));
         this.clinicService.saveOwner(owner);
         owner.setHouseholdSize(householdSize(owner));
+        auditOwnerCreated(owner);
+        return owner;
+    }
+
+    /**
+     * Records the audit trail for a just-created owner: the human-readable {@code AUDIT} line and, through
+     * {@link #emitOwnerCreatedEvent(Owner)}, the structured {@link OwnerCreatedEvent}. Holding both audit
+     * outputs in one place - separate from the create flow that produced the owner - keeps the create
+     * pipeline reading as "make the owner, then audit it", and gives the identifiers the audit carries a
+     * single home.
+     *
+     * @param owner the persisted owner just created, with its derived fields populated
+     */
+    private void auditOwnerCreated(Owner owner) {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             membershipLevel(owner), ownerMapper.membershipNumber(owner));
         emitOwnerCreatedEvent(owner);
-        return owner;
     }
 
     /**
@@ -621,21 +634,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String region = Region.code(owner.getPostcode(), owner.getCity());
         String hash8 = sha256Hasher.hexPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
         String base = region + "-" + hash8;
-        return deduplicateCustomerCode(base);
+        return deduplicate(base, Owner::getCustomerCode);
     }
 
     /**
-     * Ensures the given base {@code customerCode} does not collide with an existing owner's
-     * {@code customerCode}. When no existing owner carries the base code it is returned unchanged;
-     * otherwise {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that yields a code
-     * held by no existing owner.
+     * Ensures the given {@code base} identifier does not collide with an existing owner's identifier of
+     * the same kind, read from each owner by {@code identifier}. When no existing owner carries the base
+     * value it is returned unchanged; otherwise {@code '-<n>'} is appended with the smallest {@code n} of
+     * 2 or more that yields a value held by no existing owner. Owners for which {@code identifier} yields
+     * {@code null} are ignored (a {@code null} never collides). Written field-agnostically - like the
+     * create endpoint's other owner scans ({@link #findExistingOwner(Function, String)},
+     * {@link #countOwners(Predicate)}) - so the collision search lives in exactly one place and each
+     * caller supplies only which identifier it de-duplicates.
      *
-     * @param base the computed base customer code, formatted {@code '<REGION>-<HASH8>'}
-     * @return the base code, or a {@code '<base>-<n>'} variant that is unique among existing owners
+     * @param base the computed base identifier to make unique among existing owners
+     * @param identifier reads the identifier of the same kind from an existing owner (may return {@code null})
+     * @return the base value, or a {@code '<base>-<n>'} variant that is unique among existing owners
      */
-    private String deduplicateCustomerCode(String base) {
+    private String deduplicate(String base, Function<Owner, String> identifier) {
         java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(identifier)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
         if (!existing.contains(base)) {

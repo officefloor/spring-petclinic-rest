@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.Luhn;
 
 import java.util.Collection;
 import java.util.List;
@@ -137,6 +138,24 @@ public interface OwnerMapper {
         if (code == null) {
             return Region.code(owner.getPostcode(), owner.getCity());
         }
+        return regionPrefix(code);
+    }
+
+    /**
+     * The {@code REGION} segment of a region-and-hash identity {@code code}: the part before the first
+     * {@code '-'} (e.g. {@code 'NSW'} for {@code 'NSW-1A2B3C4D'}), or the whole {@code code} when it
+     * carries no {@code '-'}. Holding the "read the region back out of the identity code" rule in one
+     * place keeps the derived {@link #locality(Owner) locality} consistent with the code an owner is
+     * issued, and gives the region parse a single home as the identity code's format evolves.
+     *
+     * <p>Declared {@code private} so MapStruct treats it as an internal helper of {@link #locality(Owner)}
+     * rather than as an implicit {@code String}-to-{@code String} mapping method it might auto-apply to
+     * unrelated string properties.
+     *
+     * @param code the region-and-hash identity code the region is read from
+     * @return the leading {@code REGION} segment of the code
+     */
+    private String regionPrefix(String code) {
         int dash = code.indexOf('-');
         return dash >= 0 ? code.substring(0, dash) : code;
     }
@@ -283,10 +302,26 @@ public interface OwnerMapper {
      * @return the formatted fiscal year, or {@code null} when no registration date is present
      */
     default String fiscalYear(Owner owner) {
+        String segment = fiscalYearSegment(owner);
+        return segment == null ? null : "FY" + segment;
+    }
+
+    /**
+     * The two-digit {@code YY} fiscal-year segment of the owner's business-day-adjusted
+     * {@code registrationDate}: the last two digits of its
+     * {@linkplain #fiscalYearNumber(java.time.LocalDate) fiscal year}, zero-padded (e.g. {@code '26'}).
+     * This is the single {@code YY} shared by the {@code fiscalYear} field ({@code 'FY<YY>'}) and the
+     * {@code membershipNumber} ({@code '<customerCode>-M<YY>'}), so the two derive the fiscal year
+     * identically. Returns {@code null} when no registration date is present.
+     *
+     * @param owner the owner being mapped
+     * @return the two-digit fiscal-year segment, or {@code null} when no registration date is present
+     */
+    default String fiscalYearSegment(Owner owner) {
         if (owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearNumber(owner.getRegistrationDate()) % 100);
+        return String.format("%02d", fiscalYearNumber(owner.getRegistrationDate()) % 100);
     }
 
     /**
@@ -302,7 +337,7 @@ public interface OwnerMapper {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYearNumber(owner.getRegistrationDate()) % 100);
+        return owner.getCustomerCode() + "-M" + fiscalYearSegment(owner);
     }
 
     /**
@@ -319,24 +354,7 @@ public interface OwnerMapper {
         if (code == null) {
             return null;
         }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return Luhn.checkDigit(code);
     }
 
     /**
