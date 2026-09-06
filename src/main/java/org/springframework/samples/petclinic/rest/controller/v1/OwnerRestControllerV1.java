@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.IdempotencyKeyStore;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
@@ -433,8 +434,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
      * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} and
-     * {@code capacityWarning} flags, the {@code identityKey} and the {@code possibleDuplicate} pair),
-     * and re-applies the owner's
+     * {@code capacityWarning} flags, the version-2 {@code identity} object grouping the owner's
+     * {@code memberId}, {@code householdId} and {@code identityKey}, the {@code apiVersion} and the
+     * {@code possibleDuplicate} pair), and re-applies the owner's
      * {@code membershipLevel} through the controller ({@link #membershipLevel(Owner)}). Both the
      * create endpoint and the single-owner read endpoint return their owner through this method, so
      * an owner is decorated identically on either path and each derived field is computed in exactly
@@ -451,12 +453,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerDto.setOwnerSegment(ownerMapper.ownerSegment(owner, membershipLevel));
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
-        ownerDto.setIdentityKey(identityKey(owner));
+        ownerDto.setApiVersion(OWNER_IDENTITY_API_VERSION);
+        ownerDto.setIdentity(ownerIdentity(owner));
         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
         ownerDto.setRiskFlag(riskFlag(owner));
         return ownerDto;
+    }
+
+    /**
+     * The version of the owner identity contract carried by the owner response as its top-level
+     * {@code apiVersion}. Version {@code 2} is the release under which the owner's identifiers are
+     * rederived with a version-2 algorithm (mixing in a fixed {@code 'V2'} version tag) and grouped
+     * under the nested {@code identity} object.
+     */
+    private static final int OWNER_IDENTITY_API_VERSION = 2;
+
+    /**
+     * Groups an owner's version-2 identifiers into the nested {@code identity} object carried by the
+     * owner response: its stored {@link Owner#getMemberId() memberId} and
+     * {@link Owner#getHouseholdId() householdId}, and its derived {@link #identityKey(Owner) identityKey}.
+     * Holding the three identifiers together in one object - separate from the flat owner fields - keeps
+     * the response's identity contract in one place, and the identity's {@code identityKey} is computed
+     * from the same single source the create endpoint's duplicate check uses.
+     *
+     * @param owner the persisted owner whose identifiers are grouped
+     * @return the owner's version-2 identity object
+     */
+    private OwnerIdentityDto ownerIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
     }
 
     /**
@@ -681,21 +711,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The canonical region code baked into an owner's identifiers, resolved from the owner's
-     * {@code postcode} (falling back to its {@code city}) through the shared
+     * The version-2 region code baked into an owner's identifiers: the plain region code resolved from
+     * the owner's {@code postcode} (falling back to its {@code city}) through the shared
      * {@link Region#code(String, String)} - the same one place an owner's postcode and city are turned
-     * into a region code. This is the region code as it is embedded <em>inside</em> the identifiers an
-     * owner is issued (the {@code REGION} segment of its {@link #memberId(Owner) memberId}), held in one
-     * place so every identifier derived for an owner keys off the identical region. It is distinct from
-     * the user-facing region reported as the owner's {@code locality} (see
-     * {@link OwnerMapper#locality(Owner)}), which is read back from the issued identity.
+     * into a region code - with the fixed {@link OwnerMapper#IDENTITY_VERSION_TAG 'V2' version tag}
+     * prefixed. This is the region code as it is embedded <em>inside</em> the identifiers an owner is
+     * issued (the {@code REGION} segment of its {@link #memberId(Owner) memberId}, e.g. {@code 'V2NSW'}),
+     * held in one place so every identifier derived for an owner keys off the identical region and no
+     * version-1 identifier is reproduced. It is distinct from the user-facing region reported as the
+     * owner's {@code locality} (see {@link OwnerMapper#locality(Owner)}), which reads the plain region
+     * code back out of the issued identity, without the version tag.
      *
      * @param owner the owner whose identity region code is wanted
-     * @return the canonical region code embedded in the owner's identifiers, or
-     *         {@link Region#UNKNOWN_CODE} when neither the postcode nor the city resolves
+     * @return the version-2 region code embedded in the owner's identifiers (the plain region code, or
+     *         {@link Region#UNKNOWN_CODE} when neither the postcode nor the city resolves, prefixed with
+     *         the {@code 'V2'} version tag)
      */
     private String identityRegionCode(Owner owner) {
-        return Region.code(owner.getPostcode(), owner.getCity());
+        return OwnerMapper.IDENTITY_VERSION_TAG + Region.code(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -999,7 +1032,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Reduces an owner to its derived {@code identityKey}: the full lower-case SHA-256 hex digest (see
-     * {@link Sha256Hasher#hex(String)}) over {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'} -
+     * {@link Sha256Hasher#hex(String)}) over the version-2 input
+     * {@code 'V2|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'} - the fixed
+     * {@link OwnerMapper#IDENTITY_VERSION_TAG 'V2' version tag} mixed in ahead of
      * the owner's telephone reduced to its canonical E.164 form (see
      * {@link TelephoneNormalizer#canonicalize(String)}), the owner's normalized (lower-cased) email or
      * the empty string when absent (see {@link EmailNormalizer#normalize(String)}), and the
@@ -1016,7 +1051,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedEmail = emailNormalizer.normalize(owner.getEmail());
         String email = normalizedEmail == null ? "" : normalizedEmail;
         String lastNameSoundex = soundex.encode(owner.getLastName());
-        return sha256Hasher.hex(telephone + "|" + email + "|" + lastNameSoundex);
+        return sha256Hasher.hex(OwnerMapper.IDENTITY_VERSION_TAG + "|"
+            + telephone + "|" + email + "|" + lastNameSoundex);
     }
 
     /**
@@ -1096,11 +1132,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives the deterministic, shared {@code householdId} for an owner from its {@code lastName}
-     * and {@code postcode}. The identifier is the first 12 upper-case hex characters of the SHA-256
-     * hash of {@code normalizedLastName + '|' + postcode} (see {@link #canonicalizeHousehold(String)}
-     * for the last-name normalization), so every owner with the same last name and postcode -
-     * regardless of casing or spacing - is automatically assigned the identical value. Owners without
-     * a postcode have no household basis and are given no household id ({@code null}).
+     * and {@code postcode}. The identifier is the first 12 upper-case hex characters of the version-2
+     * SHA-256 hash of {@code 'V2' + '|' + normalizedLastName + '|' + postcode} - the fixed
+     * {@link OwnerMapper#IDENTITY_VERSION_TAG 'V2' version tag} mixed in (see
+     * {@link #canonicalizeHousehold(String)} for the last-name normalization) - so every owner with the
+     * same last name and postcode - regardless of casing or spacing - is automatically assigned the
+     * identical value, and no version-1 household id is reproduced. Owners without a postcode have no
+     * household basis and are given no household id ({@code null}).
      *
      * @param owner the owner being created
      * @return the shared household identifier, or {@code null} when the owner has no postcode
@@ -1110,7 +1148,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String key = canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
+        String key = OwnerMapper.IDENTITY_VERSION_TAG + HOUSEHOLD_KEY_DELIMITER
+            + canonicalizeHousehold(owner.getLastName()) + HOUSEHOLD_KEY_DELIMITER + postcode;
         return sha256Hasher.hexPrefix(key, HOUSEHOLD_ID_LENGTH);
     }
 

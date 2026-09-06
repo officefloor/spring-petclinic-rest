@@ -34,10 +34,19 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
-    @Mapping(target = "identityKey", ignore = true)
+    @Mapping(target = "identity", ignore = true)
+    @Mapping(target = "apiVersion", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The fixed version tag mixed into the version-2 owner identifiers. It prefixes the {@code REGION}
+     * segment embedded in the {@code memberId} (e.g. {@code 'V2NSW'}), so the region baked into the
+     * identity is disjoint from any version-1 value while the user-facing {@link #locality(Owner)
+     * locality} read back from it stays the plain region code (e.g. {@code 'NSW'}).
+     */
+    String IDENTITY_VERSION_TAG = "V2";
 
     /**
      * Derives the owner's {@code selfLink}: the canonical link to the owner, formatted
@@ -138,13 +147,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * The {@code REGION} segment of a member id {@code '<REGION><FY><HASH8><CHK>'}: the leading
-     * region-code prefix it was built from (e.g. {@code 'NSW'} for {@code 'NSW261A2B3C4D5'}). The region
-     * code is one of the known {@link Region} names, otherwise {@link Region#UNKNOWN_CODE}, both of which
-     * the member id always begins with, so the prefix is recovered by matching those known codes rather
-     * than by a separator (the format carries none). Holding the "read the region back out of the
-     * identity" rule in one place keeps the derived {@link #locality(Owner) locality} consistent with the
-     * id an owner is issued.
+     * The plain region code of a member id {@code '<REGION><FY><HASH8><CHK>'}, read back out of its
+     * {@code REGION} segment: the version-2 region segment is the fixed
+     * {@link #IDENTITY_VERSION_TAG 'V2' version tag} followed by the plain region code, and this returns
+     * that plain code (e.g. {@code 'NSW'} for {@code 'V2NSW261A2B3C4D5'}). The region code is one of the
+     * known {@link Region} names, otherwise {@link Region#UNKNOWN_CODE}; the member id always begins with
+     * the version tag and one of those codes, so the code is recovered by matching the tagged known codes
+     * rather than by a separator (the format carries none), and the version tag never leaks into the
+     * plain code returned. Holding the "read the region back out of the identity" rule in one place keeps
+     * the derived {@link #locality(Owner) locality} consistent with the id an owner is issued, without
+     * the version tag.
      *
      * <p>Declared {@code private} so MapStruct treats it as an internal helper of {@link #locality(Owner)}
      * rather than as an implicit {@code String}-to-{@code String} mapping method it might auto-apply to
@@ -155,7 +167,7 @@ public interface OwnerMapper {
      */
     private String regionPrefix(String memberId) {
         for (Region region : Region.values()) {
-            if (memberId.startsWith(region.name())) {
+            if (memberId.startsWith(IDENTITY_VERSION_TAG + region.name())) {
                 return region.name();
             }
         }
@@ -313,8 +325,9 @@ public interface OwnerMapper {
     /**
      * The two-digit {@code FY} segment of the owner's {@code fiscalYear}, read from the owner's
      * {@code memberId} when present so the reported fiscal year references the id an owner is issued: it
-     * is the two characters immediately following the id's {@linkplain #regionPrefix(String) region
-     * prefix}. When no member id is present (e.g. seed data) it falls back to the segment derived
+     * is the two characters immediately following the id's version-tagged region segment (the
+     * {@link #IDENTITY_VERSION_TAG 'V2' version tag} and the {@linkplain #regionPrefix(String) region
+     * prefix}). When no member id is present (e.g. seed data) it falls back to the segment derived
      * directly from the {@code registrationDate} ({@link #fiscalYearSegment(Owner)}). Returns
      * {@code null} when neither is available.
      *
@@ -326,7 +339,7 @@ public interface OwnerMapper {
         if (memberId == null) {
             return fiscalYearSegment(owner);
         }
-        int start = regionPrefix(memberId).length();
+        int start = IDENTITY_VERSION_TAG.length() + regionPrefix(memberId).length();
         return memberId.substring(start, start + 2);
     }
 

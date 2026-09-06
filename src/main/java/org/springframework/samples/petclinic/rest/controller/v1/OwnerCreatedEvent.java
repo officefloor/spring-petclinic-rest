@@ -19,12 +19,13 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 /**
  * Immutable structured audit event emitted, alongside the human-readable audit line, when an owner
  * is created. Serialized to the {@code AUDIT} logger as a JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event, schemaVersion}}.
  *
  * <p>{@code seq} is a monotonically increasing sequence number assigned across owner creates, so the
  * ordering of creates can be reconstructed from the audit stream. {@code memberId} carries the owner's
  * primary identifier, its unified member id - populated from that single primary-identifier source in
- * the controller so the audit's identifier has one home.
+ * the controller so the audit's identifier has one home. {@code schemaVersion} stamps the event with
+ * the audit schema it was emitted under, {@code 2} for the version-2 owner identity.
  *
  * <p>Being a record, the event is immutable once constructed: an emitted event can never be mutated.
  *
@@ -33,14 +34,18 @@ package org.springframework.samples.petclinic.rest.controller.v1;
  * @param memberId the owner's primary identifier (its unified member id)
  * @param membershipLevel the owner's reported membership level
  * @param event the event type discriminator, always {@code "OWNER_CREATED"}
+ * @param schemaVersion the audit schema version the event is emitted under, always {@code 2}
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-                               String event) {
+                               String event, int schemaVersion) {
 
     /** The event-type discriminator carried by every owner-created event. */
     public static final String OWNER_CREATED = "OWNER_CREATED";
 
+    /** The audit schema version stamped on every owner-created event (the version-2 owner identity). */
+    public static final int SCHEMA_VERSION = 2;
+
     public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
-        this(seq, ownerId, memberId, membershipLevel, OWNER_CREATED);
+        this(seq, ownerId, memberId, membershipLevel, OWNER_CREATED, SCHEMA_VERSION);
     }
 }

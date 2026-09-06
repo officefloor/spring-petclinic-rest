@@ -2129,6 +2129,54 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 identifiers, grouped together. Each is rederived
+        with a version-2 algorithm that mixes in a fixed 'V2' version tag, so no
+        value produced under version 1 is produced again.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member id, formatted
+            '<REGION><FY><HASH8><CHK>'. REGION is the version-2 region code
+            derived from the postcode (falling back to the city) with the fixed
+            'V2' version tag mixed in. FY is the two-digit fiscal year of the
+            business-day-adjusted registrationDate. HASH8 is the first 8
+            upper-case hex characters of SHA-256 over the normalized telephone
+            followed by lastName. CHK is a single Luhn check digit computed over
+            the digits of '<REGION><FY><HASH8>'. When this base id collides with
+            an existing owner's, '-<n>' is appended with the smallest n of 2 or
+            more that makes it unique.
+          type: string
+          example: 'V2NSW261A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable shared identifier for owners who share a household - the
+            same last name and postcode. Deterministically derived as the first
+            12 upper-case hex characters of SHA-256 over a version-2 input that
+            mixes in a fixed 'V2' version tag with 'normalizedLastName|postcode',
+            so owners with the same last name and postcode automatically receive
+            the same value. Absent when the owner has no postcode.
+          type: string
+          example: '8F14E45FCEEA'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key: the full lower-case SHA-256 hex
+            digest over a version-2 input that mixes in a fixed 'V2' version tag
+            with '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>' (the
+            email segment is empty when absent). Two owners are duplicates
+            exactly when their whole identity keys are equal; a create request
+            whose identity key matches an existing owner's is rejected with 409.
+          type: string
+          example: '75081e2648c06081f40036cec119d35b9232ff73ab34b2d0fd75c473a8ef4fa0'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2186,46 +2234,29 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The owner's unified member id, formatted
-                '<REGION><FY><HASH8><CHK>'. REGION is the region code derived from
-                the postcode (falling back to the city). FY is the two-digit
-                fiscal year of the business-day-adjusted registrationDate. HASH8
-                is the first 8 upper-case hex characters of SHA-256 over the
-                normalized telephone followed by lastName. CHK is a single Luhn
-                check digit computed over the digits of '<REGION><FY><HASH8>'.
-                When this base id collides with an existing owner's, '-<n>' is
-                appended with the smallest n of 2 or more that makes it unique.
-              type: string
-              example: 'NSW261A2B3C4D5'
+                The version of the owner identity contract carried by this
+                response. Always 2 for the version-2 owner identity, under which
+                the identifiers (memberId, identityKey, householdId) are grouped
+                under the nested 'identity' object and are rederived with a
+                version-2 algorithm that mixes in a fixed 'V2' version tag.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
+            identity:
+              title: Identity
               description: >-
-                A stable shared identifier for owners who share a household - the
-                same last name and postcode. Deterministically derived as the
-                first 12 upper-case hex characters of SHA-256 over
-                'normalizedLastName|postcode', so owners with the same last name
-                and postcode automatically receive the same value. Absent when the
-                owner has no postcode.
-              type: string
-              example: '8F14E45FCEEA'
+                The owner's version-2 identifiers, grouped together: the unified
+                memberId, the shared householdId and the derived identityKey.
+                Every identifier is rederived with a version-2 algorithm that
+                mixes in a fixed 'V2' version tag, so no value produced under
+                version 1 is produced again.
               readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key: the full lower-case SHA-256 hex
-                digest over
-                '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>' (the
-                email segment is empty when absent). Two owners are duplicates
-                exactly when their whole identity keys are equal; a create request
-                whose identity key matches an existing owner's is rejected with
-                409.
-              type: string
-              example: '75081e2648c06081f40036cec119d35b9232ff73ab34b2d0fd75c473a8ef4fa0'
-              readOnly: true
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: >-
