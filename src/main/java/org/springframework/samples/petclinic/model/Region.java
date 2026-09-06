@@ -29,17 +29,53 @@ import java.util.Optional;
  */
 public enum Region {
 
-    NSW(2000, 2099),
-    VIC(3000, 3099),
-    QLD(4000, 4099);
+    NSW(2000, 2099, "Australia/Sydney"),
+    VIC(3000, 3099, "Australia/Melbourne"),
+    QLD(4000, 4099, "Australia/Brisbane");
 
     private final int minPostcode;
 
     private final int maxPostcode;
 
-    Region(int minPostcode, int maxPostcode) {
+    private final String timezone;
+
+    Region(int minPostcode, int maxPostcode, String timezone) {
         this.minPostcode = minPostcode;
         this.maxPostcode = maxPostcode;
+        this.timezone = timezone;
+    }
+
+    /**
+     * Returns this region's IANA timezone name from the fixed region-to-timezone table
+     * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
+     * {@code QLD -> Australia/Brisbane}).
+     *
+     * @return the region's IANA timezone name
+     */
+    public String timezone() {
+        return this.timezone;
+    }
+
+    /**
+     * Resolves the IANA timezone name for the given canonical region code from the fixed
+     * region-to-timezone table ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
+     * {@code QLD -> Australia/Brisbane}). This is the one place the region-to-timezone mapping lives,
+     * so every rule that labels an owner by timezone resolves it identically.
+     *
+     * @param code the canonical region code (e.g. {@code "NSW"}), or {@code null}
+     * @return the matching IANA timezone name, or {@code null} when the code is {@code null} or has no
+     *         known timezone (such as {@link #UNKNOWN_CODE})
+     */
+    public static String timezoneForCode(String code) {
+        if (code == null) {
+            return null;
+        }
+        for (Region region : values()) {
+            if (region.name().equals(code)) {
+                return region.timezone();
+            }
+        }
+        return null;
     }
 
     /** Fixed city -> region table; a city absent from this map has no known region. */
