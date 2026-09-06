@@ -6,7 +6,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
  *
  * <p>Implemented in-house (rather than pulling in a codec dependency) so the algorithm is fixed and
  * self-contained, mirroring {@link Soundex}. It is the single definition every code that carries a
- * trailing check digit hangs off — the {@code customerCode}'s {@code checkDigit} today.
+ * trailing check digit hangs off — the {@code memberId}'s CHK segment today.
  */
 public final class Luhn {
 

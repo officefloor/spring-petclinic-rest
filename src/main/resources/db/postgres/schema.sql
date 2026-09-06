@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       email      TEXT,
                                       postcode   TEXT,
                                       registration_date DATE,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       household_id TEXT,
                                       namesake_count INT,
                                       possible_duplicate BOOLEAN,

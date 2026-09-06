@@ -8,16 +8,23 @@ import java.util.Map;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Builds and interprets the owner {@code customerCode}, the single region-and-hash identity every
- * derived value (membership number, its check digit, the create audit line and the {@code locality})
- * now hangs off.
+ * Builds the owner {@code memberId}, the single unified region-and-hash identity every derived value
+ * (the create audit line, the {@code locality} and {@code ownerSegment}) now hangs off. It replaces
+ * the former separate {@code customerCode} and {@code membershipNumber}.
  *
- * <p>The code is {@code <REGION>-<HASH8>} where REGION is the {@link #region(Owner) region} derived
- * from the owner's postcode (falling back to the city, then {@code "UNKNOWN"}) and HASH8 is the first
- * eight upper-case hex characters of {@code SHA-256(normalizedTelephone + lastName)}. Sequence
- * numbers are no longer part of the identity, so the code depends only on the owner's own fields.
+ * <p>The id is {@code <REGION><FY><HASH8><CHK>} (no separators) where:
+ * <ul>
+ * <li>REGION is the {@link #region(Owner) region} derived from the owner's postcode (falling back to
+ * the city, then {@code "UNKNOWN"});</li>
+ * <li>FY is the two-digit fiscal year (starting 1 July) containing the {@code registrationDate};</li>
+ * <li>HASH8 is the first eight upper-case hex characters of
+ * {@code SHA-256(normalizedTelephone + lastName)};</li>
+ * <li>CHK is a single {@link Luhn#checkDigit(String) Luhn check digit} (0-9) computed over the digits
+ * of {@code <REGION><FY><HASH8>}.</li>
+ * </ul>
+ * The identity depends only on the owner's own fields; there are no sequence numbers.
  */
-public final class CustomerCodes {
+public final class MemberIds {
 
     /** Fixed city-to-region table (mirrors the read-only {@code locality} mapping). */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -29,35 +36,20 @@ public final class CustomerCodes {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
-    private CustomerCodes() {
-    }
-
-    /** Builds the {@code <REGION>-<HASH8>} customer code for the owner. */
-    public static String build(Owner owner) {
-        return region(owner) + "-" + hash8(owner);
+    private MemberIds() {
     }
 
     /**
-     * The membership number {@code <customerCode>-M<YY>}, where YY is the last two digits of the
-     * fiscal year (starting 1 July) containing the {@code registrationDate} (e.g. 'NSW-1A2B3C4D-M27').
-     * Returns {@code null} when either the customer code or the registration date is absent (e.g.
-     * legacy seed owners). The single definition the owner response and the create audit line share.
+     * Builds the {@code <REGION><FY><HASH8><CHK>} memberId for the owner (e.g. 'NSW271A2B3C4D5').
+     * Returns {@code null} when the registration date is absent (e.g. legacy seed owners), since the
+     * FY segment cannot be formed without it.
      */
-    public static String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+    public static String build(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-                FiscalYears.of(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * The Luhn {@link Luhn#checkDigit(String) check digit} (0-9) over the digits of the owner's
-     * {@code customerCode}. Returns {@code null} when the customer code is absent (e.g. legacy seed
-     * owners).
-     */
-    public static Integer checkDigit(Owner owner) {
-        return owner.getCustomerCode() == null ? null : Luhn.checkDigit(owner.getCustomerCode());
+        String base = region(owner) + fiscalYear(owner) + hash8(owner);
+        return base + Luhn.checkDigit(base);
     }
 
     /**
@@ -82,16 +74,9 @@ public final class CustomerCodes {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
-    /**
-     * The REGION segment of a customer code (everything before the first {@code '-'}), or the whole
-     * code when it contains no {@code '-'}. Returns {@code null} for a {@code null} code.
-     */
-    public static String regionOf(String customerCode) {
-        if (customerCode == null) {
-            return null;
-        }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? customerCode : customerCode.substring(0, dash);
+    /** The two-digit fiscal-year (FY) segment of the memberId, e.g. "27" for a FY ending in 2027. */
+    private static String fiscalYear(Owner owner) {
+        return String.format("%02d", FiscalYears.of(owner.getRegistrationDate()) % 100);
     }
 
     /** First eight upper-case hex characters of {@code SHA-256(telephone + lastName)}. */

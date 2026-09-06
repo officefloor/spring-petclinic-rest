@@ -9,16 +9,15 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Immutable structured audit event emitted once an owner has been created, alongside the
  * human-readable audit line. It is serialized to a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}} on the dedicated {@code AUDIT}
+ * {@code {seq, ownerId, memberId, membershipLevel, event}} on the dedicated {@code AUDIT}
  * logger (see {@link AuditOwnerCreated}).
  *
  * <p>{@code seq} is a monotonically increasing integer allocated across every create for the life
  * of the application (see {@link #SEQUENCE}). The event carries the owner's <em>current primary
- * identifier</em> — the {@code customerCode} today. That choice lives in one place,
- * {@link #primaryIdentifier(Owner)}: when the customer code is later unified into the memberId,
- * return the memberId there and the event carries the memberId instead.
+ * identifier</em> — the {@code memberId}. That choice lives in one place,
+ * {@link #primaryIdentifier(Owner)}.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
         String event) {
 
     /** The single kind of event this record represents. */
@@ -39,12 +38,11 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
     }
 
     /**
-     * The owner's current primary identifier carried by the event: the {@code customerCode} today.
-     * When the customer code is unified into the memberId, return the memberId here so the event
-     * carries it instead — the single place that choice lives.
+     * The owner's current primary identifier carried by the event: the {@code memberId}. The single
+     * place that choice lives.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /** This event as its JSON object form, for the {@code AUDIT} logger. */

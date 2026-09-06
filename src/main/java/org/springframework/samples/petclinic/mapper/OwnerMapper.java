@@ -49,8 +49,6 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -139,19 +137,12 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code locality} (canonical region string) from the
-     * region-and-hash identity: the REGION segment of the {@code customerCode} (everything
-     * before the first {@code '-'}). Legacy owners with no customer code (e.g. seed data)
-     * fall back to deriving the region directly from postcode, then city, then
-     * {@code "UNKNOWN"}.
+     * Derives the owner's {@code locality} (canonical region string) from the region-and-hash
+     * identity: the REGION segment of the {@code memberId}, which is the region derived from the
+     * owner's postcode (falling back to the city, then {@code "UNKNOWN"}).
      */
     protected String locality(Owner owner) {
-        String region = org.springframework.samples.petclinic.rest.function.owner.CustomerCodes
-                .regionOf(owner.getCustomerCode());
-        if (region != null) {
-            return region;
-        }
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.region(owner);
+        return org.springframework.samples.petclinic.rest.function.owner.MemberIds.region(owner);
     }
 
     /** The lowest {@code membershipLevel} that grades an owner's segment TIER as {@code PREMIUM}. */
@@ -199,17 +190,6 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Builds the membership number '<customerCode>-M<YY>', where YY is the last two digits of the
-     * fiscal year (starting 1 July) containing the registrationDate (e.g. 'NSW-1A2B3C4D-M27').
-     * Returns {@code null} when either the customer code or the registration date is absent (e.g.
-     * legacy seed owners).
-     */
-    protected String membershipNumber(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes
-                .membershipNumber(owner);
-    }
-
-    /**
      * True when more than {@value #BULK_SIGNUP_WARNING_THRESHOLD} other owners have already
      * been created for this owner's {@code registrationDate}, using the same per-day
      * accumulation the daily create limit enforces (the owner itself is excluded). Returns
@@ -245,15 +225,6 @@ public abstract class OwnerMapper {
 
     private static String normalizeCity(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    /**
-     * The Luhn check digit (0-9) computed over the digits contained in the owner's
-     * {@code customerCode}. Returns {@code null} when the customer code is absent (e.g.
-     * legacy seed owners).
-     */
-    protected Integer checkDigit(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.checkDigit(owner);
     }
 
     /**
