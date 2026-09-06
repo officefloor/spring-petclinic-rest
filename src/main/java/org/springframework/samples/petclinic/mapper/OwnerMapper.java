@@ -40,7 +40,7 @@ public interface OwnerMapper {
     /**
      * Builds the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'},
      * where {@code YY} is the last two digits of the {@code registrationDate} year (e.g.
-     * {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer code or the
+     * {@code 'MEL-SMI-0007-M26'}). Returns {@code null} when either the customer code or the
      * registration date is absent.
      *
      * @param owner the owner being mapped
