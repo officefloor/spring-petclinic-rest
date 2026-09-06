@@ -3,15 +3,20 @@ package org.springframework.samples.petclinic.mapper;
 import java.util.Map;
 
 /**
- * Derives an owner's locality (region) from their city using a fixed
- * city-to-region table. Kept as a plain static helper - rather than a method on
- * {@link OwnerMapper} - so MapStruct does not mistake it for an implicit
- * String-to-String property mapping and apply it to unrelated fields.
+ * Derives an owner's locality (region), preferring the postcode: the region is
+ * looked up by postcode range first, and only when the postcode is absent or in
+ * no known range does it fall back to a fixed city-to-region table. This returns
+ * the same region for the known cities but disambiguates cities that share a name.
  *
- * <p>Public, like its sibling {@link MembershipLevel}, so the single city-to-region
- * table can be reused wherever an owner's region is needed rather than being
+ * <p>Kept as a plain static helper - rather than a method on {@link OwnerMapper} -
+ * so MapStruct does not mistake it for an implicit String-to-String property
+ * mapping and apply it to unrelated fields.
+ *
+ * <p>Public, like its sibling {@link MembershipLevel}, so the single region table
+ * can be reused wherever an owner's region is needed rather than being
  * duplicated - callers outside this package derive the region through
- * {@link #forCity(String)} instead of holding their own copy of the table.
+ * {@link #forPostcodeAndCity(String, String)} (or {@link #forCity(String)} when
+ * only the city is available) instead of holding their own copy of the tables.
  */
 public final class OwnerLocality {
 
@@ -19,7 +24,27 @@ public final class OwnerLocality {
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private OwnerLocality() {
+    }
+
+    /**
+     * Returns the canonical region for the given owner, preferring the postcode:
+     * the region is derived from the postcode range first, falling back to the
+     * city-to-region table only when the postcode is absent or in no known range.
+     *
+     * @param postcode the owner's postcode, or {@code null} when none was supplied
+     * @param city the owner's city
+     * @return the derived locality (region)
+     */
+    public static String forPostcodeAndCity(String postcode, String city) {
+        String region = forPostcode(postcode);
+        return region != null ? region : forCity(city);
     }
 
     /**
@@ -31,6 +56,30 @@ public final class OwnerLocality {
      */
     public static String forCity(String city) {
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Returns the region whose postcode range contains the given postcode, or
+     * {@code null} when the postcode is missing, non-numeric or in no known range.
+     */
+    private static String forPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException e) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
 }
