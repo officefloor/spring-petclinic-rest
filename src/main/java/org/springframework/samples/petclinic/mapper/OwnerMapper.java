@@ -54,58 +54,19 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table: the owner's canonical region derived from its city.
-     */
-    static final java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Region -> inclusive 4-digit postcode range {low, high}: NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099.
-     */
-    static final java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-            "NSW", new int[] {2000, 2099},
-            "VIC", new int[] {3000, 3099},
-            "QLD", new int[] {4000, 4099});
-
-    /**
-     * Derives the owner's {@code locality} (canonical region string), preferring the
-     * postcode: the region whose range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099)
-     * contains the owner's postcode wins. When the postcode is absent or in no known
-     * range, it falls back to the fixed city-to-region table
-     * ({@code Sydney->NSW, Melbourne->VIC, Brisbane->QLD}), or {@code "UNKNOWN"} when the
-     * city is not in the table either.
+     * Derives the owner's {@code locality} (canonical region string) from the
+     * region-and-hash identity: the REGION segment of the {@code customerCode} (everything
+     * before the first {@code '-'}). Legacy owners with no customer code (e.g. seed data)
+     * fall back to deriving the region directly from postcode, then city, then
+     * {@code "UNKNOWN"}.
      */
     protected String locality(Owner owner) {
-        String region = regionFromPostcode(owner.getPostcode());
+        String region = org.springframework.samples.petclinic.rest.function.owner.CustomerCodes
+                .regionOf(owner.getCustomerCode());
         if (region != null) {
             return region;
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * The region whose inclusive postcode range contains the given 4-digit postcode, or
-     * {@code null} when the postcode is absent, non-numeric, or in no known range.
-     */
-    private static String regionFromPostcode(String postcode) {
-        if (postcode == null || postcode.isBlank()) {
-            return null;
-        }
-        int value;
-        try {
-            value = Integer.parseInt(postcode.trim());
-        }
-        catch (NumberFormatException ex) {
-            return null;
-        }
-        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-            int[] range = entry.getValue();
-            if (value >= range[0] && value <= range[1]) {
-                return entry.getKey();
-            }
-        }
-        return null;
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.region(owner);
     }
 
     /**
@@ -135,7 +96,7 @@ public abstract class OwnerMapper {
 
     /**
      * Builds the membership number '<customerCode>-M<YY>', where YY is the last two digits of
-     * the registrationDate year (e.g. 'SMI-0007-M26'). Returns {@code null} when either the
+     * the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Returns {@code null} when either the
      * customer code or the registration date is absent (e.g. legacy seed owners).
      */
     protected String membershipNumber(Owner owner) {
