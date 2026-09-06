@@ -86,6 +86,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Carries the welcome notification enqueued for each newly created owner. On a successful create a
+     * single line is emitted on this dedicated {@code NOTIFY} logger naming the owner's id and
+     * {@code memberId}, so the downstream welcome flow can be triggered without an
+     * implementation-specific hook.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Serializes {@link OwnerCreatedEvent}s to the JSON carried on the {@code AUDIT} logger. A single
      * shared, thread-safe mapper so every structured audit event is rendered identically.
      */
@@ -237,7 +245,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         owner.setHouseholdSize(householdSize(owner));
         auditOwnerCreated(owner);
+        enqueueWelcomeNotification(owner);
         return owner;
+    }
+
+    /**
+     * Enqueues the welcome notification for a just-created owner by emitting a single line on the
+     * dedicated {@code NOTIFY} logger carrying the owner's id and {@code memberId}. Held separate from
+     * the audit trail ({@link #auditOwnerCreated(Owner)}) so the welcome flow has its own single home
+     * and the create pipeline reads as "make the owner, audit it, then welcome it".
+     *
+     * @param owner the persisted owner just created, with its derived fields populated
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("Welcome notification enqueued: id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 
     /**
