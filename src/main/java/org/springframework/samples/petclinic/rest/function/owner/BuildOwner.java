@@ -8,6 +8,7 @@ import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.validation.annotation.Validated;
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
-            throws MissingOwnerFieldsException, InvalidTelephoneException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -44,6 +45,8 @@ public class BuildOwner {
                     "Telephone must be exactly 10 digits after removing non-digit characters");
         }
         request.setTelephone(telephone);
+        // Email is optional; when present it must be syntactically valid and is stored lower-cased.
+        request.setEmail(OwnerEmails.normalize(request.getEmail()));
         built.set(ownerMapper.toOwner(request));
     }
 
