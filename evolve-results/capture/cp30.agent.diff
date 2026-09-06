@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0a98bb3f7..c9a99b975 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -42,16 +42,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's {@code locality} from the {@code city} using the shared
+-     * {@link Region#forCity(String) city-to-region} table ({@code Sydney -> NSW},
+-     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns the canonical region code, or
+-     * {@code UNKNOWN} when the city is absent or has no known region.
++     * Derives the owner's {@code locality} by preferring the {@code postcode}: it first looks up the
++     * region by {@link Region#forPostcode(String) postcode range} (NSW 2000-2099, VIC 3000-3099,
++     * QLD 4000-4099), and only falls back to the shared {@link Region#forCity(String) city-to-region}
++     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) when the
++     * postcode is absent or in no known range. Returns the canonical region code, or {@code UNKNOWN}
++     * when neither the postcode nor the city resolves to a known region.
+      *
+      * @param owner the owner being mapped
+      * @return the derived locality
+      */
+     default String locality(Owner owner) {
+-        return Region.forCity(owner.getCity()).map(Region::name).orElse("UNKNOWN");
++        return Region.forPostcode(owner.getPostcode())
++            .or(() -> Region.forCity(owner.getCity()))
++            .map(Region::name)
++            .orElse("UNKNOWN");
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Region.java b/src/main/java/org/springframework/samples/petclinic/model/Region.java
+index 5f728a32f..38d12ca9f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Region.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Region.java
+@@ -70,4 +70,30 @@ public enum Region {
+     public static Optional<Region> forCity(String city) {
+         return city == null ? Optional.empty() : Optional.ofNullable(BY_CITY.get(city));
+     }
++
++    /**
++     * Resolves the region whose postcode range contains the given 4-digit postcode
++     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
++     *
++     * @param postcode the owner's 4-digit postcode, or {@code null}
++     * @return the matching region, or empty when the postcode is {@code null}, not numeric, or in no
++     *         known range
++     */
++    public static Optional<Region> forPostcode(String postcode) {
++        if (postcode == null) {
++            return Optional.empty();
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        } catch (NumberFormatException ex) {
++            return Optional.empty();
++        }
++        for (Region region : values()) {
++            if (region.acceptsPostcode(value)) {
++                return Optional.of(region);
++            }
++        }
++        return Optional.empty();
++    }
+ }
