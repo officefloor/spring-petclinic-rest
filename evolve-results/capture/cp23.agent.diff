@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index acf208ebf..3f3011e0d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -49,8 +49,10 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's {@code membershipTier}. Returns {@code SILVER} when the owner's
+-     * {@code namesakeCount} is {@code 0} and an email is present, otherwise {@code BRONZE}.
++     * Derives the owner's base {@code membershipTier} from the owner's own fields. Returns
++     * {@code SILVER} when the owner's {@code namesakeCount} is {@code 0} and an email is present,
++     * otherwise {@code BRONZE}. The household-based {@code GOLD} upgrade (3+ members sharing a
++     * {@code householdId}) requires the full owner set and is applied by the controller on read.
+      *
+      * @param owner the owner being mapped
+      * @return the derived membership tier
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f5e0c848b..907846dc1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -119,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
++        ownerDto.setMembershipTier(applyHouseholdTier(owner, ownerDto.getMembershipTier()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -151,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
++        ownerDto.setMembershipTier(applyHouseholdTier(owner, ownerDto.getMembershipTier()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -536,6 +538,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param address the address of the owner being created
+      * @return the shared household identifier
+      */
++    /**
++     * The household size at which an owner is upgraded to the {@code GOLD} membership tier. Once an
++     * owner's household - the set of owners sharing the same {@code householdId} - contains this many
++     * or more members, every member of that household reads back as {@code GOLD}.
++     */
++    private static final long GOLD_HOUSEHOLD_SIZE = 3L;
++
++    /**
++     * Applies the household-based {@code GOLD} membership tier override. When the owner belongs to a
++     * household (has a non-null {@code householdId}) whose membership has reached
++     * {@link #GOLD_HOUSEHOLD_SIZE}, the derived tier is {@code GOLD}; otherwise the {@code base} tier
++     * derived by {@link OwnerMapper#membershipTier(Owner)} (the existing {@code SILVER}/{@code BRONZE}
++     * rules) is returned unchanged. Household members are counted by matching {@code householdId}
++     * across all owners, so the count reflects every owner that has joined the household - including
++     * the owner just created.
++     *
++     * @param owner the owner being mapped
++     * @param base the tier derived from the owner's own fields (never {@code GOLD})
++     * @return {@code GOLD} when the owner's household has {@link #GOLD_HOUSEHOLD_SIZE} or more members,
++     *         otherwise {@code base}
++     */
++    private OwnerDto.MembershipTierEnum applyHouseholdTier(Owner owner, OwnerDto.MembershipTierEnum base) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return base;
++        }
++        long members = this.clinicService.findAllOwners().stream()
++            .filter(other -> householdId.equals(other.getHouseholdId()))
++            .count();
++        return members >= GOLD_HOUSEHOLD_SIZE ? OwnerDto.MembershipTierEnum.GOLD : base;
++    }
++
+     private String householdId(String lastName, String address) {
+         String key = canonicalizeHousehold(lastName) + "\n" + canonicalizeHousehold(address);
+         try {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 523041d47..efa9233b4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2144,11 +2144,13 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier, derived on read. 'SILVER' when the
+-                owner's namesakeCount is 0 and an email is present, otherwise
+-                'BRONZE'.
++                The owner's membership tier, derived on read. 'GOLD' when the
++                owner's household (owners sharing the same householdId) has 3 or
++                more members; otherwise 'SILVER' when the owner's namesakeCount
++                is 0 and an email is present, and 'BRONZE' otherwise.
+               type: string
+               enum:
++                - GOLD
+                 - SILVER
+                 - BRONZE
+               example: 'SILVER'
