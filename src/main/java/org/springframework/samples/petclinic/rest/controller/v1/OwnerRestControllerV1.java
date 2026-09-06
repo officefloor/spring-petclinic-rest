@@ -102,6 +102,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated logger for the welcome notification enqueued on a successful create. Emitting it on a
+     * well-known, separately named logger keeps the notification stream addressable independently of the
+     * audit records and the class's diagnostic logging.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED}
      * audit event. It is process-wide (static) so the ordering holds across every owner created,
      * regardless of which controller instance handles the request.
@@ -396,6 +403,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         logOwnerCreated(owner, ownerDto);
         emitOwnerCreatedEvent(owner, ownerDto);
+        enqueueWelcomeNotification(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         ownerDto.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
         HttpHeaders headers = new HttpHeaders();
@@ -438,6 +446,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         catch (JacksonException e) {
             AUDIT.warn("failed to serialize OWNER_CREATED audit event for owner id={}", owner.getId(), e);
         }
+    }
+
+    /**
+     * Enqueues the welcome notification for a freshly created owner by emitting a line on the
+     * {@code NOTIFY} logger that carries the owner's id and member id. Kept as its own method, alongside
+     * the audit emitters, so the response-builder stays focused on assembling the response and the
+     * notification format lives in one place.
+     *
+     * @param owner the owner that has just been saved, with its generated id populated
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("welcome notification enqueued for owner id={} memberId={}",
+            owner.getId(), owner.getMemberId());
     }
 
     /**
