@@ -23,7 +23,7 @@ public class BuildOwner {
             java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper,
-            OwnerRepository ownerRepository, Out<Owner> built)
+            OwnerRepository ownerRepository, Out<Owner> built, Out<Boolean> sharesHousehold)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
@@ -52,6 +52,7 @@ public class BuildOwner {
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName(), ownerRepository));
         built.set(owner);
+        sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
     }
 
     /**
