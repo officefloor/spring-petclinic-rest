@@ -28,12 +28,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.mapper.LuhnCheckDigit.forDigits(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", "
-            + "org.springframework.samples.petclinic.mapper.FiscalYear.twoDigit(owner.getRegistrationDate())))")
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.labelForOwner(owner))")
     @Mapping(target = "membershipPoints",
@@ -41,10 +35,10 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.forOwner(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forCustomerCode(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forMemberId(owner.getMemberId()))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneForRegion("
-            + "org.springframework.samples.petclinic.mapper.OwnerLocality.forCustomerCode(owner.getCustomerCode())))")
+            + "org.springframework.samples.petclinic.mapper.OwnerLocality.forMemberId(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay",

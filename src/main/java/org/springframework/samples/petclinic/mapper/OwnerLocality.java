@@ -54,20 +54,26 @@ public final class OwnerLocality {
     }
 
     /**
-     * Returns the owner's locality (region) as recorded in its customer code, whose
-     * leading segment (before the first {@code '-'}) is the region derived when the
-     * owner was created. Deriving the locality from the customer code keeps it in step
-     * with the region-and-hash identity rather than re-deriving it independently.
+     * Returns the owner's locality (region) as recorded in its member id, whose leading
+     * REGION segment - the run of letters before the two-digit fiscal year - is the
+     * region derived when the owner was created. Deriving the locality from the member id
+     * keeps it in step with the region-and-hash identity rather than re-deriving it
+     * independently. The remaining segments (fiscal year, HASH8, check digit and any
+     * de-duplication suffix) are all digits or a {@code '-'}, so the region is the maximal
+     * leading run of letters.
      *
-     * @param customerCode the owner's customer code, formatted {@code <REGION>-<HASH8>}
-     * @return the REGION segment of the customer code, or "UNKNOWN" when it is absent
+     * @param memberId the owner's member id, formatted {@code <REGION><FY><HASH8><CHK>}
+     * @return the REGION segment of the member id, or "UNKNOWN" when it is absent
      */
-    public static String forCustomerCode(String customerCode) {
-        if (customerCode == null) {
+    public static String forMemberId(String memberId) {
+        if (memberId == null) {
             return "UNKNOWN";
         }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? customerCode : customerCode.substring(0, dash);
+        int end = 0;
+        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
+            end++;
+        }
+        return end == 0 ? "UNKNOWN" : memberId.substring(0, end);
     }
 
     /**

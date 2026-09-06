@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsExcep
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.advice.OwnerDailyLimitException;
+import org.springframework.samples.petclinic.mapper.FiscalYear;
 import org.springframework.samples.petclinic.mapper.OwnerLocality;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
@@ -352,13 +353,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the derived fields that only apply once the owner has cleared the create checks: its
-     * de-duplicated customer code, the number of existing namesakes, the household size once the
+     * de-duplicated member id, the number of existing namesakes, the household size once the
      * new owner is added, and the membership-level ceiling imposed by the household the owner joins.
      *
      * @param owner the normalized owner about to be created
      */
     private void finalizeOwnerForCreate(Owner owner) {
-        owner.setCustomerCode(buildCustomerCode(owner));
+        owner.setMemberId(buildMemberId(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         applyMembershipLevelCap(owner);
@@ -406,27 +407,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Emits the human-readable {@code OWNER_CREATED} audit line on the {@code AUDIT} logger, alongside
      * the structured event written by {@link #emitOwnerCreatedEvent}. The line records the owner's id,
-     * customer code, registration date, membership level and membership number. Kept as its own method
-     * so the response-builder stays focused on assembling the response and the single audit-line format
-     * lives in one place.
+     * member id, registration date and membership level. Kept as its own method so the response-builder
+     * stays focused on assembling the response and the single audit-line format lives in one place.
      *
      * @param owner the owner that has just been saved, with its generated id populated
-     * @param ownerDto the mapped DTO, source of the derived membership level and number
+     * @param ownerDto the mapped DTO, source of the derived membership level
      */
     private void logOwnerCreated(Owner owner, OwnerDto ownerDto) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
     }
 
     /**
      * Emits the immutable, structured {@code OWNER_CREATED} audit event on the {@code AUDIT} logger,
      * alongside the human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code seq} is a
-     * process-wide, monotonically increasing sequence across all creates. Its {@code customerCode}
-     * field carries the owner's <em>current primary identifier</em> - the customer code today, and
-     * whatever supersedes it later (for instance the member id once the two are unified) - as
-     * returned by {@link #primaryIdentifier(Owner)}.
+     * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code seq} is a
+     * process-wide, monotonically increasing sequence across all creates. Its {@code memberId}
+     * field carries the owner's primary identifier as returned by {@link #primaryIdentifier(Owner)}.
      *
      * @param owner the owner that has just been saved, with its generated id populated
      * @param ownerDto the mapped DTO, source of the derived membership level
@@ -443,23 +441,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Returns the owner's current primary identifier - the value the structured audit event carries
-     * as its {@code customerCode}. Today that is the owner's customer code; when the customer code is
-     * later unified into the member id, this is the single place that changes so the emitted event
-     * carries the member id instead.
+     * Returns the owner's primary identifier - the value the structured audit event carries as its
+     * {@code memberId}. This is the owner's unified member id.
      *
      * @param owner the owner whose primary identifier is required
      * @return the owner's current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
-     * Immutable structured payload of an {@code OWNER_CREATED} audit event. The {@code customerCode}
-     * field holds the owner's current primary identifier (see {@link #primaryIdentifier(Owner)}).
+     * Immutable structured payload of an {@code OWNER_CREATED} audit event. The {@code memberId}
+     * field holds the owner's primary identifier (see {@link #primaryIdentifier(Owner)}).
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
@@ -676,42 +672,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the owner's customer code, formatted {@code <REGION>-<HASH8>}. The region is derived
-     * from the owner's postcode (falling back to its city), and the code itself - region plus the
-     * hash of the owner's normalized telephone and last name - is composed by {@link CustomerCode}.
-     * When the composed code collides with an existing owner's customer code, it is de-duplicated by
-     * appending {@code -<n>} with the smallest {@code n} of two or more that makes it unique.
+     * Assigns the owner's member id, formatted {@code <REGION><FY><HASH8><CHK>}. The region is derived
+     * from the owner's postcode (falling back to its city), FY is the two-digit fiscal year of the
+     * (business-day-adjusted) registration date, and the id itself - region, fiscal year, the hash of
+     * the owner's normalized telephone and last name, and the trailing Luhn check digit - is composed
+     * by {@link MemberId}. When the composed id collides with an existing owner's member id, it is
+     * de-duplicated by appending {@code -<n>} with the smallest {@code n} of two or more that makes it
+     * unique.
      *
      * @param owner the normalized owner about to be created
-     * @return the assigned, de-duplicated customer code
+     * @return the assigned, de-duplicated member id
      */
-    private String buildCustomerCode(Owner owner) {
+    private String buildMemberId(Owner owner) {
         String region = OwnerLocality.forPostcodeAndCity(owner.getPostcode(), owner.getCity());
-        String code = CustomerCode.forRegionAndIdentity(region, owner.getTelephone(), owner.getLastName());
-        return deduplicateCustomerCode(code);
+        int fiscalYear = FiscalYear.twoDigit(owner.getRegistrationDate());
+        String id = MemberId.forRegionYearAndIdentity(region, fiscalYear, owner.getTelephone(), owner.getLastName());
+        return deduplicateMemberId(id);
     }
 
     /**
-     * De-duplicates a freshly composed customer code against the codes of all existing owners. When
-     * the code is already unique it is returned unchanged; otherwise {@code -<n>} is appended, using
-     * the smallest {@code n} of two or more that yields a code no existing owner holds.
+     * De-duplicates a freshly composed member id against the ids of all existing owners. When the id is
+     * already unique it is returned unchanged; otherwise {@code -<n>} is appended, using the smallest
+     * {@code n} of two or more that yields an id no existing owner holds.
      *
-     * @param code the composed customer code, before de-duplication
-     * @return the same code when unique, otherwise the code with the smallest available {@code -<n>} suffix
+     * @param id the composed member id, before de-duplication
+     * @return the same id when unique, otherwise the id with the smallest available {@code -<n>} suffix
      */
-    private String deduplicateCustomerCode(String code) {
-        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+    private String deduplicateMemberId(String id) {
+        Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
             .filter(existing -> existing != null)
             .collect(Collectors.toSet());
-        if (!existingCodes.contains(code)) {
-            return code;
+        if (!existingIds.contains(id)) {
+            return id;
         }
         int suffix = 2;
-        while (existingCodes.contains(code + "-" + suffix)) {
+        while (existingIds.contains(id + "-" + suffix)) {
             suffix++;
         }
-        return code + "-" + suffix;
+        return id + "-" + suffix;
     }
 
     /**
@@ -768,8 +767,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Rolls a registration date forward to a business day. A registration date must fall on a
      * business day, so when the supplied or defaulted date lands on a Saturday, Sunday or a listed
      * public holiday it is moved forward to the next non-holiday weekday; a plain weekday is
-     * returned unchanged. Every value derived from the registration date (such as the membership
-     * number's year segment) and the daily create-limit therefore use the adjusted date.
+     * returned unchanged. Every value derived from the registration date (such as the member id's
+     * fiscal-year segment) and the daily create-limit therefore use the adjusted date.
      *
      * @param date the effective registration date, whether supplied or defaulted to the server date
      * @return the same date when it is a business day, otherwise the next non-holiday weekday

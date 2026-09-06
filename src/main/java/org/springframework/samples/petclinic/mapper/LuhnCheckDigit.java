@@ -7,8 +7,8 @@ package org.springframework.samples.petclinic.mapper;
  * property mapping.
  *
  * <p>Non-digit characters are ignored, so the digit is derived only from the
- * numeric characters of the input (for example the hex digits of an owner's
- * customer code).
+ * numeric characters of the input (for example the digits of an owner's
+ * member id).
  */
 public final class LuhnCheckDigit {
 
