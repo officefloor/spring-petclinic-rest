@@ -2,33 +2,44 @@ package org.springframework.samples.petclinic.mapper;
 
 import org.springframework.samples.petclinic.model.Owner;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 /**
- * Derives an owner's numeric membership level (1 to 3) from the state captured
- * when the owner was created. Kept as a plain static helper - rather than a
- * method on {@link OwnerMapper} - so MapStruct does not mistake it for an
- * implicit property mapping.
+ * Derives an owner's numeric membership level (1 to 4) from the state captured
+ * when the owner was created together with how long the owner has been
+ * registered. Kept as a plain static helper - rather than a method on
+ * {@link OwnerMapper} - so MapStruct does not mistake it for an implicit
+ * property mapping.
  *
  * <p>The level starts at 1, gains 1 when an email address is present, gains a
  * further 1 when the name was unique on create ({@code namesakeCount} is 0), and
- * is capped at 3. Level 4 is reserved for tenure and is never assigned here.
+ * gains a final 1 when the owner's tenure exceeds {@link #TENURE_DAYS_FOR_LEVEL_4}
+ * days. The result is capped at 4. Because a newly created owner has zero tenure,
+ * a new owner never exceeds level 3.
  */
 public final class MembershipLevel {
 
     /** The lowest membership level, assigned to every owner. */
     private static final int BASE_LEVEL = 1;
 
-    /** The highest level assignable on creation; level 4 is reserved for tenure. */
-    private static final int MAX_LEVEL = 3;
+    /** The highest level assignable, reached only with sufficient tenure. */
+    private static final int MAX_LEVEL = 4;
+
+    /** Tenure, in days, that must be exceeded to earn the level 4 bonus. */
+    private static final int TENURE_DAYS_FOR_LEVEL_4 = 365;
 
     private MembershipLevel() {
     }
 
     /**
      * Computes the owner's membership level: 1, plus 1 when an email address is
-     * present, plus 1 when {@code namesakeCount} is 0, capped at {@link #MAX_LEVEL}.
+     * present, plus 1 when {@code namesakeCount} is 0, plus 1 when the owner's
+     * tenure exceeds {@link #TENURE_DAYS_FOR_LEVEL_4} days, capped at
+     * {@link #MAX_LEVEL}.
      *
      * @param owner the owner whose level to derive
-     * @return the numeric membership level between 1 and 3 inclusive
+     * @return the numeric membership level between 1 and 4 inclusive
      */
     public static int forOwner(Owner owner) {
         int level = BASE_LEVEL;
@@ -38,7 +49,27 @@ public final class MembershipLevel {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
+        if (tenureExceedsLevel4Threshold(owner.getRegistrationDate())) {
+            level++;
+        }
         return Math.min(level, MAX_LEVEL);
+    }
+
+    /**
+     * Returns whether the tenure elapsed since {@code registrationDate} is more
+     * than {@link #TENURE_DAYS_FOR_LEVEL_4} days. A {@code null} or future
+     * registration date yields zero (or negative) tenure and therefore never
+     * qualifies.
+     *
+     * @param registrationDate the day the owner was registered, or {@code null}
+     * @return {@code true} when tenure exceeds the level 4 threshold
+     */
+    private static boolean tenureExceedsLevel4Threshold(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return false;
+        }
+        long tenureDays = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return tenureDays > TENURE_DAYS_FOR_LEVEL_4;
     }
 
 }
