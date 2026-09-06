@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d2686f0d7..d8174cfda 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -74,11 +74,14 @@ public abstract class OwnerMapper {
+ 
+     /**
+      * The owner's {@code membershipLevel}: the grade {@code membershipPoints} buckets into — 1 for
+-     * 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
++     * 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more — after the household level ceiling, which
++     * caps a member at one above the current maximum level among the household members that already
++     * existed when it joined (see
++     * {@link org.springframework.samples.petclinic.rest.function.owner.Memberships#cappedLevel}).
+      */
+     protected int membershipLevel(Owner owner) {
+         return org.springframework.samples.petclinic.rest.function.owner.Memberships
+-                .membershipLevel(membershipPoints(owner));
++                .cappedLevel(owner, ownerRepository);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 28156a46b..c6b8ba1f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -21,7 +21,7 @@ public class AuditOwnerCreated {
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipPoints={} "
+                 + "membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                points, Memberships.membershipLevel(points), membershipNumber(owner));
++                points, Memberships.cappedLevel(owner, ownerRepository), membershipNumber(owner));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+index 2052a16b7..e5ad5227a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+@@ -6,13 +6,15 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
+ 
+ /**
+- * The household duplicate block. Because the household is keyed on (last name, postcode) through the
+- * deterministic {@link Households#id(Owner) householdId}, a second owner in a household that already
+- * has a member is a duplicate and is rejected (409).
++ * The owner duplicate block, expressed through the {@link OwnerIdentity#key(Owner) identityKey}
++ * (normalized telephone + email + householdId). A second owner whose whole key matches an existing
++ * one is a duplicate and is rejected (409); because the telephone is part of the key, two members of
++ * the same household with different telephones have distinct keys and are both allowed.
+  *
+  * <p>The request's {@code sharesHousehold} flag bypasses this block: a declared household member is
+- * created even though its household already exists. Runs after {@link AssignHousehold} so the new
+- * owner's {@code householdId} is set; existing owners are compared by their own computed household.
++ * created even when its identity key already exists. Runs after {@link AssignHousehold} so the new
++ * owner's {@code householdId} (and hence its identity key) is set; existing owners are compared by
++ * their own computed key.
+  */
+ public class EnsureUniqueIdentity {
+ 
+@@ -21,14 +23,14 @@ public class EnsureUniqueIdentity {
+         if (Boolean.TRUE.equals(sharesHousehold)) {
+             return; // declared household member: allowed to join an existing household
+         }
+-        String householdId = owner.getHouseholdId();
++        String identityKey = OwnerIdentity.key(owner);
+         boolean inUse = ownerRepository.findAll().stream()
+                 .filter(existing -> !existing.getId().equals(owner.getId()))
+                 .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted())) // ignore soft-deleted owners
+-                .anyMatch(existing -> householdId.equals(Households.id(existing)));
++                .anyMatch(existing -> identityKey.equals(OwnerIdentity.key(existing)));
+         if (inUse) {
+             throw new DuplicateIdentityException(
+-                    "An owner in household " + householdId + " already exists");
++                    "An owner with identity key " + identityKey + " already exists");
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Memberships.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Memberships.java
+index a7f978524..44be70aeb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Memberships.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Memberships.java
+@@ -1,8 +1,10 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
++import java.util.OptionalInt;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Derives the owner's loyalty standing, exposed as two fields the create audit line and the owner
+@@ -38,6 +40,12 @@ public final class Memberships {
+     /** Elapsed fiscal years of tenure that must be exceeded to earn {@link #TENURE_POINTS}. */
+     private static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
+ 
++    /**
++     * How far above the current household maximum a newly joining member's {@code membershipLevel}
++     * may sit: at most one level higher (see {@link #cappedLevel(Owner, OwnerRepository)}).
++     */
++    private static final int LEVEL_CEILING_ABOVE_HOUSEHOLD_MAX = 1;
++
+     private Memberships() {
+     }
+ 
+@@ -82,6 +90,33 @@ public final class Memberships {
+         return 4;
+     }
+ 
++    /**
++     * The owner's {@code membershipLevel} after applying the household level ceiling: a member's
++     * level cannot exceed one above the current maximum {@code membershipLevel} among the household
++     * members that already existed when this owner joined (those sharing its {@code householdId} with
++     * a lower id, soft-deleted owners excluded). When the owner had no existing household member the
++     * uncapped level stands. The comparison uses each existing member's own capped level, so the
++     * ceiling holds transitively down the household.
++     */
++    public static int cappedLevel(Owner owner, OwnerRepository repository) {
++        int uncapped = membershipLevel(membershipPoints(owner, Households.size(owner, repository)));
++        String householdId = owner.getHouseholdId();
++        Integer id = owner.getId();
++        if (householdId == null || id == null) {
++            return uncapped;
++        }
++        OptionalInt householdMax = repository.findAll().stream()
++                .filter(existing -> existing.getId() != null && existing.getId() < id)
++                .filter(existing -> householdId.equals(existing.getHouseholdId()))
++                .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
++                .mapToInt(existing -> cappedLevel(existing, repository))
++                .max();
++        if (householdMax.isEmpty()) {
++            return uncapped;
++        }
++        return Math.min(uncapped, householdMax.getAsInt() + LEVEL_CEILING_ABOVE_HOUSEHOLD_MAX);
++    }
++
+     private static boolean hasTenureForPoints(Owner owner) {
+         LocalDate registrationDate = owner.getRegistrationDate();
+         if (registrationDate == null) {
