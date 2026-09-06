@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8494a5385..0f5ff8b6a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -43,6 +43,8 @@ public abstract class OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "identityKey",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
++    @Mapping(target = "telephoneDisplay",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+index 3057a2ee7..4ba0ebb2c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+@@ -20,7 +20,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  *
+  * <p>So {@code '0412 345 678'} is stored as {@code '+61412345678'}.
+  */
+-final class Telephones {
++public final class Telephones {
+ 
+     // Formatting characters allowed inside a supplied number: spaces, dashes and brackets.
+     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
+@@ -76,4 +76,35 @@ final class Telephones {
+         }
+         return e164;
+     }
++
++    /**
++     * Format a stored E.164 telephone for humans: the country code, a space, then the
++     * national digits grouped in threes (e.g. {@code '+61412345678'} becomes
++     * {@code '+61 412 345 678'}). A recognised country code ({@code '+61'}, {@code '+1'})
++     * is kept as the prefix; otherwise the whole value after the {@code '+'} is grouped.
++     * A {@code null} or non-E.164 value is returned unchanged.
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !E164.matcher(e164).matches()) {
++            return e164;
++        }
++        for (String code : NATIONAL_DIGITS.keySet()) {
++            if (e164.startsWith(code)) {
++                return code + " " + groupInThrees(e164.substring(code.length()));
++            }
++        }
++        return "+" + groupInThrees(e164.substring(1));
++    }
++
++    // Group a run of digits into space-separated groups of three, left to right.
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e16ad822..a6d85981d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,6 +2115,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 'telephone' formatted for humans: the country code, a
++                space, then the national digits grouped in threes. So '+61412345678' is
++                shown as '+61 412 345 678'. The raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
