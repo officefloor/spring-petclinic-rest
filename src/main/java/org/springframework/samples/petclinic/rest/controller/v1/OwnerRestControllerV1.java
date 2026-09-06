@@ -380,16 +380,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * its {@code postcode} (falling back to its {@code city}) through the shared
      * {@link Region#code(String, String)}, and {@code HASH8} is the first 8 upper-case hex characters
      * of the SHA-256 digest of the owner's normalized telephone followed by its last name
-     * (e.g. {@code 'NSW-1A2B3C4D'}). The code carries no sequence number, so it is a deterministic
-     * function of the owner's region and telephone-plus-name identity.
+     * (e.g. {@code 'NSW-1A2B3C4D'}). When this base code collides with an existing owner's
+     * {@code customerCode}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that
+     * makes the result unique (e.g. {@code 'NSW-1A2B3C4D-2'}), so distinct owners always receive
+     * distinct customer codes.
      *
      * @param owner the owner being created, with its telephone already normalized
-     * @return the formatted customer code
+     * @return the formatted, de-duplicated customer code
      */
     private String customerCode(Owner owner) {
         String region = Region.code(owner.getPostcode(), owner.getCity());
         String hash8 = hashPrefix(owner.getTelephone() + owner.getLastName(), CUSTOMER_CODE_HASH_LENGTH);
-        return region + "-" + hash8;
+        String base = region + "-" + hash8;
+        return deduplicateCustomerCode(base);
+    }
+
+    /**
+     * Ensures the given base {@code customerCode} does not collide with an existing owner's
+     * {@code customerCode}. When no existing owner carries the base code it is returned unchanged;
+     * otherwise {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that yields a code
+     * held by no existing owner.
+     *
+     * @param base the computed base customer code, formatted {@code '<REGION>-<HASH8>'}
+     * @return the base code, or a {@code '<base>-<n>'} variant that is unique among existing owners
+     */
+    private String deduplicateCustomerCode(String base) {
+        java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
