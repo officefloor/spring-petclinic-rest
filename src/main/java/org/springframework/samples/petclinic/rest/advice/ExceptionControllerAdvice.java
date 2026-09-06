@@ -265,6 +265,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link OwnerDailyLimitException} raised when an owner is created after 100 or more
+     * owners have already been registered today (by {@code registrationDate}). Returns a 429 Too
+     * Many Requests.
+     *
+     * @param e The {@link OwnerDailyLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(OwnerDailyLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerDailyLimitException(OwnerDailyLimitException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        logger.debug("Owner daily create limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRegistrationDate());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Describes a single rejected field from a Bean Validation {@link BindingResult} as a
      * {@link ValidationMessageDto}, carrying both a formatted, human-readable message and the field
      * name, rejected value and default message as individual properties.
