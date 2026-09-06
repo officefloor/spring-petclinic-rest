@@ -20,7 +20,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  *
  * <p>So {@code '0412 345 678'} is stored as {@code '+61412345678'}.
  */
-final class Telephones {
+public final class Telephones {
 
     // Formatting characters allowed inside a supplied number: spaces, dashes and brackets.
     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
@@ -75,5 +75,36 @@ final class Telephones {
             }
         }
         return e164;
+    }
+
+    /**
+     * Format a stored E.164 telephone for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code '+61412345678'} becomes
+     * {@code '+61 412 345 678'}). A recognised country code ({@code '+61'}, {@code '+1'})
+     * is kept as the prefix; otherwise the whole value after the {@code '+'} is grouped.
+     * A {@code null} or non-E.164 value is returned unchanged.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !E164.matcher(e164).matches()) {
+            return e164;
+        }
+        for (String code : NATIONAL_DIGITS.keySet()) {
+            if (e164.startsWith(code)) {
+                return code + " " + groupInThrees(e164.substring(code.length()));
+            }
+        }
+        return "+" + groupInThrees(e164.substring(1));
+    }
+
+    // Group a run of digits into space-separated groups of three, left to right.
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
     }
 }
