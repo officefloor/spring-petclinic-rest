@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2240cc32d..2b3c68268 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,11 +24,16 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
++
++import tools.jackson.core.JacksonException;
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+@@ -95,6 +100,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED}
++     * audit event. It is process-wide (static) so the ordering holds across every owner created,
++     * regardless of which controller instance handles the request.
++     */
++    private static final AtomicLong AUDIT_EVENT_SEQ = new AtomicLong(0);
++
++    /** Serializes the immutable structured audit event to its canonical JSON representation. */
++    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
++
+     /**
+      * Maximum number of owners a single city may contain. A create that would take the owner's city
+      * to more than this many owners - i.e. the city already holds this many - is rejected with a 409.
+@@ -355,6 +370,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
++        emitOwnerCreatedEvent(owner, ownerDto);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+         HttpHeaders headers = new HttpHeaders();
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -362,6 +378,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Emits the immutable, structured {@code OWNER_CREATED} audit event on the {@code AUDIT} logger,
++     * alongside the human-readable audit line. The event is a JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code seq} is a
++     * process-wide, monotonically increasing sequence across all creates. Its {@code customerCode}
++     * field carries the owner's <em>current primary identifier</em> - the customer code today, and
++     * whatever supersedes it later (for instance the member id once the two are unified) - as
++     * returned by {@link #primaryIdentifier(Owner)}.
++     *
++     * @param owner the owner that has just been saved, with its generated id populated
++     * @param ownerDto the mapped DTO, source of the derived membership level
++     */
++    private void emitOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
++        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(),
++            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(), "OWNER_CREATED");
++        try {
++            AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
++        }
++        catch (JacksonException e) {
++            AUDIT.warn("failed to serialize OWNER_CREATED audit event for owner id={}", owner.getId(), e);
++        }
++    }
++
++    /**
++     * Returns the owner's current primary identifier - the value the structured audit event carries
++     * as its {@code customerCode}. Today that is the owner's customer code; when the customer code is
++     * later unified into the member id, this is the single place that changes so the emitted event
++     * carries the member id instead.
++     *
++     * @param owner the owner whose primary identifier is required
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Immutable structured payload of an {@code OWNER_CREATED} audit event. The {@code customerCode}
++     * field holds the owner's current primary identifier (see {@link #primaryIdentifier(Owner)}).
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++        Integer membershipLevel, String event) {
++    }
++
+     /**
+      * Canonicalizes the submitted address fields into the form that is validated, stored and
+      * returned, before any required-field check or mapping runs. This is the single place a create
