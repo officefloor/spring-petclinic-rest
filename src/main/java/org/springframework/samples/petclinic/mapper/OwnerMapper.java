@@ -56,10 +56,27 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier: {@code "SILVER"} when the owner has no namesakes
-     * (namesakeCount is 0) and an email address is present, otherwise {@code "BRONZE"}.
+     * A household of at least this many owners sharing the same {@code householdId} earns the
+     * {@code "GOLD"} tier.
+     */
+    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+
+    /**
+     * Returns the owner's membership tier: {@code "GOLD"} when the owner belongs to a household
+     * (owners sharing the same {@code householdId}) of at least {@value #GOLD_HOUSEHOLD_SIZE}
+     * members; otherwise {@code "SILVER"} when the owner has no namesakes (namesakeCount is 0) and
+     * an email address is present, else {@code "BRONZE"}.
      */
     protected String membershipTier(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId != null && !householdId.isBlank()) {
+            long members = ownerRepository.findAll().stream()
+                    .filter(existing -> householdId.equals(existing.getHouseholdId()))
+                    .count();
+            if (members >= GOLD_HOUSEHOLD_SIZE) {
+                return "GOLD";
+            }
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
