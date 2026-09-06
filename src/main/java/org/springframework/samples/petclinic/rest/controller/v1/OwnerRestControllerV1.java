@@ -132,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
@@ -292,6 +293,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
         long sequence = this.clinicService.findAllOwners().size() + 1L;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Counts how many existing owners already share the given {@code firstName} and {@code lastName},
+     * compared case-insensitively (using {@link java.util.Locale#ROOT}-independent
+     * {@link String#equalsIgnoreCase(String)}). The count reflects the owners present before the
+     * current create, so a name that is unique on create yields {@code 0}. The value is stored on the
+     * new owner and surfaced as the read-only {@code namesakeCount} field.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of existing owners with the same first and last name (case-insensitive)
+     */
+    private int namesakeCount(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(owner -> equalsIgnoreCase(owner.getFirstName(), firstName)
+                && equalsIgnoreCase(owner.getLastName(), lastName))
+            .count();
+    }
+
+    private boolean equalsIgnoreCase(String a, String b) {
+        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 
     /**
