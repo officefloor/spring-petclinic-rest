@@ -399,8 +399,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Maps a persisted owner to its {@link OwnerDto} and populates the read-only fields that are
-     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} flag,
-     * the {@code identityKey} and the {@code possibleDuplicate} pair), and re-applies the owner's
+     * derived from server-side state rather than stored columns (the {@code bulkSignupWarning} and
+     * {@code capacityWarning} flags, the {@code identityKey} and the {@code possibleDuplicate} pair),
+     * and re-applies the owner's
      * {@code membershipLevel} through the controller ({@link #membershipLevel(Owner)}). Both the
      * create endpoint and the single-owner read endpoint return their owner through this method, so
      * an owner is decorated identically on either path and each derived field is computed in exactly
@@ -414,6 +415,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(membershipLevel(owner));
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
         ownerDto.setIdentityKey(identityKey(owner));
         Integer possibleDuplicateOf = owner.getPossibleDuplicateOf();
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
@@ -685,6 +687,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersInCity(city) >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityAtCapacityException(city);
         }
+    }
+
+    /**
+     * The soft per-city threshold at or above which the read-only {@code capacityWarning} flag is
+     * raised. Once a city already holds this many owners (but fewer than the hard
+     * {@link #MAX_OWNERS_PER_CITY} cap), it is flagged as approaching capacity - a warning well
+     * below the hard rejection at {@link #MAX_OWNERS_PER_CITY}.
+     */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
+    /**
+     * Derives the read-only {@code capacityWarning} flag for an owner: {@code true} when the owner's
+     * city already holds between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and
+     * {@link #MAX_OWNERS_PER_CITY} minus one owners (40 to 49, approaching the hard per-city capacity
+     * limit of {@link #MAX_OWNERS_PER_CITY}), otherwise {@code false}. Uses the same per-city
+     * accumulation as the hard capacity check ({@link #rejectCityAtCapacity(String)}), so the warning
+     * band sits directly below the rejection at {@link #MAX_OWNERS_PER_CITY}.
+     *
+     * @param city the owner's city
+     * @return {@code true} if the city is approaching, but has not reached, its owner capacity
+     */
+    private boolean capacityWarning(String city) {
+        long owners = ownersInCity(city);
+        return owners >= CITY_CAPACITY_WARNING_THRESHOLD && owners < MAX_OWNERS_PER_CITY;
     }
 
     /**
