@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -264,17 +266,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create request whose normalized telephone is already used by any existing owner.
-     * Existing owners' telephones are reduced to the same canonical form (via
-     * {@link TelephoneNormalizer#canonicalize(String)}) before comparison, so numbers that differ
-     * only in formatting still collide. A collision is reported through a
-     * {@link DuplicateOwnerTelephoneException}, which the {@code ExceptionControllerAdvice} renders
-     * as a 409 Conflict response.
-     *
-     * @param normalizedTelephone the canonical telephone of the owner being created
-     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
-     */
-    /**
      * Builds the {@code customerCode} assigned to a newly created owner, formatted
      * {@code '<LAST3>-<NNNN>'}: {@code LAST3} is the upper-cased first three letters of the
      * owner's {@code lastName}, and {@code NNNN} is a global 4-digit zero-padded sequence equal
@@ -289,14 +280,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /**
+     * Rejects a create request whose normalized telephone is already used by any existing owner.
+     * Existing owners' telephones are reduced to the same canonical form (via
+     * {@link TelephoneNormalizer#canonicalize(String)}) before comparison, so numbers that differ
+     * only in formatting still collide. A collision is reported through a
+     * {@link DuplicateOwnerTelephoneException}, which the {@code ExceptionControllerAdvice} renders
+     * as a 409 Conflict response.
+     *
+     * @param normalizedTelephone the canonical telephone of the owner being created
+     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
+     */
     private void rejectDuplicateTelephone(String normalizedTelephone) {
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .map(telephoneNormalizer::canonicalize)
-            .anyMatch(normalizedTelephone::equals);
+        boolean duplicate = existingOwnerMatches(
+            owner -> owner.getTelephone() == null ? null : telephoneNormalizer.canonicalize(owner.getTelephone()),
+            normalizedTelephone);
         if (duplicate) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
         }
+    }
+
+    /**
+     * Reports whether any existing owner already carries the given comparison {@code key}, derived
+     * from each owner by {@code keyExtractor}. Owners for which the extractor yields {@code null}
+     * are ignored. The create endpoint's duplicate checks use this to reduce both an existing owner
+     * and the owner being created to the same canonical key and reject a match.
+     *
+     * @param keyExtractor derives an owner's canonical comparison key (may return {@code null})
+     * @param key the canonical key of the owner being created
+     * @return {@code true} if some existing owner shares the key
+     */
+    private boolean existingOwnerMatches(Function<Owner, String> keyExtractor, String key) {
+        return this.clinicService.findAllOwners().stream()
+            .map(keyExtractor)
+            .filter(Objects::nonNull)
+            .anyMatch(key::equals);
     }
 }

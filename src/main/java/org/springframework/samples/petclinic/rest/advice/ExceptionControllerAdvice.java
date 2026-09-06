@@ -74,6 +74,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Builds a 409 Conflict response for a create request that collides with an existing owner. The
+     * body is a {@link ProblemDetail} carrying {@code detail} and an {@code errors} array naming the
+     * conflicting fields, matching the shape produced for the other owner-creation error responses.
+     *
+     * @param e Object referring to the thrown exception.
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @param detail the human-readable detail message.
+     * @param errors the names of the fields whose values conflicted.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    private ResponseEntity<ProblemDetail> conflict(Exception e, HttpServletRequest request, String detail, List<String> errors) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
+        problemDetail.setProperty("errors", errors);
+        return ResponseEntity.status(status).body(problemDetail);
+    }
+
+    /**
      * Re-throws {@link AccessDeniedException} so Spring Security's {@code ExceptionTranslationFilter}
      * translates it as it normally would - 403 for an authenticated user lacking the required role,
      * or the configured entry point for an anonymous one. Without this, {@link #handleGeneralException}
@@ -204,14 +222,11 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DuplicateOwnerTelephoneException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
         logger.debug("Duplicate owner telephone at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getTelephone());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
+        return this.conflict(e, request, ERROR_DUPLICATE_TELEPHONE, List.of("telephone"));
     }
 
 }
