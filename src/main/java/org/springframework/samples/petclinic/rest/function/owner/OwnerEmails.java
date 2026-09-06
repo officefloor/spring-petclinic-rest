@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
@@ -14,6 +15,10 @@ final class OwnerEmails {
     // Syntactic check: a non-empty local part, a single '@', and a dotted domain,
     // none of the parts containing whitespace or a stray '@'.
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    // Disposable/throwaway email providers are rejected: a real, durable address is required.
+    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+            "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmails() {
     }
@@ -32,6 +37,11 @@ final class OwnerEmails {
         if (!EMAIL.matcher(trimmed).matches()) {
             throw new InvalidEmailException("Email must be a syntactically valid address");
         }
-        return trimmed.toLowerCase(java.util.Locale.ROOT);
+        String normalized = trimmed.toLowerCase(java.util.Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException("Email must not use a disposable-email domain");
+        }
+        return normalized;
     }
 }
