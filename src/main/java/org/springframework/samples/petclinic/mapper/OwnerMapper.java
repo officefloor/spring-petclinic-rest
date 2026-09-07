@@ -39,21 +39,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table used to derive an owner's locality.
-     */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
      * Derives the owner's locality from its city using the fixed city-to-region table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD). Returns the canonical region string,
-     * or {@code 'UNKNOWN'} when the city is not in the table.
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD, see {@link Owner#regionForCity(String)}).
+     * Returns the canonical region string, or {@code 'UNKNOWN'} when the city has no known region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        String region = Owner.regionForCity(owner.getCity());
+        return region != null ? region : "UNKNOWN";
     }
 
     /**

@@ -171,6 +171,28 @@ public class Owner extends Person {
         return identityKey(this.telephone, this.email, this.householdId);
     }
 
+    /**
+     * Fixed city-to-region table: the canonical region each known city belongs to
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). A city
+     * absent from this table has no known region.
+     */
+    private static final Map<String, String> CITY_REGIONS = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Resolves the canonical region a city belongs to using the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns the
+     * region string, or {@code null} when the city has no known region. This is the single
+     * definition of the city-to-region mapping, shared by every rule that derives a region
+     * from an owner's city.
+     *
+     * @param city the city to resolve
+     * @return the canonical region, or {@code null} when the city has no known region
+     */
+    public static String regionForCity(String city) {
+        return CITY_REGIONS.get(city);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
