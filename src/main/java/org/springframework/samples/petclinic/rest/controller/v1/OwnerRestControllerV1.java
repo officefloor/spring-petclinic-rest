@@ -247,8 +247,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @param owner the freshly-mapped owner to normalise
      * @return {@code true} if the fields are valid, or {@code false} if the address
-     *         is blank after normalisation or the telephone cannot form a valid
-     *         E.164 number, in which case the request must be rejected with
+     *         is blank after normalisation, the telephone cannot form a valid
+     *         E.164 number, or a supplied registration date is later than the
+     *         server date, in which case the request must be rejected with
      *         {@code 400 Bad Request}
      */
     private boolean normalizeNewOwner(Owner owner) {
@@ -270,6 +271,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
+        } else if (owner.getRegistrationDate().isAfter(LocalDate.now())) {
+            return false;
         }
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         return true;
