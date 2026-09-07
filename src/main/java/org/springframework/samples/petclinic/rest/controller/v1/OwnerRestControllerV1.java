@@ -108,12 +108,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        prepareNewOwner(ownerFieldsDto);
+        LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto);
+        prepareNewOwner(ownerFieldsDto, registrationDate);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner, ownerFieldsDto);
@@ -230,7 +229,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @param ownerFieldsDto the submitted owner fields, normalized in place
      */
-    private void prepareNewOwner(OwnerFieldsDto ownerFieldsDto) {
+    private void prepareNewOwner(OwnerFieldsDto ownerFieldsDto, LocalDate registrationDate) {
         ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
@@ -238,7 +237,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateHousehold(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
-        rejectDailyLimitExceeded();
+        rejectDailyLimitExceeded(registrationDate);
+    }
+
+    /**
+     * Determines the effective registration date for a newly submitted owner, adjusted so it always
+     * falls on a business day. The date supplied on the request is used when present, otherwise the
+     * server's current date is used. When that effective date lands on a Saturday or Sunday it is
+     * rolled forward to the following Monday; a weekday is left unchanged. This single adjusted date
+     * is what gets stored as {@code registrationDate} and is what every value derived from it (the
+     * membership number's year segment, the per-day create limit) is computed against.
+     *
+     * @param ownerFieldsDto the submitted owner fields, which may carry a registration date
+     * @return the effective registration date rolled forward to the next business day
+     */
+    private LocalDate effectiveRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
+        LocalDate supplied = ownerFieldsDto.getRegistrationDate();
+        LocalDate effective = supplied != null ? supplied : LocalDate.now();
+        return toBusinessDay(effective);
+    }
+
+    /**
+     * Rolls a date forward to the next business day: a Saturday or Sunday is advanced to the
+     * following Monday, while a weekday is returned unchanged.
+     *
+     * @param date the date to adjust
+     * @return the same date when it is a weekday, otherwise the next Monday
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        java.time.DayOfWeek day = date.getDayOfWeek();
+        if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) {
+            return date.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+        }
+        return date;
     }
 
     /**
@@ -248,18 +279,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final long DAILY_OWNER_LIMIT = 100L;
 
     /**
-     * Rejects a new owner when {@link #DAILY_OWNER_LIMIT} or more owners have already been created
-     * today, counted by {@code registrationDate} against the current date. When the limit has been
-     * reached a {@link DailyOwnerLimitExceededException} is thrown, which the exception advice
-     * renders as a 429 Too Many Requests response.
+     * Rejects a new owner when {@link #DAILY_OWNER_LIMIT} or more owners already carry the given
+     * adjusted business-day {@code registrationDate}. The count is taken against the same adjusted
+     * date the new owner would be stored with, so owners are capped per business day. When the limit
+     * has been reached a {@link DailyOwnerLimitExceededException} is thrown, which the exception
+     * advice renders as a 429 Too Many Requests response.
+     *
+     * @param registrationDate the adjusted business-day registration date of the owner being created
      */
-    private void rejectDailyLimitExceeded() {
-        LocalDate today = LocalDate.now();
+    private void rejectDailyLimitExceeded(LocalDate registrationDate) {
         long count = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         if (count >= DAILY_OWNER_LIMIT) {
-            throw new DailyOwnerLimitExceededException(today);
+            throw new DailyOwnerLimitExceededException(registrationDate);
         }
     }
 
