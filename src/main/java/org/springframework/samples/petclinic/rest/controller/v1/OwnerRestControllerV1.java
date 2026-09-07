@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
@@ -235,6 +236,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateHousehold(ownerFieldsDto);
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
+    }
+
+    /**
+     * The maximum number of owners a single city may hold. Once a city already contains this
+     * many owners, no further owner may be created in it.
+     */
+    private static final long CITY_OWNER_CAPACITY = 50L;
+
+    /**
+     * Rejects a new owner whose city already contains {@link #CITY_OWNER_CAPACITY} or more owners.
+     * Cities are compared case-insensitively, consistent with how per-city owners are counted
+     * elsewhere. When the city is at capacity a {@link CityCapacityExceededException} is thrown,
+     * which the exception advice renders as a 409 Conflict response.
+     *
+     * @param city the city of the owner being created
+     */
+    private void rejectCityAtCapacity(String city) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (count >= CITY_OWNER_CAPACITY) {
+            throw new CityCapacityExceededException(city);
+        }
     }
 
     /**
