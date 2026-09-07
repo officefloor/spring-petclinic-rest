@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -223,6 +224,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @param ownerFieldsDto the submitted owner fields
      */
+    /**
+     * Builds the customer code assigned to a newly created owner. The code is formatted as
+     * {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the upper-cased first three letters of
+     * the owner's last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to
+     * one more than the current number of owners. For example the seventh owner named
+     * {@code 'Smith'} is assigned {@code 'SMI-0007'}.
+     *
+     * @param lastName the owner's last name
+     * @return the formatted customer code
+     */
+    private String nextCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+        long sequence = this.clinicService.findAllOwners().size() + 1L;
+        return String.format("%s-%04d", last3, sequence);
+    }
+
     private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", ownerFieldsDto.getFirstName());
