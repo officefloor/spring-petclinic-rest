@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a4065e314..7d62f8cfd 100644
+Binary files a/src/main/java/org/springframework/samples/petclinic/model/Owner.java and b/src/main/java/org/springframework/samples/petclinic/model/Owner.java differ
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 16c19f385..1dcf4d490 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -120,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+         owner.setNamesakeCount(countNamesakes(owner));
++        owner.setMembershipNumber(membershipNumber(owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -328,6 +329,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", last3, sequence);
+     }
+ 
++    /**
++     * Build the owner's membership number, formatted {@code <customerCode>-M<YY>}
++     * where {@code <customerCode>} is the owner's already-assigned customer code and
++     * YY is the last two digits of the registration date's year (e.g.
++     * {@code SMI-0007-M26}). Evaluated after the customer code and registration date
++     * have been set.
++     *
++     * @param owner the owner being created, with customer code and registration date
++     *              already assigned
++     * @return the assigned membership number
++     */
++    private String membershipNumber(Owner owner) {
++        int yy = owner.getRegistrationDate().getYear() % 100;
++        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
++    }
++
+     /**
+      * Normalise a telephone number to E.164 form: keep a leading '+' and country
+      * code when present, otherwise assume country code '+61' and drop a single
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..e071cafe2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..b7977f246 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..bb253e124 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  membership_number VARCHAR(30),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..2eac545a1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_number TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d924c88d3..5205ca2c1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2133,6 +2133,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The owner's membership number, formatted '<customerCode>-M<YY>'
++                where <customerCode> is the owner's customer code and YY is the
++                last two digits of the registrationDate year.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
