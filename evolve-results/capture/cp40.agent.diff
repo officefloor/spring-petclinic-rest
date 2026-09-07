@@ -1,0 +1,187 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ce9f137c1..929eafdf9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,8 +32,10 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+     @Mapping(target = "checkDigit",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
++    @Mapping(target = "membershipPoints",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate())))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 044c9cada..662514e42 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -16,9 +16,10 @@ public class AuditOwnerCreated {
+     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
++        int points = MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(),
++                owner.getHouseholdSize(), owner.getRegistrationDate());
+         audit.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail(),
+-                        owner.getRegistrationDate()));
++                MembershipLevel.of(points));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+index 9b7702299..f4e6da0f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+@@ -1,19 +1,12 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
+-
+ /**
+- * Numeric membership level for pet owners, from 1 to 4. Every owner starts at level 1; the level
+- * gains 1 when the owner has an email address (non-null, non-blank) and a further 1 when its
+- * {@code namesakeCount} is 0 (no existing owner shares its first and last name). A final level is
+- * awarded for tenure: 1 more when more than 365 days have elapsed since the owner's
+- * {@code registrationDate}, capped at 4. Because a newly created owner's registration date is the
+- * current date, its tenure is zero, so a new owner never exceeds level 3 (an owner with an email and
+- * a {@code namesakeCount} of 0 maxes the pre-tenure factors at level 3, reaching level 4 only once
+- * its tenure passes 365 days). Derived purely from the owner's own stored state
+- * ({@code namesakeCount} is recorded at create time), so it is seed-independent. Used by the owner
+- * mapper to expose {@code membershipLevel} on responses.
++ * Numeric membership level for pet owners, from 1 to 4, derived from an owner's
++ * {@link MembershipPoints}. The points are banded into a level: 1 for 0-1 points, 2 for 2-3 points,
++ * 3 for 4-5 points and 4 for 6 or more points. Because a newly created owner earns no tenure points,
++ * a new owner tops out at 5 points (email, unique name and a household of 3 or more), reaching level
++ * 4 only once its tenure passes 365 days. Used by the owner mapper to expose {@code membershipLevel}
++ * on responses.
+  */
+ public final class MembershipLevel {
+ 
+@@ -21,25 +14,19 @@ public final class MembershipLevel {
+     }
+ 
+     /**
+-     * The membership level for the given namesake count, email and registration date: 1 to start,
+-     * +1 when the email is present (non-null, non-blank), +1 when the namesake count is exactly 0,
+-     * +1 when the tenure since {@code registrationDate} exceeds 365 days, capped at 4.
++     * The membership level for the given points total: 1 for 0-1, 2 for 2-3, 3 for 4-5, 4 for 6 or
++     * more.
+      */
+-    public static int of(Integer namesakeCount, String email, LocalDate registrationDate) {
+-        int level = 1;
+-        boolean hasEmail = email != null && !email.isBlank();
+-        if (hasEmail) {
+-            level++;
++    public static int of(int points) {
++        if (points <= 1) {
++            return 1;
+         }
+-        boolean unique = namesakeCount != null && namesakeCount == 0;
+-        if (unique) {
+-            level++;
++        if (points <= 3) {
++            return 2;
+         }
+-        boolean tenured = registrationDate != null
+-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+-        if (tenured) {
+-            level++;
++        if (points <= 5) {
++            return 3;
+         }
+-        return Math.min(level, 4);
++        return 4;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+new file mode 100644
+index 000000000..023e416c2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+@@ -0,0 +1,50 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++/**
++ * Points score behind a pet owner's membership. Every owner starts at 0 points; the score gains 2
++ * when the owner has an email address (non-null, non-blank), a further 1 when its
++ * {@code namesakeCount} is 0 (no existing owner shares its first and last name), a further 2 when
++ * its {@code householdSize} is 3 or more, and a further 3 when more than 365 days have elapsed since
++ * the owner's {@code registrationDate}. Because a newly created owner's registration date is the
++ * current date, its tenure is zero, so a new owner never earns the tenure points. Derived purely
++ * from the owner's own stored state ({@code namesakeCount} and {@code householdSize} are recorded at
++ * create time), so it is seed-independent. Used by the owner mapper to expose
++ * {@code membershipPoints} on responses and, via {@link MembershipLevel}, {@code membershipLevel}.
++ */
++public final class MembershipPoints {
++
++    private MembershipPoints() {
++    }
++
++    /**
++     * The membership points for the given namesake count, email, household size and registration
++     * date: 0 to start, +2 when the email is present (non-null, non-blank), +1 when the namesake
++     * count is exactly 0, +2 when the household size is 3 or more, +3 when the tenure since
++     * {@code registrationDate} exceeds 365 days.
++     */
++    public static int of(Integer namesakeCount, String email, Integer householdSize,
++            LocalDate registrationDate) {
++        int points = 0;
++        boolean hasEmail = email != null && !email.isBlank();
++        if (hasEmail) {
++            points += 2;
++        }
++        boolean unique = namesakeCount != null && namesakeCount == 0;
++        if (unique) {
++            points += 1;
++        }
++        boolean largeHousehold = householdSize != null && householdSize >= 3;
++        if (largeHousehold) {
++            points += 2;
++        }
++        boolean tenured = registrationDate != null
++                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
++        if (tenured) {
++            points += 3;
++        }
++        return points;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 90db3ad26..94a01dd5f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2146,15 +2146,24 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points. Every owner starts at 0; add 2 when an email is present, add 1 when namesakeCount is 0, add 2 when householdSize is 3 or more, add 3 when the tenure since registrationDate exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 8
++              readOnly: true
++              example: 3
+             membershipLevel:
+               title: Membership level
+-              description: The owner's numeric membership level, from 1 to 3. Every owner starts at 1; add 1 when an email is present, add 1 when namesakeCount is 0, capped at 3. Level 4 is reserved for tenure.
++              description: The owner's numeric membership level, from 1 to 4, banded from membershipPoints as 1 (0-1 points), 2 (2-3 points), 3 (4-5 points) and 4 (6 or more points).
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               readOnly: true
+-              example: 3
++              example: 2
+             locality:
+               title: Locality
+               description: The canonical region derived from the owner's city using the fixed table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' for any other city.
