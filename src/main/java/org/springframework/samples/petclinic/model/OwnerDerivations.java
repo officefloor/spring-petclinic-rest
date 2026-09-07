@@ -389,6 +389,23 @@ final class OwnerDerivations {
     }
 
     /**
+     * Whether the owner should be flagged as risky, i.e. any one of its risk signals
+     * holds: it is a possible duplicate ({@code possibleDuplicate}), its email domain is
+     * disposable-adjacent (on the disposable-domain blocklist, see
+     * {@link #emailDomainIsDisposable(String)}), or its city was over its soft capacity at
+     * creation ({@code capacityWarning}). The two persisted flags are treated as
+     * {@code false} when absent, so the risk flag is {@code false} for an owner with no
+     * signal set.
+     *
+     * @return {@code true} when any risk signal holds, otherwise {@code false}
+     */
+    static boolean riskFlag(Boolean possibleDuplicate, String email, Boolean capacityWarning) {
+        return Boolean.TRUE.equals(possibleDuplicate)
+            || emailDomainIsDisposable(email)
+            || Boolean.TRUE.equals(capacityWarning);
+    }
+
+    /**
      * The Luhn check digit (0-9) computed over the decimal digits contained in the
      * given {@code value}, processed right-to-left with every second digit doubled (and
      * reduced by 9 when the double exceeds 9). Non-digit characters are ignored, and an

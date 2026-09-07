@@ -413,6 +413,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Whether this owner is flagged as risky: {@code true} when any of its risk signals
+     * holds — it is a {@link #getPossibleDuplicate() possible duplicate}, its email domain
+     * is disposable-adjacent (on the disposable-domain blocklist), or its city was over its
+     * soft capacity at creation ({@link #getCapacityWarning() capacity warning}) — otherwise
+     * {@code false}. Derived (not persisted); recomputed each call. See
+     * {@link OwnerDerivations#riskFlag(Boolean, String, Boolean)}.
+     *
+     * @return {@code true} when any risk signal holds, otherwise {@code false}
+     */
+    @Transient
+    public Boolean getRiskFlag() {
+        return OwnerDerivations.riskFlag(this.possibleDuplicate, this.email, this.capacityWarning);
+    }
+
+    /**
      * The household level ceiling assigned to this owner at creation: one above the highest
      * {@link #getMembershipLevel() membership level} then held by an existing member of its
      * household, or {@code null} when the owner joined no existing household (so no ceiling
