@@ -106,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -124,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning(registrationDate));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -300,6 +303,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (count >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(registrationDate);
         }
+    }
+
+    /**
+     * The number of owners that may carry a single day's {@code registrationDate} before that day
+     * is flagged as a bulk-signup day. Once more than this many owners share a registration date,
+     * the create and read responses report {@code bulkSignupWarning} true for that date.
+     */
+    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80L;
+
+    /**
+     * Reports whether the given business-day {@code registrationDate} is a bulk-signup day, i.e.
+     * whether more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry that date. The
+     * count is taken against the same adjusted date owners are stored with, mirroring the
+     * per-day create-limit accumulation. A {@code null} date is never a bulk-signup day.
+     *
+     * @param registrationDate the adjusted business-day registration date to test, or {@code null}
+     * @return {@code true} when more than 80 owners share the date, otherwise {@code false}
+     */
+    private boolean bulkSignupWarning(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return false;
+        }
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
