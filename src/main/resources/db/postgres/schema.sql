@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       email      TEXT,
                                       postcode   TEXT,
                                       registration_date DATE,
+                                      birth_date DATE,
                                       customer_code TEXT,
                                       namesake_count INTEGER,
                                       household_size INTEGER,
