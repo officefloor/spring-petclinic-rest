@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -374,25 +375,90 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Assigns the shared {@code householdId} for an owner created with {@code sharesHousehold}
+     * set to {@code true}. The identifier is derived deterministically from the owner's
+     * household identity (its {@code lastName} and {@code address}, see
+     * {@link #householdIdFor(String, String)}), so every owner in the same household resolves to
+     * the same stable value. The new owner receives that value, and any existing household mates
+     * that do not yet carry it are updated so the whole household shares one identifier. When the
+     * request did not opt in the owner is left without a household identifier.
+     *
+     * @param owner the newly created owner, mutated in place with its household identifier
+     * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
+     */
+    private void assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
+        owner.setHouseholdId(householdId);
+        for (Owner mate : findHouseholdMates(owner.getLastName(), owner.getAddress())) {
+            if (!householdId.equals(mate.getHouseholdId())) {
+                mate.setHouseholdId(householdId);
+                this.clinicService.saveOwner(mate);
+            }
+        }
+    }
+
+    /**
+     * Derives the stable {@code householdId} shared by every owner in the household identified by
+     * the given {@code lastName} and {@code address}. The two fields are normalized exactly as
+     * household identity is compared elsewhere (case-insensitively, with collapsed whitespace) and
+     * hashed with SHA-256, so any two owners in the same household — regardless of creation order —
+     * resolve to the same identifier. The result is formatted as {@code 'HH-<16 hex chars>'}.
+     *
+     * @param lastName the household's last name
+     * @param address the household's address
+     * @return the deterministic household identifier
+     */
+    private String householdIdFor(String lastName, String address) {
+        String key = collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|"
+            + collapseWhitespace(address).toLowerCase(java.util.Locale.ROOT);
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return "HH-" + sb;
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
+    }
+
+    /**
      * Finds an existing owner that shares a household with the given {@code lastName} and
-     * {@code address}. Both fields are compared case-insensitively and with runs of whitespace
-     * collapsed to a single space (and surrounding whitespace trimmed), so for example
-     * {@code "Franklin"} at {@code "110  W. Liberty St."} matches {@code "franklin"} at
-     * {@code "110 W. Liberty St."}. When several owners match, the first one encountered is
-     * returned. This is the single definition of household identity shared by every rule that
-     * reasons about households.
+     * {@code address}. When several owners match, the first one encountered is returned.
      *
      * @param lastName the last name to match on
      * @param address the address to match on
      * @return the first owner sharing the household, or empty when none exists
      */
     private Optional<Owner> findHouseholdMate(String lastName, String address) {
+        return findHouseholdMates(lastName, address).stream().findFirst();
+    }
+
+    /**
+     * Finds every existing owner that shares a household with the given {@code lastName} and
+     * {@code address}. Both fields are compared case-insensitively and with runs of whitespace
+     * collapsed to a single space (and surrounding whitespace trimmed), so for example
+     * {@code "Franklin"} at {@code "110  W. Liberty St."} matches {@code "franklin"} at
+     * {@code "110 W. Liberty St."}. This is the single definition of household identity shared by
+     * every rule that reasons about households.
+     *
+     * @param lastName the last name to match on
+     * @param address the address to match on
+     * @return the owners sharing the household, in encounter order (possibly empty)
+     */
+    private List<Owner> findHouseholdMates(String lastName, String address) {
         String normalizedLastName = collapseWhitespace(lastName);
         String normalizedAddress = collapseWhitespace(address);
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizedLastName.equalsIgnoreCase(collapseWhitespace(existing.getLastName()))
                 && normalizedAddress.equalsIgnoreCase(collapseWhitespace(existing.getAddress())))
-            .findFirst();
+            .toList();
     }
 
     /**
