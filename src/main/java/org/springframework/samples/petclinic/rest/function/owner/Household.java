@@ -1,9 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 /**
  * Household identity for pet owners. Two owners belong to the same household when they share a last
  * name (compared case-insensitively with collapsed whitespace) and a postcode. The
@@ -36,16 +32,6 @@ public final class Household {
      */
     public static String id(String lastName, String postcode) {
         String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(12);
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Sha256.hex(key).substring(0, 12).toUpperCase();
     }
 }

@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -58,17 +55,6 @@ public class AssignCustomerCode {
     /** First 8 upper-case hex characters of SHA-256 over {@code (normalizedTelephone + lastName)}. */
     private static String hash8(String normalizedTelephone, String lastName) {
         String input = normalizedTelephone + (lastName == null ? "" : lastName);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(8);
-            // Two hex characters per byte, so four bytes yield the eight characters required.
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Sha256.hex(input).substring(0, 8).toUpperCase();
     }
 }
