@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+index 9ffba8f13..d3381bbbd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+@@ -1,18 +1,26 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's numeric membership level (1 to 3) on creation: it starts at
+- * 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
+- * and is capped at 3 (level 4 is reserved for tenure).
++ * Derives an owner's numeric membership level (1 to 4): it starts at 1, gains 1
++ * when an email is present, gains 1 when {@code namesakeCount} is 0, and those
++ * pre-tenure factors are capped at 3. Level 4 is reached only when tenure exceeds
++ * 365 days (measured from {@code registrationDate}), so a newly created owner —
++ * whose tenure is zero — never exceeds level 3.
+  */
+ public final class MembershipLevel {
+ 
++    /** Tenure (in days) beyond which an owner qualifies for level 4. */
++    private static final long TENURE_LEVEL_4_DAYS = 365;
++
+     private MembershipLevel() {
+     }
+ 
+-    /** Membership level (1 to 3) derived from the owner's email and namesake count. */
++    /** Membership level (1 to 4) derived from the owner's email, namesake count and tenure. */
+     public static int of(Owner owner) {
+         int level = 1;
+         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+@@ -21,6 +29,20 @@ public final class MembershipLevel {
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+             level += 1;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        if (tenureDays(owner) > TENURE_LEVEL_4_DAYS) {
++            level += 1;
++        }
++        return level;
++    }
++
++    /** Days elapsed since the owner's registrationDate; 0 when the date is absent or in the future. */
++    private static long tenureDays(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
++        return Math.max(days, 0);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3fb4b5e6f..5a9a8c59e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2199,13 +2199,14 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                Numeric membership level from 1 to 3, derived on creation: it starts at 1, gains 1
+-                when an email is present, gains 1 when namesakeCount is 0, and is capped at 3
+-                (level 4 is reserved for tenure).
++                Numeric membership level from 1 to 4: it starts at 1, gains 1 when an email is
++                present, gains 1 when namesakeCount is 0, and those pre-tenure factors are capped
++                at 3. Level 4 is reached only when tenure exceeds 365 days (from registrationDate),
++                so a newly created owner (zero tenure) never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             bulkSignupWarning:
