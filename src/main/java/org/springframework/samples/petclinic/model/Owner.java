@@ -170,6 +170,20 @@ public class Owner extends Person {
         return this.telephone;
     }
 
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans: a leading '+'
+     * and country code, a space, then the national digits grouped in threes
+     * (e.g. {@code "+61 412 345 678"}). Derived (not persisted); recomputed each
+     * call and {@code null} when no telephone is present. See
+     * {@link Telephones#toDisplay(String)} for the exact format.
+     *
+     * @return the human-formatted telephone, or {@code null} when absent
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return Telephones.toDisplay(this.telephone);
+    }
+
     public void setTelephone(String telephone) {
         this.telephone = telephone;
     }

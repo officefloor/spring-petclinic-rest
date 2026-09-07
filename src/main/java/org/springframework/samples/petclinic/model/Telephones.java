@@ -86,6 +86,50 @@ public final class Telephones {
     }
 
     /**
+     * Format an E.164 telephone number for humans: a leading '+' and country
+     * code, a space, then the national digits (the digits after the country
+     * code) grouped in threes from the left, e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}. When the number begins with no recognised
+     * country code, all digits after the '+' are grouped in threes with no
+     * separate country-code group.
+     *
+     * @param e164 the stored telephone number in E.164 form (e.g. "+61412345678")
+     * @return the human-formatted number, or {@code null} if {@code e164} is
+     *         {@code null} or not a '+' followed by digits.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return null;
+        }
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d+")) {
+            return null;
+        }
+        CountryCode country = countryCodeFor(digits);
+        if (country == null) {
+            return "+" + groupInThrees(digits);
+        }
+        String code = country.code();
+        String national = digits.substring(code.length());
+        return "+" + code + " " + groupInThrees(national);
+    }
+
+    /**
+     * Group a run of digits into space-separated chunks of three, from the left,
+     * so a final short chunk keeps the remaining one or two digits.
+     */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Validate the length of the national number (the digits after the country
      * code) against the country code carried by the given E.164 digit string: a
      * {@code 61} (Australia) number requires exactly 9 national digits and a
