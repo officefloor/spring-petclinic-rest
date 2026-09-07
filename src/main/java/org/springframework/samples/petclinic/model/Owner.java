@@ -37,15 +37,6 @@ import java.util.*;
 @Table(name = "owners")
 public class Owner extends Person {
 
-    /** Fixed city-to-region table used to derive {@link #getLocality()}. */
-    private static final Map<String, String> CITY_REGION = Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region -> inclusive 4-digit postcode range {low, high} used to derive
-     *  {@link #getLocality()} in preference to the city. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
-
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -107,101 +98,63 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, i.e. the canonical region it belongs to. This is now read
-     * from the region-and-hash {@link #customerCode} identity: the region is the
-     * {@code <REGION>} component that precedes the first {@code '-'} of the assigned
-     * customer code (e.g. {@code NSW} for {@code NSW-9F86D081}). Until an owner has
-     * been assigned a customer code (for example while its create request is still
-     * being validated) this falls back to the region derived directly from its own
-     * fields (see {@link #regionForOwner()}). Exposed as a derived (not persisted)
-     * property and recomputed each call.
+     * The owner's locality, i.e. the canonical region it belongs to (read from the
+     * assigned {@link #customerCode} when present, otherwise derived from the owner's
+     * own fields via {@link #regionForOwner()}). Derived (not persisted); recomputed
+     * each call. See {@link OwnerDerivations#locality(String, String, String)} for the
+     * full derivation.
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode != null) {
-            int dash = this.customerCode.indexOf('-');
-            if (dash >= 0) {
-                return this.customerCode.substring(0, dash);
-            }
-        }
-        return regionForOwner();
+        return OwnerDerivations.locality(this.customerCode, this.postcode, this.city);
     }
 
     /**
-     * The canonical region derived for this owner from its own fields. The
-     * {@link #postcode} is consulted first: when it is present and falls within a known
-     * region's inclusive 4-digit range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
-     * {@code QLD 4000-4099}) that region is returned. Only when the postcode is absent
-     * or in no known range does this fall back to the fixed city-to-region table
-     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}),
-     * returning {@code "UNKNOWN"} when the city is not in the table either. This yields
-     * the same region for the known cities while disambiguating cities that share a name
-     * via their postcode. Recomputed from the current fields each call.
+     * The canonical region derived for this owner from its own fields. Recomputed each
+     * call. See {@link OwnerDerivations#region(String, String)} for the derivation.
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     public String regionForOwner() {
-        String byPostcode = regionForPostcode(this.postcode);
-        if (byPostcode != null) {
-            return byPostcode;
-        }
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        return OwnerDerivations.region(this.postcode, this.city);
     }
 
     /**
-     * The region whose inclusive postcode range contains the given postcode, or
-     * {@code null} when the postcode is absent, not a four-digit number, or in no
-     * known range.
+     * Whether this owner's postcode is consistent with its {@link #getLocality()
+     * locality}: an absent postcode is accepted, a present one must be exactly four
+     * digits and, when the locality has a known postcode range, fall within it. See
+     * {@link OwnerDerivations#postcodeMatchesRegion(String, String)}.
+     *
+     * @return {@code true} if the postcode is absent or valid for the owner's locality
      */
-    private static String regionForPostcode(String postcode) {
-        if (postcode == null || !postcode.matches("\\d{4}")) {
-            return null;
-        }
-        int value = Integer.parseInt(postcode);
-        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-            int[] range = entry.getValue();
-            if (value >= range[0] && value <= range[1]) {
-                return entry.getKey();
-            }
-        }
-        return null;
+    public boolean postcodeValidForLocality() {
+        return OwnerDerivations.postcodeMatchesRegion(this.postcode, this.getLocality());
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3 assigned at creation:
-     * starting at 1, add 1 when an {@link #email} is present and add 1 when
-     * {@link #namesakeCount} is 0, capped at 3 (level 4 is reserved for tenure).
-     * Derived (not persisted); recomputed from the current fields each call.
+     * The owner's membership level, a number from 1 to 3. Derived (not persisted);
+     * recomputed from the current fields each call. See
+     * {@link OwnerDerivations#membershipLevel(String, Integer)} for how it is assigned.
      *
      * @return the membership level, from 1 to 3
      */
     @Transient
     public Integer getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
-        }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
-        }
-        return Math.min(level, 3);
+        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount);
     }
 
     /**
-     * The owner's preferred contact channel: {@code "EMAIL"} when an
-     * {@link #email} is present, otherwise {@code "PHONE"}. Derived (not
-     * persisted); recomputed from the current fields each call.
+     * The owner's preferred contact channel, {@code "EMAIL"} or {@code "PHONE"}.
+     * Derived (not persisted); recomputed from the current fields each call. See
+     * {@link OwnerDerivations#contactPreference(String)}.
      *
      * @return {@code "EMAIL"} or {@code "PHONE"}
      */
     @Transient
     public String getContactPreference() {
-        if (this.email != null && !this.email.isBlank()) {
-            return "EMAIL";
-        }
-        return "PHONE";
+        return OwnerDerivations.contactPreference(this.email);
     }
 
     public String getTelephone() {
@@ -245,43 +198,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The Luhn check digit (0-9) computed over the decimal digits contained in this
-     * owner's {@link #customerCode}. Derived (not persisted); recomputed from the
-     * current customer code each call. An absent or digit-free customer code yields
-     * {@code 0}.
+     * The Luhn check digit (0-9) computed over the digits in this owner's
+     * {@link #customerCode}. Derived (not persisted); recomputed each call. See
+     * {@link OwnerDerivations#checkDigit(String)}.
      *
      * @return the Luhn check digit, from 0 to 9
      */
     @Transient
     public Integer getCheckDigit() {
-        return luhnCheckDigit(this.customerCode);
-    }
-
-    /**
-     * The Luhn check digit (0-9) computed over the decimal digits contained in the
-     * given value, processed right-to-left with every second digit doubled (and
-     * reduced by 9 when the double exceeds 9). Non-digit characters are ignored, and
-     * an absent or digit-free value yields {@code 0}.
-     */
-    private static int luhnCheckDigit(String value) {
-        int sum = 0;
-        boolean doubleDigit = true;
-        for (int i = (value == null ? 0 : value.length()) - 1; i >= 0; i--) {
-            char c = value.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (doubleDigit) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            doubleDigit = !doubleDigit;
-        }
-        return (10 - (sum % 10)) % 10;
+        return OwnerDerivations.checkDigit(this.customerCode);
     }
 
     public String getHouseholdId() {
@@ -325,25 +250,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived key used for duplicate detection, formed as
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
-     * The telephone is the owner's stored (E.164-normalised) telephone, the email
-     * is the stored (lower-cased) email or the empty string when absent, and the
-     * household component is the stored {@link #householdId} or the empty string
-     * when the owner belongs to no household. Two owners are duplicates of each
-     * other exactly when their whole identity keys are equal; because the telephone
-     * is part of the key, two members of the same household with different
-     * telephones have different identity keys. Derived (not persisted); recomputed
-     * from the current fields each call.
+     * The derived key used for duplicate detection, combining this owner's normalised
+     * telephone, email and {@link #householdId}. Two owners are duplicates exactly when
+     * their whole identity keys are equal, so members of the same household with
+     * different telephones have different keys. Derived (not persisted); recomputed each
+     * call. See {@link OwnerDerivations#identityKey(String, String, String)} for the
+     * exact format.
      *
      * @return the owner's identity key
      */
     @Transient
     public String getIdentityKey() {
-        String tel = this.telephone == null ? "" : this.telephone;
-        String mail = this.email == null ? "" : this.email;
-        String household = this.householdId == null ? "" : this.householdId;
-        return tel + "|" + mail + "|" + household;
+        return OwnerDerivations.identityKey(this.telephone, this.email, this.householdId);
     }
 
     /**
