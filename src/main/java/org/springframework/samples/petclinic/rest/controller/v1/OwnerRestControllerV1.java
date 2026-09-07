@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
@@ -247,6 +248,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateEmail(ownerFieldsDto.getEmail());
         rejectDuplicateHousehold(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectDailyLimitExceeded(registrationDate);
@@ -517,6 +519,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> telephone.equals(existing.getTelephone()));
         if (taken) {
             throw new DuplicateTelephoneException(telephone);
+        }
+    }
+
+    /**
+     * Rejects a new owner whose email is already used by any existing owner. An email is
+     * optional, so a {@code null} email is never a duplicate. When present the email is
+     * compared to every existing owner's email under the single canonical email identity
+     * (trimmed and lower-cased, see {@link #canonicalEmail(String)}), so for example
+     * {@code "Jane@Example.com"} collides with a stored {@code "jane@example.com"}. When a
+     * match is found a {@link DuplicateEmailException} is thrown, which the exception advice
+     * renders as a 409 Conflict response.
+     *
+     * @param email the normalized email of the owner being created, or {@code null} when omitted
+     */
+    private void rejectDuplicateEmail(String email) {
+        String canonical = canonicalEmail(email);
+        if (canonical == null) {
+            return;
+        }
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> canonical.equals(canonicalEmail(existing.getEmail())));
+        if (taken) {
+            throw new DuplicateEmailException(canonical);
         }
     }
 

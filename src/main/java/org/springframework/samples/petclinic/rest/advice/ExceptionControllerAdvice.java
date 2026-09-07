@@ -53,6 +53,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+    private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given lastName and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_EXCEEDED = "The maximum number of owners has already been created today";
@@ -215,6 +216,26 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getMessage());
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateEmailException} thrown when a request tries to create an owner
+     * whose lower-cased email is already used by another owner. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_EMAIL);
         return ResponseEntity.status(status).body(detail);
     }
 
