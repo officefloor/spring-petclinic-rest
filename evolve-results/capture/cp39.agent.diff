@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index aab0ea496..4457e7b50 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -143,15 +143,18 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership level, a number from 1 to 3. Derived (not persisted);
+-     * recomputed from the current fields each call. See
+-     * {@link OwnerDerivations#membershipLevel(String, Integer)} for how it is assigned.
++     * The owner's membership level, a number from 1 to 4. Derived (not persisted);
++     * recomputed from the current fields each call, so it rises to level 4 once the
++     * owner's tenure since {@link #registrationDate} exceeds 365 days. See
++     * {@link OwnerDerivations#membershipLevel(String, Integer, LocalDate, LocalDate)}
++     * for how it is assigned.
+      *
+-     * @return the membership level, from 1 to 3
++     * @return the membership level, from 1 to 4
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+-        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount);
++        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount, this.registrationDate,
++            LocalDate.now());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+index c6ccc70c6..4decaca8a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+@@ -20,6 +20,7 @@ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.time.Period;
++import java.time.temporal.ChronoUnit;
+ import java.util.Map;
+ 
+ /**
+@@ -133,13 +134,17 @@ final class OwnerDerivations {
+     }
+ 
+     /**
+-     * The owner's membership level, a number from 1 to 3 assigned at creation:
+-     * starting at 1, add 1 when an {@code email} is present and add 1 when
+-     * {@code namesakeCount} is 0, capped at 3 (level 4 is reserved for tenure).
++     * The owner's membership level, a number from 1 to 4. The creation-time factors
++     * are assessed first: starting at 1, add 1 when an {@code email} is present and add
++     * 1 when {@code namesakeCount} is 0, capped at 3. Level 4 is then reached only once
++     * the owner's tenure exceeds 365 days, measured as the number of whole days from its
++     * {@code registrationDate} up to {@code asOf}. Because a newly created owner has zero
++     * tenure, it never exceeds level 3 at creation.
+      *
+-     * @return the membership level, from 1 to 3
++     * @return the membership level, from 1 to 4
+      */
+-    static int membershipLevel(String email, Integer namesakeCount) {
++    static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate,
++            LocalDate asOf) {
+         int level = 1;
+         if (hasEmail(email)) {
+             level++;
+@@ -147,7 +152,12 @@ final class OwnerDerivations {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        if (registrationDate != null && asOf != null
++                && ChronoUnit.DAYS.between(registrationDate, asOf) > 365) {
++            level++;
++        }
++        return level;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 18c0ea6ee..ddfb2f079 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2193,14 +2193,16 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3 assigned at
+-                creation: starting at 1, add 1 when an email is present and add 1
+-                when namesakeCount is 0, capped at 3 (level 4 is reserved for
+-                tenure).
++                The owner's membership level, a number from 1 to 4. The
++                creation-time factors are assessed first: starting at 1, add 1
++                when an email is present and add 1 when namesakeCount is 0, capped
++                at 3. Level 4 is then reached only once the owner's tenure exceeds
++                365 days (whole days from its registrationDate), so a newly created
++                owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
