@@ -18,6 +18,7 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner) {
         audit.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()));
+                MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail(),
+                        owner.getRegistrationDate()));
     }
 }
