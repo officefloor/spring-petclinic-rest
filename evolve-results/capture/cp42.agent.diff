@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index be5ecd2ee..ffad505be 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -130,6 +130,19 @@ public class Owner extends Person {
+         return OwnerDerivations.region(this.postcode, this.city);
+     }
+ 
++    /**
++     * The owner's IANA timezone name, derived from its {@link #getLocality() locality}
++     * (canonical region) via the fixed region-to-timezone table. Derived (not persisted);
++     * recomputed each call and {@code null} when the locality is not a known region. See
++     * {@link OwnerDerivations#timezone(String)} for the derivation.
++     *
++     * @return the IANA timezone name, or {@code null}
++     */
++    @Transient
++    public String getTimezone() {
++        return OwnerDerivations.timezone(this.getLocality());
++    }
++
+     /**
+      * Whether this owner's postcode is consistent with its {@link #getLocality()
+      * locality}: an absent postcode is accepted, a present one must be exactly four
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+index 808f96cf8..b6baadea1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+@@ -44,6 +44,10 @@ final class OwnerDerivations {
+     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+ 
++    /** Fixed region-to-timezone table (IANA names) used to derive {@link #timezone}. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
+     private OwnerDerivations() {
+     }
+ 
+@@ -89,6 +93,19 @@ final class OwnerDerivations {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
+ 
++    /**
++     * The IANA timezone name derived from the given {@code locality} (a canonical
++     * region) via the fixed region-to-timezone table ({@code NSW -> Australia/Sydney},
++     * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). Returns
++     * {@code null} when the locality is not one of the known regions (for example
++     * {@code "UNKNOWN"}).
++     *
++     * @return the IANA timezone name, or {@code null}
++     */
++    static String timezone(String locality) {
++        return REGION_TIMEZONE.get(locality);
++    }
++
+     /**
+      * The region whose inclusive postcode range contains the given postcode, or
+      * {@code null} when the postcode is absent, not a four-digit number, or in no
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4656c47d0..ee682b475 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2225,6 +2225,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived from its locality/region
++                via the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when
++                the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
