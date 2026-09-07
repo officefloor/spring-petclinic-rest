@@ -1,0 +1,81 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cc346a6ea..bce5ff3a1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
++    @Mapping(target = "checkDigit",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+new file mode 100644
+index 000000000..e6c386949
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Luhn check digit for an owner's {@code customerCode}. A single digit (0-9) computed over the
++ * decimal digits contained in the customer code (non-digit characters such as the hyphen separators
++ * are ignored), using the standard Luhn algorithm. Derived purely from the owner's own
++ * {@code customerCode}, so it carries no stored state and is seed-independent. Used by the owner
++ * mapper to expose {@code checkDigit} on responses.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /**
++     * The Luhn check digit over the digits of the given customer code, or {@code null} when the
++     * customer code is absent (e.g. legacy owners with no customer code).
++     */
++    public static Integer of(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5af1a1969..99f7b7f1e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,6 +2103,15 @@ components:
+               type: string
+               readOnly: true
+               example: 'SYD-SMI-0007-M26'
++            checkDigit:
++              title: Check digit
++              description: A single Luhn check digit (0-9) computed over the digits contained in the owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              readOnly: true
++              example: 4
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by all owners in the same household (same last name and address, compared case-insensitively with collapsed whitespace). Owners that share a household return the same value.
