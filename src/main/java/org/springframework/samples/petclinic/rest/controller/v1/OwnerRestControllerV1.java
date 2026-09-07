@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
+import org.springframework.samples.petclinic.model.Telephones;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -250,7 +251,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         owner.setAddress(address);
-        String telephone = toE164(owner.getTelephone());
+        String telephone = Telephones.toE164(owner.getTelephone());
         if (telephone == null) {
             return false;
         }
@@ -493,61 +494,5 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String membershipNumber(Owner owner) {
         int yy = owner.getRegistrationDate().getYear() % 100;
         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
-    }
-
-    /**
-     * Normalise a telephone number to E.164 form: keep a leading '+' and country
-     * code when present, otherwise assume country code '+61' and drop a single
-     * leading '0' from the national digits. Spaces, dashes and brackets are
-     * stripped. The result must contain 8 to 15 digits after the '+'.
-     *
-     * <p>In addition, the national-number length is validated against the country
-     * code: a {@code +61} (Australia) number must have exactly 9 national digits
-     * and a {@code +1} (NANP) number must have exactly 10 national digits. A number
-     * whose national-number length is wrong for its country code is rejected.
-     *
-     * @return the E.164 string (e.g. "+61412345678"), or {@code null} if the
-     *         input cannot form a valid E.164 number.
-     */
-    private static String toE164(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String cleaned = raw.replaceAll("[\\s()-]", "");
-        String digits;
-        if (cleaned.startsWith("+")) {
-            digits = cleaned.substring(1);
-        } else {
-            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
-            digits = "61" + national;
-        }
-        if (!digits.matches("\\d{8,15}")) {
-            return null;
-        }
-        if (!nationalNumberLengthValid(digits)) {
-            return null;
-        }
-        return "+" + digits;
-    }
-
-    /**
-     * Validate the length of the national number (the digits after the country
-     * code) against the country code carried by the given E.164 digit string: a
-     * {@code 61} (Australia) number requires exactly 9 national digits and a
-     * {@code 1} (NANP) number requires exactly 10 national digits. Country codes
-     * without a pinned length are accepted (only the generic 8-15 digit rule
-     * applies to them).
-     *
-     * @param digits the E.164 digits without the leading '+'
-     * @return {@code true} if the national-number length is correct for the country
-     */
-    private static boolean nationalNumberLengthValid(String digits) {
-        if (digits.startsWith("61")) {
-            return digits.length() - 2 == 9;
-        }
-        if (digits.startsWith("1")) {
-            return digits.length() - 1 == 10;
-        }
-        return true;
     }
 }
