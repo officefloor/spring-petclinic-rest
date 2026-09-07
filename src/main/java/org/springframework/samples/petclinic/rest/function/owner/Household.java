@@ -8,8 +8,8 @@ import java.security.NoSuchAlgorithmException;
  * Household identity for pet owners. Two owners belong to the same household when they share a last
  * name and address, compared case-insensitively with collapsed whitespace. The
  * {@link #id(String, String)} value is a stable identifier derived purely from those two fields, so
- * every owner in a household returns the same {@code householdId} without any stored state. Used by
- * {@link RequireUniqueHousehold} to detect duplicates and by the owner mapper to expose the
+ * every owner in a household returns the same {@code householdId} without any stored state. Used as
+ * one component of the owner {@link OwnerIdentity} key and by the owner mapper to expose the
  * identifier on responses.
  */
 public final class Household {
