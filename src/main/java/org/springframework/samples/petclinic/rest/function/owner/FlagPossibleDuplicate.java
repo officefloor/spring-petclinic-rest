@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Step of {@code POST /api/owners} that flags a soft duplicate. A new owner that is not a hard
@@ -12,6 +13,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner's id. Otherwise {@code possibleDuplicate} is {@code false} and {@code possibleDuplicateOf} is
  * left unset.
  *
+ * <p>A declared household member (the request set {@code sharesHousehold} to bypass the duplicate
+ * block) is <em>not</em> a suspected duplicate: it shares an existing owner's last name and postcode
+ * by declaration, so it is never flagged, whatever its telephone.
+ *
  * <p>Last name is compared case-insensitively; postcode must be present and equal; the telephone is
  * compared in its canonical form so an owner with the same telephone (a hard duplicate) is not
  * flagged here. When several existing owners match, the one with the lowest id (the earliest) is
@@ -20,7 +25,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class FlagPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false); // a declared household member is not a suspected duplicate
+            owner.setPossibleDuplicateOf(null);
+            return;
+        }
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = OwnerIdentity.normalizedTelephone(owner.getTelephone());

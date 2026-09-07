@@ -6,10 +6,13 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Household identity for pet owners. Two owners belong to the same household when they share a last
- * name and address, compared case-insensitively with collapsed whitespace. The
+ * name (compared case-insensitively with collapsed whitespace) and a postcode. The
  * {@link #id(String, String)} value is a stable identifier derived purely from those two fields, so
- * every owner in a household returns the same {@code householdId} without any stored state. Used as
- * one component of the owner {@link OwnerIdentity} key and by the owner mapper to expose the
+ * every owner in a household returns the same {@code householdId} without any stored state. Because
+ * the household is keyed on those fields alone, two owners sharing last name and postcode are the
+ * same household automatically — there is no stored link. Used as one component of the owner
+ * {@link OwnerIdentity} key, by {@link RequireUniqueIdentity} to detect a household duplicate,
+ * by {@link CountHouseholdMembers} to size the household and by the owner mapper to expose the
  * identifier on responses.
  */
 public final class Household {
@@ -26,15 +29,17 @@ public final class Household {
     }
 
     /**
-     * A stable shared identifier for the household of an owner with the given last name and address.
-     * Derived from the normalized fields, so owners in the same household get the same value.
+     * A stable shared identifier for the household of an owner with the given last name and postcode:
+     * the first 12 hex characters of the SHA-256 digest over {@code normalizedLastName + '|' +
+     * postcode}. Derived purely from those two fields, so owners in the same household get the same
+     * value.
      */
-    public static String id(String lastName, String address) {
-        String key = normalize(lastName) + "|" + normalize(address);
+    public static String id(String lastName, String postcode) {
+        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();

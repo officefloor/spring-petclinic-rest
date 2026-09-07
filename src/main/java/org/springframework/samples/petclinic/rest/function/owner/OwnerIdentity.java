@@ -5,11 +5,10 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * The single derived identity of a pet owner, consolidating the former telephone, email and
- * household duplicate checks into one derived key. The {@code identityKey} is
+ * The single derived identity of a pet owner. The {@code identityKey} is
  * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone is
  * canonical E.164 form, the email is trimmed and lower-cased (or empty when absent) and the household
- * id is {@link Household#id(String, String)} over the last name and address.
+ * id is {@link Household#id(String, String)} over the last name and postcode.
  *
  * <p>Because the telephone is part of the key, two members of the same household (same householdId)
  * with different telephones have different identity keys and are both allowed; only owners that are
@@ -28,8 +27,8 @@ public final class OwnerIdentity {
     /** The full identity key for an owner with the given raw fields, as exposed on responses. Fields
      *  are normalized here so the same value is produced whether they come from a freshly-validated
      *  request or a stored owner. */
-    public static String key(String telephone, String email, String lastName, String address) {
-        return contactKey(telephone, email) + "|" + Household.id(lastName, address);
+    public static String key(String telephone, String email, String lastName, String postcode) {
+        return contactKey(telephone, email) + "|" + Household.id(lastName, postcode);
     }
 
     /** The telephone-and-email prefix of the identity key, identifying a single contact. Two owners
