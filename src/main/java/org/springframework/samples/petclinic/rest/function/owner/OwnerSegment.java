@@ -37,7 +37,6 @@ public final class OwnerSegment {
      * {@link Locality}.
      */
     public static String of(Owner owner) {
-        return of(MembershipLevel.of(owner),
-                Locality.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()));
+        return of(MembershipLevel.of(owner), Locality.of(owner));
     }
 }

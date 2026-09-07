@@ -17,26 +17,6 @@ public final class CheckDigit {
      * customer code is absent (e.g. legacy owners with no customer code).
      */
     public static Integer of(String customerCode) {
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return customerCode == null ? null : Luhn.of(customerCode);
     }
 }

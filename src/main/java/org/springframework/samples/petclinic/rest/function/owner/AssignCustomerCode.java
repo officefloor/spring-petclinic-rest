@@ -24,8 +24,9 @@ public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = Locality.of(owner.getPostcode(), owner.getCity());
-        String hash8 = hash8(OwnerIdentity.normalizedTelephone(owner.getTelephone()), owner.getLastName());
-        String base = region + "-" + hash8;
+        String hash8 = CustomerCode.hash8(OwnerIdentity.normalizedTelephone(owner.getTelephone()),
+                owner.getLastName());
+        String base = CustomerCode.of(region, hash8);
         owner.setCustomerCode(deduplicate(base, ownerRepository));
     }
 
@@ -50,11 +51,5 @@ public class AssignCustomerCode {
                 return candidate;
             }
         }
-    }
-
-    /** First 8 upper-case hex characters of SHA-256 over {@code (normalizedTelephone + lastName)}. */
-    private static String hash8(String normalizedTelephone, String lastName) {
-        String input = normalizedTelephone + (lastName == null ? "" : lastName);
-        return Sha256.hex(input).substring(0, 8).toUpperCase();
     }
 }

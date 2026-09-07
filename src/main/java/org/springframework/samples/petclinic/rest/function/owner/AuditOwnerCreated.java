@@ -25,11 +25,12 @@ public class AuditOwnerCreated {
     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
+        String customerCode = owner.getCustomerCode();
         audit.info(
                 "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                owner.getId(), customerCode, owner.getRegistrationDate(),
                 MembershipLevel.of(owner),
-                MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()));
+                MembershipNumber.of(customerCode, owner.getRegistrationDate()));
         audit.info(OwnerCreatedEvent.of(owner).toJson());
     }
 }

@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Map;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * IANA timezone for a pet owner, derived from the owner's canonical region (see {@link Locality})
  * using a fixed region-to-timezone table: {@code NSW -> Australia/Sydney},
@@ -19,6 +21,14 @@ public final class Timezone {
             "QLD", "Australia/Brisbane");
 
     private Timezone() {
+    }
+
+    /**
+     * The IANA timezone for the given owner, resolved from its {@link Locality}. Returns {@code null}
+     * when the region is not one of the known regions.
+     */
+    public static String of(Owner owner) {
+        return REGION_TIMEZONE.get(Locality.of(owner));
     }
 
     /**
