@@ -24,8 +24,14 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "selfLink",
         expression = "java(\"/api/owners/\" + owner.getId())")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId", source = "householdId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)

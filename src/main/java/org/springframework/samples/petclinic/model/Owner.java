@@ -159,17 +159,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, i.e. the canonical region it belongs to (read from the
-     * assigned {@link #memberId} when present, otherwise derived from the owner's
-     * own fields via {@link #regionForOwner()}). Derived (not persisted); recomputed
-     * each call. See {@link OwnerDerivations#locality(String, String, String)} for the
-     * full derivation.
+     * The owner's locality, i.e. the plain canonical region it belongs to, derived from the
+     * owner's own fields (see {@link #regionForOwner()}). This is the user-facing region code
+     * (for example {@code NSW}) and never carries the {@code V2} version tag mixed into the
+     * owner's identifiers. Derived (not persisted); recomputed each call. See
+     * {@link OwnerDerivations#locality(String, String)} for the full derivation.
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     @Transient
     public String getLocality() {
-        return OwnerDerivations.locality(this.memberId, this.postcode, this.city);
+        return OwnerDerivations.locality(this.postcode, this.city);
     }
 
     /**

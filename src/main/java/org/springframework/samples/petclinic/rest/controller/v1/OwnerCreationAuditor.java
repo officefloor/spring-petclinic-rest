@@ -66,18 +66,21 @@ public class OwnerCreationAuditor {
      * single JSON object, so downstream consumers have a stable, machine-readable record.
      * Gathered here, off {@link #auditOwnerCreated}, so the event's schema — the fields it
      * carries and their order — has a single home, free to grow without crowding the emission
-     * itself. The event carries the owner's primary identifier, the unified
-     * {@link #primaryIdentifier(Owner) member id}.
+     * itself. This is schema version 2: it stamps a {@code schemaVersion} of 2 and carries the
+     * owner's primary identifier, the version-2 unified {@link #primaryIdentifier(Owner) member
+     * id}, alongside the owner segment recomputed from that version-2 identity.
      *
      * @param owner the owner that has just been created and saved
      * @return the structured {@code OWNER_CREATED} event
      */
     private ObjectNode ownerCreatedEvent(Owner owner) {
         ObjectNode event = MAPPER.createObjectNode();
+        event.put("schemaVersion", 2);
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("ownerSegment", owner.getOwnerSegment());
         event.put("event", "OWNER_CREATED");
         return event;
     }
