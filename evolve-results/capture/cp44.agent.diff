@@ -1,0 +1,247 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0efe63ee5..023d92be4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -89,6 +95,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index 242cdb653..02a567f48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -10,7 +10,13 @@ public class ApplyOwner {
+ 
+     public void service(@Val Owner owner, @Val OwnerFieldsDto request)
+             throws InvalidEmailException, InvalidTelephoneException {
+-        owner.setAddress(request.getAddress());
++        // Normalize each supplied address part and store the composed 'address' (structured
++        // addressLine1 preferred, flat 'address' as fallback), consistent with owner creation.
++        String line1 = OwnerAddress.normalizeOrNull(request.getAddressLine1());
++        String line2 = OwnerAddress.normalizeOrNull(request.getAddressLine2());
++        owner.setAddressLine1(line1);
++        owner.setAddressLine2(line2);
++        owner.setAddress(OwnerAddress.compose(line1, line2, request.getAddress()));
+         owner.setCity(request.getCity());
+         owner.setFirstName(request.getFirstName());
+         owner.setLastName(request.getLastName());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+index f986b64b2..1bbd93b85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+@@ -44,4 +44,31 @@ final class OwnerAddress {
+         }
+         return sb.toString();
+     }
++
++    /**
++     * @return the normalized value, or {@code null} when it is {@code null} or blank after
++     * normalization. Used to store the structured address lines in their canonical form while
++     * treating a blank line as absent.
++     */
++    static String normalizeOrNull(String value) {
++        String normalized = normalize(value);
++        return normalized.isEmpty() ? null : normalized;
++    }
++
++    /**
++     * Composes the canonical, normalized address from the structured or flat inputs. When
++     * {@code addressLine1} is non-blank the structured form wins: the composed address is the
++     * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
++     * appended when that line is present. Otherwise the flat {@code address} is normalized and used.
++     *
++     * @return the composed address, or an empty string when no address is supplied in either form.
++     */
++    static String compose(String addressLine1, String addressLine2, String address) {
++        String line1 = normalizeOrNull(addressLine1);
++        if (line1 == null) {
++            return normalize(address);
++        }
++        String line2 = normalizeOrNull(addressLine2);
++        return line2 == null ? line1 : line1 + " " + line2;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index 87b2387f2..4164b47bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -24,7 +24,14 @@ public class RequireOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingFieldsException, InvalidTelephoneException, InvalidEmailException {
+-        request.setAddress(OwnerAddress.normalize(request.getAddress()));
++        // Prefer the structured address when supplied, falling back to the flat 'address' for
++        // backward compatibility. Store each supplied part in its normalized form and expose the
++        // composed 'address' (normalized addressLine1, plus normalized addressLine2 after a single
++        // space when present) so the required-field check, storage and every reader see one form.
++        request.setAddressLine1(OwnerAddress.normalizeOrNull(request.getAddressLine1()));
++        request.setAddressLine2(OwnerAddress.normalizeOrNull(request.getAddressLine2()));
++        request.setAddress(OwnerAddress.compose(request.getAddressLine1(), request.getAddressLine2(),
++                request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         if (isBlank(request.getFirstName())) {
+             missing.add("firstName");
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 17883061b..7dc9e030b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index e5ab3f803..c96a6f717 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 5e048a19c..d2c7c0871 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,9 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 7c9f5d8f4..0d2121d8f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index bb33b7d40..2b03c17e5 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e44ffb14f..bdea87c62 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,29 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. Accepted for backward compatibility;
++            when structured fields are supplied 'addressLine1' (plus optional 'addressLine2') is
++            preferred. On a response this is the composed, normalized address.
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the pet owner's structured postal address. Preferred over
++            the flat 'address' when supplied. Stored and returned normalized.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the pet owner's structured postal address. When
++            present it is appended to the composed 'address' after a single space. Stored and
++            returned normalized.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2069,7 +2087,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
