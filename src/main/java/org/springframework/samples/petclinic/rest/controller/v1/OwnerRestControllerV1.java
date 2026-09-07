@@ -161,7 +161,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
@@ -370,6 +371,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private Optional<Owner> findHouseholdMember(Owner owner) {
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
             .filter(existing -> existing.sameHouseholdAs(owner))
             .findFirst();
     }
