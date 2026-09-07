@@ -222,6 +222,33 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The Luhn check digit (0-9) computed over the decimal digits contained in the
+     * given value, processed right-to-left with every second digit doubled (and
+     * reduced by 9 when the double exceeds 9). Non-digit characters are ignored, and
+     * an absent or digit-free value yields {@code 0}.
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean doubleDigit = true;
+        for (int i = (value == null ? 0 : value.length()) - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (doubleDigit) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            doubleDigit = !doubleDigit;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
