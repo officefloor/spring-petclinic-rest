@@ -140,6 +140,7 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors(bindingResult));
+            detail.setProperty("errors", invalidFieldNames(bindingResult));
         }
         return ResponseEntity.status(status).body(detail);
     }
@@ -153,6 +154,21 @@ public class ExceptionControllerAdvice {
      * @param bindingResult the binding result holding the field errors
      * @return one {@link ValidationMessageDto} per field error, in binding order
      */
+    /**
+     * Collects the distinct names of the fields that failed validation, in binding order. This is the
+     * simple contract clients rely on to learn <em>which</em> fields were rejected (e.g. missing or blank
+     * required fields), complementing the richer per-field {@link ValidationMessageDto} details.
+     *
+     * @param bindingResult the binding result holding the field errors
+     * @return the distinct rejected field names, in binding order
+     */
+    private List<String> invalidFieldNames(BindingResult bindingResult) {
+        return bindingResult.getFieldErrors().stream()
+            .map(org.springframework.validation.FieldError::getField)
+            .distinct()
+            .toList();
+    }
+
     private List<ValidationMessageDto> schemaValidationErrors(BindingResult bindingResult) {
         return bindingResult.getFieldErrors().stream()
             .map(fieldError -> {
