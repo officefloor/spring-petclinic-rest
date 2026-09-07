@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+index ce735c2d4..628a7b624 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -25,6 +25,28 @@ public final class CustomerCode {
+         return region + "-" + hash8;
+     }
+ 
++    /**
++     * De-duplicate a computed customer code against those already in use. When {@code code}
++     * collides with an existing owner's customer code, the smallest {@code n} of 2 or more is
++     * appended as {@code '-<n>'} to make it unique; a code that does not collide is returned
++     * unchanged (as is a {@code null} code).
++     *
++     * @param code          the computed customer code to make unique
++     * @param existingCodes the customer codes already assigned to other owners
++     * @return the de-duplicated customer code
++     */
++    public static String dedupe(String code, java.util.Set<String> existingCodes) {
++        if (code == null || !existingCodes.contains(code)) {
++            return code;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = code + "-" + n;
++            if (!existingCodes.contains(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * The REGION component of a customer code (everything before the final {@code '-'}), or
+      * {@code null} when the code is absent. This is the owner's locality, now read straight off
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+new file mode 100644
+index 000000000..5e1c1a6ad
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Makes the computed {@link CustomerCode customer code} unique before the owner is saved. The code
++ * is a pure function of region, telephone and last name, so two distinct owners can in principle
++ * derive the same value; when the code collides with an existing owner's customer code, the
++ * smallest {@code n} of 2 or more is appended as {@code '-<n>'} (see
++ * {@link CustomerCode#dedupe(String, Set)}). Runs after the code has been stamped by
++ * {@link BuildOwner} and before {@link SaveOwner}, mutating the owner in place.
++ */
++public class DeduplicateCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        Set<String> existing = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            if (other.getId() != null && other.getId().equals(owner.getId())) {
++                continue; // same record, not a collision
++            }
++            if (other.getCustomerCode() != null) {
++                existing.add(other.getCustomerCode());
++            }
++        }
++        owner.setCustomerCode(CustomerCode.dedupe(owner.getCustomerCode(), existing));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 68ed80412..f604f0f5f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -49,6 +49,11 @@ countNamesakes:
+ checkPossibleDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerPossibleDuplicate
+   govern: [ transaction ]
++  next: dedupeCustomerCode
++
++dedupeCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateCustomerCode
++  govern: [ transaction ]
+   next: save
+ 
+ save:
