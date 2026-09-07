@@ -118,7 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             joinHousehold(owner, householdMember.get());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         this.clinicService.saveOwner(owner);
@@ -315,18 +315,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the next customer code, formatted {@code <LAST3>-<NNNN>}: LAST3 is the
-     * upper-cased first three letters of the given last name and NNNN is a global
-     * 4-digit zero-padded sequence equal to one more than the current number of
-     * owners (e.g. {@code SMI-0007}).
+     * Build the next customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>}: CITY3
+     * is the upper-cased first three letters of the given city, LAST3 the upper-cased
+     * first three letters of the given last name and NNNN a per-city 4-digit
+     * zero-padded sequence equal to one more than the number of owners already in
+     * that city (e.g. {@code SYD-SMI-0007}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String lastName) {
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        long sequence = this.clinicService.findAllOwners().size() + 1L;
-        return String.format("%s-%04d", last3, sequence);
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = prefix3(city);
+        String last3 = prefix3(lastName);
+        long sequence = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeName(existing.getCity()).equals(normalizeName(city)))
+            .count() + 1L;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    private static String prefix3(String value) {
+        String v = value == null ? "" : value;
+        return v.substring(0, Math.min(3, v.length())).toUpperCase();
     }
 
     /**
