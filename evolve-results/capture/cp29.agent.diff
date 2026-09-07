@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7fd453539..d5caedd57 100644
+Binary files a/src/main/java/org/springframework/samples/petclinic/model/Owner.java and b/src/main/java/org/springframework/samples/petclinic/model/Owner.java differ
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f2e88c453..432085297 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Optional;
+ import java.util.UUID;
+ 
+@@ -263,6 +264,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getEmail() != null) {
+             owner.setEmail(owner.getEmail().toLowerCase());
+         }
++        if (!postcodeValidForCity(owner)) {
++            return false;
++        }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -270,6 +274,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return true;
+     }
+ 
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validate the owner's postcode when one is supplied. A postcode is optional: an
++     * owner created without one is accepted. When present it must be exactly four
++     * digits and, when the owner's city maps to a known region (see
++     * {@link Owner#getLocality()}), fall within that region's inclusive postcode
++     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known
++     * region accepts any four-digit postcode.
++     *
++     * @param owner the freshly-mapped owner being created
++     * @return {@code true} if the postcode is absent or valid, {@code false} if it is
++     *         malformed or out of range for the city's region (reject with 400)
++     */
++    private static boolean postcodeValidForCity(Owner owner) {
++        String postcode = owner.getPostcode();
++        if (postcode == null) {
++            return true;
++        }
++        if (!postcode.matches("\\d{4}")) {
++            return false;
++        }
++        int[] range = REGION_POSTCODES.get(owner.getLocality());
++        if (range == null) {
++            return true;
++        }
++        int value = Integer.parseInt(postcode);
++        return value >= range[0] && value <= range[1];
++    }
++
+     /**
+      * Roll the given date forward to the next business day when it falls on a
+      * weekend: a Saturday or Sunday is advanced to the following Monday, while a
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 65850836f..11d76479a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  postcode VARCHAR(4)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7a7333495..a53ffcb3f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  postcode VARCHAR(4)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1b1f14529..30bb72ee7 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INT,
++  postcode VARCHAR(4),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1c3974aea..7e2f49405 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+-                                      household_size INTEGER
++                                      household_size INTEGER,
++                                      postcode TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 554780c67..e91c7e5a6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2048,6 +2048,18 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when present it must be
++            valid for the owner's city per the fixed city-to-region table
++            (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known
++            region accepts any 4-digit postcode. An out-of-range postcode is
++            rejected with 400. Stored and returned when supplied.
++          type: string
++          minLength: 4
++          maxLength: 4
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: >-
