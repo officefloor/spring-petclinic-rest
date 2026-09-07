@@ -1,10 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Locale;
-
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -26,8 +21,7 @@ public final class CustomerCode {
     /** The {@code '<REGION>-<HASH8>'} customer code for {@code owner}. */
     public static String of(Owner owner) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
-        String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
-                .substring(0, 8).toUpperCase(Locale.ROOT);
+        String hash8 = ShaHex.upperPrefix(owner.getTelephone() + owner.getLastName(), 8);
         return region + "-" + hash8;
     }
 
@@ -42,20 +36,5 @@ public final class CustomerCode {
         }
         int hyphen = customerCode.lastIndexOf('-');
         return hyphen < 0 ? customerCode : customerCode.substring(0, hyphen);
-    }
-
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

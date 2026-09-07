@@ -6,9 +6,8 @@ import java.util.Map;
 /**
  * Single home for owner address normalization. The create pipeline's {@link BuildOwner}
  * (which stores the canonical form and rejects an address blank after normalization) and
- * {@link AssignOwnerHousehold} (which matches household members and derives the shared
- * household id) both go through here, so the stored form and every address comparison stay
- * defined in one place.
+ * {@link Household} (which matches household members and derives the shared household id) both
+ * go through here, so the stored form and every address comparison stay defined in one place.
  */
 final class AddressNormalizer {
 
