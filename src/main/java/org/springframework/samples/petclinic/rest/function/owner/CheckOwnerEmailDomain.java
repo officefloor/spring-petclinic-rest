@@ -18,7 +18,7 @@ import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDoma
 public class CheckOwnerEmailDomain {
 
     /** Email domains that are disposable and therefore not allowed. */
-    private static final Set<String> DISPOSABLE_DOMAINS =
+    static final Set<String> DISPOSABLE_DOMAINS =
             Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@Val Owner owner) throws DisposableEmailDomainException {
