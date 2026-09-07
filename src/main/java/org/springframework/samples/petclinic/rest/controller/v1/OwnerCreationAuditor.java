@@ -16,10 +16,15 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Records the audit trail for a freshly-created owner. The create-audit concern is
@@ -33,11 +38,22 @@ public class OwnerCreationAuditor {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Monotonically increasing sequence number stamped on every OWNER_CREATED event. */
+    private static final AtomicLong SEQ = new AtomicLong();
+
     /**
      * Write the create audit record for a freshly-saved owner. Keeps the audit format in
      * one place so it stays in step with the owner's identity: it reports the assigned
      * customer code alongside the owner's id, registration date, membership level and
      * membership number.
+     *
+     * <p>Alongside the human-readable line, an immutable structured {@code OWNER_CREATED}
+     * event is emitted as a single-line JSON object so downstream consumers have a stable,
+     * machine-readable record. The event carries the owner's current primary identifier
+     * (the customer code today); when that identifier is later unified into the member id
+     * the event simply carries the member id instead — see {@link #primaryIdentifier(Owner)}.
      *
      * @param owner the owner that has just been created and saved
      */
@@ -45,5 +61,22 @@ public class OwnerCreationAuditor {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+
+        ObjectNode event = MAPPER.createObjectNode();
+        event.put("seq", SEQ.incrementAndGet());
+        event.put("ownerId", owner.getId());
+        event.put("customerCode", primaryIdentifier(owner));
+        event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("event", "OWNER_CREATED");
+        AUDIT.info(event.toString());
+    }
+
+    /**
+     * The owner's current primary identifier. Today that is the {@link Owner#getCustomerCode()
+     * customer code}; when the customer code is later unified into the member id this is the one
+     * place that changes so the {@code OWNER_CREATED} event follows the identity automatically.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 }
