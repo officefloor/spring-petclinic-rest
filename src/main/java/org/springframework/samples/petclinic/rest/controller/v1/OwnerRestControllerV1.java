@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
@@ -227,6 +228,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateHousehold(ownerFieldsDto);
     }
 
     /**
@@ -347,5 +349,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (taken) {
             throw new DuplicateTelephoneException(telephone);
         }
+    }
+
+    /**
+     * Rejects a new owner whose {@code lastName} and {@code address} already belong to another
+     * owner. Both fields are compared case-insensitively and with runs of whitespace collapsed to
+     * a single space (and surrounding whitespace trimmed), so for example {@code "Franklin"} at
+     * {@code "110  W. Liberty St."} clashes with {@code "franklin"} at {@code "110 W. Liberty St."}.
+     * A request may bypass this rule by setting {@code sharesHousehold} to {@code true}, allowing
+     * several owners to share one household. When a clash is found and the request did not opt in a
+     * {@link DuplicateHouseholdException} is thrown, which the exception advice renders as a 409
+     * Conflict response.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
+        String address = collapseWhitespace(ownerFieldsDto.getAddress());
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> lastName.equalsIgnoreCase(collapseWhitespace(existing.getLastName()))
+                && address.equalsIgnoreCase(collapseWhitespace(existing.getAddress())));
+        if (taken) {
+            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
+    }
+
+    /**
+     * Collapses a field for household comparison: leading and trailing whitespace is trimmed and
+     * every internal run of whitespace is reduced to a single space. A {@code null} value collapses
+     * to the empty string. Case is left untouched so callers can compare case-insensitively.
+     *
+     * @param value the value to collapse, or {@code null}
+     * @return the whitespace-collapsed value, never {@code null}
+     */
+    private String collapseWhitespace(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ");
     }
 }
