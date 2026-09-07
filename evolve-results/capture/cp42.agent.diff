@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 929eafdf9..e28f3330d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -38,6 +38,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate())))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
++    @Mapping(target = "timezone",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+     @Mapping(target = "contactPreference",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner.getEmail()))")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Timezone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Timezone.java
+new file mode 100644
+index 000000000..47c7b4e95
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Timezone.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * IANA timezone for a pet owner, derived from the owner's canonical region (see {@link Locality})
++ * using a fixed region-to-timezone table: {@code NSW -> Australia/Sydney},
++ * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}. A region not in the table
++ * (e.g. {@code UNKNOWN}) yields {@code null} so the field is absent on responses. Derived purely
++ * from the owner's own state via {@link Locality}, so it carries no stored data and is
++ * seed-independent. Used by the owner mapper to expose {@code timezone} on responses.
++ */
++public final class Timezone {
++
++    /** Region -> IANA timezone. Fixed, pinned reference data. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
++    private Timezone() {
++    }
++
++    /**
++     * The IANA timezone for an owner, resolved from the region derived by
++     * {@link Locality#of(String, String, String)} (customer code, then postcode, then city).
++     * Returns {@code null} when the region is not one of the known regions.
++     */
++    public static String of(String customerCode, String postcode, String city) {
++        return REGION_TIMEZONE.get(Locality.of(customerCode, postcode, city));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 94a01dd5f..e44ffb14f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2170,6 +2170,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            timezone:
++              title: Timezone
++              description: The IANA timezone name derived from the owner's locality/region using the fixed table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the region is not one of these.
++              type: string
++              readOnly: true
++              example: 'Australia/Sydney'
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners had already been created on this owner's registration day before this owner was created, otherwise false.
