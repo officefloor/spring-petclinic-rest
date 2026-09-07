@@ -1,0 +1,111 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+new file mode 100644
+index 000000000..16a6d9f83
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by the create-owner pipeline when the owner's city already contains 50 or more owners
++ * (compared case-insensitively with trimmed whitespace). Handled globally by
++ * {@link CityAtCapacityExceptionHandler}, which responds 409 Conflict.
++ */
++public class CityAtCapacityException extends Exception {
++
++    public CityAtCapacityException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+new file mode 100644
+index 000000000..fbcab97ca
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class CityAtCapacityExceptionHandler {
++
++    public void handle(@Parameter CityAtCapacityException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireCityCapacity.java
+new file mode 100644
+index 000000000..ea6feddec
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireCityCapacity.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
++
++/**
++ * Step of {@code POST /api/owners} that rejects a create when the owner's city already contains 50
++ * or more owners, throwing {@link CityAtCapacityException} (handled as 409 Conflict). Cities are
++ * compared case-insensitively with trimmed whitespace. Runs after {@link RequireOwnerFields} has
++ * published the validated body and before {@link BuildOwner}/{@link SaveOwner} persist the new
++ * owner.
++ */
++public class RequireCityCapacity {
++
++    /** Maximum number of owners permitted in a single city. */
++    private static final int CITY_CAPACITY = 50;
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws CityAtCapacityException {
++        String city = normalize(request.getCity());
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        if (count >= CITY_CAPACITY) {
++            throw new CityAtCapacityException(
++                    "City " + request.getCity() + " already has the maximum of " + CITY_CAPACITY
++                            + " owners");
++        }
++    }
++
++    private static String normalize(String city) {
++        return city == null ? "" : city.trim().toLowerCase();
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+new file mode 100644
+index 000000000..0a0bdf3c0
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index ab4443018..b406eaa50 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -13,6 +13,11 @@ uniqueTelephone:
+ uniqueHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueHousehold
+   govern: [ transaction ]
++  next: cityCapacity
++
++cityCapacity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireCityCapacity
++  govern: [ transaction ]
+   next: build
+ 
+ build:
