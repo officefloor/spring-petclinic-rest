@@ -106,6 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
+        if (owner.getEmail() != null) {
+            owner.setEmail(owner.getEmail().toLowerCase());
+        }
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -128,6 +131,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        String email = ownerFieldsDto.getEmail();
+        currentOwner.setEmail(email == null ? null : email.toLowerCase());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
