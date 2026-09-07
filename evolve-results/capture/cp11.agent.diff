@@ -1,0 +1,137 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f99477bbd..ca3c089eb 100644
+Binary files a/src/main/java/org/springframework/samples/petclinic/model/Owner.java and b/src/main/java/org/springframework/samples/petclinic/model/Owner.java differ
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4a51347a6..2f3ac7de8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,10 +16,12 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.nio.charset.StandardCharsets;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
++import java.util.UUID;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -117,8 +119,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && findHouseholdMember(owner).isPresent()) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        Optional<Owner> householdMember = findHouseholdMember(owner);
++        if (householdMember.isPresent()) {
++            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++                return new ResponseEntity<>(HttpStatus.CONFLICT);
++            }
++            joinHousehold(owner, householdMember.get());
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+@@ -237,6 +243,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .findFirst();
+     }
+ 
++    /**
++     * Assign the joining owner and an existing household member the same stable
++     * household identifier. The identifier is derived deterministically from the
++     * shared household key (last name + address, normalised), so every owner in a
++     * household resolves to the same value; the existing member is updated when it
++     * does not already carry it.
++     *
++     * @param owner    the owner being created
++     * @param existing an existing owner in the same household
++     */
++    private void joinHousehold(Owner owner, Owner existing) {
++        String householdId = UUID
++            .nameUUIDFromBytes(owner.householdKey().getBytes(StandardCharsets.UTF_8)).toString();
++        owner.setHouseholdId(householdId);
++        if (!householdId.equals(existing.getHouseholdId())) {
++            existing.setHouseholdId(householdId);
++            this.clinicService.saveOwner(existing);
++        }
++    }
++
+     /**
+      * Build the next customer code, formatted {@code <LAST3>-<NNNN>}: LAST3 is the
+      * upper-cased first three letters of the given last name and NNNN is a global
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..a3ba7e5a4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..82270213a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 69e1350c9..0beb907f9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,16 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: >-
++                A stable identifier shared by owners in the same household. Set
++                when an owner is created with 'sharesHousehold' true and an
++                existing owner has the same lastName and address; both owners
++                are then assigned this identifier.
++              type: string
++              example: '9e107d9d-372b-3f4a-8b4a-1d2c3e4f5a6b'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
