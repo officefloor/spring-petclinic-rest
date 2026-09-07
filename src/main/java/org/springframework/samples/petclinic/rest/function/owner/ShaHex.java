@@ -7,7 +7,7 @@ import java.util.Locale;
 
 /**
  * Single home for the SHA-256 hex hashing the create pipeline uses to derive stable identifiers.
- * Both {@link CustomerCode} (the {@code HASH8} segment of the customer code) and
+ * Both {@link MemberId} (the {@code HASH8} segment of the member id) and
  * {@link Household} (the shared household id) go through here, so the hashing stays defined in one
  * place.
  */

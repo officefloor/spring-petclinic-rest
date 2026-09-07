@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>TIER is {@code PREMIUM} when the owner's {@link #level(Owner) membership level} is 3 or
  * more, otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's locality (the region
- * component of the {@link CustomerCode customer code}) is a known region — NSW, VIC or QLD —
- * otherwise {@code REGIONAL}.
+ * embedded in the {@link MemberId member id}, re-derived here from the owner's city and postcode)
+ * is a known region — NSW, VIC or QLD — otherwise {@code REGIONAL}.
  */
 public final class OwnerSegment {
 
@@ -23,7 +23,7 @@ public final class OwnerSegment {
     /** The {@code '<TIER>_<AREA>'} segment for {@code owner}. */
     public static String of(Owner owner) {
         String tier = level(owner) >= PREMIUM_THRESHOLD ? "PREMIUM" : "STANDARD";
-        String region = CustomerCode.region(owner.getCustomerCode());
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
         String area = Locality.timezone(region) != null ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }

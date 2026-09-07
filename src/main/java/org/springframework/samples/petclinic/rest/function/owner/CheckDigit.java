@@ -1,23 +1,24 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 /**
- * The Luhn check digit (0-9) computed over the digits contained in an owner's customer code.
- * Non-digit characters (the hyphens) are ignored; the standard Luhn algorithm doubles every
- * second digit from the right and reduces the running sum modulo ten.
+ * The Luhn check digit (0-9) computed over the digits contained in a string — used for the CHK
+ * segment of a {@link MemberId member id}, computed over the digits of {@code <REGION><FY><HASH8>}.
+ * Non-digit characters are ignored; the standard Luhn algorithm doubles every second digit from
+ * the right and reduces the running sum modulo ten.
  */
 public final class CheckDigit {
 
     private CheckDigit() {
     }
 
-    public static Integer of(String customerCode) {
-        if (customerCode == null) {
+    public static Integer of(String value) {
+        if (value == null) {
             return null;
         }
         int sum = 0;
         boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }

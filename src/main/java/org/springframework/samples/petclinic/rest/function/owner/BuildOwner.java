@@ -54,7 +54,7 @@ public class BuildOwner {
             throw new RegistrationDateInFutureException(registrationDate, serverDate);
         }
         owner.setRegistrationDate(toBusinessDay(registrationDate));
-        owner.setCustomerCode(CustomerCode.of(owner));
+        owner.setMemberId(MemberId.of(owner));
         built.set(owner);
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
     }

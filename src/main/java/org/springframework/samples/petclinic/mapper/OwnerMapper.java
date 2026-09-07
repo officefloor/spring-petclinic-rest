@@ -24,10 +24,6 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.rest.function.owner.FiscalYear.of(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "fiscalYear",
         expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints",
@@ -35,11 +31,11 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCode.region(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerDto.OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner)))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.timezone(org.springframework.samples.petclinic.rest.function.owner.CustomerCode.region(owner.getCustomerCode())))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.timezone(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference",
         expression = "java(OwnerDto.ContactPreferenceEnum.fromValue(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner)))")
     @Mapping(target = "identityKey",

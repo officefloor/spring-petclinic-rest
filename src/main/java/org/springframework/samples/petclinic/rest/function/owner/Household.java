@@ -6,8 +6,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Single home for how owners are grouped into a household and how a household's stable shared id is
- * derived. Parallels {@link OwnerIdentity} (the duplicate key) and {@link CustomerCode} (the
- * customer code): the create pipeline's {@link AssignOwnerHousehold} goes through here, so the
+ * derived. Parallels {@link OwnerIdentity} (the duplicate key) and {@link MemberId} (the
+ * member id): the create pipeline's {@link AssignOwnerHousehold} goes through here, so the
  * grouping rule and the id derivation stay defined in one place.
  *
  * <p>The household is keyed on {@code (normalizedLastName, postcode)}: two owners belong to the
