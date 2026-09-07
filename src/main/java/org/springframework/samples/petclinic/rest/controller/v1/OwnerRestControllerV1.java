@@ -121,6 +121,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (emailAlreadyUsed(owner.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         Optional<Owner> householdMember = findHouseholdMember(owner);
         if (householdMember.isPresent()) {
             if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
@@ -292,6 +295,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             default:
                 return date;
         }
+    }
+
+    /**
+     * Determine whether the given (already lower-cased) email is already used by any
+     * existing owner, compared on the lower-cased email value. Owners without an email
+     * never match, so a {@code null} or blank candidate email is never a duplicate.
+     *
+     * @param email the candidate owner's normalised (lower-cased) email
+     * @return {@code true} if an existing owner already uses that email
+     */
+    private boolean emailAlreadyUsed(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .anyMatch(existing -> existing.toLowerCase().equals(email));
     }
 
     /**
