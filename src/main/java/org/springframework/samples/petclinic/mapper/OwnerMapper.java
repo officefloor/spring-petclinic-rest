@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -44,22 +44,24 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier. It is {@code 'GOLD'} when the owner's household
-     * (the owners sharing its {@code householdId}) has 3 or more members; otherwise it is
-     * {@code 'SILVER'} when the owner has no namesakes (namesakeCount is 0) and an email is
-     * present, and {@code 'BRONZE'} in all remaining cases.
+     * Returns the owner's numeric membership level, assigned on creation. The level starts at
+     * {@code 1}, gains {@code 1} when an email is present, gains {@code 1} when the owner has no
+     * namesakes (namesakeCount is 0), and is capped at {@code 3} (level 4 is reserved for tenure).
      */
-    default String membershipTier(Owner owner) {
+    default Integer membershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        Integer householdMembers = owner.getHouseholdMemberCount();
-        if (householdMembers != null && householdMembers >= 3) {
-            return "GOLD";
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**

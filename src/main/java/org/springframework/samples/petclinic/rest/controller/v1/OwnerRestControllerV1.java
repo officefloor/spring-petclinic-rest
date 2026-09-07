@@ -125,8 +125,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(registrationDate));
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -578,8 +579,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * i.e. every owner carrying that exact identifier. The count is taken against the current set
      * of owners, so after a create it reflects the household's size including the newly persisted
      * owner. An owner without a household (a {@code null} identifier) belongs to no shared
-     * household and yields {@code 0}. This size drives the {@code GOLD} membership tier, which
-     * applies once a household reaches three or more members.
+     * household and yields {@code 0}.
      *
      * @param householdId the shared household identifier, or {@code null} when the owner shares no household
      * @return the number of owners in the household, or {@code 0} when {@code householdId} is {@code null}
