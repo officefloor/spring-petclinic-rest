@@ -479,7 +479,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidFieldsException(List.of("email"));
         }
-        return trimmed.toLowerCase(java.util.Locale.ROOT);
+        return canonicalEmail(trimmed);
+    }
+
+    /**
+     * Reduces an email to the canonical form used both to store it and to compare it against
+     * other owners' emails: surrounding whitespace is trimmed and the value is lower-cased. A
+     * {@code null} email (none was supplied) canonicalizes to {@code null}. Unlike
+     * {@link #normalizeEmail(String)} no validation is performed, so this can be applied to a
+     * value read back off an existing owner without risk of rejecting it. This is the single
+     * definition of email identity: two emails denote the same address exactly when they
+     * canonicalize to the same value, so an email stored via {@link #normalizeEmail(String)} and
+     * an email already on an existing owner can be compared for equality after both pass through
+     * here. For example {@code "  Jane@Example.COM "} canonicalizes to {@code "jane@example.com"}.
+     *
+     * @param email the email to canonicalize, or {@code null} when none was supplied
+     * @return the trimmed, lower-cased email, or {@code null} when {@code email} is {@code null}
+     */
+    private String canonicalEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        return email.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
