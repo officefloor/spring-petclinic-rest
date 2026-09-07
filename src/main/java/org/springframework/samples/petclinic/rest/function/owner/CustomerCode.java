@@ -26,6 +26,28 @@ public final class CustomerCode {
     }
 
     /**
+     * De-duplicate a computed customer code against those already in use. When {@code code}
+     * collides with an existing owner's customer code, the smallest {@code n} of 2 or more is
+     * appended as {@code '-<n>'} to make it unique; a code that does not collide is returned
+     * unchanged (as is a {@code null} code).
+     *
+     * @param code          the computed customer code to make unique
+     * @param existingCodes the customer codes already assigned to other owners
+     * @return the de-duplicated customer code
+     */
+    public static String dedupe(String code, java.util.Set<String> existingCodes) {
+        if (code == null || !existingCodes.contains(code)) {
+            return code;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = code + "-" + n;
+            if (!existingCodes.contains(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /**
      * The REGION component of a customer code (everything before the final {@code '-'}), or
      * {@code null} when the code is absent. This is the owner's locality, now read straight off
      * the identity rather than re-derived.
