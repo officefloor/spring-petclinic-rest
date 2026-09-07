@@ -105,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -127,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -251,6 +253,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Pattern for a syntactically valid email address: a non-empty local part, an {@code @},
+     * and a domain containing at least one dot, none of the parts holding whitespace or a
+     * second {@code @}.
+     */
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+        java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /**
+     * Normalizes an optional owner email. An email is optional, so a {@code null} value is
+     * accepted and returned unchanged. When present it must be a syntactically valid address;
+     * the value is stored and returned lower-cased. When present but invalid an
+     * {@link InvalidFieldsException} is thrown, which the exception advice renders as a 400
+     * response naming the {@code email} field.
+     *
+     * @param email the submitted email value, or {@code null} when omitted
+     * @return the lower-cased email, or {@code null} when none was supplied
+     */
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidFieldsException(List.of("email"));
+        }
+        return trimmed.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
