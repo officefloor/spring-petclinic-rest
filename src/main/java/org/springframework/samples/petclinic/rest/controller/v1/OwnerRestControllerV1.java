@@ -511,6 +511,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(owner.computeMembershipNumber());
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        owner.setCapacityWarning(cityApproachingCapacity(owner.getCity()));
         owner.setHouseholdSize(householdSize(owner));
         owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
         assignPossibleDuplicate(owner, declaredHouseholdMember);
@@ -675,11 +676,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return {@code true} if the city already holds 50 or more owners
      */
     private boolean cityIsAtCapacity(String city) {
+        return ownersInCity(city) >= 50;
+    }
+
+    /**
+     * Determine whether the given city is approaching its owner capacity, i.e. it
+     * already contains between 40 and 49 existing owners (compared case-insensitively
+     * with surrounding whitespace trimmed). This warns that the capacity limit of 50
+     * is near; the hard rejection at 50 is handled separately by
+     * {@link #cityIsAtCapacity(String)}. Evaluated before the new owner is saved, so
+     * it reflects only owners that already existed at creation time.
+     *
+     * @param city the candidate owner's city
+     * @return {@code true} if the city already holds between 40 and 49 owners
+     */
+    private boolean cityApproachingCapacity(String city) {
+        long count = ownersInCity(city);
+        return count >= 40 && count < 50;
+    }
+
+    /**
+     * Count the existing owners in the given city, compared case-insensitively with
+     * surrounding whitespace trimmed.
+     *
+     * @param city the city to count owners for
+     * @return the number of existing owners in that city
+     */
+    private long ownersInCity(String city) {
         String normalizedCity = normalizeName(city);
-        long count = this.clinicService.findAllOwners().stream()
+        return this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeName(existing.getCity()).equals(normalizedCity))
             .count();
-        return count >= 50;
     }
 
     /**

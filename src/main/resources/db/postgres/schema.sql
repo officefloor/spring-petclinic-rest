@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       namesake_count INTEGER,
                                       membership_number TEXT,
                                       bulk_signup_warning BOOLEAN,
+                                      capacity_warning BOOLEAN,
                                       household_size INTEGER,
                                       postcode TEXT,
                                       birth_date DATE,
