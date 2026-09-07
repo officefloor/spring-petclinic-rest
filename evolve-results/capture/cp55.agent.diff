@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7633d59d2..7ebc8e0b0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -242,6 +242,22 @@ public class Owner extends Person {
+         return OwnerDerivations.membershipLevel(getMembershipPoints(), this.membershipLevelCap);
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, one of
++     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++     * {@code STANDARD_REGIONAL}: TIER is {@code PREMIUM} when its
++     * {@link #getMembershipLevel() membership level} is 3 or more (otherwise
++     * {@code STANDARD}) and AREA is {@code METRO} when its {@link #getLocality() locality}
++     * is a known region (otherwise {@code REGIONAL}). Derived (not persisted); recomputed
++     * each call. See {@link OwnerDerivations#ownerSegment(int, String)}.
++     *
++     * @return the owner's segment as {@code <TIER>_<AREA>}
++     */
++    @Transient
++    public String getOwnerSegment() {
++        return OwnerDerivations.ownerSegment(getMembershipLevel(), this.getLocality());
++    }
++
+     /**
+      * The owner's preferred contact channel, {@code "EMAIL"} or {@code "PHONE"}.
+      * Derived (not persisted); recomputed from the current fields each call. See
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+index 4894e87ec..2ca7a586a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+@@ -215,6 +215,21 @@ final class OwnerDerivations {
+         return cap == null ? level : Math.min(level, cap);
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, one of
++     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++     * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} when {@code membershipLevel} is 3
++     * or more, otherwise {@code STANDARD}. AREA is {@code METRO} when {@code locality} is a
++     * known region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code REGIONAL}.
++     *
++     * @return the owner's segment as {@code <TIER>_<AREA>}
++     */
++    static String ownerSegment(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = REGION_TIMEZONE.containsKey(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Whether the owner's tenure exceeds a year, i.e. at least one whole fiscal year has
+      * elapsed from its {@code registrationDate} up to {@code asOf} (see
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2d6037607..772974841 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2303,6 +2303,17 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>', one of
++                'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
++                'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3
++                or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality
++                is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             locality:
+               title: Locality
+               description: >-
