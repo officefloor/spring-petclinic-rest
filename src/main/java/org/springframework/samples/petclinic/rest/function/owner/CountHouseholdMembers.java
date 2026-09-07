@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * members its household ({@link Household#id(String, String) same householdId}, i.e. same last name
  * and address) has once this owner is included. Counts the existing owners sharing the household
  * (before this create) and adds one for the owner being created. Runs before {@link SaveOwner} so
- * the owner being created is not double-counted. The stored value drives the {@code GOLD} membership
- * tier ({@link MembershipTier}) for households of three or more members.
+ * the owner being created is not double-counted. The stored value records the household's size at
+ * create time.
  */
 public class CountHouseholdMembers {
 
