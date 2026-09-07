@@ -26,6 +26,6 @@ public class AuditOwnerCreated {
             return null;
         }
         return owner.getCustomerCode() + "-M"
-                + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
     }
 }
