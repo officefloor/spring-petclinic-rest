@@ -36,6 +36,8 @@ public interface OwnerMapper {
         expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCode.region(owner.getCustomerCode()))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(OwnerDto.OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner)))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.timezone(org.springframework.samples.petclinic.rest.function.owner.CustomerCode.region(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
