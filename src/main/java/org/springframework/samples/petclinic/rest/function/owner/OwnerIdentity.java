@@ -5,19 +5,20 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * The single derived identity of a pet owner. The {@code identityKey} is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone is
- * canonical E.164 form, the email is trimmed and lower-cased (or empty when absent) and the household
- * id is {@link Household#id(String, String)} over the last name and postcode.
+ * The single derived identity of a pet owner. The {@code identityKey} is the lower-case hex SHA-256
+ * digest over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+ * telephone is canonical E.164 form, the email is trimmed and lower-cased (or empty when absent) and
+ * the surname is reduced to its {@link Soundex} code.
  *
- * <p>Because the telephone is part of the key, two members of the same household (same householdId)
- * with different telephones have different identity keys and are both allowed; only owners that are
- * the same contact collide. Duplicate detection compares the {@link #contactKey(String, String)} —
- * the telephone-and-email prefix of the key that is what actually identifies one owner, so two owners
- * in the same household with different telephones (or emails) are distinct and both persist.
+ * <p>Because the telephone is part of the key, two owners in the same household (same surname and
+ * postcode) with different telephones have different identity keys and are both allowed; only owners
+ * that are the same contact — same telephone, email and surname phonetic — collide. Duplicate
+ * detection compares this {@link #key(String, String, String) identity key} directly, and
+ * {@link FlagPossibleDuplicate} treats a near-match (same soundex(lastName) and postcode but a
+ * different key) as a possible duplicate.
  *
  * <p>Used by {@link RequireUniqueIdentity} to reject a collision and by the owner mapper to expose
- * the full key on responses.
+ * the key on responses.
  */
 public final class OwnerIdentity {
 
@@ -27,14 +28,10 @@ public final class OwnerIdentity {
     /** The full identity key for an owner with the given raw fields, as exposed on responses. Fields
      *  are normalized here so the same value is produced whether they come from a freshly-validated
      *  request or a stored owner. */
-    public static String key(String telephone, String email, String lastName, String postcode) {
-        return contactKey(telephone, email) + "|" + Household.id(lastName, postcode);
-    }
-
-    /** The telephone-and-email prefix of the identity key, identifying a single contact. Two owners
-     *  are duplicates when their contact keys are equal. */
-    public static String contactKey(String telephone, String email) {
-        return normalizedTelephone(telephone) + "|" + normalizeEmail(email);
+    public static String key(String telephone, String email, String lastName) {
+        String raw = normalizedTelephone(telephone) + "|" + normalizeEmail(email) + "|"
+                + Soundex.of(lastName);
+        return Sha256.hex(raw);
     }
 
     /** The telephone in canonical E.164 form, or the raw value (or empty when {@code null}) when it
