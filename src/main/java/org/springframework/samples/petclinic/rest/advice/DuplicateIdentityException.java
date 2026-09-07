@@ -17,16 +17,16 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a request tries to create an owner whose lastName and address already
- * belong to another owner (compared case-insensitively with collapsed whitespace) and
- * the request has not opted in via {@code sharesHousehold}.
+ * Thrown when a request tries to create an owner whose derived identity key (the
+ * normalized telephone, email and household identifier joined by '|') is already
+ * used by another owner.
  * <p>
  * Signals a conflict with existing data so the {@link ExceptionControllerAdvice}
  * can surface it to the client as a {@code 409 Conflict} response.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("An owner with lastName '" + lastName + "' at address '" + address + "' already exists");
+    public DuplicateIdentityException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
     }
 }

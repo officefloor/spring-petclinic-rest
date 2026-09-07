@@ -141,6 +141,36 @@ public class Owner extends Person {
         this.householdMemberCount = householdMemberCount;
     }
 
+    /**
+     * Builds the derived identity key that consolidates all owner duplicate detection into a
+     * single value: the normalized E.164 {@code telephone}, the lower-cased {@code email}
+     * (empty when none) and the {@code householdId} (empty when the owner shares no household),
+     * joined by {@code '|'}. Two owners are duplicates exactly when their whole identity keys are
+     * equal, so a difference in any of the three parts (for example two household mates with
+     * different telephones) yields distinct keys. A {@code null} part contributes the empty string.
+     *
+     * @param telephone the normalized E.164 telephone
+     * @param email the lower-cased email, or {@code null} when none
+     * @param householdId the shared household identifier, or {@code null} when none
+     * @return the derived identity key
+     */
+    public static String identityKey(String telephone, String email, String householdId) {
+        return (telephone == null ? "" : telephone) + "|"
+            + (email == null ? "" : email) + "|"
+            + (householdId == null ? "" : householdId);
+    }
+
+    /**
+     * Returns this owner's derived identity key, see
+     * {@link #identityKey(String, String, String)}.
+     *
+     * @return the derived identity key for this owner
+     */
+    @Transient
+    public String getIdentityKey() {
+        return identityKey(this.telephone, this.email, this.householdId);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
