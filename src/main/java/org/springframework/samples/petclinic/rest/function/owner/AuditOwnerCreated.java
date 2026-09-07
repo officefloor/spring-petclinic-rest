@@ -18,11 +18,13 @@ import tools.jackson.databind.json.JsonMapper;
  * <li>the human-readable audit line carrying the new owner's id, member id,
  *     registration date and derived membership level; and</li>
  * <li>an immutable, machine-readable {@code OWNER_CREATED} event as a single JSON
- *     object {@code {seq, ownerId, memberId, membershipLevel, event}}.</li>
+ *     object {@code {schemaVersion, seq, ownerId, memberId, ownerSegment, membershipLevel, event}}.</li>
  * </ol>
  *
- * <p>{@code seq} is a monotonically increasing integer across creates. The event
- * carries the owner's primary identifier — the unified {@link MemberId member id}.
+ * <p>{@code seq} is a monotonically increasing integer across creates. The event is at schema
+ * version 2 ({@code schemaVersion}) and carries the owner's primary identifier — the unified,
+ * version-2 {@link MemberId member id} — and the {@link OwnerSegment owner segment} recomputed from
+ * that version-2 identity.
  */
 public class AuditOwnerCreated {
 
@@ -39,7 +41,7 @@ public class AuditOwnerCreated {
                 MembershipLevel.of(owner));
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                owner.getMemberId(), membershipLevel(owner));
+                owner.getMemberId(), OwnerSegment.of(owner), membershipLevel(owner));
         AUDIT.info(MAPPER.writeValueAsString(event));
     }
 
@@ -48,15 +50,19 @@ public class AuditOwnerCreated {
         return owner.getMembershipLevel() != null ? owner.getMembershipLevel() : MembershipLevel.of(owner);
     }
 
+    /** The audit event schema version. Version 2 adds {@code schemaVersion} and {@code ownerSegment}. */
+    private static final int SCHEMA_VERSION = 2;
+
     /**
      * Immutable structured create event. Field order is the serialized JSON key order:
-     * {@code {seq, ownerId, memberId, membershipLevel, event}}.
+     * {@code {schemaVersion, seq, ownerId, memberId, ownerSegment, membershipLevel, event}}.
      */
-    public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
-            String event) {
+    public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+            String ownerSegment, int membershipLevel, String event) {
 
-        public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel) {
-            this(seq, ownerId, memberId, membershipLevel, "OWNER_CREATED");
+        public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, String ownerSegment,
+                int membershipLevel) {
+            this(SCHEMA_VERSION, seq, ownerId, memberId, ownerSegment, membershipLevel, "OWNER_CREATED");
         }
     }
 }

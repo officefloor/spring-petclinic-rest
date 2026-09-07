@@ -5,9 +5,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 
 import java.util.Collection;
 import java.util.List;
@@ -38,8 +40,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.timezone(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference",
         expression = "java(OwnerDto.ContactPreferenceEnum.fromValue(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner)))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(toIdentityDto(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -49,6 +51,18 @@ public interface OwnerMapper {
     @Mapping(target = "riskFlag",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identifiers into the nested {@code identity} object: the stored
+     * member id and household id, and the derived identity key.
+     */
+    default IdentityDto toIdentityDto(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentity.key(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

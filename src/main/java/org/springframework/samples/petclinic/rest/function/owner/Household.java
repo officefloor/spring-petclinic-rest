@@ -41,6 +41,11 @@ final class Household {
      * coordination.
      */
     static String id(Owner owner) {
-        return ShaHex.upperPrefix(lastNameKey(owner.getLastName()) + "|" + postcodeKey(owner.getPostcode()), 12);
+        // The version-2 region code (the fixed 'V2' tag mixed in) is folded into the hash input so
+        // the household id changes and never reproduces a version-1 value. The tag is a constant, so
+        // owners that share a normalized last name and postcode still compute the identical value.
+        return ShaHex.upperPrefix(
+                IdentityVersion.TAG + "|" + lastNameKey(owner.getLastName()) + "|" + postcodeKey(owner.getPostcode()),
+                12);
     }
 }

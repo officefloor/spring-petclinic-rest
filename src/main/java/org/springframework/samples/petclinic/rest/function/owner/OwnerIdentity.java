@@ -20,8 +20,11 @@ public final class OwnerIdentity {
     }
 
     public static String key(Owner owner) {
-        String canonical = telephone(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|"
-                + Soundex.of(owner.getLastName());
+        // The version-2 tag is folded into the hash input so the identity key changes and never
+        // reproduces a version-1 value. The tag is a constant, so two owners are still duplicates
+        // exactly when their telephone, email and soundex(lastName) match.
+        String canonical = IdentityVersion.TAG + "|" + telephone(owner.getTelephone()) + "|"
+                + email(owner.getEmail()) + "|" + Soundex.of(owner.getLastName());
         return ShaHex.lowerHex(canonical);
     }
 

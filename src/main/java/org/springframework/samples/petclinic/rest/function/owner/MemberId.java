@@ -28,7 +28,10 @@ public final class MemberId {
 
     /** The {@code '<REGION><FY><HASH8><CHK>'} member id for {@code owner}. */
     public static String of(Owner owner) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        // REGION is the version-2 region code: the plain region with the fixed 'V2' tag mixed in,
+        // so this identifier changes and never reproduces a version-1 value. The user-facing
+        // locality keeps the plain region.
+        String region = IdentityVersion.region(Locality.of(owner.getCity(), owner.getPostcode()));
         String fy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = ShaHex.upperPrefix(owner.getTelephone() + owner.getLastName(), 8);
         String base = region + fy + hash8;
