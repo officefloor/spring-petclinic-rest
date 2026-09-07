@@ -118,7 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner));
+        owner.setCustomerCode(customerCodeFor(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -357,25 +357,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the customer code assigned to a newly created owner. The code is formatted as
-     * {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3} is the upper-cased first three letters
-     * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
-     * name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
-     * number of owners already in that city. For example the seventh owner in {@code 'Springfield'}
-     * named {@code 'Smith'} is assigned {@code 'SPR-SMI-0007'}. The whole owner is taken so the code
-     * is derived from whichever of its fields the identity scheme needs.
+     * {@code '<REGION>-<HASH8>'}, where {@code REGION} is the owner's canonical region (see
+     * {@link Owner#getRegion()}), rendered {@code 'UNKNOWN'} when the owner has no known region,
+     * and {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest over the
+     * owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}. The code
+     * carries no sequence number, so two owners sharing a region, telephone and last name resolve to
+     * the same code. The whole owner is taken so the code is derived from whichever of its fields the
+     * identity scheme needs.
      *
      * @param owner the owner being created, whose fields the code is derived from
      * @return the formatted customer code
      */
-    private String nextCustomerCode(Owner owner) {
-        String city = owner.getCity();
-        String lastName = owner.getLastName();
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        long sequence = this.clinicService.findAllOwners().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String customerCodeFor(Owner owner) {
+        String region = owner.getRegion();
+        String regionCode = region != null ? region : "UNKNOWN";
+        String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
+        return regionCode + "-" + hash8;
     }
 
     /**

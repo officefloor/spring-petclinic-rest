@@ -53,9 +53,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Resolves the region an owner's {@link #locality(Owner)} is derived from. Currently this is
-     * the owner's canonical region (see {@link Owner#getRegion()}), which is {@code null} when the
-     * owner has no known region. Keeping the region source in its own method leaves
+     * Resolves the region an owner's {@link #locality(Owner)} is derived from. This is the
+     * {@code REGION} segment carried by the owner's {@code customerCode}, whose new
+     * {@code '<REGION>-<HASH8>'} identity encodes the region ahead of the first {@code '-'}. The
+     * sentinel {@code 'UNKNOWN'} region (used when the owner has no known region) and a missing
+     * customer code both resolve to {@code null}. Keeping the region source in its own method leaves
      * {@link #locality(Owner)} owning only the {@code null -> 'UNKNOWN'} rendering, so where the
      * region itself comes from can change without disturbing that rendering.
      *
@@ -63,7 +65,13 @@ public interface OwnerMapper {
      * @return the region string, or {@code null} when the owner has no known region
      */
     default String localityRegion(Owner owner) {
-        return owner.getRegion();
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int dash = code.indexOf('-');
+        String region = dash >= 0 ? code.substring(0, dash) : code;
+        return "UNKNOWN".equals(region) ? null : region;
     }
 
     /**
@@ -89,7 +97,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the registrationDate year, e.g. {@code 'SMI-0007-M26'}. Returns
+     * last two digits of the registrationDate year, e.g. {@code 'NSW-A1B2C3D4-M26'}. Returns
      * {@code null} when the owner has no customer code or registration date.
      */
     default String membershipNumber(Owner owner) {
