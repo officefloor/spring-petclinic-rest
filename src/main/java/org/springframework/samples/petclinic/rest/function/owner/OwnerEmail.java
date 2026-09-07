@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
@@ -13,6 +14,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidEmailExcepti
 final class OwnerEmail {
 
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /** Disposable email providers rejected up front: their addresses are throwaway. */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmail() {
     }
@@ -28,6 +33,10 @@ final class OwnerEmail {
         String normalized = email.trim().toLowerCase(Locale.ROOT);
         if (!EMAIL.matcher(normalized).matches()) {
             throw new InvalidEmailException("Email must be a syntactically valid address");
+        }
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException("Email domain is not accepted");
         }
         return normalized;
     }
