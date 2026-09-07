@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 79bcc1bb6..4a6f3bf1f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Household.id(owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
++    @Mapping(target = "membershipTier",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+new file mode 100644
+index 000000000..8cc3c34b0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Membership tier for pet owners. An owner is {@code SILVER} when its {@code namesakeCount} is 0
++ * (no existing owner shares its first and last name) and it has an email address; otherwise it is
++ * {@code BRONZE}. Derived purely from the owner's own state, so it carries no stored data and is
++ * seed-independent. Used by the owner mapper to expose {@code membershipTier} on responses.
++ */
++public final class MembershipTier {
++
++    private MembershipTier() {
++    }
++
++    /**
++     * The membership tier for the given namesake count and email: {@code SILVER} when the count is
++     * exactly 0 and the email is present (non-null, non-blank), otherwise {@code BRONZE}.
++     */
++    public static String of(Integer namesakeCount, String email) {
++        boolean unique = namesakeCount != null && namesakeCount == 0;
++        boolean hasEmail = email != null && !email.isBlank();
++        return unique && hasEmail ? "SILVER" : "BRONZE";
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4b017c4eb..d3f337b5b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2111,6 +2111,12 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            membershipTier:
++              title: Membership tier
++              description: The owner's membership tier. 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
++              type: string
++              readOnly: true
++              example: 'SILVER'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
