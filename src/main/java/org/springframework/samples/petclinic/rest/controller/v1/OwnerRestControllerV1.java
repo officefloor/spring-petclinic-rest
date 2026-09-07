@@ -528,13 +528,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Write the create audit record for a freshly-saved owner. Keeps the audit format in
      * one place so it stays in step with the owner's identity: it reports the assigned
-     * customer code alongside the owner's id, registration date and membership level.
+     * customer code alongside the owner's id, registration date, membership level and
+     * membership number.
      *
      * @param owner the owner that has just been created and saved
      */
     private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
     }
 
     /**
