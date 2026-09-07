@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -353,11 +354,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a new owner whose {@code lastName} and {@code address} already belong to another
-     * owner. Both fields are compared case-insensitively and with runs of whitespace collapsed to
-     * a single space (and surrounding whitespace trimmed), so for example {@code "Franklin"} at
-     * {@code "110  W. Liberty St."} clashes with {@code "franklin"} at {@code "110 W. Liberty St."}.
-     * A request may bypass this rule by setting {@code sharesHousehold} to {@code true}, allowing
-     * several owners to share one household. When a clash is found and the request did not opt in a
+     * owner, i.e. one that shares its household (see {@link #findHouseholdMate(String, String)}
+     * for how that identity is compared). A request may bypass this rule by setting
+     * {@code sharesHousehold} to {@code true}, allowing several owners to share one household.
+     * When a household mate is found and the request did not opt in a
      * {@link DuplicateHouseholdException} is thrown, which the exception advice renders as a 409
      * Conflict response.
      *
@@ -367,14 +367,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return;
         }
-        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
-        String address = collapseWhitespace(ownerFieldsDto.getAddress());
-        boolean taken = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> lastName.equalsIgnoreCase(collapseWhitespace(existing.getLastName()))
-                && address.equalsIgnoreCase(collapseWhitespace(existing.getAddress())));
+        boolean taken = findHouseholdMate(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()).isPresent();
         if (taken) {
             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
+    }
+
+    /**
+     * Finds an existing owner that shares a household with the given {@code lastName} and
+     * {@code address}. Both fields are compared case-insensitively and with runs of whitespace
+     * collapsed to a single space (and surrounding whitespace trimmed), so for example
+     * {@code "Franklin"} at {@code "110  W. Liberty St."} matches {@code "franklin"} at
+     * {@code "110 W. Liberty St."}. When several owners match, the first one encountered is
+     * returned. This is the single definition of household identity shared by every rule that
+     * reasons about households.
+     *
+     * @param lastName the last name to match on
+     * @param address the address to match on
+     * @return the first owner sharing the household, or empty when none exists
+     */
+    private Optional<Owner> findHouseholdMate(String lastName, String address) {
+        String normalizedLastName = collapseWhitespace(lastName);
+        String normalizedAddress = collapseWhitespace(address);
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedLastName.equalsIgnoreCase(collapseWhitespace(existing.getLastName()))
+                && normalizedAddress.equalsIgnoreCase(collapseWhitespace(existing.getAddress())))
+            .findFirst();
     }
 
     /**
