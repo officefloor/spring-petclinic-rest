@@ -1,0 +1,220 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e3adc8107..06966b0f2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipTier",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipTier.of(owner.getHouseholdSize(), owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 4bd080e4a..b712c51e3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -122,6 +125,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+new file mode 100644
+index 000000000..2df738324
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Step of {@code POST /api/owners} that records the owner's {@code householdSize}: the number of
++ * members its household ({@link Household#id(String, String) same householdId}, i.e. same last name
++ * and address) has once this owner is included. Counts the existing owners sharing the household
++ * (before this create) and adds one for the owner being created. Runs before {@link SaveOwner} so
++ * the owner being created is not double-counted. The stored value drives the {@code GOLD} membership
++ * tier ({@link MembershipTier}) for households of three or more members.
++ */
++public class CountHouseholdMembers {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = Household.id(owner.getLastName(), owner.getAddress());
++        int existing = 0;
++        for (Owner other : ownerRepository.findAll()) {
++            if (householdId.equals(Household.id(other.getLastName(), other.getAddress()))) {
++                existing++;
++            }
++        }
++        owner.setHouseholdSize(existing + 1);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+index 8cc3c34b0..2ca4a4443 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+@@ -1,9 +1,11 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ /**
+- * Membership tier for pet owners. An owner is {@code SILVER} when its {@code namesakeCount} is 0
+- * (no existing owner shares its first and last name) and it has an email address; otherwise it is
+- * {@code BRONZE}. Derived purely from the owner's own state, so it carries no stored data and is
++ * Membership tier for pet owners. An owner is {@code GOLD} when its household (owners sharing the
++ * same {@code householdId}) has three or more members; otherwise it is {@code SILVER} when its
++ * {@code namesakeCount} is 0 (no existing owner shares its first and last name) and it has an email
++ * address, and {@code BRONZE} in every other case. Derived purely from the owner's own stored state
++ * ({@code householdSize} and {@code namesakeCount} are recorded at create time), so it is
+  * seed-independent. Used by the owner mapper to expose {@code membershipTier} on responses.
+  */
+ public final class MembershipTier {
+@@ -12,10 +14,14 @@ public final class MembershipTier {
+     }
+ 
+     /**
+-     * The membership tier for the given namesake count and email: {@code SILVER} when the count is
+-     * exactly 0 and the email is present (non-null, non-blank), otherwise {@code BRONZE}.
++     * The membership tier for the given household size, namesake count and email: {@code GOLD} when
++     * the household has three or more members; otherwise {@code SILVER} when the namesake count is
++     * exactly 0 and the email is present (non-null, non-blank), and {@code BRONZE} otherwise.
+      */
+-    public static String of(Integer namesakeCount, String email) {
++    public static String of(Integer householdSize, Integer namesakeCount, String email) {
++        if (householdSize != null && householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean unique = namesakeCount != null && namesakeCount == 0;
+         boolean hasEmail = email != null && !email.isBlank();
+         return unique && hasEmail ? "SILVER" : "BRONZE";
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 48796cb4a..e165bbce4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 9eac6b8ce..fba63ecfd 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 469c6dbb9..3c79e55ff 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index f86922dff..c6f5e8e66 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 52de1a832..d71771723 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
++                                      household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 2be4ea396..299735293 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -38,6 +38,11 @@ customerCode:
+ namesakes:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountNamesakes
+   govern: [ transaction ]
++  next: householdSize
++
++householdSize:
++  class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
++  govern: [ transaction ]
+   next: bulkSignup
+ 
+ bulkSignup:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index eaa141b6b..fc8c9404c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2113,7 +2113,7 @@ components:
+               example: 1
+             membershipTier:
+               title: Membership tier
+-              description: The owner's membership tier. 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
++              description: The owner's membership tier. 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0 and an email is present, and 'BRONZE' in every other case.
+               type: string
+               readOnly: true
+               example: 'SILVER'
