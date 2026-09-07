@@ -86,6 +86,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private boolean bulkSignupWarning;
 
+    @Column(name = "capacity_warning")
+    private boolean capacityWarning;
+
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
 
@@ -224,6 +227,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public boolean isCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public boolean isPossibleDuplicate() {
