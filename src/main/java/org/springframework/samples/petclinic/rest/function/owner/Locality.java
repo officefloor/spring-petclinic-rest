@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Locality (canonical region) for pet owners. For a created owner the region is read straight off
- * the REGION prefix of its {@code customerCode} (see {@link AssignCustomerCode}), so the locality
- * shown on responses is exactly the region baked into the region-and-hash identity. When no such
- * code is present (e.g. legacy owners with no customer code) it falls back to resolving the region
+ * the REGION prefix of its {@code memberId} (see {@link AssignMemberId}), so the locality shown on
+ * responses is exactly the region baked into the region-and-hash identity. When no such id is
+ * present (e.g. legacy owners with no member id) it falls back to resolving the region
  * from the owner's postcode first, using fixed inclusive postcode ranges: {@code NSW 2000-2099},
  * {@code VIC 3000-3099}, {@code QLD 4000-4099}; when the postcode is absent or falls in no known
  * range, it falls back to a fixed city-to-region table: {@code Sydney -> NSW},
@@ -24,7 +24,7 @@ public final class Locality {
     private static final Map<String, String> CITY_REGION = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
-    /** The canonical regions a customer code may carry, used to recognise its REGION prefix. */
+    /** The canonical regions a member id may carry, used to recognise its REGION prefix. */
     private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD", "UNKNOWN");
 
     /** Region -> inclusive 4-digit postcode range {low, high}. Fixed, pinned reference data. */
@@ -37,23 +37,22 @@ public final class Locality {
     }
 
     /**
-     * The canonical region for the given owner, read from the REGION prefix of its
-     * {@code customerCode} when present and falling back to the postcode-then-city derivation
-     * otherwise. This is the mapping the owner mapper uses so the exposed locality matches the
-     * region-and-hash identity.
-     */
-    public static String of(Owner owner) {
-        return of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity());
-    }
-
-    /**
-     * The canonical region for an owner, read from the REGION prefix of its {@code customerCode}
+     * The canonical region for the given owner, read from the REGION prefix of its {@code memberId}
      * when present and falling back to the postcode-then-city derivation otherwise. This is the
      * mapping the owner mapper uses so the exposed locality matches the region-and-hash identity.
      */
-    public static String of(String customerCode, String postcode, String city) {
-        String region = CustomerCode.region(customerCode);
-        return region != null && KNOWN_REGIONS.contains(region) ? region : of(postcode, city);
+    public static String of(Owner owner) {
+        return of(owner.getMemberId(), owner.getPostcode(), owner.getCity());
+    }
+
+    /**
+     * The canonical region for an owner, read from the REGION prefix of its {@code memberId} when
+     * present and falling back to the postcode-then-city derivation otherwise. This is the mapping
+     * the owner mapper uses so the exposed locality matches the region-and-hash identity.
+     */
+    public static String of(String memberId, String postcode, String city) {
+        String region = MemberId.region(memberId, KNOWN_REGIONS);
+        return region != null ? region : of(postcode, city);
     }
 
     /**

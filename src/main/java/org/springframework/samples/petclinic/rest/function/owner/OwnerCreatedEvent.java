@@ -6,19 +6,17 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured audit event for a successful {@code POST /api/owners}. Rendered as the JSON
- * object <code>{seq, ownerId, customerCode, membershipLevel, event}</code> and published on the
+ * object <code>{seq, ownerId, memberId, membershipLevel, event}</code> and published on the
  * dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}, alongside the human-readable audit
  * line.
  *
  * <p>{@code seq} is a monotonically increasing integer assigned once per created owner, in creation
  * order, from a process-wide counter.
  *
- * <p>{@code customerCode} carries the owner's <em>current primary identifier</em>. It is sourced from
- * a single accessor ({@link Owner#getCustomerCode()}); when the customer code is later unified into a
- * member id, that accessor changes and the event carries the member id instead, without touching this
- * class.
+ * <p>{@code memberId} carries the owner's <em>current primary identifier</em>. It is sourced from a
+ * single accessor ({@link Owner#getMemberId()}).
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
         String event) {
 
     /** Discriminator recorded as the event's {@code event} field. */
@@ -29,24 +27,24 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
 
     /**
      * Builds the next event for the given saved owner, allocating a fresh {@code seq}. The owner's
-     * current primary identifier ({@link Owner#getCustomerCode()}) is captured as {@code customerCode}
-     * and its numeric {@link MembershipLevel} is captured as {@code membershipLevel}.
+     * current primary identifier ({@link Owner#getMemberId()}) is captured as {@code memberId} and
+     * its numeric {@link MembershipLevel} is captured as {@code membershipLevel}.
      */
     public static OwnerCreatedEvent of(Owner owner) {
-        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
+        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(), owner.getMemberId(),
                 MembershipLevel.of(owner), EVENT);
     }
 
     /**
      * This event as a compact JSON object with fields in the order
-     * {@code seq, ownerId, customerCode, membershipLevel, event}.
+     * {@code seq, ownerId, memberId, membershipLevel, event}.
      */
     public String toJson() {
         StringBuilder json = new StringBuilder(96);
         json.append('{');
         json.append("\"seq\":").append(seq);
         json.append(",\"ownerId\":").append(ownerId);
-        json.append(",\"customerCode\":").append(quote(customerCode));
+        json.append(",\"memberId\":").append(quote(memberId));
         json.append(",\"membershipLevel\":").append(membershipLevel);
         json.append(",\"event\":").append(quote(event));
         json.append('}');

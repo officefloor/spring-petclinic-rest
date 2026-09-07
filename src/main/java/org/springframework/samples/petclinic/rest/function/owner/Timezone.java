@@ -33,10 +33,10 @@ public final class Timezone {
 
     /**
      * The IANA timezone for an owner, resolved from the region derived by
-     * {@link Locality#of(String, String, String)} (customer code, then postcode, then city).
+     * {@link Locality#of(String, String, String)} (member id, then postcode, then city).
      * Returns {@code null} when the region is not one of the known regions.
      */
-    public static String of(String customerCode, String postcode, String city) {
-        return REGION_TIMEZONE.get(Locality.of(customerCode, postcode, city));
+    public static String of(String memberId, String postcode, String city) {
+        return REGION_TIMEZONE.get(Locality.of(memberId, postcode, city));
     }
 }

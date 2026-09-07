@@ -12,11 +12,11 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Two things are emitted, both on the {@code AUDIT} logger:
  * <ul>
- * <li>a human-readable audit line carrying the owner id, its {@code customerCode}, its
- * {@code registrationDate}, its numeric {@code membershipLevel} and its {@code membershipNumber}; and
+ * <li>a human-readable audit line carrying the owner id, its {@code memberId}, its
+ * {@code registrationDate} and its numeric {@code membershipLevel}; and
  * <li>an immutable {@link OwnerCreatedEvent}, rendered as a JSON object
- * <code>{seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}</code>, where
- * {@code seq} increases monotonically across creates and {@code customerCode} carries the owner's
+ * <code>{seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}</code>, where
+ * {@code seq} increases monotonically across creates and {@code memberId} carries the owner's
  * current primary identifier.
  * </ul>
  */
@@ -25,12 +25,10 @@ public class AuditOwnerCreated {
     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        String customerCode = owner.getCustomerCode();
         audit.info(
-                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), customerCode, owner.getRegistrationDate(),
-                MembershipLevel.of(owner),
-                MembershipNumber.of(customerCode, owner.getRegistrationDate()));
+                "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                MembershipLevel.of(owner));
         audit.info(OwnerCreatedEvent.of(owner).toJson());
     }
 }

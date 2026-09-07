@@ -9,8 +9,8 @@ import java.time.Month;
  * 2026-09-08 is in fiscal year 2027), while a date before 1 July belongs to the fiscal year that
  * ends in its own calendar year. The fiscal year is named by the calendar year in which it ends.
  * Used off the owner's business-day-adjusted {@code registrationDate} to expose {@code fiscalYear}
- * on responses and to supply the year segment of the {@link MembershipNumber} and the tenure count
- * in {@link MembershipPoints}.
+ * on responses and to supply the FY segment of the {@link MemberId} and the tenure count in
+ * {@link MembershipPoints}.
  */
 public final class FiscalYear {
 

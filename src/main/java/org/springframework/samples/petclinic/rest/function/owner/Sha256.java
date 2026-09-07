@@ -7,8 +7,8 @@ import java.security.NoSuchAlgorithmException;
 /**
  * SHA-256 hashing to a hexadecimal string — the single place the owner functions compute a digest,
  * so everything that derives a value from a hash encodes it the same way. {@link Household#id(String,
- * String)} and {@link AssignCustomerCode} both hash through here; a caller that wants a short,
- * upper-case code takes a prefix of {@link #hex(String)} and upper-cases it.
+ * String)} and {@link MemberId#hash8(String, String)} both hash through here; a caller that wants a
+ * short, upper-case code takes a prefix of {@link #hex(String)} and upper-cases it.
  */
 final class Sha256 {
 
