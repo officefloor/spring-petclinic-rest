@@ -106,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
@@ -123,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -569,6 +571,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }
+    }
+
+    /**
+     * Counts the owners that belong to the household identified by the given {@code householdId},
+     * i.e. every owner carrying that exact identifier. The count is taken against the current set
+     * of owners, so after a create it reflects the household's size including the newly persisted
+     * owner. An owner without a household (a {@code null} identifier) belongs to no shared
+     * household and yields {@code 0}. This size drives the {@code GOLD} membership tier, which
+     * applies once a household reaches three or more members.
+     *
+     * @param householdId the shared household identifier, or {@code null} when the owner shares no household
+     * @return the number of owners in the household, or {@code 0} when {@code householdId} is {@code null}
+     */
+    private int countHouseholdMembers(String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
     }
 
     /**
