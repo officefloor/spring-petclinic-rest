@@ -44,4 +44,31 @@ final class OwnerAddress {
         }
         return sb.toString();
     }
+
+    /**
+     * @return the normalized value, or {@code null} when it is {@code null} or blank after
+     * normalization. Used to store the structured address lines in their canonical form while
+     * treating a blank line as absent.
+     */
+    static String normalizeOrNull(String value) {
+        String normalized = normalize(value);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Composes the canonical, normalized address from the structured or flat inputs. When
+     * {@code addressLine1} is non-blank the structured form wins: the composed address is the
+     * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended when that line is present. Otherwise the flat {@code address} is normalized and used.
+     *
+     * @return the composed address, or an empty string when no address is supplied in either form.
+     */
+    static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalizeOrNull(addressLine1);
+        if (line1 == null) {
+            return normalize(address);
+        }
+        String line2 = normalizeOrNull(addressLine2);
+        return line2 == null ? line1 : line1 + " " + line2;
+    }
 }

@@ -24,7 +24,14 @@ public class RequireOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingFieldsException, InvalidTelephoneException, InvalidEmailException {
-        request.setAddress(OwnerAddress.normalize(request.getAddress()));
+        // Prefer the structured address when supplied, falling back to the flat 'address' for
+        // backward compatibility. Store each supplied part in its normalized form and expose the
+        // composed 'address' (normalized addressLine1, plus normalized addressLine2 after a single
+        // space when present) so the required-field check, storage and every reader see one form.
+        request.setAddressLine1(OwnerAddress.normalizeOrNull(request.getAddressLine1()));
+        request.setAddressLine2(OwnerAddress.normalizeOrNull(request.getAddressLine2()));
+        request.setAddress(OwnerAddress.compose(request.getAddressLine1(), request.getAddressLine2(),
+                request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");

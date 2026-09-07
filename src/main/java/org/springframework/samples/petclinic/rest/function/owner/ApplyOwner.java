@@ -10,7 +10,13 @@ public class ApplyOwner {
 
     public void service(@Val Owner owner, @Val OwnerFieldsDto request)
             throws InvalidEmailException, InvalidTelephoneException {
-        owner.setAddress(request.getAddress());
+        // Normalize each supplied address part and store the composed 'address' (structured
+        // addressLine1 preferred, flat 'address' as fallback), consistent with owner creation.
+        String line1 = OwnerAddress.normalizeOrNull(request.getAddressLine1());
+        String line2 = OwnerAddress.normalizeOrNull(request.getAddressLine2());
+        owner.setAddressLine1(line1);
+        owner.setAddressLine2(line2);
+        owner.setAddress(OwnerAddress.compose(line1, line2, request.getAddress()));
         owner.setCity(request.getCity());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
