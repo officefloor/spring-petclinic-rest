@@ -21,22 +21,14 @@ public class RequireUniqueHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // owner explicitly shares a household with an existing owner
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String lastName = Household.normalize(request.getLastName());
+        String address = Household.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (lastName.equals(Household.normalize(existing.getLastName()))
+                    && address.equals(Household.normalize(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(
                         "An owner with the same last name and address already exists");
             }
         }
-    }
-
-    /** Trim, collapse internal whitespace and lower-case for case-insensitive comparison. */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
