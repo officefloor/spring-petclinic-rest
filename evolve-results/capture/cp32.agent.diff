@@ -1,0 +1,123 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c6f52f824..7aca465dd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,7 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(OwnerDto.ContactPreferenceEnum.fromValue(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner)))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 1c13928ef..626f6096c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -61,7 +61,7 @@ public class BuildOwner {
+             registrationDate = java.time.LocalDate.now();
+         }
+         owner.setRegistrationDate(toBusinessDay(registrationDate));
+-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
++        owner.setCustomerCode(CustomerCode.of(owner));
+         built.set(owner);
+         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+     }
+@@ -81,29 +81,6 @@ public class BuildOwner {
+         }
+     }
+ 
+-    /**
+-     * Build a customer code '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three letters of the
+-     * city, a hyphen, the upper-cased first three letters of the last name, a hyphen, then a
+-     * per-city 4-digit zero-padded sequence equal to one more than the number of owners already
+-     * in that city (e.g. 'LON-SMI-0007').
+-     */
+-    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
+-        String city3 = prefix3(city);
+-        String last3 = prefix3(lastName);
+-        int sequence = 1;
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (existing.getCity() != null && existing.getCity().equalsIgnoreCase(city)) {
+-                sequence++;
+-            }
+-        }
+-        return String.format("%s-%s-%04d", city3, last3, sequence);
+-    }
+-
+-    /** Upper-cased first three letters (fewer if the value is shorter) of {@code value}. */
+-    private static String prefix3(String value) {
+-        return value.substring(0, Math.min(3, value.length())).toUpperCase(java.util.Locale.ROOT);
+-    }
+-
+     /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
+     private static String normalizeEmail(String email) throws InvalidEmailException {
+         if (email == null || email.isBlank()) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+new file mode 100644
+index 000000000..8a6710734
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -0,0 +1,61 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The owner's customer code — the single derived identity every other value hangs off. It is
++ * {@code '<REGION>-<HASH8>'}: REGION is the canonical region derived from the owner's postcode
++ * (falling back to the city table via {@link Locality}); HASH8 is the first 8 UPPER-case hex
++ * characters of SHA-256 over the normalized (E.164) telephone concatenated with the last name.
++ *
++ * <p>There are no sequence numbers: the code is a pure function of region, telephone and last
++ * name, so it needs no repository scan and is stable for a given owner. The membership number,
++ * its Luhn check digit ({@link CheckDigit}), the create audit line and the reported locality
++ * ({@link #region(String)}) are all built from this one value.
++ */
++public final class CustomerCode {
++
++    private CustomerCode() {
++    }
++
++    /** The {@code '<REGION>-<HASH8>'} customer code for {@code owner}. */
++    public static String of(Owner owner) {
++        String region = Locality.of(owner.getCity(), owner.getPostcode());
++        String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
++                .substring(0, 8).toUpperCase(Locale.ROOT);
++        return region + "-" + hash8;
++    }
++
++    /**
++     * The REGION component of a customer code (everything before the final {@code '-'}), or
++     * {@code null} when the code is absent. This is the owner's locality, now read straight off
++     * the identity rather than re-derived.
++     */
++    public static String region(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int hyphen = customerCode.lastIndexOf('-');
++        return hyphen < 0 ? customerCode : customerCode.substring(0, hyphen);
++    }
++
++    private static String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
++    }
++}
