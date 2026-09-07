@@ -213,6 +213,20 @@ final class OwnerDerivations {
     }
 
     /**
+     * The owner's salutation, formed as {@code title + ' ' + lastName} when a
+     * {@code title} is present, or just the {@code lastName} when no title is supplied.
+     * A {@code null} or blank title contributes nothing, yielding the bare last name.
+     *
+     * @return the composed salutation
+     */
+    static String salutation(String title, String lastName) {
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
+    }
+
+    /**
      * The owner's preferred contact channel: {@code "EMAIL"} when an {@code email}
      * is present, otherwise {@code "PHONE"}.
      *

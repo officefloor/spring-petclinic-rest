@@ -37,6 +37,9 @@ import java.util.*;
 @Table(name = "owners")
 public class Owner extends Person {
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -95,6 +98,27 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation, composed from its {@link #getTitle() title} and
+     * {@link #getLastName() last name}: {@code title + ' ' + lastName} when a title is
+     * present, or just the last name when no title was supplied. Derived (not persisted);
+     * recomputed each call. See {@link OwnerDerivations#salutation(String, String)}.
+     *
+     * @return the composed salutation
+     */
+    @Transient
+    public String getSalutation() {
+        return OwnerDerivations.salutation(this.title, this.getLastName());
+    }
 
     public String getAddress() {
         return this.address;
