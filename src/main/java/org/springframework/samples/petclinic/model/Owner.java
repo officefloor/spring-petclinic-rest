@@ -143,18 +143,32 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. Derived (not persisted);
+     * The owner's membership points, a non-negative score derived from its factors.
+     * Derived (not persisted); recomputed from the current fields each call, so it rises
+     * once the owner's tenure since {@link #registrationDate} exceeds 365 days. See
+     * {@link OwnerDerivations#membershipPoints(String, Integer, Integer, LocalDate, LocalDate)}
+     * for how it is scored.
+     *
+     * @return the membership points, 0 or more
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        return OwnerDerivations.membershipPoints(this.email, this.namesakeCount, this.householdSize,
+            this.registrationDate, LocalDate.now());
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4, mapped from its
+     * {@link #getMembershipPoints() membership points}. Derived (not persisted);
      * recomputed from the current fields each call, so it rises to level 4 once the
      * owner's tenure since {@link #registrationDate} exceeds 365 days. See
-     * {@link OwnerDerivations#membershipLevel(String, Integer, LocalDate, LocalDate)}
-     * for how it is assigned.
+     * {@link OwnerDerivations#membershipLevel(int)} for the mapping.
      *
      * @return the membership level, from 1 to 4
      */
     @Transient
     public Integer getMembershipLevel() {
-        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount, this.registrationDate,
-            LocalDate.now());
+        return OwnerDerivations.membershipLevel(getMembershipPoints());
     }
 
     /**

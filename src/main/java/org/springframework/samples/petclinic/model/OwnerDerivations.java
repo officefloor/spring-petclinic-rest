@@ -134,29 +134,53 @@ final class OwnerDerivations {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. The creation-time factors
-     * are assessed first: starting at 1, add 1 when an {@code email} is present and add
-     * 1 when {@code namesakeCount} is 0, capped at 3. Level 4 is then reached only once
-     * the owner's tenure exceeds 365 days, measured as the number of whole days from its
-     * {@code registrationDate} up to {@code asOf}. Because a newly created owner has zero
-     * tenure, it never exceeds level 3 at creation.
+     * The owner's membership points, a non-negative score derived from its factors:
+     * starting at 0, add 2 when an {@code email} is present, add 1 when
+     * {@code namesakeCount} is 0, add 2 for a household of 3 or more (its
+     * {@code householdSize}) and add 3 when the owner's tenure exceeds 365 days, measured
+     * as the number of whole days from its {@code registrationDate} up to {@code asOf}.
+     * Because a newly created owner has zero tenure, it never earns the tenure points at
+     * creation.
+     *
+     * @return the membership points, 0 or more
+     */
+    static int membershipPoints(String email, Integer namesakeCount, Integer householdSize,
+            LocalDate registrationDate, LocalDate asOf) {
+        int points = 0;
+        if (hasEmail(email)) {
+            points += 2;
+        }
+        if (namesakeCount != null && namesakeCount == 0) {
+            points += 1;
+        }
+        if (householdSize != null && householdSize >= 3) {
+            points += 2;
+        }
+        if (tenureExceedsYear(registrationDate, asOf)) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4, mapped from its
+     * {@link #membershipPoints(String, Integer, Integer, LocalDate, LocalDate) membership
+     * points}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5 and level 4 for 6
+     * or more.
      *
      * @return the membership level, from 1 to 4
      */
-    static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate,
-            LocalDate asOf) {
-        int level = 1;
-        if (hasEmail(email)) {
-            level++;
+    static int membershipLevel(int points) {
+        if (points <= 1) {
+            return 1;
         }
-        if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        if (tenureExceedsYear(registrationDate, asOf)) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
