@@ -223,18 +223,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Normalise the incoming fields of a freshly-mapped owner in place, applying
-     * the canonical form each stored value must take: the telephone is converted
-     * to E.164, any email is lower-cased and a missing registration date defaults
-     * to today. Field-level rejections are reported here rather than inline in
-     * {@link #addOwner}, and normalisation runs before any household comparison so
-     * those comparisons see the canonical values.
+     * the canonical form each stored value must take: the address is trimmed,
+     * whitespace-collapsed, upper-cased and its common abbreviations expanded, the
+     * telephone is converted to E.164, any email is lower-cased and a missing
+     * registration date defaults to today. Field-level rejections are reported here
+     * rather than inline in {@link #addOwner}, and normalisation runs before any
+     * household comparison so those comparisons see the canonical values.
      *
      * @param owner the freshly-mapped owner to normalise
-     * @return {@code true} if the fields are valid, or {@code false} if the
-     *         telephone cannot form a valid E.164 number and the request must be
-     *         rejected with {@code 400 Bad Request}
+     * @return {@code true} if the fields are valid, or {@code false} if the address
+     *         is blank after normalisation or the telephone cannot form a valid
+     *         E.164 number, in which case the request must be rejected with
+     *         {@code 400 Bad Request}
      */
     private boolean normalizeNewOwner(Owner owner) {
+        String address = Owner.normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return false;
