@@ -25,6 +25,9 @@ public class CheckOwnerIdentityUnique {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // same record (e.g. re-save), not a conflict
             }
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a new one
+            }
             if (householdId != null && householdId.equals(Household.id(existing))) {
                 throw new DuplicateIdentityException(householdId);
             }

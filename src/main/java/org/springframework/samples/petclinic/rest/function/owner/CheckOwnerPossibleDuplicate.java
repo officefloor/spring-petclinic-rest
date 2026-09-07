@@ -38,6 +38,9 @@ public class CheckOwnerPossibleDuplicate {
             if (existing.getId() == null || existing.getId().equals(owner.getId())) {
                 continue; // skip the owner being created
             }
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not a soft-match either
+            }
             if (!lastName.equals(key(existing.getLastName()))) {
                 continue;
             }
