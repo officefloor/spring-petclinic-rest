@@ -38,6 +38,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate())))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+    @Mapping(target = "timezone",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand",
