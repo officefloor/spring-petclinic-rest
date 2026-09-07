@@ -21,7 +21,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Pure derivations of an {@link Owner}'s read-only attributes.
@@ -248,14 +247,18 @@ final class OwnerDerivations {
     }
 
     /**
-     * The stable identifier for the household described by the given
-     * {@link Owner#householdKey() household key}, derived deterministically so every
-     * owner in a household resolves to the same value.
+     * The stable identifier for the household an owner belongs to, derived
+     * deterministically from its {@code normalizedLastName} and {@code postcode} so that
+     * every owner sharing a last name and postcode resolves to the same value. It is the
+     * first twelve lower-case hexadecimal characters of the SHA-256 digest of
+     * {@code normalizedLastName + '|' + postcode} (an absent postcode contributes the
+     * empty string).
      *
      * @return the household identifier
      */
-    static String householdId(String householdKey) {
-        return UUID.nameUUIDFromBytes(householdKey.getBytes(StandardCharsets.UTF_8)).toString();
+    static String householdId(String normalizedLastName, String postcode) {
+        String pc = postcode == null ? "" : postcode;
+        return sha256Hex(normalizedLastName + "|" + pc).substring(0, 12);
     }
 
     /**

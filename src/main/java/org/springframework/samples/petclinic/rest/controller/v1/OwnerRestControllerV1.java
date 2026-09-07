@@ -117,14 +117,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityIsAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setHouseholdId(owner.computeHouseholdId());
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         Optional<Owner> householdMember = findHouseholdMember(owner);
-        if (householdMember.isPresent() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            joinHousehold(owner, householdMember.get());
-        }
-        if (identityKeyAlreadyUsed(owner)) {
+        if (householdMember.isPresent() && !sharesHousehold) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        assignDerivedAttributes(owner);
+        boolean declaredHouseholdMember = householdMember.isPresent();
+        assignDerivedAttributes(owner, declaredHouseholdMember);
         this.clinicService.saveOwner(owner);
         auditOwnerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -292,29 +292,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determine whether the candidate owner's identity key collides with any existing
-     * owner's. This is the single, consolidated duplicate check: it subsumes the
-     * former separate telephone, email and household checks by comparing the whole
-     * derived {@code identityKey} ({@code normalizedTelephone + '|' + (email or empty)
-     * + '|' + householdId}). Only an exact full-key match is a duplicate, so two owners
-     * that agree on some — but not all — of the key's parts (for example two members of
-     * the same household with different telephones) are not duplicates. Evaluated after
-     * normalisation and household resolution, so the candidate's key reflects its
-     * canonical field values and any household it has joined.
-     *
-     * @param owner the candidate owner being created, after household resolution
-     * @return {@code true} if an existing owner has the same identity key
-     */
-    private boolean identityKeyAlreadyUsed(Owner owner) {
-        String identityKey = owner.getIdentityKey();
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
-    }
-
-    /**
      * Find an existing owner that belongs to the same household as the given owner,
-     * i.e. shares the same last name and address (compared case-insensitively with
-     * runs of whitespace collapsed to a single space).
+     * i.e. shares the same last name (compared case-insensitively with runs of
+     * whitespace collapsed to a single space) and postcode, and so resolves to the same
+     * deterministic {@code householdId}.
      *
      * @param owner the candidate owner being created
      * @return the matching existing owner, or empty if none exists
@@ -323,25 +304,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.sameHouseholdAs(owner))
             .findFirst();
-    }
-
-    /**
-     * Assign the joining owner and an existing household member the same stable
-     * household identifier. The identifier is derived deterministically from the
-     * shared household key (last name + address, normalised), so every owner in a
-     * household resolves to the same value; the existing member is updated when it
-     * does not already carry it.
-     *
-     * @param owner    the owner being created
-     * @param existing an existing owner in the same household
-     */
-    private void joinHousehold(Owner owner, Owner existing) {
-        String householdId = owner.computeHouseholdId();
-        owner.setHouseholdId(householdId);
-        if (!householdId.equals(existing.getHouseholdId())) {
-            existing.setHouseholdId(householdId);
-            this.clinicService.saveOwner(existing);
-        }
     }
 
     /**
@@ -358,20 +320,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * number is built from it.
      *
      * @param owner the candidate owner being created, after household resolution
+     * @param declaredHouseholdMember whether this owner was created as a declared member
+     *                                of an existing household (it shared an existing
+     *                                owner's household and set {@code sharesHousehold}),
+     *                                in which case it is not a suspected duplicate
      */
-    private void assignDerivedAttributes(Owner owner) {
+    private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember) {
         owner.setCustomerCode(owner.computeCustomerCode());
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
-        assignPossibleDuplicate(owner);
+        assignPossibleDuplicate(owner, declaredHouseholdMember);
     }
 
     /**
      * Flag the candidate owner as a possible duplicate of an existing owner. A soft
-     * match — distinct from the hard {@code identityKey} duplicate already rejected with
-     * 409 — is an existing owner that shares this owner's last name (compared
+     * match is an existing owner that shares this owner's last name (compared
      * case-insensitively) and postcode but carries a different (normalised) telephone.
      * When such a match exists the owner is still created, but with
      * {@code possibleDuplicate} true and {@code possibleDuplicateOf} set to the matching
@@ -380,9 +345,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is deterministic. Evaluated before the owner is saved, so only pre-existing owners
      * are considered.
      *
+     * <p>A declared household member — one that shared an existing owner's household
+     * (same last name and postcode) and was admitted because it set
+     * {@code sharesHousehold} — is never flagged: a declared member is not a suspected
+     * duplicate, so its {@code possibleDuplicate} is false with no match id.
+     *
      * @param owner the candidate owner being created, after household resolution
+     * @param declaredHouseholdMember whether the owner is a declared household member
      */
-    private void assignPossibleDuplicate(Owner owner) {
+    private void assignPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
+        if (declaredHouseholdMember) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return;
+        }
         String lastName = normalizeName(owner.getLastName());
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();
@@ -402,11 +378,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Count how many owners belong to the given owner's household once this create
-     * completes: the owners that already share its {@code householdId} plus the owner
-     * being created. Evaluated after any {@link #joinHousehold(Owner, Owner)} has run,
-     * so the household identifier (and any existing member updated to it) is already in
-     * place. An owner that has not joined a household (no {@code householdId}) is a
-     * household of one.
+     * completes: the owners that already share its deterministic {@code householdId}
+     * (derived from last name and postcode) plus the owner being created. Evaluated
+     * after the owner's {@code householdId} has been assigned. An owner whose
+     * {@code householdId} matches no existing owner is a household of one.
      *
      * @param owner the candidate owner being created, after household resolution
      * @return the household member count after this create (at least {@code 1})

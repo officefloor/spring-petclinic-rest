@@ -312,19 +312,6 @@ public class Owner extends Person {
     }
 
     /**
-     * A stable, normalised key identifying this owner's household (same last name
-     * and address). The last name is folded case- and whitespace-insensitively and
-     * the address is reduced to its canonical form exactly as in
-     * {@link #sameHouseholdAs(Owner)}, so two owners share a key iff they share a
-     * household.
-     *
-     * @return the household key
-     */
-    public String householdKey() {
-        return normalize(this.getLastName()) + " " + normalizeAddress(this.address);
-    }
-
-    /**
      * Compute the customer code to assign to this owner at creation, formatted
      * {@code <REGION>-<HASH8>} from the owner's (already normalised) fields. This is the
      * value stored in {@link #getCustomerCode()}; see
@@ -338,29 +325,30 @@ public class Owner extends Person {
 
     /**
      * Compute the stable household identifier for this owner, derived deterministically
-     * from its {@link #householdKey() household key} so every owner in a household
-     * resolves to the same value. This is the value stored in
-     * {@link #getHouseholdId()}; see {@link OwnerDerivations#householdId(String)}.
+     * from its last name and postcode so every owner sharing a last name and postcode
+     * resolves to the same value. This is the value stored in {@link #getHouseholdId()};
+     * see {@link OwnerDerivations#householdId(String, String)} for the exact derivation.
      *
      * @return the household identifier
      */
     public String computeHouseholdId() {
-        return OwnerDerivations.householdId(householdKey());
+        return OwnerDerivations.householdId(normalize(this.getLastName()), this.postcode);
     }
 
     /**
-     * Whether this owner belongs to the same household as {@code other}: that is,
-     * they share the same last name and address. The last name is compared
+     * Whether this owner belongs to the same household as {@code other}: that is, they
+     * share the same last name and postcode. The last name is compared
      * case-insensitively with runs of whitespace collapsed to a single space (and
-     * surrounding whitespace trimmed); the address is compared in its canonical
-     * normalised form (see {@link #normalizeAddress(String)}).
+     * surrounding whitespace trimmed); the postcode is compared for exact equality (two
+     * absent postcodes count as equal). Owners in the same household resolve to the same
+     * {@link #computeHouseholdId() household identifier}.
      *
      * @param other the owner to compare against
      * @return {@code true} if both owners share a household
      */
     public boolean sameHouseholdAs(Owner other) {
         return normalize(this.getLastName()).equals(normalize(other.getLastName()))
-            && normalizeAddress(this.address).equals(normalizeAddress(other.address));
+            && Objects.equals(this.postcode, other.postcode);
     }
 
     /**
