@@ -132,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        owner.setHouseholdSize(householdSize(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -325,6 +326,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             existing.setHouseholdId(householdId);
             this.clinicService.saveOwner(existing);
         }
+    }
+
+    /**
+     * Count how many owners belong to the given owner's household once this create
+     * completes: the owners that already share its {@code householdId} plus the owner
+     * being created. Evaluated after any {@link #joinHousehold(Owner, Owner)} has run,
+     * so the household identifier (and any existing member updated to it) is already in
+     * place. An owner that has not joined a household (no {@code householdId}) is a
+     * household of one.
+     *
+     * @param owner the candidate owner being created, after household resolution
+     * @return the household member count after this create (at least {@code 1})
+     */
+    private int householdSize(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 1;
+        }
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(other -> householdId.equals(other.getHouseholdId()))
+            .count();
+        return (int) existing + 1;
     }
 
     /**
