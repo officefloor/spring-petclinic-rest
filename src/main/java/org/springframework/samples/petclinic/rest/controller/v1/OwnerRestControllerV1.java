@@ -275,18 +275,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalise the owner's address in place to its canonical stored form (trimmed,
-     * whitespace-collapsed, upper-cased and with common abbreviations expanded; see
-     * {@link Owner#normalizeAddress(String)}), gathering the whole address concern of
-     * {@link #normalizeNewOwner} in one place. The canonicalised value is written back
-     * so every later household comparison and read sees it.
+     * Normalise the owner's address fields in place to their canonical stored form
+     * (trimmed, whitespace-collapsed, upper-cased and with common abbreviations
+     * expanded; see {@link Owner#normalizeAddress(String)}), gathering the whole address
+     * concern of {@link #normalizeNewOwner} in one place. The structured form is
+     * preferred: when a non-blank {@code addressLine1} is supplied it (and any
+     * {@code addressLine2}) is normalised, and the flat {@code address} is composed from
+     * them — the normalised {@code addressLine1}, with a single space and the normalised
+     * {@code addressLine2} appended when an {@code addressLine2} is present. Otherwise the
+     * flat {@code address} is normalised on its own, preserving backward compatibility.
+     * Either way the canonicalised values are written back so every later household
+     * comparison and read sees them.
      *
      * @param owner the freshly-mapped owner whose address fields are being normalised
-     * @return {@code true} once the address is valid and stored, or {@code false} when
-     *         it is blank after normalisation, in which case the request must be
-     *         rejected with {@code 400 Bad Request}
+     * @return {@code true} once an address is valid and stored, or {@code false} when
+     *         neither a structured {@code addressLine1} nor a flat {@code address} is
+     *         present after normalisation, in which case the request must be rejected
+     *         with {@code 400 Bad Request}
      */
     private boolean normalizeAddressFields(Owner owner) {
+        String addressLine1 = Owner.normalizeAddress(owner.getAddressLine1());
+        if (!addressLine1.isEmpty()) {
+            owner.setAddressLine1(addressLine1);
+            String composed = addressLine1;
+            String addressLine2 = Owner.normalizeAddress(owner.getAddressLine2());
+            if (!addressLine2.isEmpty()) {
+                owner.setAddressLine2(addressLine2);
+                composed = addressLine1 + " " + addressLine2;
+            }
+            owner.setAddress(composed);
+            return true;
+        }
         String address = Owner.normalizeAddress(owner.getAddress());
         if (address.isEmpty()) {
             return false;
