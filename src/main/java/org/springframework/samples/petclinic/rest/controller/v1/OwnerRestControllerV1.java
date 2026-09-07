@@ -104,10 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        validateRequiredFields(ownerFieldsDto);
-        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        prepareNewOwner(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (owner.getRegistrationDate() == null) {
@@ -216,14 +213,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner whose {@code firstName}, {@code lastName}, {@code address}, {@code city}
-     * or {@code telephone} is missing or blank. A field that is only whitespace is treated as
-     * blank. When any field fails, a {@link RequiredFieldsMissingException} is thrown carrying
-     * the names of every offending field, which the exception advice renders as a 400 response
-     * with an {@code errors} array.
+     * Applies the intake rules a newly submitted owner must satisfy before it is persisted.
+     * The required fields are checked, the telephone and email are normalized in place, and
+     * the resulting telephone is rejected when it already belongs to another owner. Each rule
+     * signals a violation by throwing, which the exception advice renders as the matching 4xx
+     * response; when the method returns normally {@code ownerFieldsDto} is normalized and ready
+     * to be mapped and saved.
      *
-     * @param ownerFieldsDto the submitted owner fields
+     * @param ownerFieldsDto the submitted owner fields, normalized in place
      */
+    private void prepareNewOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
+        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+    }
+
     /**
      * Builds the customer code assigned to a newly created owner. The code is formatted as
      * {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the upper-cased first three letters of
@@ -240,6 +245,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /**
+     * Rejects an owner whose {@code firstName}, {@code lastName}, {@code address}, {@code city}
+     * or {@code telephone} is missing or blank. A field that is only whitespace is treated as
+     * blank. When any field fails, a {@link RequiredFieldsMissingException} is thrown carrying
+     * the names of every offending field, which the exception advice renders as a 400 response
+     * with an {@code errors} array.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     */
     private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", ownerFieldsDto.getFirstName());
