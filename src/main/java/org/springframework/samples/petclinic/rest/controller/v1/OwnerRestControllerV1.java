@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeNewOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (cityIsAtCapacity(owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -325,6 +328,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
+    /**
+     * Determine whether the given city has already reached its owner capacity, i.e.
+     * it already contains 50 or more existing owners (compared case-insensitively
+     * with surrounding whitespace trimmed). A new owner may not be created in a city
+     * that is at capacity.
+     *
+     * @param city the candidate owner's city
+     * @return {@code true} if the city already holds 50 or more owners
+     */
+    private boolean cityIsAtCapacity(String city) {
+        String normalizedCity = normalizeName(city);
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeName(existing.getCity()).equals(normalizedCity))
+            .count();
+        return count >= 50;
+    }
+
     private String nextCustomerCode(String city, String lastName) {
         String city3 = prefix3(city);
         String last3 = prefix3(lastName);
