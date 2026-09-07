@@ -1,0 +1,102 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 96d6e0a4d..ac658cc22 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,13 +44,19 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Returns the owner's membership tier: {@code 'SILVER'} when the owner has no namesakes
+-     * (namesakeCount is 0) and an email is present, otherwise {@code 'BRONZE'}.
++     * Returns the owner's membership tier. It is {@code 'GOLD'} when the owner's household
++     * (the owners sharing its {@code householdId}) has 3 or more members; otherwise it is
++     * {@code 'SILVER'} when the owner has no namesakes (namesakeCount is 0) and an email is
++     * present, and {@code 'BRONZE'} in all remaining cases.
+      */
+     default String membershipTier(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
++        Integer householdMembers = owner.getHouseholdMemberCount();
++        if (householdMembers != null && householdMembers >= 3) {
++            return "GOLD";
++        }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 199afb195..af349eca1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Transient
++    private Integer householdMemberCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdMemberCount() {
++        return this.householdMemberCount;
++    }
++
++    public void setHouseholdMemberCount(Integer householdMemberCount) {
++        this.householdMemberCount = householdMemberCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bd3500b46..0c32bafc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -106,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+@@ -123,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         assignHousehold(owner, ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
++        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -571,6 +573,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Counts the owners that belong to the household identified by the given {@code householdId},
++     * i.e. every owner carrying that exact identifier. The count is taken against the current set
++     * of owners, so after a create it reflects the household's size including the newly persisted
++     * owner. An owner without a household (a {@code null} identifier) belongs to no shared
++     * household and yields {@code 0}. This size drives the {@code GOLD} membership tier, which
++     * applies once a household reaches three or more members.
++     *
++     * @param householdId the shared household identifier, or {@code null} when the owner shares no household
++     * @return the number of owners in the household, or {@code 0} when {@code householdId} is {@code null}
++     */
++    private int countHouseholdMembers(String householdId) {
++        if (householdId == null) {
++            return 0;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
++
+     /**
+      * Finds an existing owner that shares a household with the given {@code lastName} and
+      * {@code address}. When several owners match, the first one encountered is returned.
