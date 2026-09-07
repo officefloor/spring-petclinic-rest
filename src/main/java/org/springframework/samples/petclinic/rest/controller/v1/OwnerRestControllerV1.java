@@ -26,8 +26,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,8 +61,6 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
 
-    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
-
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -73,14 +69,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final OwnerCreationAuditor ownerCreationAuditor;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 OwnerCreationAuditor ownerCreationAuditor) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.ownerCreationAuditor = ownerCreationAuditor;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -277,7 +277,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean declaredHouseholdMember = joinsExistingHousehold && sharesHousehold;
         assignDerivedAttributes(owner, declaredHouseholdMember, householdMembers);
         this.clinicService.saveOwner(owner);
-        auditOwnerCreated(owner);
+        ownerCreationAuditor.auditOwnerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -711,19 +711,5 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return count > 80;
-    }
-
-    /**
-     * Write the create audit record for a freshly-saved owner. Keeps the audit format in
-     * one place so it stays in step with the owner's identity: it reports the assigned
-     * customer code alongside the owner's id, registration date, membership level and
-     * membership number.
-     *
-     * @param owner the owner that has just been created and saved
-     */
-    private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
     }
 }
