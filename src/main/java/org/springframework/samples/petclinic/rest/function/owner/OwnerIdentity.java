@@ -35,10 +35,13 @@ public final class OwnerIdentity {
     /** The telephone-and-email prefix of the identity key, identifying a single contact. Two owners
      *  are duplicates when their contact keys are equal. */
     public static String contactKey(String telephone, String email) {
-        return normalizeTelephone(telephone) + "|" + normalizeEmail(email);
+        return normalizedTelephone(telephone) + "|" + normalizeEmail(email);
     }
 
-    private static String normalizeTelephone(String telephone) {
+    /** The telephone in canonical E.164 form, or the raw value (or empty when {@code null}) when it
+     *  cannot be normalized. Shared so the customer-code hash and the identity key normalize the
+     *  telephone the same way. */
+    public static String normalizedTelephone(String telephone) {
         try {
             return OwnerTelephone.toE164(telephone);
         }

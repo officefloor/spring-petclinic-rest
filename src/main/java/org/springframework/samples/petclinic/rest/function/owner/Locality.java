@@ -1,22 +1,29 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Locality (canonical region) for pet owners. The region is resolved from the owner's postcode
- * first, using fixed inclusive postcode ranges: {@code NSW 2000-2099}, {@code VIC 3000-3099},
- * {@code QLD 4000-4099}. When the postcode is absent or falls in no known range, it falls back to
- * a fixed city-to-region table: {@code Sydney -> NSW}, {@code Melbourne -> VIC},
- * {@code Brisbane -> QLD}. Anything unresolved yields {@code UNKNOWN}. Preferring the postcode
- * returns the same region for known cities but disambiguates cities that share a name. Derived
- * purely from the owner's own state, so it carries no stored data and is seed-independent. Used by
- * the owner mapper to expose {@code locality} on responses.
+ * Locality (canonical region) for pet owners. For a created owner the region is read straight off
+ * the REGION prefix of its {@code customerCode} (see {@link AssignCustomerCode}), so the locality
+ * shown on responses is exactly the region baked into the region-and-hash identity. When no such
+ * code is present (e.g. legacy owners with no customer code) it falls back to resolving the region
+ * from the owner's postcode first, using fixed inclusive postcode ranges: {@code NSW 2000-2099},
+ * {@code VIC 3000-3099}, {@code QLD 4000-4099}; when the postcode is absent or falls in no known
+ * range, it falls back to a fixed city-to-region table: {@code Sydney -> NSW},
+ * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}. Anything unresolved yields {@code UNKNOWN}.
+ * Preferring the postcode returns the same region for known cities but disambiguates cities that
+ * share a name. Derived purely from the owner's own state, so it carries no stored data and is
+ * seed-independent. Used by the owner mapper to expose {@code locality} on responses.
  */
 public final class Locality {
 
     /** City -> canonical region. Fixed, pinned reference data. */
     private static final Map<String, String> CITY_REGION = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** The canonical regions a customer code may carry, used to recognise its REGION prefix. */
+    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD", "UNKNOWN");
 
     /** Region -> inclusive 4-digit postcode range {low, high}. Fixed, pinned reference data. */
     private static final Map<String, int[]> REGION_RANGES = Map.of(
@@ -25,6 +32,16 @@ public final class Locality {
             "QLD", new int[] {4000, 4099});
 
     private Locality() {
+    }
+
+    /**
+     * The canonical region for an owner, read from the REGION prefix of its {@code customerCode}
+     * when present and falling back to the postcode-then-city derivation otherwise. This is the
+     * mapping the owner mapper uses so the exposed locality matches the region-and-hash identity.
+     */
+    public static String of(String customerCode, String postcode, String city) {
+        String fromCode = fromCustomerCode(customerCode);
+        return fromCode != null ? fromCode : of(postcode, city);
     }
 
     /**
@@ -43,6 +60,20 @@ public final class Locality {
      */
     public static String of(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /** The REGION prefix of a {@code <REGION>-<HASH8>} customer code, or {@code null} when the code
+     *  is absent or does not carry a recognised region. */
+    private static String fromCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return null;
+        }
+        int dash = customerCode.indexOf('-');
+        if (dash <= 0) {
+            return null;
+        }
+        String region = customerCode.substring(0, dash);
+        return KNOWN_REGIONS.contains(region) ? region : null;
     }
 
     /** The region whose range contains the postcode, or {@code null} when absent or out of range. */
