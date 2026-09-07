@@ -537,21 +537,37 @@ final class OwnerDerivations {
     }
 
     /**
-     * The owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>}: {@code region}
-     * is the owner's canonical region (see {@link #region(String, String)}), FY is the
-     * two-digit {@link #fiscalYearSegment(LocalDate) fiscal-year segment} of its
-     * {@code registrationDate}, HASH8 is the {@link #hash8(String, String) HASH8} of its
-     * telephone and last name, and CHK is a single {@link #checkDigit(String) Luhn check
-     * digit} computed over the decimal digits of {@code <REGION><FY><HASH8>}
-     * (e.g. {@code NSW279F86D0817}). This unifies the former customer code and membership
-     * number into one identifier.
+     * The owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>}: REGION is the
+     * {@link #identifierRegion(String, String) region embedded inside the owner's identifiers}
+     * (derived from its postcode, falling back to its city), FY is the two-digit
+     * {@link #fiscalYearSegment(LocalDate) fiscal-year segment} of its {@code registrationDate},
+     * HASH8 is the {@link #hash8(String, String) HASH8} of its telephone and last name, and CHK
+     * is a single {@link #checkDigit(String) Luhn check digit} computed over the decimal digits
+     * of {@code <REGION><FY><HASH8>} (e.g. {@code NSW279F86D0817}). This unifies the former
+     * customer code and membership number into one identifier.
      *
      * @return the member id
      */
-    static String memberId(String region, String telephone, String lastName,
+    static String memberId(String postcode, String city, String telephone, String lastName,
             LocalDate registrationDate) {
-        String base = region + fiscalYearSegment(registrationDate) + hash8(telephone, lastName);
+        String base = identifierRegion(postcode, city) + fiscalYearSegment(registrationDate)
+            + hash8(telephone, lastName);
         return base + checkDigit(base);
+    }
+
+    /**
+     * The region component embedded inside the owner's identifiers — currently the leading
+     * {@code <REGION>} of its {@link #memberId(String, String, String, String, LocalDate) member
+     * id} — derived from the owner's own fields via {@link #region(String, String)}. Held as its
+     * own derivation, kept deliberately distinct from the user-facing
+     * {@link #locality(String, String, String) locality} region, so the region carried inside
+     * identifiers has a single home and can evolve independently of the plain region reported to
+     * callers.
+     *
+     * @return the region embedded inside the owner's identifiers
+     */
+    private static String identifierRegion(String postcode, String city) {
+        return region(postcode, city);
     }
 
     /**

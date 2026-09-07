@@ -48,10 +48,9 @@ public class OwnerCreationAuditor {
      * one place so it stays in step with the owner's identity: it reports the assigned
      * member id alongside the owner's id, registration date and membership level.
      *
-     * <p>Alongside the human-readable line, an immutable structured {@code OWNER_CREATED}
-     * event is emitted as a single-line JSON object so downstream consumers have a stable,
-     * machine-readable record. The event carries the owner's primary identifier, the unified
-     * {@link #primaryIdentifier(Owner) member id}.
+     * <p>Alongside the human-readable line, the immutable structured
+     * {@link #ownerCreatedEvent(Owner) OWNER_CREATED event} is emitted as a single-line JSON
+     * object so downstream consumers have a stable, machine-readable record.
      *
      * @param owner the owner that has just been created and saved
      */
@@ -59,13 +58,28 @@ public class OwnerCreationAuditor {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
 
+        AUDIT.info(ownerCreatedEvent(owner).toString());
+    }
+
+    /**
+     * Build the immutable structured {@code OWNER_CREATED} event for a freshly-saved owner as a
+     * single JSON object, so downstream consumers have a stable, machine-readable record.
+     * Gathered here, off {@link #auditOwnerCreated}, so the event's schema — the fields it
+     * carries and their order — has a single home, free to grow without crowding the emission
+     * itself. The event carries the owner's primary identifier, the unified
+     * {@link #primaryIdentifier(Owner) member id}.
+     *
+     * @param owner the owner that has just been created and saved
+     * @return the structured {@code OWNER_CREATED} event
+     */
+    private ObjectNode ownerCreatedEvent(Owner owner) {
         ObjectNode event = MAPPER.createObjectNode();
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
-        AUDIT.info(event.toString());
+        return event;
     }
 
     /**

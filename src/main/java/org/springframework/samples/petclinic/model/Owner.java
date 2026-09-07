@@ -484,14 +484,14 @@ public class Owner extends Person {
      * Compute the unified member id to assign to this owner at creation, formatted
      * {@code <REGION><FY><HASH8><CHK>} from the owner's (already normalised) fields and
      * registration date. This is the value stored in {@link #getMemberId()}; see
-     * {@link OwnerDerivations#memberId(String, String, String, LocalDate)} for the exact
-     * format.
+     * {@link OwnerDerivations#memberId(String, String, String, String, LocalDate)} for the
+     * exact format.
      *
      * @return the member id to assign
      */
     public String computeMemberId() {
-        return OwnerDerivations.memberId(regionForOwner(), this.telephone, this.getLastName(),
-            this.registrationDate);
+        return OwnerDerivations.memberId(this.postcode, this.city, this.telephone,
+            this.getLastName(), this.registrationDate);
     }
 
     /**
