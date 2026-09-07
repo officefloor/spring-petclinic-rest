@@ -1,0 +1,182 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 04216127f..8fccb44b0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,12 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -274,6 +280,22 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The derived key used for duplicate detection, combining this owner's normalised
+      * telephone, email and {@link #householdId}. Two owners are duplicates exactly when
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index dc5c9f70c..093a13254 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -21,6 +21,7 @@ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Optional;
+ import java.util.UUID;
+@@ -369,6 +370,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipNumber(membershipNumber(owner));
+         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         owner.setHouseholdSize(householdSize(owner));
++        assignPossibleDuplicate(owner);
++    }
++
++    /**
++     * Flag the candidate owner as a possible duplicate of an existing owner. A soft
++     * match — distinct from the hard {@code identityKey} duplicate already rejected with
++     * 409 — is an existing owner that shares this owner's last name (compared
++     * case-insensitively) and postcode but carries a different (normalised) telephone.
++     * When such a match exists the owner is still created, but with
++     * {@code possibleDuplicate} true and {@code possibleDuplicateOf} set to the matching
++     * owner's id; otherwise {@code possibleDuplicate} is false and no match id is
++     * recorded. The earliest-created matching owner (lowest id) is chosen so the result
++     * is deterministic. Evaluated before the owner is saved, so only pre-existing owners
++     * are considered.
++     *
++     * @param owner the candidate owner being created, after household resolution
++     */
++    private void assignPossibleDuplicate(Owner owner) {
++        String lastName = normalizeName(owner.getLastName());
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++        Optional<Owner> match = this.clinicService.findAllOwners().stream()
++            .filter(existing -> postcode != null && postcode.equals(existing.getPostcode())
++                && normalizeName(existing.getLastName()).equals(lastName)
++                && telephone != null && !telephone.equals(existing.getTelephone()))
++            .min(Comparator.comparing(Owner::getId));
++        if (match.isPresent()) {
++            owner.setPossibleDuplicate(true);
++            owner.setPossibleDuplicateOf(match.get().getId());
++        } else {
++            owner.setPossibleDuplicate(false);
++            owner.setPossibleDuplicateOf(null);
++        }
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 1aa134faa..9b88d08d7 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+-  birth_date DATE
++  birth_date DATE,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 52cd5853a..ec5b867e7 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,9 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+-  birth_date DATE
++  birth_date DATE,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c469eeec5..5d8e61928 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INT,
+   postcode VARCHAR(4),
+   birth_date DATE,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 83dabedaa..b184c54dc 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       postcode TEXT,
+-                                      birth_date DATE
++                                      birth_date DATE,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f20dcd913..707c3d4a7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2240,6 +2240,27 @@ components:
+               type: string
+               example: '+61412345678||'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Whether, at the time this owner was created, it was a soft match
++                for an existing owner: not a hard duplicate, but sharing that
++                owner's lastName and postcode with a different telephone. 'true'
++                when such a match exists, otherwise 'false'.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner soft-matched at creation
++                (same lastName and postcode, different telephone), or absent when
++                'possibleDuplicate' is false.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
