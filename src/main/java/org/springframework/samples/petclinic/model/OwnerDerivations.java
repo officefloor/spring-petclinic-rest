@@ -216,6 +216,21 @@ final class OwnerDerivations {
     }
 
     /**
+     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, one of
+     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
+     * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} when {@code membershipLevel} is 3
+     * or more, otherwise {@code STANDARD}. AREA is {@code METRO} when {@code locality} is a
+     * known region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code REGIONAL}.
+     *
+     * @return the owner's segment as {@code <TIER>_<AREA>}
+     */
+    static String ownerSegment(int membershipLevel, String locality) {
+        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(locality) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Whether the owner's tenure exceeds a year, i.e. at least one whole fiscal year has
      * elapsed from its {@code registrationDate} up to {@code asOf} (see
      * {@link #elapsedFiscalYears(LocalDate, LocalDate)}). This is the single tenure test

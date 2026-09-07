@@ -243,6 +243,22 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, one of
+     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
+     * {@code STANDARD_REGIONAL}: TIER is {@code PREMIUM} when its
+     * {@link #getMembershipLevel() membership level} is 3 or more (otherwise
+     * {@code STANDARD}) and AREA is {@code METRO} when its {@link #getLocality() locality}
+     * is a known region (otherwise {@code REGIONAL}). Derived (not persisted); recomputed
+     * each call. See {@link OwnerDerivations#ownerSegment(int, String)}.
+     *
+     * @return the owner's segment as {@code <TIER>_<AREA>}
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerDerivations.ownerSegment(getMembershipLevel(), this.getLocality());
+    }
+
+    /**
      * The owner's preferred contact channel, {@code "EMAIL"} or {@code "PHONE"}.
      * Derived (not persisted); recomputed from the current fields each call. See
      * {@link OwnerDerivations#contactPreference(String)}.
