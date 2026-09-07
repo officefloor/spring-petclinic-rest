@@ -28,10 +28,13 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
-    @Mapping(target = "householdId",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.Household.id(owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "apiVersion",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityVersion.NUMBER)")
+    @Mapping(target = "identity",
+            expression = "java(new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto()"
+                    + ".memberId(owner.getMemberId())"
+                    + ".identityKey(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))"
+                    + ".householdId(org.springframework.samples.petclinic.rest.function.owner.Household.id(owner.getLastName(), owner.getPostcode())))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints",

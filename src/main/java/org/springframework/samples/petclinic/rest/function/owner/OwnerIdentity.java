@@ -6,9 +6,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 
 /**
  * The single derived identity of a pet owner. The {@code identityKey} is the lower-case hex SHA-256
- * digest over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
- * telephone is canonical E.164 form, the email is trimmed and lower-cased (or empty when absent) and
- * the surname is reduced to its {@link Soundex} code.
+ * digest over {@code TAG + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+ * where {@code TAG} is the fixed {@link IdentityVersion#TAG version-2 tag}, the telephone is canonical
+ * E.164 form, the email is trimmed and lower-cased (or empty when absent) and the surname is reduced
+ * to its {@link Soundex} code.
  *
  * <p>Because the telephone is part of the key, two owners in the same household (same surname and
  * postcode) with different telephones have different identity keys and are both allowed; only owners
@@ -29,8 +30,8 @@ public final class OwnerIdentity {
      *  are normalized here so the same value is produced whether they come from a freshly-validated
      *  request or a stored owner. */
     public static String key(String telephone, String email, String lastName) {
-        String raw = normalizedTelephone(telephone) + "|" + normalizeEmail(email) + "|"
-                + Soundex.of(lastName);
+        String raw = IdentityVersion.TAG + "|" + normalizedTelephone(telephone) + "|"
+                + normalizeEmail(email) + "|" + Soundex.of(lastName);
         return Sha256.hex(raw);
     }
 

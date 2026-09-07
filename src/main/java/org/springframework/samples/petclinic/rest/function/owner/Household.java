@@ -26,12 +26,14 @@ public final class Household {
 
     /**
      * A stable shared identifier for the household of an owner with the given last name and postcode:
-     * the first 12 hex characters of the SHA-256 digest over {@code normalizedLastName + '|' +
-     * postcode}. Derived purely from those two fields, so owners in the same household get the same
-     * value.
+     * the first 12 hex characters of the SHA-256 digest over {@code TAG + '|' + normalizedLastName +
+     * '|' + postcode}, where {@code TAG} is the fixed {@link IdentityVersion#TAG version-2 tag} mixed
+     * in so the value differs from every version-1 household id. Derived purely from those two fields
+     * (plus the fixed tag), so owners in the same household get the same value.
      */
     public static String id(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = IdentityVersion.TAG + "|" + normalize(lastName) + "|"
+                + (postcode == null ? "" : postcode);
         return Sha256.hex(key).substring(0, 12).toUpperCase();
     }
 }
