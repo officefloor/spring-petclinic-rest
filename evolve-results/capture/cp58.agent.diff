@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 679ccf88a..00c660457 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -412,6 +412,21 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this owner is flagged as risky: {@code true} when any of its risk signals
++     * holds — it is a {@link #getPossibleDuplicate() possible duplicate}, its email domain
++     * is disposable-adjacent (on the disposable-domain blocklist), or its city was over its
++     * soft capacity at creation ({@link #getCapacityWarning() capacity warning}) — otherwise
++     * {@code false}. Derived (not persisted); recomputed each call. See
++     * {@link OwnerDerivations#riskFlag(Boolean, String, Boolean)}.
++     *
++     * @return {@code true} when any risk signal holds, otherwise {@code false}
++     */
++    @Transient
++    public Boolean getRiskFlag() {
++        return OwnerDerivations.riskFlag(this.possibleDuplicate, this.email, this.capacityWarning);
++    }
++
+     /**
+      * The household level ceiling assigned to this owner at creation: one above the highest
+      * {@link #getMembershipLevel() membership level} then held by an existing member of its
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+index d61f04156..6e3a1e374 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+@@ -388,6 +388,23 @@ final class OwnerDerivations {
+         return DISPOSABLE_EMAIL_DOMAINS.contains(emailDomain(email));
+     }
+ 
++    /**
++     * Whether the owner should be flagged as risky, i.e. any one of its risk signals
++     * holds: it is a possible duplicate ({@code possibleDuplicate}), its email domain is
++     * disposable-adjacent (on the disposable-domain blocklist, see
++     * {@link #emailDomainIsDisposable(String)}), or its city was over its soft capacity at
++     * creation ({@code capacityWarning}). The two persisted flags are treated as
++     * {@code false} when absent, so the risk flag is {@code false} for an owner with no
++     * signal set.
++     *
++     * @return {@code true} when any risk signal holds, otherwise {@code false}
++     */
++    static boolean riskFlag(Boolean possibleDuplicate, String email, Boolean capacityWarning) {
++        return Boolean.TRUE.equals(possibleDuplicate)
++            || emailDomainIsDisposable(email)
++            || Boolean.TRUE.equals(capacityWarning);
++    }
++
+     /**
+      * The Luhn check digit (0-9) computed over the decimal digits contained in the
+      * given {@code value}, processed right-to-left with every second digit doubled (and
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 12897be8f..e16ace2e7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2388,6 +2388,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether this owner is flagged as risky: 'true' when any risk
++                signal holds — it is a possible duplicate, its email domain is
++                disposable-adjacent (on the disposable-domain blocklist), or its
++                city was over its soft capacity at creation (capacityWarning) —
++                otherwise 'false'.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
