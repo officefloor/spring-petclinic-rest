@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 79091190a..79bcc1bb6 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "householdId",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Household.id(owner.getLastName(), owner.getAddress()))")
++    @Mapping(target = "membershipNumber",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java
+new file mode 100644
+index 000000000..77c60100b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipNumber.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++/**
++ * Membership number for pet owners, formatted {@code <customerCode>-M<YY>} where YY is the last two
++ * digits of the registration date's year (e.g. {@code SMI-0007-M26}). Derived purely from the
++ * owner's own {@code customerCode} and {@code registrationDate}, so it carries no stored state and is
++ * seed-independent. Used by the owner mapper to expose {@code membershipNumber} on responses.
++ */
++public final class MembershipNumber {
++
++    private MembershipNumber() {
++    }
++
++    /**
++     * The membership number for the given customer code and registration date, or {@code null} when
++     * either input is absent (e.g. legacy owners with no customer code or registration date).
++     */
++    public static String of(String customerCode, LocalDate registrationDate) {
++        if (customerCode == null || registrationDate == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 873679cd3..4b017c4eb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2091,6 +2091,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007'
++            membershipNumber:
++              title: Membership number
++              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
++              type: string
++              readOnly: true
++              example: 'SMI-0007-M26'
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by all owners in the same household (same last name and address, compared case-insensitively with collapsed whitespace). Owners that share a household return the same value.
