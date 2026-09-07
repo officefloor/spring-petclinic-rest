@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}. Rejects a request that is missing or blank in any
  * required owner field before {@link BuildOwner} runs, throwing {@link MissingFieldsException}
- * (handled as a 400 listing the offending field names). Normalizes the telephone by stripping
- * every non-digit character and requires exactly ten digits, throwing
- * {@link InvalidTelephoneException} (400) otherwise. Publishes the normalized body for later steps.
+ * (handled as a 400 listing the offending field names). Normalizes the telephone to E.164 form
+ * (see {@link OwnerTelephone}), throwing {@link InvalidTelephoneException} (400) when it cannot form
+ * a valid number. Publishes the normalized body for later steps.
  */
 public class RequireOwnerFields {
 
@@ -40,12 +40,7 @@ public class RequireOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingFieldsException(missing);
         }
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
-            throw new InvalidTelephoneException(
-                    "Telephone must be exactly 10 digits after removing non-digit characters");
-        }
-        request.setTelephone(telephone);
+        request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
         validated.set(request);
     }
