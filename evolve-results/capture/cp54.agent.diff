@@ -1,0 +1,149 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e7a19a36e..7633d59d2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -384,6 +387,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9d16b0d66..98be8b97b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -511,6 +511,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setMembershipNumber(owner.computeMembershipNumber());
+         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
++        owner.setCapacityWarning(cityApproachingCapacity(owner.getCity()));
+         owner.setHouseholdSize(householdSize(owner));
+         owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
+         assignPossibleDuplicate(owner, declaredHouseholdMember);
+@@ -675,11 +676,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return {@code true} if the city already holds 50 or more owners
+      */
+     private boolean cityIsAtCapacity(String city) {
++        return ownersInCity(city) >= 50;
++    }
++
++    /**
++     * Determine whether the given city is approaching its owner capacity, i.e. it
++     * already contains between 40 and 49 existing owners (compared case-insensitively
++     * with surrounding whitespace trimmed). This warns that the capacity limit of 50
++     * is near; the hard rejection at 50 is handled separately by
++     * {@link #cityIsAtCapacity(String)}. Evaluated before the new owner is saved, so
++     * it reflects only owners that already existed at creation time.
++     *
++     * @param city the candidate owner's city
++     * @return {@code true} if the city already holds between 40 and 49 owners
++     */
++    private boolean cityApproachingCapacity(String city) {
++        long count = ownersInCity(city);
++        return count >= 40 && count < 50;
++    }
++
++    /**
++     * Count the existing owners in the given city, compared case-insensitively with
++     * surrounding whitespace trimmed.
++     *
++     * @param city the city to count owners for
++     * @return the number of existing owners in that city
++     */
++    private long ownersInCity(String city) {
+         String normalizedCity = normalizeName(city);
+-        long count = this.clinicService.findAllOwners().stream()
++        return this.clinicService.findAllOwners().stream()
+             .filter(existing -> normalizeName(existing.getCity()).equals(normalizedCity))
+             .count();
+-        return count >= 50;
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 7907bcce5..f5b4f14b1 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+   birth_date DATE,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 3b3cfeb58..e098f22a0 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+   birth_date DATE,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1fa656155..e83763bef 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INT,
+   postcode VARCHAR(4),
+   birth_date DATE,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index f626cfefa..b8f9d2454 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       postcode TEXT,
+                                       birth_date DATE,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f26ee3f25..2d6037607 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2349,6 +2349,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether, at the time this owner was created, its city was
++                approaching the capacity limit of 50 owners: 'true' when the
++                city already held between 40 and 49 owners, otherwise 'false'.
++              type: boolean
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
