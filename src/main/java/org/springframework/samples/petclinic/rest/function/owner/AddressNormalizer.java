@@ -45,4 +45,21 @@ final class AddressNormalizer {
         }
         return sb.toString();
     }
+
+    /**
+     * The canonical stored address composed from the request's address fields, preferring the
+     * STRUCTURED form: when {@code addressLine1} is non-blank the result is the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended
+     * when {@code addressLine2} is present. Only when {@code addressLine1} is blank does it fall
+     * back to the normalized flat {@code address}. Each input is normalized via
+     * {@link #normalize(String)}; an all-blank set of inputs yields the empty string.
+     */
+    static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (!line1.isEmpty()) {
+            String line2 = normalize(addressLine2);
+            return line2.isEmpty() ? line1 : line1 + " " + line2;
+        }
+        return normalize(address);
+    }
 }

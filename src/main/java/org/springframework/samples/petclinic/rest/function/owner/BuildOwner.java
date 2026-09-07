@@ -54,14 +54,23 @@ public class BuildOwner {
     }
 
     /**
-     * Canonicalize the address supplied on the request: normalize it to the stored form and write
-     * it back onto the request (so the mapped owner and every later step see the canonical value),
-     * returning that normalized form for the required-field check.
+     * Canonicalize the address supplied on the request and write the canonical values back so the
+     * mapped owner and every later step see them. Structured fields are preferred: the normalized
+     * {@code addressLine1}/{@code addressLine2} are stored (or {@code null} when blank), and the
+     * flat {@code address} becomes the composed, normalized string — the normalized addressLine1
+     * with a single space and the normalized addressLine2 appended when present, else the
+     * normalized flat address. Returns that composed address for the required-field check, so an
+     * owner supplying an address in EITHER form (a non-blank addressLine1, or the flat address) is
+     * accepted.
      */
     private static String canonicalizeAddress(OwnerFieldsDto request) {
-        String normalizedAddress = AddressNormalizer.normalize(request.getAddress());
-        request.setAddress(normalizedAddress);
-        return normalizedAddress;
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String composed = AddressNormalizer.compose(line1, line2, request.getAddress());
+        request.setAddressLine1(line1.isEmpty() ? null : line1);
+        request.setAddressLine2(line2.isEmpty() ? null : line2);
+        request.setAddress(composed);
+        return composed;
     }
 
     /**
