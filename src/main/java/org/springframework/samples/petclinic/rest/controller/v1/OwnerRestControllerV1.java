@@ -17,6 +17,8 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -476,28 +478,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the customer code assigned to the given owner, formatted
-     * {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three letters of
-     * the owner's city, LAST3 the upper-cased first three letters of its last name and
-     * NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners already in that city (e.g. {@code SYD-SMI-0007}). The whole owner is passed
-     * so the code can be derived from whichever of its (already normalised) fields the
-     * identity scheme requires.
+     * {@code <REGION>-<HASH8>}: REGION is the canonical region derived for the owner
+     * (see {@link Owner#regionForOwner()}, the postcode-then-city region also exposed
+     * as its {@link Owner#getLocality() locality}) and HASH8 is the first eight
+     * upper-case hexadecimal characters of the SHA-256 digest of the owner's
+     * normalised telephone concatenated with its last name (e.g.
+     * {@code NSW-9F86D081}). The whole owner is passed so the code can be derived from
+     * whichever of its (already normalised) fields the identity scheme requires.
      *
      * @param owner the owner being created, with its fields already normalised
      * @return the assigned customer code
      */
     private String customerCode(Owner owner) {
-        String city3 = prefix3(owner.getCity());
-        String last3 = prefix3(owner.getLastName());
-        long sequence = this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeName(existing.getCity()).equals(normalizeName(owner.getCity())))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        String region = owner.regionForOwner();
+        String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());
+        return String.format("%s-%s", region, hash8);
     }
 
-    private static String prefix3(String value) {
-        String v = value == null ? "" : value;
-        return v.substring(0, Math.min(3, v.length())).toUpperCase();
+    /**
+     * The first eight upper-case hexadecimal characters of the SHA-256 digest of the
+     * UTF-8 bytes of the given value.
+     */
+    private static String sha256Hex8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02X", b));
+                if (hex.length() >= 8) {
+                    break;
+                }
+            }
+            return hex.substring(0, 8);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 
     /**
@@ -516,7 +532,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Build the owner's membership number, formatted {@code <customerCode>-M<YY>}
      * where {@code <customerCode>} is the owner's already-assigned customer code and
      * YY is the last two digits of the registration date's year (e.g.
-     * {@code SMI-0007-M26}). Evaluated after the customer code and registration date
+     * {@code NSW-9F86D081-M26}). Evaluated after the customer code and registration date
      * have been set.
      *
      * @param owner the owner being created, with customer code and registration date

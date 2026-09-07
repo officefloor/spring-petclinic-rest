@@ -107,14 +107,25 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, i.e. the canonical region it belongs to (currently the
-     * region derived from its own fields; see {@link #regionForOwner()}). Exposed as a
-     * derived (not persisted) property and recomputed each call.
+     * The owner's locality, i.e. the canonical region it belongs to. This is now read
+     * from the region-and-hash {@link #customerCode} identity: the region is the
+     * {@code <REGION>} component that precedes the first {@code '-'} of the assigned
+     * customer code (e.g. {@code NSW} for {@code NSW-9F86D081}). Until an owner has
+     * been assigned a customer code (for example while its create request is still
+     * being validated) this falls back to the region derived directly from its own
+     * fields (see {@link #regionForOwner()}). Exposed as a derived (not persisted)
+     * property and recomputed each call.
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     @Transient
     public String getLocality() {
+        if (this.customerCode != null) {
+            int dash = this.customerCode.indexOf('-');
+            if (dash >= 0) {
+                return this.customerCode.substring(0, dash);
+            }
+        }
         return regionForOwner();
     }
 
