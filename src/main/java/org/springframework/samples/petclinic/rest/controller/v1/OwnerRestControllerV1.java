@@ -261,7 +261,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         return true;
+    }
+
+    /**
+     * Roll the given date forward to the next business day when it falls on a
+     * weekend: a Saturday or Sunday is advanced to the following Monday, while a
+     * weekday is returned unchanged. Applied to the effective registration date
+     * (whether supplied in the request or defaulted to the server date) so that
+     * every value derived from it uses the adjusted business day.
+     *
+     * @param date the effective registration date
+     * @return the same date if it is a weekday, otherwise the next Monday
+     */
+    private static LocalDate rollToBusinessDay(LocalDate date) {
+        switch (date.getDayOfWeek()) {
+            case SATURDAY:
+                return date.plusDays(2);
+            case SUNDAY:
+                return date.plusDays(1);
+            default:
+                return date;
+        }
     }
 
     /**
