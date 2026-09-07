@@ -105,18 +105,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = toE164(owner.getTelephone());
-        if (telephone == null) {
+        if (!normalizeNewOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        owner.setTelephone(telephone);
-        if (owner.getEmail() != null) {
-            owner.setEmail(owner.getEmail().toLowerCase());
-        }
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
-        if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
+        if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         Optional<Owner> householdMember = findHouseholdMember(owner);
@@ -227,6 +219,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Normalise the incoming fields of a freshly-mapped owner in place, applying
+     * the canonical form each stored value must take: the telephone is converted
+     * to E.164, any email is lower-cased and a missing registration date defaults
+     * to today. Field-level rejections are reported here rather than inline in
+     * {@link #addOwner}, and normalisation runs before any household comparison so
+     * those comparisons see the canonical values.
+     *
+     * @param owner the freshly-mapped owner to normalise
+     * @return {@code true} if the fields are valid, or {@code false} if the
+     *         telephone cannot form a valid E.164 number and the request must be
+     *         rejected with {@code 400 Bad Request}
+     */
+    private boolean normalizeNewOwner(Owner owner) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
+            return false;
+        }
+        owner.setTelephone(telephone);
+        if (owner.getEmail() != null) {
+            owner.setEmail(owner.getEmail().toLowerCase());
+        }
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        return true;
     }
 
     /**
