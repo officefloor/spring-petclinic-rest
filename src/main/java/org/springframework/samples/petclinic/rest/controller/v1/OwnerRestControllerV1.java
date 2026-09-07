@@ -102,8 +102,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
@@ -216,5 +216,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Normalise a telephone number to E.164 form: keep a leading '+' and country
+     * code when present, otherwise assume country code '+61' and drop a single
+     * leading '0' from the national digits. Spaces, dashes and brackets are
+     * stripped. The result must contain 8 to 15 digits after the '+'.
+     *
+     * @return the E.164 string (e.g. "+61412345678"), or {@code null} if the
+     *         input cannot form a valid E.164 number.
+     */
+    private static String toE164(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String cleaned = raw.replaceAll("[\\s()-]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("\\d{8,15}")) {
+            return null;
+        }
+        return "+" + digits;
     }
 }
