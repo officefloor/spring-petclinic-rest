@@ -63,13 +63,29 @@ final class OwnerDerivations {
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     static String locality(String customerCode, String postcode, String city) {
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash >= 0) {
-                return customerCode.substring(0, dash);
-            }
+        String assigned = customerCodeRegion(customerCode);
+        if (assigned != null) {
+            return assigned;
         }
         return region(postcode, city);
+    }
+
+    /**
+     * The region component encoded in an assigned {@code customerCode}: the {@code <REGION>}
+     * that precedes its first {@code '-'} (e.g. {@code NSW} for {@code NSW-9F86D081}), or
+     * {@code null} when no customer code has been assigned yet or it carries no region
+     * component. Reading the region back out of the identifier lives here so
+     * {@link #locality(String, String, String)} stays a thin read-then-fall-back and the
+     * one place that knows the identifier's shape is isolated.
+     *
+     * @return the encoded region, or {@code null}
+     */
+    private static String customerCodeRegion(String customerCode) {
+        if (customerCode == null) {
+            return null;
+        }
+        int dash = customerCode.indexOf('-');
+        return dash >= 0 ? customerCode.substring(0, dash) : null;
     }
 
     /**
@@ -277,7 +293,20 @@ final class OwnerDerivations {
         if (registrationDate == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(registrationDate) % 100);
+        return "FY" + fiscalYearSegment(registrationDate);
+    }
+
+    /**
+     * The two-digit fiscal-year segment for a registration date: the last two digits of the
+     * fiscal year that contains it (see {@link #fiscalYearOf(LocalDate)}), zero-padded, e.g.
+     * {@code "27"} for a registration date of {@code 2026-08-03}. This is the single
+     * definition the fiscal-year-bearing identifiers share, so they agree on exactly which
+     * two-digit year they carry.
+     *
+     * @return the two-digit fiscal-year segment
+     */
+    static String fiscalYearSegment(LocalDate registrationDate) {
+        return String.format("%02d", fiscalYearOf(registrationDate) % 100);
     }
 
     /**
@@ -319,17 +348,17 @@ final class OwnerDerivations {
 
     /**
      * The Luhn check digit (0-9) computed over the decimal digits contained in the
-     * given {@code customerCode}, processed right-to-left with every second digit
-     * doubled (and reduced by 9 when the double exceeds 9). Non-digit characters are
-     * ignored, and an absent or digit-free customer code yields {@code 0}.
+     * given {@code value}, processed right-to-left with every second digit doubled (and
+     * reduced by 9 when the double exceeds 9). Non-digit characters are ignored, and an
+     * absent or digit-free value yields {@code 0}.
      *
      * @return the Luhn check digit, from 0 to 9
      */
-    static int checkDigit(String customerCode) {
+    static int checkDigit(String value) {
         int sum = 0;
         boolean doubleDigit = true;
-        for (int i = (customerCode == null ? 0 : customerCode.length()) - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
+        for (int i = (value == null ? 0 : value.length()) - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }
@@ -451,14 +480,26 @@ final class OwnerDerivations {
     /**
      * The owner's customer code, formatted {@code <REGION>-<HASH8>}: {@code region} is
      * the owner's canonical region (see {@link #region(String, String)}) and HASH8 is the
-     * first eight upper-case hexadecimal characters of the SHA-256 digest of the owner's
-     * normalised telephone concatenated with its last name (e.g. {@code NSW-9F86D081}).
+     * {@link #hash8(String, String) HASH8} of its telephone and last name
+     * (e.g. {@code NSW-9F86D081}).
      *
      * @return the customer code
      */
     static String customerCode(String region, String telephone, String lastName) {
-        String hash8 = sha256Hex(telephone + lastName).substring(0, 8).toUpperCase();
-        return String.format("%s-%s", region, hash8);
+        return String.format("%s-%s", region, hash8(telephone, lastName));
+    }
+
+    /**
+     * The HASH8 component of the region-and-hash identity: the first eight upper-case
+     * hexadecimal characters of the SHA-256 digest of the owner's normalised
+     * {@code telephone} concatenated with its {@code lastName} (e.g. {@code 9F86D081}).
+     * Held as its own derivation so the identity's hash component has a single definition
+     * rather than being spelled out at each identifier that embeds it.
+     *
+     * @return the eight upper-case hexadecimal HASH8 characters
+     */
+    static String hash8(String telephone, String lastName) {
+        return sha256Hex(telephone + lastName).substring(0, 8).toUpperCase();
     }
 
     /**
@@ -473,8 +514,7 @@ final class OwnerDerivations {
      * @return the membership number
      */
     static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        int yy = fiscalYearOf(registrationDate) % 100;
-        return String.format("%s-M%02d", customerCode, yy);
+        return String.format("%s-M%s", customerCode, fiscalYearSegment(registrationDate));
     }
 
     /**
