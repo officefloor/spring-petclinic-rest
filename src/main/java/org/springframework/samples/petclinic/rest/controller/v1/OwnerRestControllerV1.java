@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -437,10 +438,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the current members of the owner's household, empty if none exists
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
-        return this.clinicService.findAllOwners().stream()
-            .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
+        return activeOwners()
             .filter(existing -> existing.sameHouseholdAs(owner))
             .toList();
+    }
+
+    /**
+     * The existing owners that are still active, i.e. those not flagged as soft-deleted.
+     * Evaluated fresh against the saved owners each call, so it reflects only owners that
+     * already existed at creation time; a soft-deleted owner is excluded and so takes no
+     * part in the household resolution built on top of it. Isolating the exclusion here
+     * keeps the "current owner population" one candidate is compared against in one place.
+     *
+     * @return a stream of the current, non-deleted owners
+     */
+    private Stream<Owner> activeOwners() {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()));
     }
 
     /**
@@ -548,13 +562,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicateOf(null);
             return;
         }
-        String lastName = normalizeName(owner.getLastName());
-        String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
         Optional<Owner> match = this.clinicService.findAllOwners().stream()
-            .filter(existing -> postcode != null && postcode.equals(existing.getPostcode())
-                && normalizeName(existing.getLastName()).equals(lastName)
-                && telephone != null && !telephone.equals(existing.getTelephone()))
+            .filter(existing -> isSoftMatch(owner, existing))
             .min(Comparator.comparing(Owner::getId));
         if (match.isPresent()) {
             owner.setPossibleDuplicate(true);
@@ -563,6 +572,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(false);
             owner.setPossibleDuplicateOf(null);
         }
+    }
+
+    /**
+     * Whether an already-created {@code existing} owner is a soft-match for the candidate
+     * {@code owner}: it shares the candidate's last name (compared case-insensitively, with
+     * surrounding whitespace trimmed) and postcode but carries a different (normalised)
+     * telephone. This is the single soft-match test {@link #assignPossibleDuplicate} applies
+     * across the owner population, isolated here so the comparison that decides a suspected
+     * duplicate lives in one place.
+     *
+     * @param owner    the candidate owner being created
+     * @param existing an already-created owner to test against it
+     * @return {@code true} if {@code existing} is a soft-match for the candidate
+     */
+    private boolean isSoftMatch(Owner owner, Owner existing) {
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        return postcode != null && postcode.equals(existing.getPostcode())
+            && normalizeName(existing.getLastName()).equals(normalizeName(owner.getLastName()))
+            && telephone != null && !telephone.equals(existing.getTelephone());
     }
 
     /**
