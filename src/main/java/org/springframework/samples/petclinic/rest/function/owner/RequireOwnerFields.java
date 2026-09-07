@@ -13,14 +13,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}. Rejects a request that is missing or blank in any
  * required owner field before {@link BuildOwner} runs, throwing {@link MissingFieldsException}
- * (handled as a 400 listing the offending field names). Normalizes the telephone to E.164 form
- * (see {@link OwnerTelephone}), throwing {@link InvalidTelephoneException} (400) when it cannot form
- * a valid number. Publishes the normalized body for later steps.
+ * (handled as a 400 listing the offending field names). Normalizes the address (see
+ * {@link OwnerAddress}) before that check, so an address left blank once whitespace is collapsed is
+ * rejected as missing. Normalizes the telephone to E.164 form (see {@link OwnerTelephone}), throwing
+ * {@link InvalidTelephoneException} (400) when it cannot form a valid number. Publishes the
+ * normalized body for later steps, so the stored, returned and compared address is the normalized
+ * form.
  */
 public class RequireOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingFieldsException, InvalidTelephoneException, InvalidEmailException {
+        request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
