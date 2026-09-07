@@ -24,6 +24,11 @@ final class ShaHex {
         return sha256Hex(value).substring(0, length).toUpperCase(Locale.ROOT);
     }
 
+    /** The full 64-character lower-case hex of SHA-256 over the UTF-8 bytes of {@code value}. */
+    static String lowerHex(String value) {
+        return sha256Hex(value);
+    }
+
     private static String sha256Hex(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
