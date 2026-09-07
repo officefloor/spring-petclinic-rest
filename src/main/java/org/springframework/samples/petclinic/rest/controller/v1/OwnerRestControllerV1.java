@@ -16,10 +16,12 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -117,8 +119,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && findHouseholdMember(owner).isPresent()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        Optional<Owner> householdMember = findHouseholdMember(owner);
+        if (householdMember.isPresent()) {
+            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+            joinHousehold(owner, householdMember.get());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -235,6 +241,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.sameHouseholdAs(owner))
             .findFirst();
+    }
+
+    /**
+     * Assign the joining owner and an existing household member the same stable
+     * household identifier. The identifier is derived deterministically from the
+     * shared household key (last name + address, normalised), so every owner in a
+     * household resolves to the same value; the existing member is updated when it
+     * does not already carry it.
+     *
+     * @param owner    the owner being created
+     * @param existing an existing owner in the same household
+     */
+    private void joinHousehold(Owner owner, Owner existing) {
+        String householdId = UUID
+            .nameUUIDFromBytes(owner.householdKey().getBytes(StandardCharsets.UTF_8)).toString();
+        owner.setHouseholdId(householdId);
+        if (!householdId.equals(existing.getHouseholdId())) {
+            existing.setHouseholdId(householdId);
+            this.clinicService.saveOwner(existing);
+        }
     }
 
     /**
