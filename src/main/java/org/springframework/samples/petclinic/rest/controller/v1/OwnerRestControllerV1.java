@@ -118,18 +118,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityIsAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (emailAlreadyUsed(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         Optional<Owner> householdMember = findHouseholdMember(owner);
-        if (householdMember.isPresent()) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
+        if (householdMember.isPresent() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             joinHousehold(owner, householdMember.get());
+        }
+        if (identityKeyAlreadyUsed(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
@@ -298,21 +292,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determine whether the given (already lower-cased) email is already used by any
-     * existing owner, compared on the lower-cased email value. Owners without an email
-     * never match, so a {@code null} or blank candidate email is never a duplicate.
+     * Determine whether the candidate owner's identity key collides with any existing
+     * owner's. This is the single, consolidated duplicate check: it subsumes the
+     * former separate telephone, email and household checks by comparing the whole
+     * derived {@code identityKey} ({@code normalizedTelephone + '|' + (email or empty)
+     * + '|' + householdId}). Only an exact full-key match is a duplicate, so two owners
+     * that agree on some — but not all — of the key's parts (for example two members of
+     * the same household with different telephones) are not duplicates. Evaluated after
+     * normalisation and household resolution, so the candidate's key reflects its
+     * canonical field values and any household it has joined.
      *
-     * @param email the candidate owner's normalised (lower-cased) email
-     * @return {@code true} if an existing owner already uses that email
+     * @param owner the candidate owner being created, after household resolution
+     * @return {@code true} if an existing owner has the same identity key
      */
-    private boolean emailAlreadyUsed(String email) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
+    private boolean identityKeyAlreadyUsed(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .anyMatch(existing -> existing.toLowerCase().equals(email));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**
