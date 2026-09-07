@@ -87,6 +87,22 @@ final class TelephoneNormalizer {
      * exactly the length that country requires. Country codes not listed in
      * {@link #NATIONAL_LENGTHS} are accepted on the generic 8-to-15 digit rule alone.
      */
+    /**
+     * Split E.164 digits (the part after the '+') into {@code { countryCode, nationalNumber }}
+     * using the recognised country codes (iterated longest/most-specific first, so '+61' wins
+     * over '+1'). When no known code matches, assumes a two-digit country code — enough to still
+     * render a '+CC national' display. Used by {@link TelephoneDisplay} to format for humans.
+     */
+    static String[] splitCountryCode(String digits) {
+        for (String countryCode : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                return new String[] { countryCode, digits.substring(countryCode.length()) };
+            }
+        }
+        int codeLength = Math.min(2, digits.length());
+        return new String[] { digits.substring(0, codeLength), digits.substring(codeLength) };
+    }
+
     private static boolean hasValidNationalLength(String digits) {
         for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
             String countryCode = entry.getKey();
