@@ -10,25 +10,34 @@ import java.util.Locale;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Enforces the household rule on create. An owner sharing an existing owner's last name and
- * address (compared in the normalized address form, see {@link AddressNormalizer}) is a 409 Conflict — unless the
- * request opted in with {@code sharesHousehold} true. When it did opt in, the two are allowed to
- * share a household and are given the same stable {@code householdId}: it is stamped on the new
- * owner and on every existing member of that household. Runs after {@link BuildOwner}.
+ * Settles the household id for a new owner. When the request opted in with
+ * {@code sharesHousehold} true and an existing owner shares its normalized last name and
+ * address (see {@link AddressNormalizer}), the two share a household: a stable
+ * {@code householdId} is stamped on the new owner and on every existing member, and the
+ * household's size is recorded on all of them. Otherwise the owner is a household of one.
+ *
+ * <p>This step no longer rejects duplicates — a shared last name and address is not itself a
+ * conflict. All duplicate detection is now the single {@link CheckOwnerIdentityUnique} step,
+ * which compares the whole {@link OwnerIdentity#key(Owner) identityKey}. Because the household
+ * id set here is part of that key, two members of the same household with different telephones
+ * have different keys and are both allowed. Runs after {@link BuildOwner}.
  */
-public class CheckOwnerHouseholdUnique {
+public class AssignOwnerHousehold {
 
     public void service(@Val Owner owner, @Val Boolean sharesHousehold,
-            OwnerRepository ownerRepository) throws DuplicateHouseholdException {
+            OwnerRepository ownerRepository) {
+        owner.setHouseholdSize(1); // a household of one until an existing member is found
+        if (!Boolean.TRUE.equals(sharesHousehold)) {
+            return; // did not opt in: never joins an existing household
+        }
         String lastName = key(owner.getLastName());
         String address = AddressNormalizer.normalize(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
-                continue; // same record (e.g. re-save), not a conflict
+                continue; // same record (e.g. re-save)
             }
             if (lastName.equals(key(existing.getLastName()))
                     && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
@@ -36,15 +45,11 @@ public class CheckOwnerHouseholdUnique {
             }
         }
         if (household.isEmpty()) {
-            owner.setHouseholdSize(1); // a household of one: just this new owner
             return; // no existing owner at this last name + address
         }
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-        }
-        // Explicitly allowed to share: assign the same stable household identifier to all members,
-        // and record the household's size (existing members plus this new owner) on every member so
-        // it reflects the household as it stands after this create.
+        // Assign the same stable household identifier to all members, and record the household's
+        // size (existing members plus this new owner) on every member so it reflects the
+        // household as it stands after this create.
         String householdId = householdId(lastName, address, household);
         int householdSize = household.size() + 1;
         owner.setHouseholdId(householdId);

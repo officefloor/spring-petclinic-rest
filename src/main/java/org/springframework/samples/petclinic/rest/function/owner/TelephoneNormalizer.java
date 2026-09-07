@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 /**
  * Single home for owner telephone normalization. Both the create pipeline's
  * {@link BuildOwner} (which stores the canonical form) and
- * {@link CheckOwnerTelephoneUnique} (which detects duplicates) go through here, so the
+ * {@link OwnerIdentity} (whose identity key detects duplicates) go through here, so the
  * stored form and the duplicate-comparison stay defined in one place.
  */
 final class TelephoneNormalizer {
