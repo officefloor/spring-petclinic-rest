@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index c516951b6..b1a2f9160 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -23,6 +23,12 @@ public class BuildOwner {
+     private static final java.util.regex.Pattern EMAIL =
+             java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /** Fixed public holidays the business-day roll skips (rolls forward to the next non-holiday business day). */
++    private static final java.util.Set<java.time.LocalDate> HOLIDAYS = java.util.Set.of(
++            java.time.LocalDate.parse("2026-01-01"), java.time.LocalDate.parse("2026-01-26"),
++            java.time.LocalDate.parse("2026-04-25"), java.time.LocalDate.parse("2026-12-25"),
++            java.time.LocalDate.parse("2026-12-28"));
++
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper,
+             OwnerRepository ownerRepository, Out<Owner> built, Out<Boolean> sharesHousehold)
+             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+@@ -102,18 +108,17 @@ public class BuildOwner {
+     }
+ 
+     /**
+-     * Roll a registration date off the weekend: a Saturday or Sunday moves forward to the next
+-     * Monday; a weekday is returned unchanged.
++     * Roll a registration date forward to the next business day: a Saturday or Sunday, or a date
++     * on the fixed public-holiday list, moves forward one day at a time until it lands on a
++     * non-weekend, non-holiday day; a plain weekday is returned unchanged.
+      */
+     private static java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
+-        switch (date.getDayOfWeek()) {
+-            case SATURDAY:
+-                return date.plusDays(2);
+-            case SUNDAY:
+-                return date.plusDays(1);
+-            default:
+-                return date;
++        while (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
++                || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY
++                || HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
+         }
++        return date;
+     }
+ 
+     /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
