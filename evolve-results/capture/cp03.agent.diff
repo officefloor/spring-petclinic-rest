@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index b4348ab40..75932141b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -56,6 +56,15 @@ public interface OwnerRepository {
+      */
+     Owner findById(int id) throws DataAccessException;
+ 
++    /**
++     * Retrieve <code>Owner</code>s from the data store by their (normalized) telephone number.
++     *
++     * @param telephone the telephone number to search for
++     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
++     * <code>Collection</code> if none found)
++     */
++    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
++
+ 
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a3faf618d..692866761 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -148,6 +148,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         }
+     }
+ 
++    @Override
++    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("telephone", telephone);
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE telephone = :telephone",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index db2757657..e697ca245 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -89,6 +89,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     }
+ 
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone");
++        query.setParameter("telephone", telephone);
++        return query.getResultList();
++    }
++
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index ef05a53c3..2937c35c8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -55,4 +55,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id")
+     Owner findById(@Param("id") int id);
++
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone")
++    Collection<Owner> findByTelephone(@Param("telephone") String telephone);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f4f14bf1d..9e915060b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -106,6 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+         owner.setTelephone(telephone);
++        if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a6fae5bd7..da072b70e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
++	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 873eed0f4..ec731b019 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -242,6 +242,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByLastName(lastName);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
++        return ownerRepository.findByTelephone(telephone);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
