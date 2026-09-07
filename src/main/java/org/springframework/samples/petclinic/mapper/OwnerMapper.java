@@ -40,15 +40,30 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality from its region (see {@link Owner#getRegion()}). Returns the
-     * canonical region string, or {@code 'UNKNOWN'} when the owner has no known region.
+     * Derives the owner's locality from the region its identity carries (see
+     * {@link #localityRegion(Owner)}). Returns that region string, or {@code 'UNKNOWN'} when the
+     * owner has no known region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String region = owner.getRegion();
+        String region = localityRegion(owner);
         return region != null ? region : "UNKNOWN";
+    }
+
+    /**
+     * Resolves the region an owner's {@link #locality(Owner)} is derived from. Currently this is
+     * the owner's canonical region (see {@link Owner#getRegion()}), which is {@code null} when the
+     * owner has no known region. Keeping the region source in its own method leaves
+     * {@link #locality(Owner)} owning only the {@code null -> 'UNKNOWN'} rendering, so where the
+     * region itself comes from can change without disturbing that rendering.
+     *
+     * @param owner the owner whose locality region is resolved, never {@code null}
+     * @return the region string, or {@code null} when the owner has no known region
+     */
+    default String localityRegion(Owner owner) {
+        return owner.getRegion();
     }
 
     /**

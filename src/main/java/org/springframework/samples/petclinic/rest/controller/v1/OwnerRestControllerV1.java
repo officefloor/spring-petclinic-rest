@@ -118,7 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -361,13 +361,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
      * name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
      * number of owners already in that city. For example the seventh owner in {@code 'Springfield'}
-     * named {@code 'Smith'} is assigned {@code 'SPR-SMI-0007'}.
+     * named {@code 'Smith'} is assigned {@code 'SPR-SMI-0007'}. The whole owner is taken so the code
+     * is derived from whichever of its fields the identity scheme needs.
      *
-     * @param city the owner's city
-     * @param lastName the owner's last name
+     * @param owner the owner being created, whose fields the code is derived from
      * @return the formatted customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
+    private String nextCustomerCode(Owner owner) {
+        String city = owner.getCity();
+        String lastName = owner.getLastName();
         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         long sequence = this.clinicService.findAllOwners().stream()
@@ -649,14 +651,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String householdIdFor(String lastName, String address) {
         String key = collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|"
             + normalizeAddress(address).toLowerCase(java.util.Locale.ROOT);
+        return "HH-" + shaHex(key, 16);
+    }
+
+    /**
+     * Computes the upper-case hex SHA-256 digest of a string, truncated to its first
+     * {@code hexChars} characters. The input is hashed as UTF-8 bytes and each digest byte is
+     * rendered as two upper-case hex digits, so {@code hexChars} characters cover the leading
+     * {@code ceil(hexChars / 2)} bytes of the digest. This is the single definition of the
+     * SHA-256 hex derivation shared by every rule that hashes owner fields (for example the
+     * household identifier). SHA-256 is a required platform algorithm; were it ever unavailable
+     * an {@link IllegalStateException} is thrown.
+     *
+     * @param input the string to hash
+     * @param hexChars the number of leading upper-case hex characters to return
+     * @return the first {@code hexChars} upper-case hex characters of the SHA-256 digest
+     */
+    private String shaHex(String input, int hexChars) {
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < digest.length && sb.length() < hexChars; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
-            return "HH-" + sb;
+            return sb.substring(0, hexChars);
         }
         catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but unavailable", e);
