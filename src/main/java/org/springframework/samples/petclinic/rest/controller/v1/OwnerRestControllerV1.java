@@ -20,8 +20,10 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,10 +107,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
+    /**
+     * Remembers, per already-seen {@code Idempotency-Key}, the id of the owner that key
+     * originally created, so a retried create with the same key returns that owner instead
+     * of creating a duplicate. Held in memory for the application's lifetime and keyed by the
+     * raw header value.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        return createNewOwner(ownerFieldsDto);
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        boolean hasKey = idempotencyKey != null && !idempotencyKey.isBlank();
+        if (hasKey) {
+            Integer existingId = idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
+        ResponseEntity<OwnerDto> response = createNewOwner(ownerFieldsDto);
+        if (hasKey && response.getStatusCode() == HttpStatus.CREATED
+            && response.getBody() != null && response.getBody().getId() != null) {
+            idempotentCreates.putIfAbsent(idempotencyKey, response.getBody().getId());
+        }
+        return response;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
