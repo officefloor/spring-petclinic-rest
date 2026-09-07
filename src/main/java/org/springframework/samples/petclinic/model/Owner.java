@@ -313,6 +313,19 @@ public class Owner extends Person {
         return OwnerDerivations.ageBand(this.birthDate, this.registrationDate);
     }
 
+    /**
+     * The owner's fiscal year, formatted {@code FY<YY>}, derived from its
+     * business-day-adjusted {@link #registrationDate} (the fiscal year starts on 1 July).
+     * Derived (not persisted); recomputed each call and {@code null} when no registration
+     * date is present. See {@link OwnerDerivations#fiscalYear(LocalDate)} for the derivation.
+     *
+     * @return the fiscal year as {@code FY<YY>}, or {@code null}
+     */
+    @Transient
+    public String getFiscalYear() {
+        return OwnerDerivations.fiscalYear(this.registrationDate);
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }

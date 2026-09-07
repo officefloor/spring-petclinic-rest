@@ -19,8 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
 /**
@@ -154,10 +154,10 @@ final class OwnerDerivations {
      * The owner's membership points, a non-negative score derived from its factors:
      * starting at 0, add 2 when an {@code email} is present, add 1 when
      * {@code namesakeCount} is 0, add 2 for a household of 3 or more (its
-     * {@code householdSize}) and add 3 when the owner's tenure exceeds 365 days, measured
-     * as the number of whole days from its {@code registrationDate} up to {@code asOf}.
-     * Because a newly created owner has zero tenure, it never earns the tenure points at
-     * creation.
+     * {@code householdSize}) and add 3 when the owner's tenure exceeds a year, measured as
+     * the number of whole fiscal years elapsed from its {@code registrationDate} up to
+     * {@code asOf} (the fiscal year starts on 1 July). Because a newly created owner has
+     * zero elapsed fiscal years, it never earns the tenure points at creation.
      *
      * @return the membership points, 0 or more
      */
@@ -201,15 +201,53 @@ final class OwnerDerivations {
     }
 
     /**
-     * Whether the owner's tenure exceeds a year, i.e. more than 365 whole days have passed
-     * from its {@code registrationDate} up to {@code asOf}. This is the single tenure test
+     * Whether the owner's tenure exceeds a year, i.e. at least one whole fiscal year has
+     * elapsed from its {@code registrationDate} up to {@code asOf} (see
+     * {@link #elapsedFiscalYears(LocalDate, LocalDate)}). This is the single tenure test
      * the tenure-driven membership derivations share, so they agree on exactly when an
      * owner has been a member for "over a year"; it is {@code false} whenever either date
      * is absent.
      */
     private static boolean tenureExceedsYear(LocalDate registrationDate, LocalDate asOf) {
         return registrationDate != null && asOf != null
-            && ChronoUnit.DAYS.between(registrationDate, asOf) > 365;
+            && elapsedFiscalYears(registrationDate, asOf) >= 1;
+    }
+
+    /**
+     * The number of whole fiscal years elapsed from {@code registrationDate} up to
+     * {@code asOf}, i.e. the difference between the fiscal year that contains {@code asOf}
+     * and the one that contains {@code registrationDate} (see {@link #fiscalYearOf(LocalDate)}).
+     * Two dates in the same fiscal year yield {@code 0}, so an owner registered in the
+     * current fiscal year has zero tenure until the next 1 July rollover.
+     */
+    static int elapsedFiscalYears(LocalDate registrationDate, LocalDate asOf) {
+        return fiscalYearOf(asOf) - fiscalYearOf(registrationDate);
+    }
+
+    /**
+     * The fiscal year that contains the given date, as a four-digit calendar year. The
+     * fiscal year runs from 1 July to 30 June and is labelled by the calendar year in
+     * which it ends: a date from January to June falls in the fiscal year of its own
+     * calendar year, while a date from July to December falls in the next calendar year's
+     * fiscal year (e.g. {@code 2026-05-03 -> 2026} but {@code 2026-08-03 -> 2027}).
+     */
+    static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code FY<YY>} where YY is the last two digits of
+     * the fiscal year (see {@link #fiscalYearOf(LocalDate)}) that contains its
+     * business-day-adjusted {@code registrationDate}, e.g. {@code FY27} for a registration
+     * date of {@code 2026-08-03}. Returns {@code null} when no registration date is present.
+     *
+     * @return the fiscal year as {@code FY<YY>}, or {@code null}
+     */
+    static String fiscalYear(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(registrationDate) % 100);
     }
 
     /**
@@ -334,16 +372,17 @@ final class OwnerDerivations {
 
     /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>}: the owner's
-     * already-assigned {@code customerCode} followed by {@code -M} and the two-digit year
-     * segment derived from its {@code registrationDate} (the last two digits of that date's
-     * year), e.g. {@code NSW-9F86D081-M26}. Derived from the customer code and registration
-     * date once both have been assigned, so it lives with the other owner derivations rather
-     * than in the controller that assigns it.
+     * already-assigned {@code customerCode} followed by {@code -M} and the two-digit fiscal
+     * year segment derived from its {@code registrationDate} (the last two digits of the
+     * fiscal year that contains that date; see {@link #fiscalYearOf(LocalDate)}), e.g.
+     * {@code NSW-9F86D081-M27} for a registration date of {@code 2026-08-03}. Derived from
+     * the customer code and registration date once both have been assigned, so it lives with
+     * the other owner derivations rather than in the controller that assigns it.
      *
      * @return the membership number
      */
     static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        int yy = registrationDate.getYear() % 100;
+        int yy = fiscalYearOf(registrationDate) % 100;
         return String.format("%s-M%02d", customerCode, yy);
     }
 
