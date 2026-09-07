@@ -108,31 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        HttpHeaders headers = new HttpHeaders();
-        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (!normalizeNewOwner(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        if (dailyLimitReached(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
-        }
-        if (cityIsAtCapacity(owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        owner.setHouseholdId(owner.computeHouseholdId());
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        Optional<Owner> householdMember = findHouseholdMember(owner);
-        if (householdMember.isPresent() && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        boolean declaredHouseholdMember = householdMember.isPresent();
-        assignDerivedAttributes(owner, declaredHouseholdMember);
-        this.clinicService.saveOwner(owner);
-        auditOwnerCreated(owner);
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        headers.setLocation(UriComponentsBuilder.newInstance()
-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return createNewOwner(ownerFieldsDto);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -229,6 +205,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Create and persist a brand-new owner from the supplied fields, returning the
+     * {@code 201 Created} response for it. This gathers the whole create pipeline in one
+     * place — map the fields, {@link #normalizeNewOwner normalise} them, apply the daily,
+     * city and household gates (each with its own rejection status), resolve any household,
+     * {@link #assignDerivedAttributes derive the create-time attributes}, save, audit and
+     * build the response with its {@code Location} header — so {@link #addOwner} itself
+     * stays a thin entry point.
+     *
+     * @param ownerFieldsDto the owner fields from the request body
+     * @return {@code 201 Created} with the created owner and its {@code Location} header,
+     *         or the appropriate rejection status: {@code 400 Bad Request} when the fields
+     *         are invalid, {@code 429 Too Many Requests} when the day's create cap is
+     *         reached, or {@code 409 Conflict} when the city is at capacity or the owner
+     *         joins an existing household without declaring {@code sharesHousehold}
+     */
+    private ResponseEntity<OwnerDto> createNewOwner(OwnerFieldsDto ownerFieldsDto) {
+        HttpHeaders headers = new HttpHeaders();
+        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (!normalizeNewOwner(owner)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (dailyLimitReached(owner.getRegistrationDate())) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
+        if (cityIsAtCapacity(owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        owner.setHouseholdId(owner.computeHouseholdId());
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        Optional<Owner> householdMember = findHouseholdMember(owner);
+        if (householdMember.isPresent() && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        boolean declaredHouseholdMember = householdMember.isPresent();
+        assignDerivedAttributes(owner, declaredHouseholdMember);
+        this.clinicService.saveOwner(owner);
+        auditOwnerCreated(owner);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
     /**
