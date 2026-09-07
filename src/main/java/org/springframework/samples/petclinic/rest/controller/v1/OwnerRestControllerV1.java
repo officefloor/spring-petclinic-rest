@@ -131,7 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
@@ -242,21 +242,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a submitted telephone number by removing every non-digit character and
-     * requiring the result to be exactly ten digits. The normalized ten-digit value is
-     * what gets stored and returned. When the stripped value is not exactly ten digits an
-     * {@link InvalidFieldsException} is thrown, which the exception advice renders as a
-     * 400 response naming the {@code telephone} field.
+     * Normalizes a submitted telephone number into E.164 form. Spaces, dashes and brackets
+     * are stripped. When a leading {@code '+'} and country code are present they are kept as
+     * given; otherwise the country code {@code '+61'} is assumed and a single leading
+     * {@code '0'} is dropped from the national digits. The result must be a {@code '+'}
+     * followed by 8 to 15 digits. The normalized E.164 value is what gets stored and returned.
+     * When the value cannot form a valid E.164 number an {@link InvalidFieldsException} is
+     * thrown, which the exception advice renders as a 400 response naming the {@code telephone}
+     * field. For example {@code "0412 345 678"} becomes {@code "+61412345678"}.
      *
      * @param telephone the submitted telephone value
-     * @return the normalized ten-digit telephone
+     * @return the normalized E.164 telephone
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = "+" + cleaned.substring(1);
+        } else {
+            String national = cleaned;
+            if (national.startsWith("0")) {
+                national = national.substring(1);
+            }
+            e164 = "+61" + national;
+        }
+        if (!e164.matches("^\\+[0-9]{8,15}$")) {
             throw new InvalidFieldsException(List.of("telephone"));
         }
-        return digits;
+        return e164;
     }
 
     /**
@@ -290,8 +303,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a new owner whose normalized telephone is already used by any existing owner.
-     * The telephone is stored in its normalized ten-digit form, so a plain equality check
-     * against every owner's telephone is sufficient. When a match is found a
+     * The telephone is stored in its normalized E.164 form, so a plain equality check
+     * against every owner's telephone compares E.164 values. When a match is found a
      * {@link DuplicateTelephoneException} is thrown, which the exception advice renders as a
      * 409 Conflict response.
      *
