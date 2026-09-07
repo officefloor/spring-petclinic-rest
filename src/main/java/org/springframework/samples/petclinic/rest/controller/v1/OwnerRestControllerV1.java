@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeNewOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (dailyLimitReached(owner.getRegistrationDate())) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         if (cityIsAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -343,6 +346,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeName(existing.getCity()).equals(normalizedCity))
             .count();
         return count >= 50;
+    }
+
+    /**
+     * Determine whether the daily owner-creation limit has already been reached, i.e.
+     * 100 or more owners already carry the given registration date. A new owner may
+     * not be created once that day's cap is reached.
+     *
+     * @param registrationDate the registration date the new owner would be created with
+     * @return {@code true} if 100 or more existing owners share that registration date
+     */
+    private boolean dailyLimitReached(LocalDate registrationDate) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count >= 100;
     }
 
     private String nextCustomerCode(String city, String lastName) {
