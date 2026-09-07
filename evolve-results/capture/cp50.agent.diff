@@ -1,0 +1,195 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayException.java
+new file mode 100644
+index 000000000..4db90efce
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayException.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Thrown by the create-owner pipeline when the request repeats an already-seen
++ * {@code Idempotency-Key}. It carries the originally created owner so the handler can replay that
++ * response with 200 instead of creating a duplicate.
++ */
++public class IdempotentReplayException extends Exception {
++
++    private final transient OwnerDto owner;
++
++    public IdempotentReplayException(OwnerDto owner) {
++        super("Idempotency-Key already used; returning the originally created owner");
++        this.owner = owner;
++    }
++
++    public OwnerDto getOwner() {
++        return this.owner;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayExceptionHandler.java
+new file mode 100644
+index 000000000..0fad40b83
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/IdempotentReplayExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Replays the originally created owner with 200 when a create-owner request repeats an already-seen
++ * {@code Idempotency-Key}, instead of the 409 a genuine duplicate would get.
++ */
++public class IdempotentReplayExceptionHandler {
++
++    public void handle(@Parameter IdempotentReplayException ex, ObjectResponse<OwnerDto> response) {
++        response.send(ex.getOwner());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotentCreate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotentCreate.java
+new file mode 100644
+index 000000000..845cc4303
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotentCreate.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.server.http.HttpHeader;
++import net.officefloor.server.http.ServerHttpConnection;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.IdempotentReplayException;
++
++/**
++ * First step of create-owner: when the request carries an {@code Idempotency-Key} that already
++ * created an owner, short-circuit the pipeline by throwing {@link IdempotentReplayException} with
++ * that owner, so the request replays the original 200 response instead of creating a duplicate.
++ * A request with no key, an unseen key, or a key whose owner has since vanished falls through to
++ * the normal create pipeline.
++ */
++public class CheckIdempotentCreate {
++
++    public void service(ServerHttpConnection connection, IdempotencyRegistry registry,
++            OwnerRepository ownerRepository, OwnerMapper ownerMapper) throws IdempotentReplayException {
++        String key = idempotencyKey(connection);
++        Integer existingId = registry.find(key);
++        if (existingId == null) {
++            return; // no key, or key not seen before: create as normal
++        }
++        Owner existing = ownerRepository.findById(existingId);
++        if (existing == null) {
++            return; // recorded owner is gone: fall through and create afresh
++        }
++        throw new IdempotentReplayException(ownerMapper.toOwnerDto(existing));
++    }
++
++    /** The trimmed {@code Idempotency-Key} header value, or {@code null} when absent or blank. */
++    static String idempotencyKey(ServerHttpConnection connection) {
++        HttpHeader header = connection.getRequest().getHeaders().getHeader("Idempotency-Key");
++        if (header == null) {
++            return null;
++        }
++        String value = header.getValue();
++        return (value == null || value.isBlank()) ? null : value.trim();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyRegistry.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyRegistry.java
+new file mode 100644
+index 000000000..b51ee53c3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyRegistry.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers which owner each {@code Idempotency-Key} created, so a create that repeats with an
++ * already-seen key returns the originally created owner (200) instead of creating a duplicate.
++ *
++ * <p>An in-memory, process-wide map keyed on the raw header value: the create pipeline records the
++ * new owner's id under the key after saving, and the first step of a later create looks the key up
++ * to replay the original response.
++ */
++@Component
++public class IdempotencyRegistry {
++
++    private final Map<String, Integer> ownerIdByKey = new ConcurrentHashMap<>();
++
++    /** Owner id previously created under {@code key}, or {@code null} if the key is new. */
++    public Integer find(String key) {
++        return key == null ? null : this.ownerIdByKey.get(key);
++    }
++
++    /** Remember that {@code key} created the owner with {@code ownerId}. */
++    public void record(String key, Integer ownerId) {
++        if (key != null && ownerId != null) {
++            this.ownerIdByKey.putIfAbsent(key, ownerId);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotentCreate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotentCreate.java
+new file mode 100644
+index 000000000..067c9b807
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotentCreate.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import net.officefloor.server.http.ServerHttpConnection;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Records that this request's {@code Idempotency-Key} created the just-saved owner, so a later
++ * create repeating the key replays the same owner. Runs after {@link SaveOwner} (the owner's id is
++ * assigned); a request without a key records nothing.
++ */
++public class RecordIdempotentCreate {
++
++    public void service(@Val Owner owner, ServerHttpConnection connection, IdempotencyRegistry registry) {
++        registry.record(CheckIdempotentCreate.idempotencyKey(connection), owner.getId());
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.IdempotentReplayException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.IdempotentReplayException.yml
+new file mode 100644
+index 000000000..51c686c3e
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.IdempotentReplayException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.IdempotentReplayExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f604f0f5f..c1cf48855 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,11 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++checkIdempotent:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotentCreate
++  govern: [ transaction ]
++  next: build
++
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
+@@ -59,6 +64,11 @@ dedupeCustomerCode:
+ save:
+   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+   govern: [ transaction ]
++  next: recordIdempotent
++
++recordIdempotent:
++  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotentCreate
++  govern: [ transaction ]
+   next: audit
+ 
+ audit:
