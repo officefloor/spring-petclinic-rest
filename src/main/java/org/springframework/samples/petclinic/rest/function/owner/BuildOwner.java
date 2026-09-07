@@ -27,31 +27,12 @@ public class BuildOwner {
             OwnerRepository ownerRepository, Out<Owner> built, Out<Boolean> sharesHousehold)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
             RegistrationDateInFutureException {
-        List<String> missing = new ArrayList<>();
         // Normalize the address up front so the required-field check rejects an address that is
         // blank once trimmed/collapsed, and every later step (and the stored value) sees the
         // canonical form.
-        String normalizedAddress = AddressNormalizer.normalize(request.getAddress());
-        if (isBlank(request.getFirstName())) {
-            missing.add("firstName");
-        }
-        if (isBlank(request.getLastName())) {
-            missing.add("lastName");
-        }
-        if (normalizedAddress.isEmpty()) {
-            missing.add("address");
-        }
-        if (isBlank(request.getCity())) {
-            missing.add("city");
-        }
-        if (isBlank(request.getTelephone())) {
-            missing.add("telephone");
-        }
-        if (!missing.isEmpty()) {
-            throw new MissingOwnerFieldsException(missing);
-        }
+        String normalizedAddress = canonicalizeAddress(request);
+        requireFields(request, normalizedAddress);
         request.setTelephone(TelephoneNormalizer.normalize(request.getTelephone()));
-        request.setAddress(normalizedAddress);
         request.setEmail(normalizeEmail(request.getEmail()));
         Owner owner = ownerMapper.toOwner(request);
         // The EFFECTIVE registration date (supplied or defaulted to the server date) must fall on
@@ -70,6 +51,45 @@ public class BuildOwner {
         owner.setCustomerCode(CustomerCode.of(owner));
         built.set(owner);
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+    }
+
+    /**
+     * Canonicalize the address supplied on the request: normalize it to the stored form and write
+     * it back onto the request (so the mapped owner and every later step see the canonical value),
+     * returning that normalized form for the required-field check.
+     */
+    private static String canonicalizeAddress(OwnerFieldsDto request) {
+        String normalizedAddress = AddressNormalizer.normalize(request.getAddress());
+        request.setAddress(normalizedAddress);
+        return normalizedAddress;
+    }
+
+    /**
+     * Enforce the owner's required fields, collecting every missing one so the caller reports them
+     * together. {@code normalizedAddress} is the already-canonicalized address, so an address blank
+     * once trimmed/collapsed counts as missing.
+     */
+    private static void requireFields(OwnerFieldsDto request, String normalizedAddress)
+            throws MissingOwnerFieldsException {
+        List<String> missing = new ArrayList<>();
+        if (isBlank(request.getFirstName())) {
+            missing.add("firstName");
+        }
+        if (isBlank(request.getLastName())) {
+            missing.add("lastName");
+        }
+        if (normalizedAddress.isEmpty()) {
+            missing.add("address");
+        }
+        if (isBlank(request.getCity())) {
+            missing.add("city");
+        }
+        if (isBlank(request.getTelephone())) {
+            missing.add("telephone");
+        }
+        if (!missing.isEmpty()) {
+            throw new MissingOwnerFieldsException(missing);
+        }
     }
 
     /**
