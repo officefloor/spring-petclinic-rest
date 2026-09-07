@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -104,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -249,5 +251,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Rejects a new owner whose normalized telephone is already used by any existing owner.
+     * The telephone is stored in its normalized ten-digit form, so a plain equality check
+     * against every owner's telephone is sufficient. When a match is found a
+     * {@link DuplicateTelephoneException} is thrown, which the exception advice renders as a
+     * 409 Conflict response.
+     *
+     * @param telephone the normalized telephone of the owner being created
+     */
+    private void rejectDuplicateTelephone(String telephone) {
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
+        if (taken) {
+            throw new DuplicateTelephoneException(telephone);
+        }
     }
 }
