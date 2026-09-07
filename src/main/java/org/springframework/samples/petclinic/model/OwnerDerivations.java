@@ -53,17 +53,17 @@ final class OwnerDerivations {
 
     /**
      * The owner's locality, i.e. the canonical region it belongs to. This is read
-     * from the region-and-hash {@code customerCode} identity: the region is the
-     * {@code <REGION>} component that precedes the first {@code '-'} of the assigned
-     * customer code (e.g. {@code NSW} for {@code NSW-9F86D081}). Until an owner has
-     * been assigned a customer code (for example while its create request is still
-     * being validated) this falls back to the region derived directly from its own
-     * fields (see {@link #region(String, String)}).
+     * from the unified {@code memberId} identity: the region is the leading
+     * {@code <REGION>} component of the assigned member id, i.e. the run of letters
+     * before its two-digit fiscal-year segment (e.g. {@code NSW} for
+     * {@code NSW279F86D0817}). Until an owner has been assigned a member id (for example
+     * while its create request is still being validated) this falls back to the region
+     * derived directly from its own fields (see {@link #region(String, String)}).
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
-    static String locality(String customerCode, String postcode, String city) {
-        String assigned = customerCodeRegion(customerCode);
+    static String locality(String memberId, String postcode, String city) {
+        String assigned = memberIdRegion(memberId);
         if (assigned != null) {
             return assigned;
         }
@@ -71,21 +71,25 @@ final class OwnerDerivations {
     }
 
     /**
-     * The region component encoded in an assigned {@code customerCode}: the {@code <REGION>}
-     * that precedes its first {@code '-'} (e.g. {@code NSW} for {@code NSW-9F86D081}), or
-     * {@code null} when no customer code has been assigned yet or it carries no region
-     * component. Reading the region back out of the identifier lives here so
-     * {@link #locality(String, String, String)} stays a thin read-then-fall-back and the
-     * one place that knows the identifier's shape is isolated.
+     * The region component encoded in an assigned {@code memberId}: its leading
+     * {@code <REGION>} run of letters, which precedes the two-digit fiscal-year segment
+     * (e.g. {@code NSW} for {@code NSW279F86D0817}), or {@code null} when no member id has
+     * been assigned yet or it carries no leading region component. Reading the region back
+     * out of the identifier lives here so {@link #locality(String, String, String)} stays a
+     * thin read-then-fall-back and the one place that knows the identifier's shape is
+     * isolated.
      *
      * @return the encoded region, or {@code null}
      */
-    private static String customerCodeRegion(String customerCode) {
-        if (customerCode == null) {
+    private static String memberIdRegion(String memberId) {
+        if (memberId == null) {
             return null;
         }
-        int dash = customerCode.indexOf('-');
-        return dash >= 0 ? customerCode.substring(0, dash) : null;
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i > 0 ? memberId.substring(0, i) : null;
     }
 
     /**
@@ -478,15 +482,21 @@ final class OwnerDerivations {
     }
 
     /**
-     * The owner's customer code, formatted {@code <REGION>-<HASH8>}: {@code region} is
-     * the owner's canonical region (see {@link #region(String, String)}) and HASH8 is the
-     * {@link #hash8(String, String) HASH8} of its telephone and last name
-     * (e.g. {@code NSW-9F86D081}).
+     * The owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>}: {@code region}
+     * is the owner's canonical region (see {@link #region(String, String)}), FY is the
+     * two-digit {@link #fiscalYearSegment(LocalDate) fiscal-year segment} of its
+     * {@code registrationDate}, HASH8 is the {@link #hash8(String, String) HASH8} of its
+     * telephone and last name, and CHK is a single {@link #checkDigit(String) Luhn check
+     * digit} computed over the decimal digits of {@code <REGION><FY><HASH8>}
+     * (e.g. {@code NSW279F86D0817}). This unifies the former customer code and membership
+     * number into one identifier.
      *
-     * @return the customer code
+     * @return the member id
      */
-    static String customerCode(String region, String telephone, String lastName) {
-        return String.format("%s-%s", region, hash8(telephone, lastName));
+    static String memberId(String region, String telephone, String lastName,
+            LocalDate registrationDate) {
+        String base = region + fiscalYearSegment(registrationDate) + hash8(telephone, lastName);
+        return base + checkDigit(base);
     }
 
     /**
@@ -500,21 +510,6 @@ final class OwnerDerivations {
      */
     static String hash8(String telephone, String lastName) {
         return sha256Hex(telephone + lastName).substring(0, 8).toUpperCase();
-    }
-
-    /**
-     * The owner's membership number, formatted {@code <customerCode>-M<YY>}: the owner's
-     * already-assigned {@code customerCode} followed by {@code -M} and the two-digit fiscal
-     * year segment derived from its {@code registrationDate} (the last two digits of the
-     * fiscal year that contains that date; see {@link #fiscalYearOf(LocalDate)}), e.g.
-     * {@code NSW-9F86D081-M27} for a registration date of {@code 2026-08-03}. Derived from
-     * the customer code and registration date once both have been assigned, so it lives with
-     * the other owner derivations rather than in the controller that assigns it.
-     *
-     * @return the membership number
-     */
-    static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%s", customerCode, fiscalYearSegment(registrationDate));
     }
 
     /**

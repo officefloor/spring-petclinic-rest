@@ -485,17 +485,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assign the owner's computed-at-creation attributes in place: its customer code,
-     * namesake count, membership number, bulk-signup warning and household size. Unlike
+     * Assign the owner's computed-at-creation attributes in place: its member id,
+     * namesake count, bulk-signup warning and household size. Unlike
      * the {@code @Transient} attributes {@link Owner} recomputes on demand, these are
      * derived once here — from the owner's own (already normalised) fields and from the
      * wider owner population — and persisted with the owner. Run after normalisation,
      * household resolution and the identity-key check, so every value reflects the
      * owner's final field values and any household it has joined, and immediately before
      * the owner is saved.
-     *
-     * <p>Ordering matters: the customer code is assigned first because the membership
-     * number is built from it.
      *
      * @param owner the candidate owner being created, after household resolution
      * @param declaredHouseholdMember whether this owner was created as a declared member
@@ -507,9 +504,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember,
             List<Owner> householdMembers) {
-        owner.setCustomerCode(deduplicatedCustomerCode(owner));
+        owner.setMemberId(deduplicatedMemberId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
-        owner.setMembershipNumber(owner.computeMembershipNumber());
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setCapacityWarning(cityApproachingCapacity(owner.getCity()));
         owner.setHouseholdSize(householdSize(owner));
@@ -538,28 +534,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Compute the customer code to assign to the candidate owner, de-duplicated against
-     * every existing owner's customer code. The base code is the owner's computed
-     * {@code <REGION>-<HASH8>} (see {@link Owner#computeCustomerCode()}); when it does not
-     * already belong to an existing owner it is used unchanged. Otherwise it collides, and
-     * {@code -<n>} is appended with the smallest integer {@code n} of 2 or more that yields
-     * a code no existing owner holds, so the returned customer code is unique. Evaluated
+     * Compute the member id to assign to the candidate owner, de-duplicated against
+     * every existing owner's member id. The base id is the owner's computed
+     * {@code <REGION><FY><HASH8><CHK>} (see {@link Owner#computeMemberId()}); when it does
+     * not already belong to an existing owner it is used unchanged. Otherwise it collides,
+     * and {@code -<n>} is appended with the smallest integer {@code n} of 2 or more that
+     * yields an id no existing owner holds, so the returned member id is unique. Evaluated
      * before the owner is saved, so only pre-existing owners are considered.
      *
      * @param owner the candidate owner being created, after normalisation
-     * @return the unique (de-duplicated) customer code to assign
+     * @return the unique (de-duplicated) member id to assign
      */
-    private String deduplicatedCustomerCode(Owner owner) {
-        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+    private String deduplicatedMemberId(Owner owner) {
+        Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(java.util.stream.Collectors.toSet());
-        String base = owner.computeCustomerCode();
-        if (!existingCodes.contains(base)) {
+        String base = owner.computeMemberId();
+        if (!existingIds.contains(base)) {
             return base;
         }
         int n = 2;
-        while (existingCodes.contains(base + "-" + n)) {
+        while (existingIds.contains(base + "-" + n)) {
             n++;
         }
         return base + "-" + n;

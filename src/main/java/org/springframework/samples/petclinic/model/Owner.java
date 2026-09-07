@@ -72,17 +72,14 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
@@ -163,7 +160,7 @@ public class Owner extends Person {
 
     /**
      * The owner's locality, i.e. the canonical region it belongs to (read from the
-     * assigned {@link #customerCode} when present, otherwise derived from the owner's
+     * assigned {@link #memberId} when present, otherwise derived from the owner's
      * own fields via {@link #regionForOwner()}). Derived (not persisted); recomputed
      * each call. See {@link OwnerDerivations#locality(String, String, String)} for the
      * full derivation.
@@ -172,7 +169,7 @@ public class Owner extends Person {
      */
     @Transient
     public String getLocality() {
-        return OwnerDerivations.locality(this.customerCode, this.postcode, this.city);
+        return OwnerDerivations.locality(this.memberId, this.postcode, this.city);
     }
 
     /**
@@ -351,24 +348,12 @@ public class Owner extends Person {
         return OwnerDerivations.fiscalYear(this.registrationDate);
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    /**
-     * The Luhn check digit (0-9) computed over the digits in this owner's
-     * {@link #customerCode}. Derived (not persisted); recomputed each call. See
-     * {@link OwnerDerivations#checkDigit(String)}.
-     *
-     * @return the Luhn check digit, from 0 to 9
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        return OwnerDerivations.checkDigit(this.customerCode);
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -385,14 +370,6 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Boolean getBulkSignupWarning() {
@@ -489,27 +466,17 @@ public class Owner extends Person {
     }
 
     /**
-     * Compute the customer code to assign to this owner at creation, formatted
-     * {@code <REGION>-<HASH8>} from the owner's (already normalised) fields. This is the
-     * value stored in {@link #getCustomerCode()}; see
-     * {@link OwnerDerivations#customerCode(String, String, String)} for the format.
+     * Compute the unified member id to assign to this owner at creation, formatted
+     * {@code <REGION><FY><HASH8><CHK>} from the owner's (already normalised) fields and
+     * registration date. This is the value stored in {@link #getMemberId()}; see
+     * {@link OwnerDerivations#memberId(String, String, String, LocalDate)} for the exact
+     * format.
      *
-     * @return the customer code to assign
+     * @return the member id to assign
      */
-    public String computeCustomerCode() {
-        return OwnerDerivations.customerCode(regionForOwner(), this.telephone, this.getLastName());
-    }
-
-    /**
-     * Compute the membership number to assign to this owner at creation, formatted
-     * {@code <customerCode>-M<YY>} from its already-assigned customer code and registration
-     * date. This is the value stored in {@link #getMembershipNumber()}; see
-     * {@link OwnerDerivations#membershipNumber(String, LocalDate)} for the exact format.
-     *
-     * @return the membership number to assign
-     */
-    public String computeMembershipNumber() {
-        return OwnerDerivations.membershipNumber(this.customerCode, this.registrationDate);
+    public String computeMemberId() {
+        return OwnerDerivations.memberId(regionForOwner(), this.telephone, this.getLastName(),
+            this.registrationDate);
     }
 
     /**

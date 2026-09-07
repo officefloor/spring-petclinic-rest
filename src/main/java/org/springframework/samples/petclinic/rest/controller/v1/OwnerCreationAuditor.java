@@ -46,37 +46,34 @@ public class OwnerCreationAuditor {
     /**
      * Write the create audit record for a freshly-saved owner. Keeps the audit format in
      * one place so it stays in step with the owner's identity: it reports the assigned
-     * customer code alongside the owner's id, registration date, membership level and
-     * membership number.
+     * member id alongside the owner's id, registration date and membership level.
      *
      * <p>Alongside the human-readable line, an immutable structured {@code OWNER_CREATED}
      * event is emitted as a single-line JSON object so downstream consumers have a stable,
-     * machine-readable record. The event carries the owner's current primary identifier
-     * (the customer code today); when that identifier is later unified into the member id
-     * the event simply carries the member id instead — see {@link #primaryIdentifier(Owner)}.
+     * machine-readable record. The event carries the owner's primary identifier, the unified
+     * {@link #primaryIdentifier(Owner) member id}.
      *
      * @param owner the owner that has just been created and saved
      */
     public void auditOwnerCreated(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
 
         ObjectNode event = MAPPER.createObjectNode();
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", primaryIdentifier(owner));
+        event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(event.toString());
     }
 
     /**
-     * The owner's current primary identifier. Today that is the {@link Owner#getCustomerCode()
-     * customer code}; when the customer code is later unified into the member id this is the one
-     * place that changes so the {@code OWNER_CREATED} event follows the identity automatically.
+     * The owner's primary identifier: the unified {@link Owner#getMemberId() member id}.
+     * Isolated here so the {@code OWNER_CREATED} event has a single place that decides which
+     * field is the owner's primary identifier.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }
