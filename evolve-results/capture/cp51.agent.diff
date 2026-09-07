@@ -1,0 +1,222 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 99c57e567..0ad9ac252 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -96,6 +96,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "deleted", nullable = false)
+     private Boolean deleted = false;
+ 
+@@ -223,14 +226,17 @@ public class Owner extends Person {
+      * The owner's membership level, a number from 1 to 4, mapped from its
+      * {@link #getMembershipPoints() membership points}. Derived (not persisted);
+      * recomputed from the current fields each call, so it rises to level 4 once the
+-     * owner's tenure since {@link #registrationDate} exceeds 365 days. See
+-     * {@link OwnerDerivations#membershipLevel(int)} for the mapping.
++     * owner's tenure since {@link #registrationDate} exceeds 365 days. The level is then
++     * held to this owner's household level ceiling ({@link #getMembershipLevelCap()}): when
++     * a ceiling was assigned at creation the reported level is at most that ceiling, one
++     * above the highest level then held by an existing household member. See
++     * {@link OwnerDerivations#membershipLevel(int, Integer)} for the mapping.
+      *
+      * @return the membership level, from 1 to 4
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+-        return OwnerDerivations.membershipLevel(getMembershipPoints());
++        return OwnerDerivations.membershipLevel(getMembershipPoints(), this.membershipLevelCap);
+     }
+ 
+     /**
+@@ -402,6 +408,23 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * The household level ceiling assigned to this owner at creation: one above the highest
++     * {@link #getMembershipLevel() membership level} then held by an existing member of its
++     * household, or {@code null} when the owner joined no existing household (so no ceiling
++     * applies). Persisted, and used by {@link #getMembershipLevel()} to cap the reported
++     * level.
++     *
++     * @return the household level ceiling, or {@code null} when uncapped
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getDeleted() {
+         return this.deleted;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+index 7a06ccd11..8e402bf94 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerDerivations.java
+@@ -200,6 +200,21 @@ final class OwnerDerivations {
+         return 4;
+     }
+ 
++    /**
++     * The owner's membership level after applying its household level ceiling. The level
++     * mapped from {@code points} (see {@link #membershipLevel(int)}) is returned unchanged
++     * when {@code cap} is {@code null} (the owner joined no existing household), and
++     * otherwise capped to at most {@code cap} — the ceiling assigned at creation, one above
++     * the highest level then held by an existing household member — so a new owner can rise
++     * to at most one level above its household.
++     *
++     * @return the capped membership level, from 1 to 4
++     */
++    static int membershipLevel(int points, Integer cap) {
++        int level = membershipLevel(points);
++        return cap == null ? level : Math.min(level, cap);
++    }
++
+     /**
+      * Whether the owner's tenure exceeds a year, i.e. at least one whole fiscal year has
+      * elapsed from its {@code registrationDate} up to {@code asOf} (see
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 22fa8868e..7a751113c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -235,18 +235,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Create and persist a brand-new owner from the supplied fields, returning the
+      * {@code 201 Created} response for it. This gathers the whole create pipeline in one
+-     * place — map the fields, {@link #normalizeNewOwner normalise} them, apply the daily,
+-     * city and household gates (each with its own rejection status), resolve any household,
+-     * {@link #assignDerivedAttributes derive the create-time attributes}, save, audit and
++     * place — map the fields, {@link #normalizeNewOwner normalise} them, apply the daily
++     * and city gates (each with its own rejection status), resolve any household,
++     * {@link #assignDerivedAttributes derive the create-time attributes} (including the
++     * household level ceiling that caps the owner's membership level), save, audit and
+      * build the response with its {@code Location} header — so {@link #addOwner} itself
+-     * stays a thin entry point.
++     * stays a thin entry point. An owner joining an existing household is admitted (its
++     * membership level is capped to one above the household maximum rather than rejected).
+      *
+      * @param ownerFieldsDto the owner fields from the request body
+      * @return {@code 201 Created} with the created owner and its {@code Location} header,
+      *         or the appropriate rejection status: {@code 400 Bad Request} when the fields
+      *         are invalid, {@code 429 Too Many Requests} when the day's create cap is
+-     *         reached, or {@code 409 Conflict} when the city is at capacity or the owner
+-     *         joins an existing household without declaring {@code sharesHousehold}
++     *         reached, or {@code 409 Conflict} when the city is at capacity
+      */
+     private ResponseEntity<OwnerDto> createNewOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+@@ -262,12 +263,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setHouseholdId(owner.computeHouseholdId());
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        boolean joinsExistingHousehold = !findHouseholdMembers(owner).isEmpty();
+-        if (joinsExistingHousehold && !sharesHousehold) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        boolean declaredHouseholdMember = joinsExistingHousehold;
+-        assignDerivedAttributes(owner, declaredHouseholdMember);
++        List<Owner> householdMembers = findHouseholdMembers(owner);
++        boolean joinsExistingHousehold = !householdMembers.isEmpty();
++        boolean declaredHouseholdMember = joinsExistingHousehold && sharesHousehold;
++        assignDerivedAttributes(owner, declaredHouseholdMember, householdMembers);
+         this.clinicService.saveOwner(owner);
+         auditOwnerCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -462,16 +461,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *                                of an existing household (it shared an existing
+      *                                owner's household and set {@code sharesHousehold}),
+      *                                in which case it is not a suspected duplicate
++     * @param householdMembers        the existing members of the owner's household at
++     *                                creation time, used to derive its level ceiling
+      */
+-    private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember) {
++    private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember,
++            List<Owner> householdMembers) {
+         owner.setCustomerCode(deduplicatedCustomerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setMembershipNumber(owner.computeMembershipNumber());
+         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         owner.setHouseholdSize(householdSize(owner));
++        owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
+         assignPossibleDuplicate(owner, declaredHouseholdMember);
+     }
+ 
++    /**
++     * The household level ceiling to assign to the candidate owner: one above the highest
++     * {@link Owner#getMembershipLevel() membership level} currently held by an existing
++     * member of its household, or {@code null} when the household has no existing member
++     * (so no ceiling applies). This bounds a new owner's reported membership level to at
++     * most one above its household, keeping households from being outranked at the moment a
++     * relative joins. Evaluated before the owner is saved, over the members that already
++     * existed at creation time.
++     *
++     * @param householdMembers the existing members of the owner's household
++     * @return the level ceiling to assign, or {@code null} when uncapped
++     */
++    private Integer membershipLevelCap(List<Owner> householdMembers) {
++        return householdMembers.stream()
++            .map(Owner::getMembershipLevel)
++            .max(Comparator.naturalOrder())
++            .map(max -> max + 1)
++            .orElse(null);
++    }
++
+     /**
+      * Compute the customer code to assign to the candidate owner, de-duplicated against
+      * every existing owner's customer code. The base code is the owner's computed
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c78009287..7907bcce5 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 570101f27..3b3cfeb58 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -57,6 +57,7 @@ CREATE TABLE owners (
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 69aa93bc5..1fa656155 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INT,
++  membership_level_cap INT,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9d9c65c34..f626cfefa 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       birth_date DATE,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      membership_level_cap INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
