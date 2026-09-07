@@ -16,9 +16,10 @@ public class AuditOwnerCreated {
     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
+        int points = MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(),
+                owner.getHouseholdSize(), owner.getRegistrationDate());
         audit.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail(),
-                        owner.getRegistrationDate()));
+                MembershipLevel.of(points));
     }
 }
