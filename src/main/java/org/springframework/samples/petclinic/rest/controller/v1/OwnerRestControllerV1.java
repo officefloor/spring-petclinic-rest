@@ -120,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
+        owner.setMembershipNumber(membershipNumber(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -326,6 +327,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         long sequence = this.clinicService.findAllOwners().size() + 1L;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Build the owner's membership number, formatted {@code <customerCode>-M<YY>}
+     * where {@code <customerCode>} is the owner's already-assigned customer code and
+     * YY is the last two digits of the registration date's year (e.g.
+     * {@code SMI-0007-M26}). Evaluated after the customer code and registration date
+     * have been set.
+     *
+     * @param owner the owner being created, with customer code and registration date
+     *              already assigned
+     * @return the assigned membership number
+     */
+    private String membershipNumber(Owner owner) {
+        int yy = owner.getRegistrationDate().getYear() % 100;
+        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
     }
 
     /**
