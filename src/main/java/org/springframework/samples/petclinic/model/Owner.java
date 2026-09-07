@@ -131,6 +131,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's IANA timezone name, derived from its {@link #getLocality() locality}
+     * (canonical region) via the fixed region-to-timezone table. Derived (not persisted);
+     * recomputed each call and {@code null} when the locality is not a known region. See
+     * {@link OwnerDerivations#timezone(String)} for the derivation.
+     *
+     * @return the IANA timezone name, or {@code null}
+     */
+    @Transient
+    public String getTimezone() {
+        return OwnerDerivations.timezone(this.getLocality());
+    }
+
+    /**
      * Whether this owner's postcode is consistent with its {@link #getLocality()
      * locality}: an absent postcode is accepted, a present one must be exactly four
      * digits and, when the locality has a known postcode range, fall within it. See

@@ -44,6 +44,10 @@ final class OwnerDerivations {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-timezone table (IANA names) used to derive {@link #timezone}. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     private OwnerDerivations() {
     }
 
@@ -87,6 +91,19 @@ final class OwnerDerivations {
             return byPostcode;
         }
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * The IANA timezone name derived from the given {@code locality} (a canonical
+     * region) via the fixed region-to-timezone table ({@code NSW -> Australia/Sydney},
+     * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}). Returns
+     * {@code null} when the locality is not one of the known regions (for example
+     * {@code "UNKNOWN"}).
+     *
+     * @return the IANA timezone name, or {@code null}
+     */
+    static String timezone(String locality) {
+        return REGION_TIMEZONE.get(locality);
     }
 
     /**
