@@ -15,6 +15,8 @@
  */
 package org.springframework.samples.petclinic.model;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Map;
 
 /**
@@ -185,6 +187,30 @@ final class OwnerDerivations {
             doubleDigit = !doubleDigit;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * The owner's age band, derived from its {@code birthDate} measured against its
+     * {@code registrationDate}: {@code "MINOR"} when the owner is under 18 on the
+     * registration date, {@code "ADULT"} from 18 to 64, and {@code "SENIOR"} at 65 or
+     * over. The age is the number of whole years between the two dates. Returns
+     * {@code null} when either date is absent, so no band is reported for an owner
+     * without a supplied birth date.
+     *
+     * @return {@code "MINOR"}, {@code "ADULT"}, {@code "SENIOR"}, or {@code null}
+     */
+    static String ageBand(LocalDate birthDate, LocalDate registrationDate) {
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     /**
