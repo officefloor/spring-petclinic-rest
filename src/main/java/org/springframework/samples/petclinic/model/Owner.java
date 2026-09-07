@@ -110,6 +110,31 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * Whether this owner belongs to the same household as {@code other}: that is,
+     * they share the same last name and address. Both fields are compared
+     * case-insensitively with runs of whitespace collapsed to a single space (and
+     * surrounding whitespace trimmed).
+     *
+     * @param other the owner to compare against
+     * @return {@code true} if both owners share a household
+     */
+    public boolean sameHouseholdAs(Owner other) {
+        return normalize(this.getLastName()).equals(normalize(other.getLastName()))
+            && normalize(this.address).equals(normalize(other.address));
+    }
+
+    /**
+     * Normalise a value for case-insensitive, whitespace-insensitive comparison:
+     * trim, collapse internal runs of whitespace to a single space and lower-case.
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

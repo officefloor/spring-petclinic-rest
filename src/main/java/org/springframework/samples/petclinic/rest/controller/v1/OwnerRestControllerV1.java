@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -116,7 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdDuplicate(owner)) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && findHouseholdMember(owner).isPresent()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
@@ -223,30 +224,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Whether an existing owner already shares the same last name and address as the
-     * given owner. Both fields are compared case-insensitively with runs of whitespace
-     * collapsed to a single space (and surrounding whitespace trimmed).
+     * Find an existing owner that belongs to the same household as the given owner,
+     * i.e. shares the same last name and address (compared case-insensitively with
+     * runs of whitespace collapsed to a single space).
      *
      * @param owner the candidate owner being created
-     * @return {@code true} if a matching owner already exists
+     * @return the matching existing owner, or empty if none exists
      */
-    private boolean isHouseholdDuplicate(Owner owner) {
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+    private Optional<Owner> findHouseholdMember(Owner owner) {
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
-                && normalize(existing.getAddress()).equals(address));
-    }
-
-    /**
-     * Normalise a value for case-insensitive, whitespace-insensitive comparison:
-     * trim, collapse internal runs of whitespace to a single space and lower-case.
-     */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+            .filter(existing -> existing.sameHouseholdAs(owner))
+            .findFirst();
     }
 
     /**
