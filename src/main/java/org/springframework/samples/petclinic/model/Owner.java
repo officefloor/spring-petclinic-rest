@@ -96,6 +96,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted", nullable = false)
     private Boolean deleted = false;
 
@@ -223,14 +226,17 @@ public class Owner extends Person {
      * The owner's membership level, a number from 1 to 4, mapped from its
      * {@link #getMembershipPoints() membership points}. Derived (not persisted);
      * recomputed from the current fields each call, so it rises to level 4 once the
-     * owner's tenure since {@link #registrationDate} exceeds 365 days. See
-     * {@link OwnerDerivations#membershipLevel(int)} for the mapping.
+     * owner's tenure since {@link #registrationDate} exceeds 365 days. The level is then
+     * held to this owner's household level ceiling ({@link #getMembershipLevelCap()}): when
+     * a ceiling was assigned at creation the reported level is at most that ceiling, one
+     * above the highest level then held by an existing household member. See
+     * {@link OwnerDerivations#membershipLevel(int, Integer)} for the mapping.
      *
      * @return the membership level, from 1 to 4
      */
     @Transient
     public Integer getMembershipLevel() {
-        return OwnerDerivations.membershipLevel(getMembershipPoints());
+        return OwnerDerivations.membershipLevel(getMembershipPoints(), this.membershipLevelCap);
     }
 
     /**
@@ -400,6 +406,23 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * The household level ceiling assigned to this owner at creation: one above the highest
+     * {@link #getMembershipLevel() membership level} then held by an existing member of its
+     * household, or {@code null} when the owner joined no existing household (so no ceiling
+     * applies). Persisted, and used by {@link #getMembershipLevel()} to cap the reported
+     * level.
+     *
+     * @return the household level ceiling, or {@code null} when uncapped
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Boolean getDeleted() {

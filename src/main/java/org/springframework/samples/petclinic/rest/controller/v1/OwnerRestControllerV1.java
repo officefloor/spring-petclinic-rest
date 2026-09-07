@@ -235,18 +235,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Create and persist a brand-new owner from the supplied fields, returning the
      * {@code 201 Created} response for it. This gathers the whole create pipeline in one
-     * place — map the fields, {@link #normalizeNewOwner normalise} them, apply the daily,
-     * city and household gates (each with its own rejection status), resolve any household,
-     * {@link #assignDerivedAttributes derive the create-time attributes}, save, audit and
+     * place — map the fields, {@link #normalizeNewOwner normalise} them, apply the daily
+     * and city gates (each with its own rejection status), resolve any household,
+     * {@link #assignDerivedAttributes derive the create-time attributes} (including the
+     * household level ceiling that caps the owner's membership level), save, audit and
      * build the response with its {@code Location} header — so {@link #addOwner} itself
-     * stays a thin entry point.
+     * stays a thin entry point. An owner joining an existing household is admitted (its
+     * membership level is capped to one above the household maximum rather than rejected).
      *
      * @param ownerFieldsDto the owner fields from the request body
      * @return {@code 201 Created} with the created owner and its {@code Location} header,
      *         or the appropriate rejection status: {@code 400 Bad Request} when the fields
      *         are invalid, {@code 429 Too Many Requests} when the day's create cap is
-     *         reached, or {@code 409 Conflict} when the city is at capacity or the owner
-     *         joins an existing household without declaring {@code sharesHousehold}
+     *         reached, or {@code 409 Conflict} when the city is at capacity
      */
     private ResponseEntity<OwnerDto> createNewOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
@@ -262,12 +263,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdId(owner.computeHouseholdId());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        boolean joinsExistingHousehold = !findHouseholdMembers(owner).isEmpty();
-        if (joinsExistingHousehold && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        boolean declaredHouseholdMember = joinsExistingHousehold;
-        assignDerivedAttributes(owner, declaredHouseholdMember);
+        List<Owner> householdMembers = findHouseholdMembers(owner);
+        boolean joinsExistingHousehold = !householdMembers.isEmpty();
+        boolean declaredHouseholdMember = joinsExistingHousehold && sharesHousehold;
+        assignDerivedAttributes(owner, declaredHouseholdMember, householdMembers);
         this.clinicService.saveOwner(owner);
         auditOwnerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -462,14 +461,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *                                of an existing household (it shared an existing
      *                                owner's household and set {@code sharesHousehold}),
      *                                in which case it is not a suspected duplicate
+     * @param householdMembers        the existing members of the owner's household at
+     *                                creation time, used to derive its level ceiling
      */
-    private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember) {
+    private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember,
+            List<Owner> householdMembers) {
         owner.setCustomerCode(deduplicatedCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(owner.computeMembershipNumber());
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
+        owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
         assignPossibleDuplicate(owner, declaredHouseholdMember);
+    }
+
+    /**
+     * The household level ceiling to assign to the candidate owner: one above the highest
+     * {@link Owner#getMembershipLevel() membership level} currently held by an existing
+     * member of its household, or {@code null} when the household has no existing member
+     * (so no ceiling applies). This bounds a new owner's reported membership level to at
+     * most one above its household, keeping households from being outranked at the moment a
+     * relative joins. Evaluated before the owner is saved, over the members that already
+     * existed at creation time.
+     *
+     * @param householdMembers the existing members of the owner's household
+     * @return the level ceiling to assign, or {@code null} when uncapped
+     */
+    private Integer membershipLevelCap(List<Owner> householdMembers) {
+        return householdMembers.stream()
+            .map(Owner::getMembershipLevel)
+            .max(Comparator.naturalOrder())
+            .map(max -> max + 1)
+            .orElse(null);
     }
 
     /**

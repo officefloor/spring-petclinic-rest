@@ -201,6 +201,21 @@ final class OwnerDerivations {
     }
 
     /**
+     * The owner's membership level after applying its household level ceiling. The level
+     * mapped from {@code points} (see {@link #membershipLevel(int)}) is returned unchanged
+     * when {@code cap} is {@code null} (the owner joined no existing household), and
+     * otherwise capped to at most {@code cap} — the ceiling assigned at creation, one above
+     * the highest level then held by an existing household member — so a new owner can rise
+     * to at most one level above its household.
+     *
+     * @return the capped membership level, from 1 to 4
+     */
+    static int membershipLevel(int points, Integer cap) {
+        int level = membershipLevel(points);
+        return cap == null ? level : Math.min(level, cap);
+    }
+
+    /**
      * Whether the owner's tenure exceeds a year, i.e. at least one whole fiscal year has
      * elapsed from its {@code registrationDate} up to {@code asOf} (see
      * {@link #elapsedFiscalYears(LocalDate, LocalDate)}). This is the single tenure test

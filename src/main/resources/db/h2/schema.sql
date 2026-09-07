@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS owners (
   birth_date DATE,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 
