@@ -356,12 +356,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *                                in which case it is not a suspected duplicate
      */
     private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember) {
-        owner.setCustomerCode(owner.computeCustomerCode());
+        owner.setCustomerCode(deduplicatedCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
         assignPossibleDuplicate(owner, declaredHouseholdMember);
+    }
+
+    /**
+     * Compute the customer code to assign to the candidate owner, de-duplicated against
+     * every existing owner's customer code. The base code is the owner's computed
+     * {@code <REGION>-<HASH8>} (see {@link Owner#computeCustomerCode()}); when it does not
+     * already belong to an existing owner it is used unchanged. Otherwise it collides, and
+     * {@code -<n>} is appended with the smallest integer {@code n} of 2 or more that yields
+     * a code no existing owner holds, so the returned customer code is unique. Evaluated
+     * before the owner is saved, so only pre-existing owners are considered.
+     *
+     * @param owner the candidate owner being created, after normalisation
+     * @return the unique (de-duplicated) customer code to assign
+     */
+    private String deduplicatedCustomerCode(Owner owner) {
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(java.util.stream.Collectors.toSet());
+        String base = owner.computeCustomerCode();
+        if (!existingCodes.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existingCodes.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
