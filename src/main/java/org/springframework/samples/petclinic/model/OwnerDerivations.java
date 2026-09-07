@@ -356,20 +356,81 @@ final class OwnerDerivations {
     }
 
     /**
-     * The single derived key used for duplicate detection, formed as
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
-     * The telephone is the owner's stored (E.164-normalised) telephone, the email
-     * is the stored (lower-cased) email or the empty string when absent, and the
-     * household component is the stored {@code householdId} or the empty string
-     * when the owner belongs to no household.
+     * The single derived key used for duplicate detection: the lower-case hexadecimal
+     * SHA-256 digest of {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}. The telephone is the owner's stored (E.164-normalised)
+     * telephone (or the empty string when absent), the email is the stored (lower-cased)
+     * email or the empty string when absent, and the last-name component is the
+     * {@link #soundex(String) Soundex code} of the owner's last name. Because the
+     * telephone is part of the key, two owners sharing a last name and postcode but with
+     * different telephones have different keys.
      *
-     * @return the owner's identity key
+     * @return the owner's identity key, a 64-character lower-case hex string
      */
-    static String identityKey(String telephone, String email, String householdId) {
+    static String identityKey(String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
-        String mail = email == null ? "" : email;
-        String household = householdId == null ? "" : householdId;
-        return tel + "|" + mail + "|" + household;
+        String mail = email == null ? "" : email.toLowerCase();
+        return sha256Hex(tel + "|" + mail + "|" + soundex(lastName));
+    }
+
+    /**
+     * The American Soundex code of the given name: its first letter followed by three
+     * digits derived from the remaining consonants ({@code b,f,p,v -> 1};
+     * {@code c,g,j,k,q,s,x,z -> 2}; {@code d,t -> 3}; {@code l -> 4}; {@code m,n -> 5};
+     * {@code r -> 6}), where adjacent letters mapping to the same digit (including when
+     * separated only by {@code h} or {@code w}) are coded once, vowels ({@code a,e,i,o,u},
+     * and {@code y}) separate otherwise-identical digits, and the result is zero-padded or
+     * truncated to exactly four characters. Non-letters are ignored; an absent or
+     * letter-free value yields the empty string.
+     *
+     * @param value the name to encode (may be {@code null})
+     * @return the four-character Soundex code, or the empty string
+     */
+    static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (char c : value.toUpperCase().toCharArray()) {
+            if (c >= 'A' && c <= 'Z') {
+                letters.append(c);
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder().append(letters.charAt(0));
+        char previousDigit = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char letter = letters.charAt(i);
+            char digit = soundexDigit(letter);
+            if (digit != '0' && digit != previousDigit) {
+                code.append(digit);
+            }
+            if (letter != 'H' && letter != 'W') {
+                previousDigit = digit;
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * The Soundex digit for a single upper-case letter, or {@code '0'} for a letter that
+     * carries no Soundex digit (the vowels {@code a,e,i,o,u}, and {@code y,h,w}).
+     */
+    private static char soundexDigit(char c) {
+        return switch (c) {
+            case 'B', 'F', 'P', 'V' -> '1';
+            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
+            case 'D', 'T' -> '3';
+            case 'L' -> '4';
+            case 'M', 'N' -> '5';
+            case 'R' -> '6';
+            default -> '0';
+        };
     }
 
     /**

@@ -2139,10 +2139,12 @@ components:
           title: Shares household
           description: >-
             Write-only flag. Owners with the same lastName and postcode belong to
-            the same household (they share a deterministic householdId). When such
-            an owner already exists a create request is rejected with 409 Conflict;
-            setting this flag true bypasses that block, admitting the owner as a
-            declared household member (which is not flagged as a possible duplicate).
+            the same household (they share a deterministic householdId). Setting this
+            flag true admits the owner as a declared household member, which is not
+            flagged as a possible duplicate even when it soft-matches an existing
+            household member. Duplicate detection is keyed on the identity key, so a
+            second household member with a different telephone is admitted as a soft
+            match rather than rejected.
           type: boolean
           writeOnly: true
           example: false
@@ -2350,22 +2352,25 @@ components:
             identityKey:
               title: Identity key
               description: >-
-                A derived key combining the owner's normalised telephone, email
-                and householdId, formed as
-                'normalizedTelephone|<email or empty>|<householdId or empty>'.
-                Because owners with the same lastName and postcode share a
-                householdId, duplicate detection is keyed on the household: a
-                second owner in an existing household is rejected with 409 Conflict
-                unless it sets 'sharesHousehold'.
+                A derived key used for duplicate detection: the 64-character
+                lower-case hexadecimal SHA-256 digest over the owner's normalised
+                telephone, a '|', its lower-cased email (or empty), a '|' and the
+                Soundex code of its lastName, i.e.
+                SHA-256('normalizedTelephone|<lowerEmail or empty>|soundex(lastName)').
+                A create whose identity key matches an existing, non-deleted owner
+                is rejected with 409 Conflict. Because the telephone is part of the
+                key, two owners with the same lastName and postcode but different
+                telephones have different keys and are not a hard duplicate.
               type: string
-              example: '+61412345678||'
+              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
               readOnly: true
             possibleDuplicate:
               title: Possible duplicate
               description: >-
                 Whether, at the time this owner was created, it was a soft match
-                for an existing owner: sharing that owner's lastName and postcode
-                with a different telephone. 'true' when such a match exists,
+                for an existing owner: its identity key differs from that owner's
+                (so it is not a hard duplicate) yet the Soundex of their lastNames
+                and their postcodes match. 'true' when such a match exists,
                 otherwise 'false'. A declared household member (admitted via
                 'sharesHousehold') is never flagged: it is not a suspected duplicate.
               type: boolean
@@ -2375,8 +2380,8 @@ components:
               title: Possible duplicate of
               description: >-
                 The id of the existing owner this owner soft-matched at creation
-                (same lastName and postcode, different telephone), or absent when
-                'possibleDuplicate' is false.
+                (differing identity key but matching Soundex of lastName and
+                postcode), or absent when 'possibleDuplicate' is false.
               type: integer
               format: int32
               minimum: 0

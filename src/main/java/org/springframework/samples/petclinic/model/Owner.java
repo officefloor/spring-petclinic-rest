@@ -434,18 +434,31 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived key used for duplicate detection, combining this owner's normalised
-     * telephone, email and {@link #householdId}. Two owners are duplicates exactly when
-     * their whole identity keys are equal, so members of the same household with
-     * different telephones have different keys. Derived (not persisted); recomputed each
-     * call. See {@link OwnerDerivations#identityKey(String, String, String)} for the
-     * exact format.
+     * The derived key used for duplicate detection: the SHA-256 hex digest over this
+     * owner's normalised telephone, lower-cased email and the {@link #soundex(String)
+     * Soundex} of its last name. Two owners are duplicates exactly when their whole
+     * identity keys are equal, so because the telephone is part of the key, members of
+     * the same household with different telephones have different keys. Derived (not
+     * persisted); recomputed each call. See
+     * {@link OwnerDerivations#identityKey(String, String, String)} for the exact format.
      *
      * @return the owner's identity key
      */
     @Transient
     public String getIdentityKey() {
-        return OwnerDerivations.identityKey(this.telephone, this.email, this.householdId);
+        return OwnerDerivations.identityKey(this.telephone, this.email, this.getLastName());
+    }
+
+    /**
+     * The American Soundex code of the given name. This is the last-name comparison used
+     * by both the identity key and the soft-match duplicate check; see
+     * {@link OwnerDerivations#soundex(String)} for the exact algorithm.
+     *
+     * @param value the name to encode (may be {@code null})
+     * @return the four-character Soundex code, or the empty string
+     */
+    public static String soundex(String value) {
+        return OwnerDerivations.soundex(value);
     }
 
     /**

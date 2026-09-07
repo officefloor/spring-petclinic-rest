@@ -242,13 +242,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * household level ceiling that caps the owner's membership level), save, audit and
      * build the response with its {@code Location} header — so {@link #addOwner} itself
      * stays a thin entry point. An owner joining an existing household is admitted (its
-     * membership level is capped to one above the household maximum rather than rejected).
+     * membership level is capped to one above the household maximum rather than rejected):
+     * two owners sharing a last name and postcode but with different telephones are no
+     * longer a hard duplicate but a soft match. Duplicate detection is the single
+     * {@link Owner#getIdentityKey() identity key}: a create whose identity key matches an
+     * existing, non-deleted owner is rejected with {@code 409 Conflict}.
      *
      * @param ownerFieldsDto the owner fields from the request body
      * @return {@code 201 Created} with the created owner and its {@code Location} header,
      *         or the appropriate rejection status: {@code 400 Bad Request} when the fields
      *         are invalid, {@code 429 Too Many Requests} when the day's create cap is
-     *         reached, or {@code 409 Conflict} when the city is at capacity
+     *         reached, or {@code 409 Conflict} when the city is at capacity or the owner's
+     *         identity key duplicates an existing owner
      */
     private ResponseEntity<OwnerDto> createNewOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
@@ -263,6 +268,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setHouseholdId(owner.computeHouseholdId());
+        if (isDuplicateIdentity(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers = findHouseholdMembers(owner);
         boolean joinsExistingHousehold = !householdMembers.isEmpty();
@@ -444,6 +452,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Whether the candidate owner is a hard duplicate of an existing owner, i.e. it shares
+     * the {@link Owner#getIdentityKey() identity key} (the SHA-256 digest over its
+     * normalised telephone, lower-cased email and the Soundex of its last name) of a
+     * current owner. Soft-deleted owners are ignored, so only the current owner population
+     * is considered. A create whose identity key collides with an existing owner is
+     * rejected with {@code 409 Conflict}. Evaluated after normalisation (so the
+     * email-domain blocklist has already been applied) and before the owner is saved.
+     *
+     * @param owner the candidate owner being created, after normalisation
+     * @return {@code true} if an existing, non-deleted owner shares the candidate's
+     *         identity key
+     */
+    private boolean isDuplicateIdentity(Owner owner) {
+        String identityKey = owner.getIdentityKey();
+        return activeOwners()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    }
+
+    /**
      * The existing owners that are still active, i.e. those not flagged as soft-deleted.
      * Evaluated fresh against the saved owners each call, so it reflects only owners that
      * already existed at creation time; a soft-deleted owner is excluded and so takes no
@@ -576,11 +603,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Whether an already-created {@code existing} owner is a soft-match for the candidate
-     * {@code owner}: it shares the candidate's last name (compared case-insensitively, with
-     * surrounding whitespace trimmed) and postcode but carries a different (normalised)
-     * telephone. This is the single soft-match test {@link #assignPossibleDuplicate} applies
-     * across the owner population, isolated here so the comparison that decides a suspected
-     * duplicate lives in one place.
+     * {@code owner}: their {@link Owner#getIdentityKey() identity keys} differ (so they are
+     * not a hard duplicate) yet the {@link Owner#soundex(String) Soundex} of their last
+     * names and their postcodes match. This is the single soft-match test
+     * {@link #assignPossibleDuplicate} applies across the owner population, isolated here so
+     * the comparison that decides a suspected duplicate lives in one place. Two owners
+     * sharing a last name and postcode but with different telephones therefore soft-match
+     * rather than being rejected, since the telephone is part of the identity key.
      *
      * @param owner    the candidate owner being created
      * @param existing an already-created owner to test against it
@@ -588,10 +617,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isSoftMatch(Owner owner, Owner existing) {
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
         return postcode != null && postcode.equals(existing.getPostcode())
-            && normalizeName(existing.getLastName()).equals(normalizeName(owner.getLastName()))
-            && telephone != null && !telephone.equals(existing.getTelephone());
+            && Owner.soundex(owner.getLastName()).equals(Owner.soundex(existing.getLastName()))
+            && !owner.getIdentityKey().equals(existing.getIdentityKey());
     }
 
     /**
