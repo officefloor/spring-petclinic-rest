@@ -262,11 +262,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdId(owner.computeHouseholdId());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        Optional<Owner> householdMember = findHouseholdMember(owner);
-        if (householdMember.isPresent() && !sharesHousehold) {
+        boolean joinsExistingHousehold = !findHouseholdMembers(owner).isEmpty();
+        if (joinsExistingHousehold && !sharesHousehold) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        boolean declaredHouseholdMember = householdMember.isPresent();
+        boolean declaredHouseholdMember = joinsExistingHousehold;
         assignDerivedAttributes(owner, declaredHouseholdMember);
         this.clinicService.saveOwner(owner);
         auditOwnerCreated(owner);
@@ -426,19 +426,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Find an existing owner that belongs to the same household as the given owner,
-     * i.e. shares the same last name (compared case-insensitively with runs of
-     * whitespace collapsed to a single space) and postcode, and so resolves to the same
-     * deterministic {@code householdId}.
+     * Find the existing owners that belong to the same household as the given owner,
+     * i.e. share the same last name (compared case-insensitively with runs of
+     * whitespace collapsed to a single space) and postcode, and so resolve to the same
+     * deterministic {@code householdId}. Soft-deleted owners are excluded, so the result
+     * holds only current household members. Evaluated before the new owner is saved, so
+     * it reflects only owners that already existed at creation time; an owner joining no
+     * existing household yields an empty list.
      *
      * @param owner the candidate owner being created
-     * @return the matching existing owner, or empty if none exists
+     * @return the current members of the owner's household, empty if none exists
      */
-    private Optional<Owner> findHouseholdMember(Owner owner) {
+    private List<Owner> findHouseholdMembers(Owner owner) {
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()))
             .filter(existing -> existing.sameHouseholdAs(owner))
-            .findFirst();
+            .toList();
     }
 
     /**
