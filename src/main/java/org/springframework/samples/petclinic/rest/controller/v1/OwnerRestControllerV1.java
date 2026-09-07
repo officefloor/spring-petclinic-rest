@@ -127,11 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityKeyAlreadyUsed(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(customerCode(owner));
-        owner.setNamesakeCount(countNamesakes(owner));
-        owner.setMembershipNumber(membershipNumber(owner));
-        owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
-        owner.setHouseholdSize(householdSize(owner));
+        assignDerivedAttributes(owner);
         this.clinicService.saveOwner(owner);
         auditOwnerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -350,6 +346,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             existing.setHouseholdId(householdId);
             this.clinicService.saveOwner(existing);
         }
+    }
+
+    /**
+     * Assign the owner's computed-at-creation attributes in place: its customer code,
+     * namesake count, membership number, bulk-signup warning and household size. Unlike
+     * the {@code @Transient} attributes {@link Owner} recomputes on demand, these are
+     * derived once here — from the owner's own (already normalised) fields and from the
+     * wider owner population — and persisted with the owner. Run after normalisation,
+     * household resolution and the identity-key check, so every value reflects the
+     * owner's final field values and any household it has joined, and immediately before
+     * the owner is saved.
+     *
+     * <p>Ordering matters: the customer code is assigned first because the membership
+     * number is built from it.
+     *
+     * @param owner the candidate owner being created, after household resolution
+     */
+    private void assignDerivedAttributes(Owner owner) {
+        owner.setCustomerCode(customerCode(owner));
+        owner.setNamesakeCount(countNamesakes(owner));
+        owner.setMembershipNumber(membershipNumber(owner));
+        owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        owner.setHouseholdSize(householdSize(owner));
     }
 
     /**
