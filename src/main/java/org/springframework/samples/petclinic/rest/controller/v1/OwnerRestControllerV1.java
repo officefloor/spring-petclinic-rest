@@ -119,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             joinHousehold(owner, householdMember.get());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(countNamesakes(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -288,6 +289,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             existing.setHouseholdId(householdId);
             this.clinicService.saveOwner(existing);
         }
+    }
+
+    /**
+     * Count the existing owners that share the given owner's first and last name,
+     * compared case-insensitively (surrounding whitespace trimmed). Evaluated
+     * before the new owner is saved, so the result reflects only owners that
+     * already existed at creation time.
+     *
+     * @param owner the candidate owner being created
+     * @return the number of existing namesakes
+     */
+    private int countNamesakes(Owner owner) {
+        String firstName = normalizeName(owner.getFirstName());
+        String lastName = normalizeName(owner.getLastName());
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeName(existing.getFirstName()).equals(firstName)
+                && normalizeName(existing.getLastName()).equals(lastName))
+            .count();
+    }
+
+    private static String normalizeName(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
     }
 
     /**
