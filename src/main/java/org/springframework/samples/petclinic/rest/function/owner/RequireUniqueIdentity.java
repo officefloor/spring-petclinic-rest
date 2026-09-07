@@ -33,6 +33,9 @@ public class RequireUniqueIdentity {
         String householdId = Household.id(request.getLastName(), request.getPostcode());
         String contactKey = OwnerIdentity.contactKey(request.getTelephone(), request.getEmail());
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a create
+            }
             String existingKey = OwnerIdentity.contactKey(existing.getTelephone(), existing.getEmail());
             if (contactKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(
