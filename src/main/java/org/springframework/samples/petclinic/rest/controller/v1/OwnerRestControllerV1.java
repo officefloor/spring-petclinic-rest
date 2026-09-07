@@ -602,21 +602,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the shared {@code householdId} for an owner created with {@code sharesHousehold}
-     * set to {@code true}. The identifier is derived deterministically from the owner's
-     * household identity (its {@code lastName} and {@code address}, see
-     * {@link #householdIdFor(String, String)}), so every owner in the same household resolves to
-     * the same stable value. The new owner receives that value, and any existing household mates
-     * that do not yet carry it are updated so the whole household shares one identifier. When the
-     * request did not opt in the owner is left without a household identifier.
+     * set to {@code true}. The identifier is the one the owner would receive
+     * ({@link #prospectiveHouseholdId(OwnerFieldsDto)}), derived deterministically from its
+     * household identity so every owner in the same household resolves to the same stable value.
+     * The new owner receives that value, and any existing household mates that do not yet carry it
+     * are updated so the whole household shares one identifier. When the request did not opt in the
+     * owner is left without a household identifier.
      *
      * @param owner the newly created owner, mutated in place with its household identifier
      * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
      */
     private void assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        String householdId = prospectiveHouseholdId(ownerFieldsDto);
+        if (householdId == null) {
             return;
         }
-        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
         owner.setHouseholdId(householdId);
         for (Owner mate : findHouseholdMates(owner.getLastName(), owner.getAddress())) {
             if (!householdId.equals(mate.getHouseholdId())) {
@@ -624,6 +624,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 this.clinicService.saveOwner(mate);
             }
         }
+    }
+
+    /**
+     * Derives the {@code householdId} a newly submitted owner would receive, without needing the
+     * owner to have been mapped or persisted yet. An owner shares a household only when the request
+     * opts in via {@code sharesHousehold}; when it does, the identifier is derived deterministically
+     * from the owner's household identity (its {@code lastName} and {@code address}, see
+     * {@link #householdIdFor(String, String)}), so it matches the value {@link #assignHousehold} will
+     * later store and every household mate resolves to the same identifier. When the request did not
+     * opt in the owner belongs to no shared household and {@code null} is returned.
+     *
+     * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
+     * @return the household identifier the owner would receive, or {@code null} when it shares none
+     */
+    private String prospectiveHouseholdId(OwnerFieldsDto ownerFieldsDto) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return null;
+        }
+        return householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
     }
 
     /**
