@@ -21,6 +21,12 @@ public final class Locality {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     /** Sentinel returned by {@link #of(String)} for a city with no known region. */
     public static final String UNKNOWN = "UNKNOWN";
 
@@ -70,5 +76,14 @@ public final class Locality {
      */
     public static int[] postcodeRange(String region) {
         return REGION_POSTCODES.get(region);
+    }
+
+    /**
+     * The IANA timezone name for {@code region} via the fixed region-to-timezone table
+     * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or
+     * {@code null} when the region is absent or not in the table.
+     */
+    public static String timezone(String region) {
+        return region == null ? null : REGION_TIMEZONE.get(region);
     }
 }
