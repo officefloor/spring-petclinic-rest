@@ -61,7 +61,7 @@ public class BuildOwner {
             registrationDate = java.time.LocalDate.now();
         }
         owner.setRegistrationDate(toBusinessDay(registrationDate));
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName(), ownerRepository));
+        owner.setCustomerCode(CustomerCode.of(owner));
         built.set(owner);
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
     }
@@ -79,29 +79,6 @@ public class BuildOwner {
             default:
                 return date;
         }
-    }
-
-    /**
-     * Build a customer code '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three letters of the
-     * city, a hyphen, the upper-cased first three letters of the last name, a hyphen, then a
-     * per-city 4-digit zero-padded sequence equal to one more than the number of owners already
-     * in that city (e.g. 'LON-SMI-0007').
-     */
-    private static String nextCustomerCode(String city, String lastName, OwnerRepository ownerRepository) {
-        String city3 = prefix3(city);
-        String last3 = prefix3(lastName);
-        int sequence = 1;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (existing.getCity() != null && existing.getCity().equalsIgnoreCase(city)) {
-                sequence++;
-            }
-        }
-        return String.format("%s-%s-%04d", city3, last3, sequence);
-    }
-
-    /** Upper-cased first three letters (fewer if the value is shorter) of {@code value}. */
-    private static String prefix3(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase(java.util.Locale.ROOT);
     }
 
     /** When present, require a syntactically valid address and store it lower-cased; else reject with 400. */
