@@ -71,16 +71,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerCreationAuditor ownerCreationAuditor;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerCreationAuditor ownerCreationAuditor) {
+                                 OwnerCreationAuditor ownerCreationAuditor,
+                                 WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerCreationAuditor = ownerCreationAuditor;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -278,6 +282,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignDerivedAttributes(owner, declaredHouseholdMember, householdMembers);
         this.clinicService.saveOwner(owner);
         ownerCreationAuditor.auditOwnerCreated(owner);
+        welcomeNotifier.enqueueWelcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
