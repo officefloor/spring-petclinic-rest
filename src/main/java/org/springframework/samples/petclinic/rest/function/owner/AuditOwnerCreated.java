@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Final step of {@code POST /api/owners} that records the successful create on the dedicated
  * {@code AUDIT} logger. Runs after {@link SaveOwner} so the owner's generated {@code id} is
- * available; the line carries the owner id, its {@code customerCode}, its {@code registrationDate}
- * and its numeric {@code membershipLevel}.
+ * available; the line carries the owner id, its {@code customerCode}, its {@code registrationDate},
+ * its numeric {@code membershipLevel} and its {@code membershipNumber}.
  */
 public class AuditOwnerCreated {
 
@@ -18,8 +18,10 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner) {
         int points = MembershipPoints.of(owner.getNamesakeCount(), owner.getEmail(),
                 owner.getHouseholdSize(), owner.getRegistrationDate());
-        audit.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        audit.info(
+                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(points));
+                MembershipLevel.of(points),
+                MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()));
     }
 }
