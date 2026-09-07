@@ -528,6 +528,19 @@ public class Owner extends Person {
         return OwnerDerivations.normalizeAddress(value);
     }
 
+    /**
+     * Whether the given (already lower-cased) email address belongs to a disposable,
+     * throw-away mailbox domain on the blocklist. This is the disposable-domain check
+     * applied at creation to reject such addresses; see
+     * {@link OwnerDerivations#emailDomainIsDisposable(String)} for the exact rule.
+     *
+     * @param email the owner's normalised (lower-cased) email address
+     * @return {@code true} if the email's domain is on the disposable-domain blocklist
+     */
+    public static boolean emailDomainIsDisposable(String email) {
+        return OwnerDerivations.emailDomainIsDisposable(email);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

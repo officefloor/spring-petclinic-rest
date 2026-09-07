@@ -317,7 +317,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getEmail() != null) {
             String email = owner.getEmail().toLowerCase();
             owner.setEmail(email);
-            if (emailDomainIsBlocked(email)) {
+            if (Owner.emailDomainIsDisposable(email)) {
                 return false;
             }
         }
@@ -371,30 +371,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setAddress(address);
         return true;
-    }
-
-    /**
-     * Email domains that identify disposable, throw-away mailboxes. An owner whose
-     * email address is on one of these domains is rejected with {@code 400 Bad
-     * Request} rather than created.
-     */
-    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
-
-    /**
-     * Whether the given (already lower-cased) email address belongs to a disposable
-     * mailbox domain on the blocklist. The domain is the part after the final
-     * {@code '@'}; an address without one is treated as having no blocked domain.
-     *
-     * @param email the owner's normalised (lower-cased) email address
-     * @return {@code true} if the email's domain is on the disposable-domain blocklist
-     */
-    private static boolean emailDomainIsBlocked(String email) {
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
     }
 
     /**

@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.time.Month;
 import java.time.Period;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pure derivations of an {@link Owner}'s read-only attributes.
@@ -47,6 +48,11 @@ final class OwnerDerivations {
     /** Fixed region-to-timezone table (IANA names) used to derive {@link #timezone}. */
     private static final Map<String, String> REGION_TIMEZONE = Map.of(
         "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /** Email domains that identify disposable, throw-away mailboxes, used to derive
+     *  {@link #emailDomainIsDisposable(String)}. */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerDerivations() {
     }
@@ -348,6 +354,38 @@ final class OwnerDerivations {
      */
     private static boolean hasEmail(String email) {
         return email != null && !email.isBlank();
+    }
+
+    /**
+     * The domain component of an email address: the lower-cased run after its final
+     * {@code '@'}, or the empty string when the value is absent or carries no {@code '@'}.
+     * This is the single domain extraction the email-domain derivations share, so they
+     * agree on exactly what an address's domain is; each then classifies that domain in
+     * its own way.
+     *
+     * @return the lower-cased email domain, or the empty string when there is none
+     */
+    static String emailDomain(String email) {
+        if (email == null) {
+            return "";
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return "";
+        }
+        return email.substring(at + 1).toLowerCase();
+    }
+
+    /**
+     * Whether the email's {@link #emailDomain(String) domain} is one of the known
+     * disposable, throw-away mailbox domains ({@code mailinator.com}, {@code tempmail.com},
+     * {@code guerrillamail.com}). An address without a domain (absent, or carrying no
+     * {@code '@'}) is treated as having no disposable domain.
+     *
+     * @return {@code true} if the email's domain is on the disposable-domain blocklist
+     */
+    static boolean emailDomainIsDisposable(String email) {
+        return DISPOSABLE_EMAIL_DOMAINS.contains(emailDomain(email));
     }
 
     /**
