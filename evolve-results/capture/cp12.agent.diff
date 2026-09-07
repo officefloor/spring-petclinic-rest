@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6529bd313..ae6673763 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -217,8 +217,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Applies the intake rules a newly submitted owner must satisfy before it is persisted.
+-     * The required fields are checked, the telephone and email are normalized in place, and
+-     * the resulting telephone is rejected when it already belongs to another owner. Each rule
++     * The address is normalized in place (so a required-field check that follows rejects an
++     * address blank after normalization), the required fields are checked, the telephone and
++     * email are normalized in place, and the resulting telephone is rejected when it already
++     * belongs to another owner. Each rule
+      * signals a violation by throwing, which the exception advice renders as the matching 4xx
+      * response; when the method returns normally {@code ownerFieldsDto} is normalized and ready
+      * to be mapped and saved.
+@@ -226,6 +228,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param ownerFieldsDto the submitted owner fields, normalized in place
+      */
+     private void prepareNewOwner(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+         validateRequiredFields(ownerFieldsDto);
+         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+@@ -413,7 +416,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private String householdIdFor(String lastName, String address) {
+         String key = collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|"
+-            + collapseWhitespace(address).toLowerCase(java.util.Locale.ROOT);
++            + normalizeAddress(address).toLowerCase(java.util.Locale.ROOT);
+         try {
+             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                 .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+@@ -454,10 +457,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private List<Owner> findHouseholdMates(String lastName, String address) {
+         String normalizedLastName = collapseWhitespace(lastName);
+-        String normalizedAddress = collapseWhitespace(address);
++        String normalizedAddress = normalizeAddress(address);
+         return this.clinicService.findAllOwners().stream()
+             .filter(existing -> normalizedLastName.equalsIgnoreCase(collapseWhitespace(existing.getLastName()))
+-                && normalizedAddress.equalsIgnoreCase(collapseWhitespace(existing.getAddress())))
++                && normalizedAddress.equalsIgnoreCase(normalizeAddress(existing.getAddress())))
+             .toList();
+     }
+ 
+@@ -475,4 +478,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return value.trim().replaceAll("\\s+", " ");
+     }
++
++    /**
++     * Common street-type abbreviations expanded during address normalization, keyed by their
++     * upper-cased token.
++     */
++    private static final java.util.Map<String, String> ADDRESS_ABBREVIATIONS =
++        java.util.Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    /**
++     * Normalizes a submitted address into the canonical form stored and returned for an owner:
++     * leading and trailing whitespace is trimmed, every internal run of whitespace is collapsed to
++     * a single space, the value is upper-cased, and common street-type abbreviations are expanded
++     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). A {@code null} value
++     * normalizes to the empty string, and an address that holds only whitespace normalizes to the
++     * empty string so the required-field check rejects it. For example {@code "  12  main  st "}
++     * becomes {@code "12 MAIN STREET"}. This is the single definition of address normalization used
++     * everywhere an address is stored or compared.
++     *
++     * @param address the submitted address value, or {@code null}
++     * @return the normalized address, never {@code null}
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(java.util.Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
+ }
