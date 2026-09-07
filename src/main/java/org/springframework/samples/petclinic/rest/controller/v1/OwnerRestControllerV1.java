@@ -247,11 +247,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *         {@code 400 Bad Request}
      */
     private boolean normalizeNewOwner(Owner owner) {
-        String address = Owner.normalizeAddress(owner.getAddress());
-        if (address.isEmpty()) {
+        if (!normalizeAddressFields(owner)) {
             return false;
         }
-        owner.setAddress(address);
         String telephone = Telephones.toE164(owner.getTelephone());
         if (telephone == null) {
             return false;
@@ -273,6 +271,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
+        return true;
+    }
+
+    /**
+     * Normalise the owner's address in place to its canonical stored form (trimmed,
+     * whitespace-collapsed, upper-cased and with common abbreviations expanded; see
+     * {@link Owner#normalizeAddress(String)}), gathering the whole address concern of
+     * {@link #normalizeNewOwner} in one place. The canonicalised value is written back
+     * so every later household comparison and read sees it.
+     *
+     * @param owner the freshly-mapped owner whose address fields are being normalised
+     * @return {@code true} once the address is valid and stored, or {@code false} when
+     *         it is blank after normalisation, in which case the request must be
+     *         rejected with {@code 400 Bad Request}
+     */
+    private boolean normalizeAddressFields(Owner owner) {
+        String address = Owner.normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
         return true;
     }
 

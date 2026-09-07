@@ -400,42 +400,20 @@ public class Owner extends Person {
      * trim, collapse internal runs of whitespace to a single space and lower-case.
      */
     private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return OwnerDerivations.collapseWhitespace(value).toLowerCase();
     }
 
     /**
-     * Reduce an address to its canonical stored form: trim and collapse runs of
-     * whitespace to a single space, upper-case, and expand common abbreviations
-     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}) whenever
-     * they appear as whole words. The result is what is stored, returned and used
-     * for every household comparison; it is idempotent, so re-normalising an
-     * already-normalised address leaves it unchanged.
+     * Reduce an address to its canonical stored form. This is the value stored,
+     * returned and used for every household comparison; see
+     * {@link OwnerDerivations#normalizeAddress(String)} for the exact normalisation.
      *
      * @param value the raw address (may be {@code null})
      * @return the normalised address, or the empty string if {@code value} is
      *         {@code null} or blank
      */
     public static String normalizeAddress(String value) {
-        if (value == null) {
-            return "";
-        }
-        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase();
-        if (collapsed.isEmpty()) {
-            return "";
-        }
-        String[] tokens = collapsed.split(" ");
-        for (int i = 0; i < tokens.length; i++) {
-            tokens[i] = switch (tokens[i]) {
-                case "ST" -> "STREET";
-                case "RD" -> "ROAD";
-                case "AVE" -> "AVENUE";
-                default -> tokens[i];
-            };
-        }
-        return String.join(" ", tokens);
+        return OwnerDerivations.normalizeAddress(value);
     }
 
     protected Set<Pet> getPetsInternal() {

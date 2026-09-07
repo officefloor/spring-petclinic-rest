@@ -334,6 +334,53 @@ final class OwnerDerivations {
     }
 
     /**
+     * Reduce an address to its canonical stored form: trim and collapse runs of
+     * whitespace to a single space, upper-case, and expand common abbreviations
+     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}) whenever
+     * they appear as whole words. The result is what is stored, returned and used
+     * for every household comparison; it is idempotent, so re-normalising an
+     * already-normalised address leaves it unchanged.
+     *
+     * @param value the raw address (may be {@code null})
+     * @return the normalised address, or the empty string if {@code value} is
+     *         {@code null} or blank
+     */
+    static String normalizeAddress(String value) {
+        String collapsed = collapseWhitespace(value).toUpperCase();
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        for (int i = 0; i < tokens.length; i++) {
+            tokens[i] = switch (tokens[i]) {
+                case "ST" -> "STREET";
+                case "RD" -> "ROAD";
+                case "AVE" -> "AVENUE";
+                default -> tokens[i];
+            };
+        }
+        return String.join(" ", tokens);
+    }
+
+    /**
+     * Trim the given value and collapse every internal run of whitespace to a single
+     * space, treating an absent value as empty. This is the single whitespace
+     * normalisation the name and address normalisers share, so they agree on what
+     * counts as insignificant whitespace; each then applies its own casing (and, for
+     * addresses, whole-word abbreviation expansion).
+     *
+     * @param value the raw value (may be {@code null})
+     * @return the trimmed, whitespace-collapsed value, or the empty string when
+     *         {@code value} is {@code null}
+     */
+    static String collapseWhitespace(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ");
+    }
+
+    /**
      * The SHA-256 digest of the UTF-8 bytes of the given value, as a lower-case
      * hexadecimal string. Callers take the prefix and case they need.
      */
