@@ -131,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
+        owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -389,6 +390,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return count >= 100;
+    }
+
+    /**
+     * Determine whether more than 80 owners have already been created for the given
+     * registration date, i.e. strictly more than 80 existing owners carry that date.
+     * Evaluated before the new owner is saved, so it reflects only owners that
+     * already existed at creation time.
+     *
+     * @param registrationDate the registration date the new owner would be created with
+     * @return {@code true} if more than 80 existing owners share that registration date
+     */
+    private boolean bulkSignupWarning(LocalDate registrationDate) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count > 80;
     }
 
     private String nextCustomerCode(String city, String lastName) {
