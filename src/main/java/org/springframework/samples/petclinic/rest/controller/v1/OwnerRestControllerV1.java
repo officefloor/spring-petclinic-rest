@@ -116,6 +116,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && isHouseholdDuplicate(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -217,6 +220,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Whether an existing owner already shares the same last name and address as the
+     * given owner. Both fields are compared case-insensitively with runs of whitespace
+     * collapsed to a single space (and surrounding whitespace trimmed).
+     *
+     * @param owner the candidate owner being created
+     * @return {@code true} if a matching owner already exists
+     */
+    private boolean isHouseholdDuplicate(Owner owner) {
+        String lastName = normalize(owner.getLastName());
+        String address = normalize(owner.getAddress());
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
+                && normalize(existing.getAddress()).equals(address));
+    }
+
+    /**
+     * Normalise a value for case-insensitive, whitespace-insensitive comparison:
+     * trim, collapse internal runs of whitespace to a single space and lower-case.
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**
