@@ -153,11 +153,22 @@ final class OwnerDerivations {
             level++;
         }
         level = Math.min(level, 3);
-        if (registrationDate != null && asOf != null
-                && ChronoUnit.DAYS.between(registrationDate, asOf) > 365) {
+        if (tenureExceedsYear(registrationDate, asOf)) {
             level++;
         }
         return level;
+    }
+
+    /**
+     * Whether the owner's tenure exceeds a year, i.e. more than 365 whole days have passed
+     * from its {@code registrationDate} up to {@code asOf}. This is the single tenure test
+     * the tenure-driven membership derivations share, so they agree on exactly when an
+     * owner has been a member for "over a year"; it is {@code false} whenever either date
+     * is absent.
+     */
+    private static boolean tenureExceedsYear(LocalDate registrationDate, LocalDate asOf) {
+        return registrationDate != null && asOf != null
+            && ChronoUnit.DAYS.between(registrationDate, asOf) > 365;
     }
 
     /**
