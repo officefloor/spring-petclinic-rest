@@ -18,6 +18,7 @@ public class ApplyOwner {
         owner.setAddressLine2(line2);
         owner.setAddress(OwnerAddress.compose(line1, line2, request.getAddress()));
         owner.setCity(request.getCity());
+        owner.setTitle(request.getTitle());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
         owner.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
