@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -369,6 +370,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
+        assignPossibleDuplicate(owner);
+    }
+
+    /**
+     * Flag the candidate owner as a possible duplicate of an existing owner. A soft
+     * match — distinct from the hard {@code identityKey} duplicate already rejected with
+     * 409 — is an existing owner that shares this owner's last name (compared
+     * case-insensitively) and postcode but carries a different (normalised) telephone.
+     * When such a match exists the owner is still created, but with
+     * {@code possibleDuplicate} true and {@code possibleDuplicateOf} set to the matching
+     * owner's id; otherwise {@code possibleDuplicate} is false and no match id is
+     * recorded. The earliest-created matching owner (lowest id) is chosen so the result
+     * is deterministic. Evaluated before the owner is saved, so only pre-existing owners
+     * are considered.
+     *
+     * @param owner the candidate owner being created, after household resolution
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String lastName = normalizeName(owner.getLastName());
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        Optional<Owner> match = this.clinicService.findAllOwners().stream()
+            .filter(existing -> postcode != null && postcode.equals(existing.getPostcode())
+                && normalizeName(existing.getLastName()).equals(lastName)
+                && telephone != null && !telephone.equals(existing.getTelephone()))
+            .min(Comparator.comparing(Owner::getId));
+        if (match.isPresent()) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.get().getId());
+        } else {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
     }
 
     /**
