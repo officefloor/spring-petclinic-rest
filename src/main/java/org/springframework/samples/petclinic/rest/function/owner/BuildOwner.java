@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.escalation.RegistrationDateInFutureException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -24,7 +25,8 @@ public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper,
             OwnerRepository ownerRepository, Out<Owner> built, Out<Boolean> sharesHousehold)
-            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+            RegistrationDateInFutureException {
         List<String> missing = new ArrayList<>();
         // Normalize the address up front so the required-field check rejects an address that is
         // blank once trimmed/collapsed, and every later step (and the stored value) sees the
@@ -57,8 +59,12 @@ public class BuildOwner {
         // derived from the registration date (e.g. the membership number's year segment, the daily
         // create-limit's day) then uses this adjusted date.
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        java.time.LocalDate serverDate = java.time.LocalDate.now();
         if (registrationDate == null) {
-            registrationDate = java.time.LocalDate.now();
+            registrationDate = serverDate;
+        } else if (registrationDate.isAfter(serverDate)) {
+            // A supplied registration date cannot be in the future.
+            throw new RegistrationDateInFutureException(registrationDate, serverDate);
         }
         owner.setRegistrationDate(toBusinessDay(registrationDate));
         owner.setCustomerCode(CustomerCode.of(owner));
