@@ -172,6 +172,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidFieldsException} thrown when a request supplies one or more
+     * fields whose value is present but fails a business rule (for example a telephone
+     * that does not normalize to exactly ten digits). Returns a 400 Bad Request whose
+     * {@code errors} property lists the name of each offending field.
+     *
+     * @param e The {@link InvalidFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidFieldsException(InvalidFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Invalid field values at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Renders the field-level errors of a {@link BindingResult} as the {@link ValidationMessageDto} list
      * exposed under the {@code schemaValidationErrors} property of the response.
      *
