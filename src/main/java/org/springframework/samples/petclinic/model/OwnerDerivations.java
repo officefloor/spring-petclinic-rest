@@ -141,7 +141,7 @@ final class OwnerDerivations {
      */
     static int membershipLevel(String email, Integer namesakeCount) {
         int level = 1;
-        if (email != null && !email.isBlank()) {
+        if (hasEmail(email)) {
             level++;
         }
         if (namesakeCount != null && namesakeCount == 0) {
@@ -157,10 +157,20 @@ final class OwnerDerivations {
      * @return {@code "EMAIL"} or {@code "PHONE"}
      */
     static String contactPreference(String email) {
-        if (email != null && !email.isBlank()) {
+        if (hasEmail(email)) {
             return "EMAIL";
         }
         return "PHONE";
+    }
+
+    /**
+     * Whether the owner has an email address on file, i.e. its {@code email} is present
+     * and not blank. This is the single presence test the email-driven derivations share
+     * (a membership-level factor and the {@link #contactPreference(String) contact
+     * preference}), so they agree on exactly what counts as "has an email".
+     */
+    private static boolean hasEmail(String email) {
+        return email != null && !email.isBlank();
     }
 
     /**
