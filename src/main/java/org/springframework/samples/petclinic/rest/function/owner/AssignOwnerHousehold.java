@@ -1,57 +1,36 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Settles the household id for a new owner. When the request opted in with
- * {@code sharesHousehold} true and an existing owner is in the same household (see
- * {@link Household#sameHousehold(Owner, Owner)}), the two share a household: the stable
- * {@link Household#id(Owner, List) householdId} is stamped on the new owner and on every existing
- * member, and the household's size is recorded on all of them. Otherwise the owner is a household of
- * one.
+ * Settles the household id for a new owner. The {@link Household#id(Owner) householdId} is now
+ * DETERMINISTIC — the first 12 hex characters of SHA-256 over the normalized last name and
+ * postcode — so it is always stamped on the owner regardless of {@code sharesHousehold}: owners
+ * that share a last name and postcode automatically carry the identical value. The household's
+ * size (this owner plus every existing member sharing the same householdId) is recorded on the
+ * owner. Runs after {@link BuildOwner}.
  *
- * <p>This step no longer rejects duplicates — a shared household is not itself a conflict. All
- * duplicate detection is now the single {@link CheckOwnerIdentityUnique} step, which compares the
- * whole {@link OwnerIdentity#key(Owner) identityKey}. Because the household id set here is part of
- * that key, two members of the same household with different telephones have different keys and are
- * both allowed. Runs after {@link BuildOwner}.
+ * <p>This step no longer rejects duplicates and no longer needs {@code sharesHousehold} to form the
+ * link: the link is implied by the shared householdId. Rejecting a household duplicate is
+ * {@link CheckOwnerIdentityUnique}, which now keys off this householdId; {@code sharesHousehold}
+ * only bypasses that rejection.
  */
 public class AssignOwnerHousehold {
 
-    public void service(@Val Owner owner, @Val Boolean sharesHousehold,
-            OwnerRepository ownerRepository) {
-        owner.setHouseholdSize(1); // a household of one until an existing member is found
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            return; // did not opt in: never joins an existing household
-        }
-        List<Owner> household = new ArrayList<>();
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+        String householdId = Household.id(owner);
+        owner.setHouseholdId(householdId);
+        int householdSize = 1; // this owner
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // same record (e.g. re-save)
             }
-            if (Household.sameHousehold(owner, existing)) {
-                household.add(existing);
+            if (householdId.equals(Household.id(existing))) {
+                householdSize++;
             }
         }
-        if (household.isEmpty()) {
-            return; // no existing owner in the same household
-        }
-        // Assign the same stable household identifier to all members, and record the household's
-        // size (existing members plus this new owner) on every member so it reflects the
-        // household as it stands after this create.
-        String householdId = Household.id(owner, household);
-        int householdSize = household.size() + 1;
-        owner.setHouseholdId(householdId);
         owner.setHouseholdSize(householdSize);
-        for (Owner member : household) {
-            member.setHouseholdId(householdId);
-            member.setHouseholdSize(householdSize);
-            ownerRepository.save(member);
-        }
     }
 }

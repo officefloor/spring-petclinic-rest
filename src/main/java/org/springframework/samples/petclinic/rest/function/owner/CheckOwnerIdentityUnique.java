@@ -6,24 +6,27 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The single duplicate check for create-owner. It consolidates the former separate telephone,
- * email and household duplicate checks into one comparison of the derived
- * {@link OwnerIdentity#key(Owner) identityKey}: a request is rejected with a 409 Conflict only
- * when its WHOLE identityKey equals an existing owner's. Runs after {@link BuildOwner} has
- * normalized the telephone/email and {@link AssignOwnerHousehold} has settled the household id,
- * so every component of the key is final.
+ * The single duplicate check for create-owner, now keyed on the household. The household is keyed
+ * on {@code (lastName, postcode)} via the deterministic {@link Household#id(Owner) householdId}, so
+ * a second owner sharing a last name and postcode is the same household: it is rejected with a 409
+ * Conflict UNLESS the request opted in with {@code sharesHousehold} true, in which case it is
+ * created as a declared household member. Runs after {@link AssignOwnerHousehold} has stamped the
+ * householdId.
  */
 public class CheckOwnerIdentityUnique {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository)
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String identityKey = OwnerIdentity.key(owner);
+        if (Boolean.TRUE.equals(sharesHousehold)) {
+            return; // opted in as a declared household member: bypass the duplicate block
+        }
+        String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // same record (e.g. re-save), not a conflict
             }
-            if (identityKey.equals(OwnerIdentity.key(existing))) {
-                throw new DuplicateIdentityException(identityKey);
+            if (householdId != null && householdId.equals(Household.id(existing))) {
+                throw new DuplicateIdentityException(householdId);
             }
         }
     }

@@ -15,10 +15,18 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * and {@link Owner#setPossibleDuplicateOf(Integer)} set to that owner's id. When more than one
  * existing owner matches, the one with the lowest id is chosen for a stable result. Otherwise
  * {@code possibleDuplicate} stays false and {@code possibleDuplicateOf} absent.
+ *
+ * <p>A declared household member ({@code sharesHousehold} true, which shares the new owner's
+ * lastName and postcode) is deliberately NOT flagged: a declared member is not a suspected
+ * duplicate.
  */
 public class CheckOwnerPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold,
+            OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(sharesHousehold)) {
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = key(owner.getLastName());
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();

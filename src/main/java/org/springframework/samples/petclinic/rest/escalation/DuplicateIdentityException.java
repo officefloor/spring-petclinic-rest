@@ -1,14 +1,14 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request's derived identity key — the normalized telephone, the
- * email (or empty) and the household id (or empty) — matches, in whole, an existing owner's.
- * This is the single duplicate condition, replacing the former separate telephone, email and
- * household checks. Handled as a 409 Conflict.
+ * Thrown when a create-owner request is a household duplicate: an existing owner shares the same
+ * deterministic household id (derived from the normalized last name and postcode), and the request
+ * did not opt in with {@code sharesHousehold}. This is the single duplicate condition. Handled as a
+ * 409 Conflict.
  */
 public class DuplicateIdentityException extends Exception {
 
-    public DuplicateIdentityException(String identityKey) {
-        super("An owner with the same identity already exists (identityKey '" + identityKey + "')");
+    public DuplicateIdentityException(String householdId) {
+        super("An owner in the same household already exists (householdId '" + householdId + "')");
     }
 }

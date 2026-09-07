@@ -1,6 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.List;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
@@ -11,10 +10,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * customer code): the create pipeline's {@link AssignOwnerHousehold} goes through here, so the
  * grouping rule and the id derivation stay defined in one place.
  *
- * <p>Two owners belong to the same household when they share a normalized last name and address
- * (see {@link #sameHousehold(Owner, Owner)}). The shared {@code householdId} reuses the value an
- * existing member already carries, otherwise it is derived deterministically from that same
- * normalized last name and address, so independent joiners compute the same value.
+ * <p>The household is keyed on {@code (normalizedLastName, postcode)}: two owners belong to the
+ * same household exactly when they share a normalized last name and postcode. The
+ * {@code householdId} is derived DETERMINISTICALLY from those same two fields (see
+ * {@link #id(Owner)}), so owners with the same last name and postcode compute the identical value
+ * automatically — there is no longer a stored value to reuse.
  */
 final class Household {
 
@@ -29,28 +29,18 @@ final class Household {
         return lastName.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    /** Whether two owners belong to the same household: same normalized last name and address. */
-    static boolean sameHousehold(Owner a, Owner b) {
-        return lastNameKey(a.getLastName()).equals(lastNameKey(b.getLastName()))
-                && AddressNormalizer.normalize(a.getAddress())
-                        .equals(AddressNormalizer.normalize(b.getAddress()));
+    /** The postcode contribution to the household key: trimmed, or empty when absent. */
+    private static String postcodeKey(String postcode) {
+        return postcode == null ? "" : postcode.strip();
     }
 
     /**
-     * The household's stable shared identifier for {@code owner}, given the existing members it
-     * joins: reuse the id an existing member already carries (so a household keeps one value over
-     * time); otherwise derive it deterministically from the normalized last name and address, so
-     * independent joiners compute the same value.
+     * The household's stable shared identifier for {@code owner}, derived deterministically as the
+     * first 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Owners
+     * that share a normalized last name and postcode therefore compute the same value without any
+     * coordination.
      */
-    static String id(Owner owner, List<Owner> existingMembers) {
-        for (Owner member : existingMembers) {
-            String existing = member.getHouseholdId();
-            if (existing != null && !existing.isBlank()) {
-                return existing;
-            }
-        }
-        String lastName = lastNameKey(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        return "H-" + ShaHex.upperPrefix(lastName + "\n" + address, 12);
+    static String id(Owner owner) {
+        return ShaHex.upperPrefix(lastNameKey(owner.getLastName()) + "|" + postcodeKey(owner.getPostcode()), 12);
     }
 }
