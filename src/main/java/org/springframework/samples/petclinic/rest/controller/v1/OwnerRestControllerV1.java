@@ -126,14 +126,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityKeyAlreadyUsed(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        auditOwnerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -428,17 +427,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the next customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>}: CITY3
-     * is the upper-cased first three letters of the given city, LAST3 the upper-cased
-     * first three letters of the given last name and NNNN a per-city 4-digit
-     * zero-padded sequence equal to one more than the number of owners already in
-     * that city (e.g. {@code SYD-SMI-0007}).
-     *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
-     * @return the assigned customer code
-     */
-    /**
      * Determine whether the given city has already reached its owner capacity, i.e.
      * it already contains 50 or more existing owners (compared case-insensitively
      * with surrounding whitespace trimmed). A new owner may not be created in a city
@@ -486,11 +474,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return count > 80;
     }
 
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = prefix3(city);
-        String last3 = prefix3(lastName);
+    /**
+     * Build the customer code assigned to the given owner, formatted
+     * {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three letters of
+     * the owner's city, LAST3 the upper-cased first three letters of its last name and
+     * NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
+     * owners already in that city (e.g. {@code SYD-SMI-0007}). The whole owner is passed
+     * so the code can be derived from whichever of its (already normalised) fields the
+     * identity scheme requires.
+     *
+     * @param owner the owner being created, with its fields already normalised
+     * @return the assigned customer code
+     */
+    private String customerCode(Owner owner) {
+        String city3 = prefix3(owner.getCity());
+        String last3 = prefix3(owner.getLastName());
         long sequence = this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeName(existing.getCity()).equals(normalizeName(city)))
+            .filter(existing -> normalizeName(existing.getCity()).equals(normalizeName(owner.getCity())))
             .count() + 1L;
         return String.format("%s-%s-%04d", city3, last3, sequence);
     }
@@ -498,6 +498,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String prefix3(String value) {
         String v = value == null ? "" : value;
         return v.substring(0, Math.min(3, v.length())).toUpperCase();
+    }
+
+    /**
+     * Write the create audit record for a freshly-saved owner. Keeps the audit format in
+     * one place so it stays in step with the owner's identity: it reports the assigned
+     * customer code alongside the owner's id, registration date and membership level.
+     *
+     * @param owner the owner that has just been created and saved
+     */
+    private void auditOwnerCreated(Owner owner) {
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
     }
 
     /**

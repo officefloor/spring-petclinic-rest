@@ -107,20 +107,31 @@ public class Owner extends Person {
     }
 
     /**
-     * The canonical region derived for this owner. The {@link #postcode} is consulted
-     * first: when it is present and falls within a known region's inclusive 4-digit
-     * range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}) that
-     * region is returned. Only when the postcode is absent or in no known range does
-     * this fall back to the fixed city-to-region table ({@code Sydney -> NSW},
-     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), returning {@code "UNKNOWN"}
-     * when the city is not in the table either. This yields the same region for the
-     * known cities while disambiguating cities that share a name via their postcode.
-     * Derived (not persisted); recomputed from the current fields each call.
+     * The owner's locality, i.e. the canonical region it belongs to (currently the
+     * region derived from its own fields; see {@link #regionForOwner()}). Exposed as a
+     * derived (not persisted) property and recomputed each call.
      *
      * @return the canonical region string, or {@code "UNKNOWN"}
      */
     @Transient
     public String getLocality() {
+        return regionForOwner();
+    }
+
+    /**
+     * The canonical region derived for this owner from its own fields. The
+     * {@link #postcode} is consulted first: when it is present and falls within a known
+     * region's inclusive 4-digit range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
+     * {@code QLD 4000-4099}) that region is returned. Only when the postcode is absent
+     * or in no known range does this fall back to the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}),
+     * returning {@code "UNKNOWN"} when the city is not in the table either. This yields
+     * the same region for the known cities while disambiguating cities that share a name
+     * via their postcode. Recomputed from the current fields each call.
+     *
+     * @return the canonical region string, or {@code "UNKNOWN"}
+     */
+    public String regionForOwner() {
         String byPostcode = regionForPostcode(this.postcode);
         if (byPostcode != null) {
             return byPostcode;
