@@ -325,6 +325,30 @@ public class Owner extends Person {
     }
 
     /**
+     * Compute the customer code to assign to this owner at creation, formatted
+     * {@code <REGION>-<HASH8>} from the owner's (already normalised) fields. This is the
+     * value stored in {@link #getCustomerCode()}; see
+     * {@link OwnerDerivations#customerCode(String, String, String)} for the format.
+     *
+     * @return the customer code to assign
+     */
+    public String computeCustomerCode() {
+        return OwnerDerivations.customerCode(regionForOwner(), this.telephone, this.getLastName());
+    }
+
+    /**
+     * Compute the stable household identifier for this owner, derived deterministically
+     * from its {@link #householdKey() household key} so every owner in a household
+     * resolves to the same value. This is the value stored in
+     * {@link #getHouseholdId()}; see {@link OwnerDerivations#householdId(String)}.
+     *
+     * @return the household identifier
+     */
+    public String computeHouseholdId() {
+        return OwnerDerivations.householdId(householdKey());
+    }
+
+    /**
      * Whether this owner belongs to the same household as {@code other}: that is,
      * they share the same last name and address. The last name is compared
      * case-insensitively with runs of whitespace collapsed to a single space (and

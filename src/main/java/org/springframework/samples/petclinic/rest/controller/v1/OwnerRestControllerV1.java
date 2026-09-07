@@ -16,15 +16,11 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -340,8 +336,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param existing an existing owner in the same household
      */
     private void joinHousehold(Owner owner, Owner existing) {
-        String householdId = UUID
-            .nameUUIDFromBytes(owner.householdKey().getBytes(StandardCharsets.UTF_8)).toString();
+        String householdId = owner.computeHouseholdId();
         owner.setHouseholdId(householdId);
         if (!householdId.equals(existing.getHouseholdId())) {
             existing.setHouseholdId(householdId);
@@ -365,7 +360,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the candidate owner being created, after household resolution
      */
     private void assignDerivedAttributes(Owner owner) {
-        owner.setCustomerCode(customerCode(owner));
+        owner.setCustomerCode(owner.computeCustomerCode());
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setMembershipNumber(membershipNumber(owner));
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
@@ -495,46 +490,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return count > 80;
-    }
-
-    /**
-     * Build the customer code assigned to the given owner, formatted
-     * {@code <REGION>-<HASH8>}: REGION is the canonical region derived for the owner
-     * (see {@link Owner#regionForOwner()}, the postcode-then-city region also exposed
-     * as its {@link Owner#getLocality() locality}) and HASH8 is the first eight
-     * upper-case hexadecimal characters of the SHA-256 digest of the owner's
-     * normalised telephone concatenated with its last name (e.g.
-     * {@code NSW-9F86D081}). The whole owner is passed so the code can be derived from
-     * whichever of its (already normalised) fields the identity scheme requires.
-     *
-     * @param owner the owner being created, with its fields already normalised
-     * @return the assigned customer code
-     */
-    private String customerCode(Owner owner) {
-        String region = owner.regionForOwner();
-        String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());
-        return String.format("%s-%s", region, hash8);
-    }
-
-    /**
-     * The first eight upper-case hexadecimal characters of the SHA-256 digest of the
-     * UTF-8 bytes of the given value.
-     */
-    private static String sha256Hex8(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append(String.format("%02X", b));
-                if (hex.length() >= 8) {
-                    break;
-                }
-            }
-            return hex.substring(0, 8);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
-        }
     }
 
     /**

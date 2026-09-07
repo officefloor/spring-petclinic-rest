@@ -15,9 +15,13 @@
  */
 package org.springframework.samples.petclinic.model;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Pure derivations of an {@link Owner}'s read-only attributes.
@@ -228,5 +232,47 @@ final class OwnerDerivations {
         String mail = email == null ? "" : email;
         String household = householdId == null ? "" : householdId;
         return tel + "|" + mail + "|" + household;
+    }
+
+    /**
+     * The owner's customer code, formatted {@code <REGION>-<HASH8>}: {@code region} is
+     * the owner's canonical region (see {@link #region(String, String)}) and HASH8 is the
+     * first eight upper-case hexadecimal characters of the SHA-256 digest of the owner's
+     * normalised telephone concatenated with its last name (e.g. {@code NSW-9F86D081}).
+     *
+     * @return the customer code
+     */
+    static String customerCode(String region, String telephone, String lastName) {
+        String hash8 = sha256Hex(telephone + lastName).substring(0, 8).toUpperCase();
+        return String.format("%s-%s", region, hash8);
+    }
+
+    /**
+     * The stable identifier for the household described by the given
+     * {@link Owner#householdKey() household key}, derived deterministically so every
+     * owner in a household resolves to the same value.
+     *
+     * @return the household identifier
+     */
+    static String householdId(String householdKey) {
+        return UUID.nameUUIDFromBytes(householdKey.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    /**
+     * The SHA-256 digest of the UTF-8 bytes of the given value, as a lower-case
+     * hexadecimal string. Callers take the prefix and case they need.
+     */
+    static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 }
