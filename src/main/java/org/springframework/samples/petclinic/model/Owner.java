@@ -425,6 +425,18 @@ public class Owner extends Person {
     }
 
     /**
+     * Compute the membership number to assign to this owner at creation, formatted
+     * {@code <customerCode>-M<YY>} from its already-assigned customer code and registration
+     * date. This is the value stored in {@link #getMembershipNumber()}; see
+     * {@link OwnerDerivations#membershipNumber(String, LocalDate)} for the exact format.
+     *
+     * @return the membership number to assign
+     */
+    public String computeMembershipNumber() {
+        return OwnerDerivations.membershipNumber(this.customerCode, this.registrationDate);
+    }
+
+    /**
      * Compute the stable household identifier for this owner, derived deterministically
      * from its last name and postcode so every owner sharing a last name and postcode
      * resolves to the same value. This is the value stored in {@link #getHouseholdId()};

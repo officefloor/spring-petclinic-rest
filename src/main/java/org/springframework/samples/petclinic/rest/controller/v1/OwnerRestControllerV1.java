@@ -418,7 +418,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void assignDerivedAttributes(Owner owner, boolean declaredHouseholdMember) {
         owner.setCustomerCode(deduplicatedCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
-        owner.setMembershipNumber(membershipNumber(owner));
+        owner.setMembershipNumber(owner.computeMembershipNumber());
         owner.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner));
         assignPossibleDuplicate(owner, declaredHouseholdMember);
@@ -597,21 +597,5 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
-    }
-
-    /**
-     * Build the owner's membership number, formatted {@code <customerCode>-M<YY>}
-     * where {@code <customerCode>} is the owner's already-assigned customer code and
-     * YY is the last two digits of the registration date's year (e.g.
-     * {@code NSW-9F86D081-M26}). Evaluated after the customer code and registration date
-     * have been set.
-     *
-     * @param owner the owner being created, with customer code and registration date
-     *              already assigned
-     * @return the assigned membership number
-     */
-    private String membershipNumber(Owner owner) {
-        int yy = owner.getRegistrationDate().getYear() % 100;
-        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
     }
 }

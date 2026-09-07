@@ -333,6 +333,21 @@ final class OwnerDerivations {
     }
 
     /**
+     * The owner's membership number, formatted {@code <customerCode>-M<YY>}: the owner's
+     * already-assigned {@code customerCode} followed by {@code -M} and the two-digit year
+     * segment derived from its {@code registrationDate} (the last two digits of that date's
+     * year), e.g. {@code NSW-9F86D081-M26}. Derived from the customer code and registration
+     * date once both have been assigned, so it lives with the other owner derivations rather
+     * than in the controller that assigns it.
+     *
+     * @return the membership number
+     */
+    static String membershipNumber(String customerCode, LocalDate registrationDate) {
+        int yy = registrationDate.getYear() % 100;
+        return String.format("%s-M%02d", customerCode, yy);
+    }
+
+    /**
      * The stable identifier for the household an owner belongs to, derived
      * deterministically from its {@code normalizedLastName} and {@code postcode} so that
      * every owner sharing a last name and postcode resolves to the same value. It is the
