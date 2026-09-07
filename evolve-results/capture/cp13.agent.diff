@@ -1,0 +1,140 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f98307790..199afb195 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -119,6 +122,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ae6673763..8c9571dac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         assignHousehold(owner, ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -252,6 +253,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", last3, sequence);
+     }
+ 
++    /**
++     * Counts the existing owners that share the given {@code firstName} and {@code lastName}
++     * with the owner being created, compared case-insensitively. The count is taken before the
++     * new owner is persisted, so it reflects only pre-existing owners and never includes the new
++     * owner itself. The resulting value is stored on the owner and exposed as {@code namesakeCount}.
++     *
++     * @param firstName the first name of the owner being created
++     * @param lastName the last name of the owner being created
++     * @return the number of pre-existing owners sharing the same first and last name
++     */
++    private int countNamesakes(String firstName, String lastName) {
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
++                && lastName.equalsIgnoreCase(existing.getLastName()))
++            .count();
++    }
++
+     /**
+      * Rejects an owner whose {@code firstName}, {@code lastName}, {@code address}, {@code city}
+      * or {@code telephone} is missing or blank. A field that is only whitespace is treated as
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a3ba7e5a4..f87b94b3d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 82939cbc2..99297e64f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 82270213a..e0e9bc6eb 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
++  namesake_count INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 91eec0f11..d450831ac 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+-                                      household_id TEXT
++                                      household_id TEXT,
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 03a8d2965..14d534d49 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2110,6 +2110,16 @@ components:
+               type: string
+               example: 'HH-3F2A1B0C9D8E7F60'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of existing owners that shared the same firstName and
++                lastName (compared case-insensitively) at the moment this owner was created,
++                not counting this owner itself.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
