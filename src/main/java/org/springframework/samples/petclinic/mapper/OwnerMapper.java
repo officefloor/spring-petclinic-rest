@@ -48,6 +48,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "ownerSegment",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
+    @Mapping(target = "riskFlag",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
