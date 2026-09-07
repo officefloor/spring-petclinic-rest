@@ -39,15 +39,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality from its city using the fixed city-to-region table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD, see {@link Owner#regionForCity(String)}).
-     * Returns the canonical region string, or {@code 'UNKNOWN'} when the city has no known region.
+     * Derives the owner's locality from its region (see {@link Owner#getRegion()}). Returns the
+     * canonical region string, or {@code 'UNKNOWN'} when the owner has no known region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String region = Owner.regionForCity(owner.getCity());
+        String region = owner.getRegion();
         return region != null ? region : "UNKNOWN";
     }
 

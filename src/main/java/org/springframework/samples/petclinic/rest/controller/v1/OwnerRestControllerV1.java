@@ -536,22 +536,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The fixed inclusive 4-digit postcode range each region admits, keyed by the region a
-     * city resolves to via {@link Owner#regionForCity(String)}: {@code NSW 2000-2099},
-     * {@code VIC 3000-3099}, {@code QLD 4000-4099}. A city whose region is absent from this
-     * table (including a city with no known region) admits any 4-digit postcode.
-     */
-    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
-        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
-
-    /**
      * Validates an optional owner postcode. A postcode is optional, so a {@code null} value is
      * accepted and left unchanged. When present it must be exactly 4 digits, and when the owner's
      * city has a known region (see {@link Owner#regionForCity(String)}) the postcode must fall
      * within that region's inclusive range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
-     * {@code QLD 4000-4099}). A city with no known region admits any 4-digit postcode. When present
-     * but malformed or out of range for the city's region an {@link InvalidFieldsException} is
-     * thrown, which the exception advice renders as a 400 response naming the {@code postcode} field.
+     * {@code QLD 4000-4099}, see {@link Owner#postcodeRangeForRegion(String)}). A city with no known
+     * region admits any 4-digit postcode. When present but malformed or out of range for the city's
+     * region an {@link InvalidFieldsException} is thrown, which the exception advice renders as a
+     * 400 response naming the {@code postcode} field.
      *
      * @param postcode the submitted postcode, or {@code null} when omitted
      * @param city the owner's city, used to resolve the region whose range the postcode must satisfy
@@ -563,8 +555,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!postcode.matches("^[0-9]{4}$")) {
             throw new InvalidFieldsException(List.of("postcode"));
         }
-        String region = Owner.regionForCity(city);
-        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
+        int[] range = Owner.postcodeRangeForRegion(Owner.regionForCity(city));
         if (range != null) {
             int value = Integer.parseInt(postcode);
             if (value < range[0] || value > range[1]) {

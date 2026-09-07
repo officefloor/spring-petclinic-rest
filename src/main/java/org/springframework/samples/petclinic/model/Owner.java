@@ -204,6 +204,41 @@ public class Owner extends Person {
         return CITY_REGIONS.get(city);
     }
 
+    /**
+     * Fixed region-to-postcode table: the inclusive {@code {low, high}} 4-digit postcode range
+     * each region admits ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}).
+     * A region absent from this table has no fixed range.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /**
+     * Resolves the inclusive {@code {low, high}} 4-digit postcode range a region admits using the
+     * fixed region-to-postcode table ({@code NSW 2000-2099}, {@code VIC 3000-3099},
+     * {@code QLD 4000-4099}). Returns the range, or {@code null} when the region is {@code null} or
+     * has no fixed range (any 4-digit postcode is then admitted). This is the single definition of
+     * the region-to-postcode ranges, shared by every rule that relates a postcode to a region.
+     *
+     * @param region the region to resolve, or {@code null}
+     * @return the inclusive {@code {low, high}} range, or {@code null} when the region has none
+     */
+    public static int[] postcodeRangeForRegion(String region) {
+        return region == null ? null : REGION_POSTCODE_RANGES.get(region);
+    }
+
+    /**
+     * Returns the canonical region this owner belongs to, derived from its {@code city} via the
+     * fixed city-to-region table (see {@link #regionForCity(String)}), or {@code null} when the
+     * owner has no known region. This is the single definition of an owner's region, shared by
+     * every rule that derives a region from an owner.
+     *
+     * @return the owner's canonical region, or {@code null} when it has no known region
+     */
+    @Transient
+    public String getRegion() {
+        return regionForCity(this.city);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
