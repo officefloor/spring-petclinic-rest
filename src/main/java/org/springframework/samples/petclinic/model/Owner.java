@@ -143,15 +143,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3. Derived (not persisted);
-     * recomputed from the current fields each call. See
-     * {@link OwnerDerivations#membershipLevel(String, Integer)} for how it is assigned.
+     * The owner's membership level, a number from 1 to 4. Derived (not persisted);
+     * recomputed from the current fields each call, so it rises to level 4 once the
+     * owner's tenure since {@link #registrationDate} exceeds 365 days. See
+     * {@link OwnerDerivations#membershipLevel(String, Integer, LocalDate, LocalDate)}
+     * for how it is assigned.
      *
-     * @return the membership level, from 1 to 3
+     * @return the membership level, from 1 to 4
      */
     @Transient
     public Integer getMembershipLevel() {
-        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount);
+        return OwnerDerivations.membershipLevel(this.email, this.namesakeCount, this.registrationDate,
+            LocalDate.now());
     }
 
     /**

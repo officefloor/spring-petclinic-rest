@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
 /**
@@ -133,13 +134,17 @@ final class OwnerDerivations {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3 assigned at creation:
-     * starting at 1, add 1 when an {@code email} is present and add 1 when
-     * {@code namesakeCount} is 0, capped at 3 (level 4 is reserved for tenure).
+     * The owner's membership level, a number from 1 to 4. The creation-time factors
+     * are assessed first: starting at 1, add 1 when an {@code email} is present and add
+     * 1 when {@code namesakeCount} is 0, capped at 3. Level 4 is then reached only once
+     * the owner's tenure exceeds 365 days, measured as the number of whole days from its
+     * {@code registrationDate} up to {@code asOf}. Because a newly created owner has zero
+     * tenure, it never exceeds level 3 at creation.
      *
-     * @return the membership level, from 1 to 3
+     * @return the membership level, from 1 to 4
      */
-    static int membershipLevel(String email, Integer namesakeCount) {
+    static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate,
+            LocalDate asOf) {
         int level = 1;
         if (hasEmail(email)) {
             level++;
@@ -147,7 +152,12 @@ final class OwnerDerivations {
         if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (registrationDate != null && asOf != null
+                && ChronoUnit.DAYS.between(registrationDate, asOf) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /**
