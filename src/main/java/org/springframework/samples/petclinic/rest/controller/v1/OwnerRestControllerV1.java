@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -263,11 +264,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getEmail() != null) {
             owner.setEmail(owner.getEmail().toLowerCase());
         }
+        if (!postcodeValidForCity(owner)) {
+            return false;
+        }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         return true;
+    }
+
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validate the owner's postcode when one is supplied. A postcode is optional: an
+     * owner created without one is accepted. When present it must be exactly four
+     * digits and, when the owner's city maps to a known region (see
+     * {@link Owner#getLocality()}), fall within that region's inclusive postcode
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known
+     * region accepts any four-digit postcode.
+     *
+     * @param owner the freshly-mapped owner being created
+     * @return {@code true} if the postcode is absent or valid, {@code false} if it is
+     *         malformed or out of range for the city's region (reject with 400)
+     */
+    private static boolean postcodeValidForCity(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return true;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODES.get(owner.getLocality());
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /**
