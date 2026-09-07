@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 252fd4940..9ac57fe0f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -50,6 +50,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner.getEmail()))")
+     @Mapping(target = "ageBand",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..af20f2040
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Marketing segment for a pet owner, formatted {@code <TIER>_<AREA>}, one of {@code PREMIUM_METRO},
++ * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}. TIER is
++ * {@code PREMIUM} when the owner's {@link MembershipLevel} is 3 or more, otherwise {@code STANDARD}.
++ * AREA is {@code METRO} when the owner's {@link Locality} is a known region ({@code NSW}, {@code VIC}
++ * or {@code QLD}), otherwise {@code REGIONAL} (including the {@code UNKNOWN} locality). Derived purely
++ * from the owner's own state (its membership level and locality), so it carries no stored data and is
++ * seed-independent. Used by the owner mapper to expose {@code ownerSegment} on responses.
++ */
++public final class OwnerSegment {
++
++    /** The canonical regions treated as metropolitan areas. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * The segment for the given membership level and locality: {@code PREMIUM} when the level is 3
++     * or more else {@code STANDARD}, joined by {@code _} to {@code METRO} when the locality is a
++     * known region ({@code NSW}, {@code VIC}, {@code QLD}) else {@code REGIONAL}.
++     */
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
++    /**
++     * The segment for the given owner, computed from its effective {@link MembershipLevel} and its
++     * {@link Locality}.
++     */
++    public static String of(Owner owner) {
++        return of(MembershipLevel.of(owner),
++                Locality.of(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e71877608..1e2575b2e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2259,6 +2259,12 @@ components:
+               type: string
+               readOnly: true
+               example: 'ADULT'
++            ownerSegment:
++              title: Owner segment
++              description: The owner's segment, formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              readOnly: true
++              example: 'STANDARD_METRO'
+             deleted:
+               title: Deleted
+               description: Whether the owner has been soft-deleted. A newly created owner is false; DELETE /api/owners/{ownerId} flags it true while retaining the record, and a deleted owner is thereafter ignored by the create endpoint's duplicate/identity checks.
