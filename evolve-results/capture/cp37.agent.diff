@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 59aa9b6eb..aab0ea496 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -170,6 +170,20 @@ public class Owner extends Person {
+         return this.telephone;
+     }
+ 
++    /**
++     * The stored E.164 {@link #telephone} formatted for humans: a leading '+'
++     * and country code, a space, then the national digits grouped in threes
++     * (e.g. {@code "+61 412 345 678"}). Derived (not persisted); recomputed each
++     * call and {@code null} when no telephone is present. See
++     * {@link Telephones#toDisplay(String)} for the exact format.
++     *
++     * @return the human-formatted telephone, or {@code null} when absent
++     */
++    @Transient
++    public String getTelephoneDisplay() {
++        return Telephones.toDisplay(this.telephone);
++    }
++
+     public void setTelephone(String telephone) {
+         this.telephone = telephone;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Telephones.java b/src/main/java/org/springframework/samples/petclinic/model/Telephones.java
+index 32b437c0d..ee215d13d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Telephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Telephones.java
+@@ -85,6 +85,50 @@ public final class Telephones {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Format an E.164 telephone number for humans: a leading '+' and country
++     * code, a space, then the national digits (the digits after the country
++     * code) grouped in threes from the left, e.g. {@code "+61412345678"} becomes
++     * {@code "+61 412 345 678"}. When the number begins with no recognised
++     * country code, all digits after the '+' are grouped in threes with no
++     * separate country-code group.
++     *
++     * @param e164 the stored telephone number in E.164 form (e.g. "+61412345678")
++     * @return the human-formatted number, or {@code null} if {@code e164} is
++     *         {@code null} or not a '+' followed by digits.
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return null;
++        }
++        String digits = e164.substring(1);
++        if (!digits.matches("\\d+")) {
++            return null;
++        }
++        CountryCode country = countryCodeFor(digits);
++        if (country == null) {
++            return "+" + groupInThrees(digits);
++        }
++        String code = country.code();
++        String national = digits.substring(code.length());
++        return "+" + code + " " + groupInThrees(national);
++    }
++
++    /**
++     * Group a run of digits into space-separated chunks of three, from the left,
++     * so a final short chunk keeps the remaining one or two digits.
++     */
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
++
+     /**
+      * Validate the length of the national number (the digits after the country
+      * code) against the country code carried by the given E.164 digit string: a
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cd3e7e84d..18c0ea6ee 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2125,6 +2125,16 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 telephone number formatted for humans: a
++                leading '+' and country code, a space, then the national digits
++                grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone'
++                stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
