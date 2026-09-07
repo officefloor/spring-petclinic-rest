@@ -18,6 +18,8 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink",
+            expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "salutation",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.Salutation.of(owner.getTitle(), owner.getLastName()))")
     @Mapping(target = "displayName",
