@@ -258,11 +258,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is what gets stored as {@code registrationDate} and is what every value derived from it (the
      * membership number's year segment, the per-day create limit) is computed against.
      *
+     * A supplied registration date later than the server's current date is rejected with an
+     * {@link InvalidFieldsException}, which the exception advice renders as a 400 Bad Request.
+     *
      * @param ownerFieldsDto the submitted owner fields, which may carry a registration date
      * @return the effective registration date rolled forward to the next business day
      */
     private LocalDate effectiveRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
         LocalDate supplied = ownerFieldsDto.getRegistrationDate();
+        if (supplied != null && supplied.isAfter(LocalDate.now())) {
+            throw new InvalidFieldsException(List.of("registrationDate"));
+        }
         LocalDate effective = supplied != null ? supplied : LocalDate.now();
         return toBusinessDay(effective);
     }
