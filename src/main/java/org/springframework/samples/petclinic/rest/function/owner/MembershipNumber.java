@@ -4,7 +4,7 @@ import java.time.LocalDate;
 
 /**
  * Membership number for pet owners, formatted {@code <customerCode>-M<YY>} where YY is the last two
- * digits of the registration date's year (e.g. {@code SMI-0007-M26}). Derived purely from the
+ * digits of the registration date's year (e.g. {@code SYD-SMI-0007-M26}). Derived purely from the
  * owner's own {@code customerCode} and {@code registrationDate}, so it carries no stored state and is
  * seed-independent. Used by the owner mapper to expose {@code membershipNumber} on responses.
  */
