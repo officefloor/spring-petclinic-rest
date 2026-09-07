@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0fd809ad2..b7f56f2b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -51,6 +51,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -101,6 +104,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 179982753..bdea5d5a4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -244,6 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredFields(ownerFieldsDto);
+         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
++        validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+         rejectDuplicateIdentity(ownerFieldsDto);
+         rejectCityAtCapacity(ownerFieldsDto.getCity());
+         rejectDailyLimitExceeded(registrationDate);
+@@ -534,6 +535,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email.trim().toLowerCase(java.util.Locale.ROOT);
+     }
+ 
++    /**
++     * The fixed inclusive 4-digit postcode range each region admits, keyed by the region a
++     * city resolves to via {@link Owner#regionForCity(String)}: {@code NSW 2000-2099},
++     * {@code VIC 3000-3099}, {@code QLD 4000-4099}. A city whose region is absent from this
++     * table (including a city with no known region) admits any 4-digit postcode.
++     */
++    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
++        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validates an optional owner postcode. A postcode is optional, so a {@code null} value is
++     * accepted and left unchanged. When present it must be exactly 4 digits, and when the owner's
++     * city has a known region (see {@link Owner#regionForCity(String)}) the postcode must fall
++     * within that region's inclusive range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
++     * {@code QLD 4000-4099}). A city with no known region admits any 4-digit postcode. When present
++     * but malformed or out of range for the city's region an {@link InvalidFieldsException} is
++     * thrown, which the exception advice renders as a 400 response naming the {@code postcode} field.
++     *
++     * @param postcode the submitted postcode, or {@code null} when omitted
++     * @param city the owner's city, used to resolve the region whose range the postcode must satisfy
++     */
++    private void validatePostcode(String postcode, String city) {
++        if (postcode == null) {
++            return;
++        }
++        if (!postcode.matches("^[0-9]{4}$")) {
++            throw new InvalidFieldsException(List.of("postcode"));
++        }
++        String region = Owner.regionForCity(city);
++        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
++        if (range != null) {
++            int value = Integer.parseInt(postcode);
++            if (value < range[0] || value > range[1]) {
++                throw new InvalidFieldsException(List.of("postcode"));
++            }
++        }
++    }
++
+     /**
+      * Rejects a new owner whose derived identity key is already used by any existing owner. All
+      * duplicate detection is consolidated into this single key (see
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..af86e740e 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..d6ca08161 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..32a6356f2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..9d49e66e7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3f992863d..c589dc30f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2044,6 +2044,15 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: george.franklin@example.com
++        postcode:
++          title: Postcode
++          description: The owner's 4-digit postcode. Optional. When present it must be valid
++            for the owner's city per the fixed region ranges (NSW 2000-2099, VIC 3000-3099,
++            QLD 4000-4099); a city with no known region accepts any 4-digit postcode. Stored
++            and returned when supplied.
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: The date the pet owner was registered. When omitted on create it
