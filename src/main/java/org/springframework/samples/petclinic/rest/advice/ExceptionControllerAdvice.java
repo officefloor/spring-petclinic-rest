@@ -122,6 +122,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles a {@link RejectedRequestException} raised by a business rule, reporting the
+     * client-error status the rejection carries (e.g. 400, 409 or 429). Gathering every
+     * rejection here keeps the response for a rejected request built in one place, the same
+     * way {@link #handleMethodArgumentNotValidException} owns the validation failure.
+     *
+     * @param e The {@link RejectedRequestException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} with the rejection's status and no body
+     */
+    @ExceptionHandler(RejectedRequestException.class)
+    @ResponseBody
+    public ResponseEntity<Void> handleRejectedRequestException(RejectedRequestException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.warn("Request rejected at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            status);
+        return ResponseEntity.status(status).build();
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled

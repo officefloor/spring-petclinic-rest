@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Telephones;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RejectedRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -253,27 +254,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * existing, non-deleted owner is rejected with {@code 409 Conflict}.
      *
      * @param ownerFieldsDto the owner fields from the request body
-     * @return {@code 201 Created} with the created owner and its {@code Location} header,
-     *         or the appropriate rejection status: {@code 400 Bad Request} when the fields
-     *         are invalid, {@code 429 Too Many Requests} when the day's create cap is
-     *         reached, or {@code 409 Conflict} when the city is at capacity or the owner's
-     *         identity key duplicates an existing owner
+     * @return {@code 201 Created} with the created owner and its {@code Location} header
+     * @throws RejectedRequestException with the appropriate rejection status:
+     *         {@code 400 Bad Request} when the fields are invalid, {@code 429 Too Many
+     *         Requests} when the day's create cap is reached, or {@code 409 Conflict} when
+     *         the city is at capacity or the owner's identity key duplicates an existing
+     *         owner
      */
     private ResponseEntity<OwnerDto> createNewOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!normalizeNewOwner(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         if (dailyLimitReached(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (cityIsAtCapacity(owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT);
         }
         owner.setHouseholdId(owner.computeHouseholdId());
         if (isDuplicateIdentity(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers = findHouseholdMembers(owner);
