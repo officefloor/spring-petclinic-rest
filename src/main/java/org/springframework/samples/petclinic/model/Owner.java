@@ -223,6 +223,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The Luhn check digit (0-9) computed over the decimal digits contained in this
+     * owner's {@link #customerCode}. Derived (not persisted); recomputed from the
+     * current customer code each call. An absent or digit-free customer code yields
+     * {@code 0}.
+     *
+     * @return the Luhn check digit, from 0 to 9
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        return luhnCheckDigit(this.customerCode);
+    }
+
+    /**
      * The Luhn check digit (0-9) computed over the decimal digits contained in the
      * given value, processed right-to-left with every second digit doubled (and
      * reduced by 9 when the double exceeds 9). Non-digit characters are ignored, and
