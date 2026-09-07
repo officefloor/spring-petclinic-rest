@@ -340,24 +340,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Roll the given date forward to the next business day when it falls on a
-     * weekend: a Saturday or Sunday is advanced to the following Monday, while a
-     * weekday is returned unchanged. Applied to the effective registration date
-     * (whether supplied in the request or defaulted to the server date) so that
-     * every value derived from it uses the adjusted business day.
+     * The fixed list of public holidays on which the clinic is closed. A registration
+     * date that lands on one of these dates is treated the same as a weekend and rolled
+     * forward past it (see {@link #rollToBusinessDay(LocalDate)}).
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
+     * Roll the given date forward to the next business day when it falls on a weekend or
+     * a listed public holiday: a Saturday, Sunday or public holiday is advanced one day
+     * at a time until a non-holiday weekday is reached, while a plain business day is
+     * returned unchanged. Because rolling off a weekend can land on a holiday (and vice
+     * versa), the advance repeats until the date is neither. Applied to the effective
+     * registration date (whether supplied in the request or defaulted to the server date)
+     * so that every value derived from it uses the adjusted business day.
      *
      * @param date the effective registration date
-     * @return the same date if it is a weekday, otherwise the next Monday
+     * @return the same date if it is a non-holiday weekday, otherwise the next such day
      */
     private static LocalDate rollToBusinessDay(LocalDate date) {
-        switch (date.getDayOfWeek()) {
-            case SATURDAY:
-                return date.plusDays(2);
-            case SUNDAY:
-                return date.plusDays(1);
-            default:
-                return date;
+        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
         }
+        return date;
+    }
+
+    /**
+     * Whether the given date falls on a weekend (Saturday or Sunday).
+     */
+    private static boolean isWeekend(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY, SUNDAY -> true;
+            default -> false;
+        };
     }
 
     /**
