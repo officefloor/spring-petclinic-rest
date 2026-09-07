@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -199,5 +202,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Rejects an owner whose {@code firstName}, {@code lastName}, {@code address}, {@code city}
+     * or {@code telephone} is missing or blank. A field that is only whitespace is treated as
+     * blank. When any field fails, a {@link RequiredFieldsMissingException} is thrown carrying
+     * the names of every offending field, which the exception advice renders as a 400 response
+     * with an {@code errors} array.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missing = new ArrayList<>();
+        addIfBlank(missing, "firstName", ownerFieldsDto.getFirstName());
+        addIfBlank(missing, "lastName", ownerFieldsDto.getLastName());
+        addIfBlank(missing, "address", ownerFieldsDto.getAddress());
+        addIfBlank(missing, "city", ownerFieldsDto.getCity());
+        addIfBlank(missing, "telephone", ownerFieldsDto.getTelephone());
+        if (!missing.isEmpty()) {
+            throw new RequiredFieldsMissingException(missing);
+        }
+    }
+
+    private void addIfBlank(List<String> missing, String fieldName, String value) {
+        if (value == null || value.isBlank()) {
+            missing.add(fieldName);
+        }
     }
 }

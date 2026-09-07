@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -140,7 +141,33 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors(bindingResult));
+            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList());
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link RequiredFieldsMissingException} thrown when a request omits or leaves
+     * blank one or more required fields. Returns a 400 Bad Request whose {@code errors}
+     * property lists the name of each offending field.
+     *
+     * @param e The {@link RequiredFieldsMissingException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(RequiredFieldsMissingException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRequiredFieldsMissingException(RequiredFieldsMissingException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Missing or blank required fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
         return ResponseEntity.status(status).body(detail);
     }
 
