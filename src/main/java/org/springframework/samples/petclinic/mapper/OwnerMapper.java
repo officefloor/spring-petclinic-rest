@@ -22,7 +22,20 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's age band as the DTO enum, rendering the owner's derived age band (see
+     * {@link Owner#getAgeBand()}). Returns {@code null} when the owner has no derivable age band
+     * (no birthDate or no registrationDate), leaving {@code ageBand} absent from the response.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        if (owner == null || owner.getAgeBand() == null) {
+            return null;
+        }
+        return OwnerDto.AgeBandEnum.valueOf(owner.getAgeBand());
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code 'EMAIL'} when an email address

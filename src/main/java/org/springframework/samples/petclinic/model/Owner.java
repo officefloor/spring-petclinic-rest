@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -118,6 +121,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -333,6 +344,30 @@ public class Owner extends Person {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Returns this owner's age band, derived from {@code birthDate} computed against
+     * {@code registrationDate}: the whole number of years between the two dates places the owner in
+     * {@code 'MINOR'} (under 18), {@code 'ADULT'} (18 to 64 inclusive) or {@code 'SENIOR'} (65 or
+     * older). Returns {@code null} when the owner has no birth date or no registration date, so the
+     * band cannot be derived. This is the single definition of an owner's age band.
+     *
+     * @return the owner's age band, or {@code null} when it cannot be derived
+     */
+    @Transient
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = java.time.Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     protected Set<Pet> getPetsInternal() {
