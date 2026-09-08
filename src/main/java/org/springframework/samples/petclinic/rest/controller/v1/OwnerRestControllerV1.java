@@ -125,7 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner));
+            owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(registrationDate));
         headers.setLocation(UriComponentsBuilder.newInstance()

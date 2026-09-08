@@ -267,6 +267,74 @@ public class Owner extends Person {
         return region != null ? region : regionForCity(this.city);
     }
 
+    /**
+     * Returns this owner's numeric membership level, assigned on creation. The level starts at
+     * {@code 1}, gains {@code 1} when an email is present, gains {@code 1} when the owner has no
+     * namesakes (namesakeCount is 0), and is capped at {@code 3} (level 4 is reserved for tenure).
+     *
+     * @return the owner's membership level
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int level = 1;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        if (hasEmail) {
+            level++;
+        }
+        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
+    }
+
+    /**
+     * Returns this owner's membership number formatted as {@code '<customerCode>-M<YY>'}, where YY is
+     * the last two digits of the registrationDate year, e.g. {@code 'NSW-A1B2C3D4-M26'}. Returns
+     * {@code null} when the owner has no customer code or registration date.
+     *
+     * @return the owner's membership number, or {@code null} when it cannot be derived
+     */
+    @Transient
+    public String getMembershipNumber() {
+        if (this.customerCode == null || this.registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+    }
+
+    /**
+     * Returns this owner's check digit: a single Luhn check digit (0-9) over the digits contained in
+     * the owner's customerCode. Returns {@code null} when the owner has no customer code.
+     *
+     * @return the owner's check digit, or {@code null} when it has no customer code
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        String code = this.customerCode;
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

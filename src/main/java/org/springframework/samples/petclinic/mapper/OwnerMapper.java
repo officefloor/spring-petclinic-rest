@@ -20,9 +20,6 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -72,69 +69,6 @@ public interface OwnerMapper {
         int dash = code.indexOf('-');
         String region = dash >= 0 ? code.substring(0, dash) : code;
         return "UNKNOWN".equals(region) ? null : region;
-    }
-
-    /**
-     * Returns the owner's numeric membership level, assigned on creation. The level starts at
-     * {@code 1}, gains {@code 1} when an email is present, gains {@code 1} when the owner has no
-     * namesakes (namesakeCount is 0), and is capped at {@code 3} (level 4 is reserved for tenure).
-     */
-    default Integer membershipLevel(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
-            level++;
-        }
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (noNamesakes) {
-            level++;
-        }
-        return Math.min(level, 3);
-    }
-
-    /**
-     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the registrationDate year, e.g. {@code 'NSW-A1B2C3D4-M26'}. Returns
-     * {@code null} when the owner has no customer code or registration date.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
-    }
-
-    /**
-     * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits
-     * contained in the owner's customerCode. Returns {@code null} when the owner has no
-     * customer code.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
