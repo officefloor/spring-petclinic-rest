@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.rest.function.common;
 
 /**
  * Computes the Luhn check digit over the digits contained in a string. Non-digit
- * characters are ignored, so a value such as {@code SYD-SMI-0007} is treated as its
- * digit sequence {@code 0007}. Doubling starts from the rightmost digit, matching the
+ * characters are ignored, so a value such as {@code NSW-1A2B3C4D} is treated as its
+ * digit sequence {@code 1234}. Doubling starts from the rightmost digit, matching the
  * standard Luhn convention for a bare (un-appended) payload.
  */
 public final class Luhn {
