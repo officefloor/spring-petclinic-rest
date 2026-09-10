@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 38e8b7343..a08f3df79 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,7 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.locality(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.localityOf(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() == null || owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL)")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+index 1f96261e9..b7526ca00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+@@ -65,6 +65,23 @@ public final class Localities {
+         return null;
+     }
+ 
++    /**
++     * The locality of a stored owner: the {@code REGION} component of its customerCode
++     * (everything before the first {@code '-'} of the {@code <REGION>-<HASH8>} identity),
++     * so the locality now follows from the same region-and-hash identity the customerCode
++     * carries. Falls back to {@link #locality(String, String)} when the customerCode is
++     * absent or carries no region prefix (e.g. legacy records).
++     */
++    public static String localityOf(String customerCode, String city, String postcode) {
++        if (customerCode != null) {
++            int dash = customerCode.indexOf('-');
++            if (dash > 0) {
++                return customerCode.substring(0, dash);
++            }
++        }
++        return locality(city, postcode);
++    }
++
+     /**
+      * The inclusive {@code {low, high}} 4-digit postcode range for a region, or {@code null}
+      * when the region is not in the fixed table (i.e. {@link #UNKNOWN}), meaning any 4-digit
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Luhn.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Luhn.java
+index 1d00c591a..c9ba6ce8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Luhn.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Luhn.java
+@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.rest.function.common;
+ 
+ /**
+  * Computes the Luhn check digit over the digits contained in a string. Non-digit
+- * characters are ignored, so a value such as {@code SYD-SMI-0007} is treated as its
+- * digit sequence {@code 0007}. Doubling starts from the rightmost digit, matching the
++ * characters are ignored, so a value such as {@code NSW-1A2B3C4D} is treated as its
++ * digit sequence {@code 1234}. Doubling starts from the rightmost digit, matching the
+  * standard Luhn convention for a bare (un-appended) payload.
+  */
+ public final class Luhn {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 8c4aea399..45bd3cedc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -1,32 +1,49 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Locale;
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.function.common.Localities;
+ 
+ /**
+  * Assigns the {@code customerCode} to a newly built owner, formatted
+- * {@code <CITY3>-<LAST3>-<NNNN>} where {@code CITY3} is the upper-cased first three
+- * letters of the city, {@code LAST3} is the upper-cased first three letters of the last
+- * name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than
+- * the number of owners already in that city (e.g. {@code SYD-SMI-0007}).
++ * {@code <REGION>-<HASH8>} where {@code REGION} is the region code derived from the
++ * owner's postcode (see {@link Localities#locality(String, String)}) and {@code HASH8}
++ * is the first 8 upper-case hex characters of the SHA-256 digest over the owner's
++ * normalized telephone (E.164, see {@link OwnerTelephone}) concatenated with its last
++ * name (e.g. {@code NSW-1A2B3C4D}).
+  *
+- * <p>Runs after {@link BuildOwner} and before {@link SaveOwner}, so the owner being
+- * created is not yet counted: {@code NNNN} = existing owners in the city + 1. Mutates the
+- * owner in place (the same object {@link SaveOwner} persists).
++ * <p>This is a stable identity: it carries no sequence number, so it does not depend on
++ * how many owners already exist. Every value built from the customerCode — the
++ * membershipNumber and its checkDigit, the create audit line and the derived locality —
++ * follows from this region-and-hash identity. Mutates the owner in place (the same object
++ * {@link SaveOwner} persists).
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String city = owner.getCity() == null ? "" : owner.getCity();
+-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
++    public void service(@Val Owner owner) {
++        String region = Localities.locality(owner.getCity(), owner.getPostcode());
++        String telephone = OwnerTelephone.canonical(owner.getTelephone());
+         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        int sequence = (int) ownerRepository.findAll().stream()
+-                .filter(o -> city.equals(o.getCity()))
+-                .count() + 1;
+-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++        owner.setCustomerCode(region + "-" + hash8(telephone + lastName));
++    }
++
++    /** The first 8 upper-case hex characters of the SHA-256 digest of {@code input}. */
++    private static String hash8(String input) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(input.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(8);
++            for (int i = 0; i < 4; i++) {
++                sb.append(String.format("%02X", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f475a6da0..d28945ca7 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -35,8 +35,9 @@ build:
+   govern: [ transaction ]
+   next: assignCustomerCode
+ 
+-# Assign the '<LAST3>-<NNNN>' customerCode before Save so the new owner is not yet
+-# counted: NNNN is one more than the current number of owners.
++# Assign the '<REGION>-<HASH8>' customerCode: REGION is the region derived from the
++# postcode and HASH8 is the first 8 upper-hex chars of SHA-256(normalizedTelephone +
++# lastName). A stable identity with no sequence number.
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCustomerCode
+   govern: [ transaction ]
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 36ab2155c..7ecc0794c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2094,9 +2094,9 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: The owner's customer code formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first three letters of city, LAST3 is the upper-cased first three letters of lastName and NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of owners already in that city when the owner was created.
++              description: The owner's customer code formatted '<REGION>-<HASH8>' where REGION is the region code derived from the owner's postcode and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the normalized (E.164) telephone concatenated with the lastName. A stable identity carrying no sequence number.
+               type: string
+-              example: 'SYD-SMI-0007'
++              example: 'NSW-1A2B3C4D'
+               readOnly: true
+             checkDigit:
+               title: Check digit
+@@ -2111,7 +2111,7 @@ components:
+               title: Membership number
+               description: The owner's membership number formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year. Derived from the owner's customerCode and registrationDate.
+               type: string
+-              example: 'SYD-SMI-0007-M26'
++              example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2144,7 +2144,7 @@ components:
+               readOnly: true
+             locality:
+               title: Locality
+-              description: The canonical region derived from the owner's city via a fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not in the table.
++              description: The canonical region for the owner, taken from the REGION component of the customerCode (the '<REGION>-<HASH8>' identity), i.e. the region derived from the owner's postcode, or 'UNKNOWN' when no region applies.
+               type: string
+               example: 'NSW'
+               readOnly: true
