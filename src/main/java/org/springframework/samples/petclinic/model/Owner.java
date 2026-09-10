@@ -599,6 +599,22 @@ public class Owner extends Person {
     }
 
     /**
+     * Returns the region code carried INSIDE this owner's derived identifiers — the region the
+     * unified {@code memberId} leads with, and the region any other identifier embeds: the owner's
+     * region code (see {@link #getRegionCode()}, {@code 'UNKNOWN'} when the owner has no known
+     * region). This is the single definition of the region an identifier is built from, kept
+     * deliberately separate from {@link #getRegionCode()} — the plain, user-facing region reported
+     * as the owner's locality, timezone and segment — so the region baked into identifiers can
+     * evolve on its own without disturbing that user-facing region.
+     *
+     * @return the region code embedded in the owner's identifiers, or {@code 'UNKNOWN'} when it has no known region
+     */
+    @Transient
+    public String getIdentityRegionCode() {
+        return getRegionCode();
+    }
+
+    /**
      * Resolves whether an {@code email} counts as present for membership purposes: the value is
      * non-null and not blank. Returns {@code false} otherwise. This is the single definition of an
      * owner "having an email", shared by every rule that turns email presence into a derived value

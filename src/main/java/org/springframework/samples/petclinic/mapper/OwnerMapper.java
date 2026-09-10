@@ -96,12 +96,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Resolves the region an owner's {@link #locality(Owner)} is derived from. This is the
-     * {@code REGION} segment the owner's unified {@code memberId} leads with, whose
-     * {@code '<REGION><FY><HASH8><CHK>'} identity encodes the region as its prefix. The sentinel
-     * {@code 'UNKNOWN'} region (used when the owner has no known region) and a missing member id both
-     * resolve to {@code null}, since only the known regions ({@code NSW}, {@code VIC}, {@code QLD})
-     * the member id can begin with are returned. Keeping the region source in its own method leaves
+     * Resolves the region an owner's {@link #locality(Owner)} is derived from: the owner's own region
+     * (see {@link Owner#getRegion()}), reported only once the owner has been assigned its identity
+     * (its {@code memberId} is present). Only the known regions ({@code NSW}, {@code VIC},
+     * {@code QLD}) — the ones carrying a timezone entry — are returned; the sentinel {@code 'UNKNOWN'}
+     * region (used when the owner has no known region) and a missing member id both resolve to
+     * {@code null}. Reading the region straight from the owner keeps the user-facing locality
+     * independent of how the owner's identifiers encode their region, so the identifier encoding can
+     * change without disturbing this plain region. Keeping the region source in its own method leaves
      * {@link #locality(Owner)} owning only the {@code null -> 'UNKNOWN'} rendering, so where the
      * region itself comes from can change without disturbing that rendering.
      *
@@ -109,16 +111,11 @@ public interface OwnerMapper {
      * @return the region string, or {@code null} when the owner has no known region
      */
     default String localityRegion(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId == null) {
+        if (owner.getMemberId() == null) {
             return null;
         }
-        for (String region : REGION_TIMEZONES.keySet()) {
-            if (memberId.startsWith(region)) {
-                return region;
-            }
-        }
-        return null;
+        String region = owner.getRegion();
+        return region != null && REGION_TIMEZONES.containsKey(region) ? region : null;
     }
 
     /**

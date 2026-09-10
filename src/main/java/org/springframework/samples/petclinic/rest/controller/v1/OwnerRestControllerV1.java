@@ -275,8 +275,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         long seq = OWNER_CREATED_SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            seq, owner.getId(), jsonString(primaryIdentifier(owner)), owner.getMembershipLevel());
+        Map<String, String> event = new java.util.LinkedHashMap<>();
+        event.put("seq", Long.toString(seq));
+        event.put("ownerId", String.valueOf(owner.getId()));
+        event.put("memberId", jsonString(primaryIdentifier(owner)));
+        event.put("membershipLevel", String.valueOf(owner.getMembershipLevel()));
+        event.put("event", jsonString("OWNER_CREATED"));
+        AUDIT.info("{}", jsonObject(event));
     }
 
     /**
@@ -306,6 +311,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "null";
         }
         return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    /**
+     * Assembles an ordered set of already-rendered fields into a compact JSON object literal for a
+     * structured audit event: each entry becomes {@code "<key>":<value>} in insertion order, the
+     * entries are joined by commas and wrapped in braces, with no whitespace. Values are inserted
+     * verbatim, so a numeric field passes its bare digits (for example {@code String.valueOf(seq)})
+     * and a string field passes its {@link #jsonString(String) quoted} form. This is the single
+     * definition of how the structured audit events are serialized, so a new field is added by
+     * putting one more entry on the ordered map rather than by editing a positional format string.
+     *
+     * @param fields the event's fields in the order they should appear, each value already rendered as JSON
+     * @return the compact JSON object literal for the event
+     */
+    private String jsonObject(Map<String, String> fields) {
+        return fields.entrySet().stream()
+            .map(entry -> "\"" + entry.getKey() + "\":" + entry.getValue())
+            .collect(Collectors.joining(",", "{", "}"));
     }
 
     /**
@@ -733,9 +756,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the unified {@code memberId} assigned to a newly created owner. The id is formatted as
-     * {@code '<REGION><FY><HASH8><CHK>'}, concatenating (with no separators) the owner's region code
-     * (see {@link Owner#getRegionCode()}, rendered {@code 'UNKNOWN'} when the owner has no known
-     * region), the two-digit fiscal-year segment its business-day-adjusted {@code registrationDate}
+     * {@code '<REGION><FY><HASH8><CHK>'}, concatenating (with no separators) the owner's identity
+     * region code (see {@link Owner#getIdentityRegionCode()}, rendered {@code 'UNKNOWN'} when the
+     * owner has no known region), the two-digit fiscal-year segment its business-day-adjusted {@code registrationDate}
      * falls in (see {@link Owner#fiscalYearSegment(LocalDate)}), its identity hash (see
      * {@link Owner#getIdentityHash()}, the first 8 upper-case hex characters of the SHA-256 digest
      * over the owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}) and
@@ -749,7 +772,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the formatted member id
      */
     private String memberIdFor(Owner owner) {
-        String prefix = owner.getRegionCode()
+        String prefix = owner.getIdentityRegionCode()
             + Owner.fiscalYearSegment(owner.getRegistrationDate())
             + owner.getIdentityHash();
         return deduplicateMemberId(prefix + Owner.luhnCheckDigit(prefix));
@@ -1085,14 +1108,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assigns the deterministic shared {@code householdId} to a newly created owner. The identifier
      * is derived from the owner's household identity — its {@code lastName} and {@code postcode} (see
-     * {@link #householdIdFor(String, String)}) — so every owner sharing a last name and postcode
+     * {@link #householdIdFor(Owner)}) — so every owner sharing a last name and postcode
      * resolves to the same stable value automatically, without any explicit linking. An owner without
      * a postcode belongs to no shared household and is left without a household identifier.
      *
      * @param owner the newly created owner, mutated in place with its household identifier
      */
     private void assignHousehold(Owner owner) {
-        owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
+        owner.setHouseholdId(householdIdFor(owner));
     }
 
     /**
@@ -1109,39 +1132,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the stable {@code householdId} shared by every owner in the household identified by
-     * the given {@code lastName} and {@code postcode}. The household is keyed on {@code (lastName,
-     * postcode)}: the normalized last name and the postcode are hashed with SHA-256 and the leading
-     * 12 hex characters of the digest form the identifier, so any two owners sharing a last name and
-     * postcode — regardless of creation order or address — resolve to the same identifier
-     * automatically. An owner without a postcode belongs to no shared household, so {@code null} is
-     * returned.
+     * Derives the stable {@code householdId} shared by every owner in the household the given owner
+     * belongs to. The household is keyed on {@code (lastName, postcode)}: the normalized last name
+     * and the postcode are hashed with SHA-256 and the leading 12 hex characters of the digest form
+     * the identifier, so any two owners sharing a last name and postcode — regardless of creation
+     * order or address — resolve to the same identifier automatically. An owner without a postcode
+     * belongs to no shared household, so {@code null} is returned.
      *
-     * @param lastName the household's last name
-     * @param postcode the household's postcode, or {@code null} when the owner has none
-     * @return the deterministic household identifier, or {@code null} when {@code postcode} is {@code null}
+     * @param owner the owner whose household identifier is derived, never {@code null}
+     * @return the deterministic household identifier, or {@code null} when the owner has no postcode
      */
-    private String householdIdFor(String lastName, String postcode) {
-        if (postcode == null) {
+    private String householdIdFor(Owner owner) {
+        if (owner.getPostcode() == null) {
             return null;
         }
-        return shaHex(householdKey(lastName, postcode), 12);
+        return shaHex(householdKey(owner), 12);
     }
 
     /**
-     * Builds the canonical household key that identifies the household a {@code lastName} and
-     * {@code postcode} belong to: the normalized last name (case-insensitive, with collapsed
-     * whitespace) joined to the postcode by {@code '|'}. This is the single definition of which
-     * owner fields make up a household and how they are normalized;
-     * {@link #householdIdFor(String, String)} hashes this key into the stored identifier, so any two
-     * owners in the same household resolve to the same key and therefore the same identifier.
+     * Builds the canonical household key that identifies the household an owner belongs to: the
+     * normalized last name (case-insensitive, with collapsed whitespace) joined to the postcode by
+     * {@code '|'}. This is the single definition of which owner fields make up a household and how
+     * they are normalized; {@link #householdIdFor(Owner)} hashes this key into the stored identifier,
+     * so any two owners in the same household resolve to the same key and therefore the same
+     * identifier. The whole owner is taken (rather than the bare last name and postcode) so the key
+     * derivation can reach the owner's other identity inputs, such as its identity region code (see
+     * {@link Owner#getIdentityRegionCode()}), without changing its callers.
      *
-     * @param lastName the household's last name
-     * @param postcode the household's postcode
+     * @param owner the owner whose household key is built, never {@code null}
      * @return the normalized household key
      */
-    private String householdKey(String lastName, String postcode) {
-        return collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|" + postcode;
+    private String householdKey(Owner owner) {
+        return collapseWhitespace(owner.getLastName()).toLowerCase(java.util.Locale.ROOT)
+            + "|" + owner.getPostcode();
     }
 
     /**
