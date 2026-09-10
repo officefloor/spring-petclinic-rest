@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 45bd3cedc..bb2e731e7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -4,8 +4,13 @@ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ 
++import java.util.HashSet;
++import java.util.Set;
++import java.util.stream.Collectors;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.function.common.Localities;
+ 
+ /**
+@@ -16,19 +21,35 @@ import org.springframework.samples.petclinic.rest.function.common.Localities;
+  * normalized telephone (E.164, see {@link OwnerTelephone}) concatenated with its last
+  * name (e.g. {@code NSW-1A2B3C4D}).
+  *
+- * <p>This is a stable identity: it carries no sequence number, so it does not depend on
+- * how many owners already exist. Every value built from the customerCode — the
++ * <p>This is a stable identity: the region-and-hash value carries no sequence number, so
++ * it does not depend on how many owners already exist. When that value collides with an
++ * existing owner's {@code customerCode}, {@code -<n>} is appended with the smallest
++ * {@code n} of 2 or more that makes it unique, so distinct owners always get distinct
++ * customerCodes. Every value built from the customerCode — the
+  * membershipNumber and its checkDigit, the create audit line and the derived locality —
+  * follows from this region-and-hash identity. Mutates the owner in place (the same object
+  * {@link SaveOwner} persists).
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = Localities.locality(owner.getCity(), owner.getPostcode());
+         String telephone = OwnerTelephone.canonical(owner.getTelephone());
+         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+-        owner.setCustomerCode(region + "-" + hash8(telephone + lastName));
++        String base = region + "-" + hash8(telephone + lastName);
++
++        Set<String> taken = ownerRepository.findAll().stream()
++                .filter(existing -> existing.getId() == null
++                        || !existing.getId().equals(owner.getId()))
++                .map(Owner::getCustomerCode)
++                .filter(code -> code != null)
++                .collect(Collectors.toCollection(HashSet::new));
++
++        String customerCode = base;
++        for (int n = 2; taken.contains(customerCode); n++) {
++            customerCode = base + "-" + n;
++        }
++        owner.setCustomerCode(customerCode);
+     }
+ 
+     /** The first 8 upper-case hex characters of the SHA-256 digest of {@code input}. */
