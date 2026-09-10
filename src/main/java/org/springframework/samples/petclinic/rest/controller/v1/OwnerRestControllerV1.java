@@ -414,18 +414,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void applyPossibleDuplicate(Owner owner) {
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
+        findPossibleDuplicate(owner).ifPresent(existing -> {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(existing.getId());
+        });
+    }
+
+    /**
+     * Finds the existing owner, if any, that makes the given newly created owner a possible (soft)
+     * duplicate: an owner sharing its {@code lastName} (compared case-insensitively) and its
+     * {@code postcode} while carrying a different (normalized) {@code telephone}. This is the single
+     * definition of the soft-duplicate match; {@link #applyPossibleDuplicate(Owner)} only records the
+     * outcome on the owner. An owner without a postcode can share no postcode and matches nothing, so
+     * {@link java.util.Optional#empty()} is returned.
+     *
+     * @param owner the owner being created, already carrying its normalized telephone and postcode
+     * @return the matching existing owner, or {@link java.util.Optional#empty()} when none matches
+     */
+    private java.util.Optional<Owner> findPossibleDuplicate(Owner owner) {
         if (owner.getPostcode() == null) {
-            return;
+            return java.util.Optional.empty();
         }
-        this.clinicService.findAllOwners().stream()
+        return this.clinicService.findAllOwners().stream()
             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
                 && owner.getPostcode().equals(existing.getPostcode())
                 && !owner.getTelephone().equals(existing.getTelephone()))
-            .findFirst()
-            .ifPresent(existing -> {
-                owner.setPossibleDuplicate(true);
-                owner.setPossibleDuplicateOf(existing.getId());
-            });
+            .findFirst();
     }
 
     /**
@@ -643,6 +657,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         owner.setHouseholdId(householdId);
+        linkHouseholdMates(owner, householdId);
+    }
+
+    /**
+     * Back-fills the shared {@code householdId} onto the given owner's existing household mates (see
+     * {@link #findHouseholdMates(String, String)}) that do not yet carry it, so a household declared
+     * by a later member retroactively links the earlier members that were created without opting in.
+     * A mate already carrying the identifier is left untouched, so only the newly linked mates are
+     * re-saved.
+     *
+     * @param owner the newly created owner whose household the mates are being linked into
+     * @param householdId the shared household identifier to propagate to the mates
+     */
+    private void linkHouseholdMates(Owner owner, String householdId) {
         for (Owner mate : findHouseholdMates(owner.getLastName(), owner.getAddress())) {
             if (!householdId.equals(mate.getHouseholdId())) {
                 mate.setHouseholdId(householdId);
@@ -664,10 +692,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the household identifier the owner would receive, or {@code null} when it shares none
      */
     private String prospectiveHouseholdId(OwnerFieldsDto ownerFieldsDto) {
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (!sharesHousehold(ownerFieldsDto)) {
             return null;
         }
         return householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+    }
+
+    /**
+     * Reports whether a submitted owner opted into sharing a household, i.e. whether its request
+     * carried {@code sharesHousehold} set to {@code true}. A {@code null} or {@code false} flag is
+     * not opting in. This is the single reading of the {@code sharesHousehold} intent, shared by
+     * every rule that treats a declared household member differently from an independent owner.
+     *
+     * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
+     * @return {@code true} when the request opted into sharing a household
+     */
+    private boolean sharesHousehold(OwnerFieldsDto ownerFieldsDto) {
+        return Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
     }
 
     /**
@@ -682,9 +723,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the deterministic household identifier
      */
     private String householdIdFor(String lastName, String address) {
-        String key = collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|"
+        return "HH-" + shaHex(householdKey(lastName, address), 16);
+    }
+
+    /**
+     * Builds the canonical household key that identifies the household a {@code lastName} and
+     * {@code address} belong to: the two fields normalized exactly as household identity is compared
+     * elsewhere (case-insensitively, with collapsed whitespace) and joined by {@code '|'}. This is
+     * the single definition of which owner fields make up a household and how they are normalized;
+     * {@link #householdIdFor(String, String)} hashes this key into the stored identifier, so any two
+     * owners in the same household resolve to the same key and therefore the same identifier.
+     *
+     * @param lastName the household's last name
+     * @param address the household's address
+     * @return the normalized household key
+     */
+    private String householdKey(String lastName, String address) {
+        return collapseWhitespace(lastName).toLowerCase(java.util.Locale.ROOT) + "|"
             + normalizeAddress(address).toLowerCase(java.util.Locale.ROOT);
-        return "HH-" + shaHex(key, 16);
     }
 
     /**
