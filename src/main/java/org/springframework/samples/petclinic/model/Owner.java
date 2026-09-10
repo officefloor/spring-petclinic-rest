@@ -94,6 +94,14 @@ public class Owner extends Person {
     private Boolean bulkSignupWarning;
 
     /**
+     * Whether this owner's city is approaching the per-city capacity limit — the city
+     * already holds between 40 and 49 owners (the hard limit being 50). Derived at
+     * response time from the persisted city, never persisted.
+     */
+    @Transient
+    private Boolean capacityWarning;
+
+    /**
      * The number of owners sharing this owner's household (the same householdId),
      * counting this owner. Derived at response time from the persisted householdId,
      * never persisted. Drives the 'GOLD' membership tier (3 or more members).
@@ -247,6 +255,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public Integer getHouseholdSize() {
