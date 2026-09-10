@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 32c5cf38f..b12b09851 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -418,30 +418,67 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Returns this owner's numeric membership level. The level starts at {@code 1}, gains {@code 1}
+-     * when an email is present, and gains {@code 1} when the owner has no namesakes (namesakeCount
+-     * is 0). These pre-tenure factors cap the level at {@code 3}. Level {@code 4} is reserved for
+-     * tenure and is granted only when the owner's tenure exceeds 365 days; because a newly created
+-     * owner has zero tenure, a new owner never exceeds level {@code 3}. The overall level is capped
+-     * at {@code 4}.
++     * Resolves whether an owner with the given {@code householdMemberCount} belongs to a large
++     * household: the count is present and at least {@code 3}. Returns {@code false} when the count is
++     * {@code null} (unknown) or smaller. This is the single definition of the "large household"
++     * membership factor, shared by every rule that rewards an owner for a household of three or more.
+      *
+-     * @return the owner's membership level
++     * @param householdMemberCount the number of owners sharing the household, or {@code null}
++     * @return {@code true} when the owner is known to belong to a household of three or more
++     */
++    public static boolean hasLargeHousehold(Integer householdMemberCount) {
++        return householdMemberCount != null && householdMemberCount >= 3;
++    }
++
++    /**
++     * Returns this owner's membership points. Points start at {@code 0} and accumulate the membership
++     * factors: {@code 2} when an email is present, {@code 1} when the owner has no namesakes
++     * (namesakeCount is 0), {@code 2} when the owner belongs to a household of three or more, and
++     * {@code 3} when the owner's tenure exceeds 365 days. Because a newly created owner has zero
++     * tenure, the tenure points are never awarded on creation. This is the single source the
++     * membership level is derived from (see {@link #getMembershipLevel()}).
++     *
++     * @return the owner's membership points
+      */
+     @Transient
+-    public Integer getMembershipLevel() {
++    public Integer getMembershipPoints() {
+         LocalDate today = LocalDate.now();
+-        int level = 1;
++        int points = 0;
+         if (hasEmail(this.email)) {
+-            level++;
++            points += 2;
+         }
+         if (hasNoNamesakes(this.namesakeCount)) {
+-            level++;
++            points += 1;
++        }
++        if (hasLargeHousehold(this.householdMemberCount)) {
++            points += 2;
+         }
+-        level = Math.min(level, 3);
+         if (hasLongTenure(this.registrationDate, today)) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Returns this owner's numeric membership level, derived from its membership points (see
++     * {@link #getMembershipPoints()}): {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
++     * {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
++     *
++     * @return the owner's membership level
++     */
++    @Transient
++    public Integer getMembershipLevel() {
++        int points = getMembershipPoints();
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2f05ea0da..4c2bcc17a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2180,16 +2180,25 @@ components:
+               type: string
+               example: 'SPR-SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points, assigned on creation. Points start at 0
++                and accumulate 2 when an email is present, 1 when namesakeCount is 0, 2 when the
++                owner belongs to a household of 3 or more, and 3 when tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's numeric membership level, assigned on creation. Starts at 1,
+-                is increased by 1 when an email is present and by 1 when namesakeCount is 0, and is
+-                capped at 3 (level 4 is reserved for tenure).
++              description: The owner's numeric membership level, derived from membershipPoints as
++                1 (0-1 points), 2 (2-3 points), 3 (4-5 points) and 4 (6 or more points).
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
