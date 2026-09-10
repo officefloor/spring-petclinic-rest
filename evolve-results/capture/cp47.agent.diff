@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c200ef243..91d8ce217 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -300,8 +300,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Determines the effective registration date for a newly submitted owner, adjusted so it always
+      * falls on a business day. The date supplied on the request is used when present, otherwise the
+-     * server's current date is used. When that effective date lands on a Saturday or Sunday it is
+-     * rolled forward to the following Monday; a weekday is left unchanged. This single adjusted date
++     * server's current date is used. When that effective date lands on a Saturday, Sunday or listed
++     * public holiday it is rolled forward to the next non-holiday business day; a non-holiday weekday
++     * is left unchanged. This single adjusted date
+      * is what gets stored as {@code registrationDate} and is what every value derived from it (the
+      * membership number's year segment, the per-day create limit) is computed against.
+      *
+@@ -321,16 +322,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rolls a date forward to the next business day: a Saturday or Sunday is advanced to the
+-     * following Monday, while a weekday is returned unchanged.
++     * The fixed public holidays the business-day roll skips. A date landing on any of these is
++     * advanced, along with weekends, until it reaches the next non-holiday business day.
++     */
++    private static final java.util.Set<LocalDate> PUBLIC_HOLIDAYS = java.util.Set.of(
++        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
++        LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"),
++        LocalDate.parse("2026-12-28"));
++
++    /**
++     * Rolls a date forward to the next business day: a Saturday, Sunday or listed public holiday is
++     * advanced one day at a time until it reaches a weekday that is not a public holiday, while a
++     * date already on such a business day is returned unchanged.
+      *
+      * @param date the date to adjust
+-     * @return the same date when it is a weekday, otherwise the next Monday
++     * @return the same date when it is a non-holiday weekday, otherwise the next such business day
+      */
+     private LocalDate toBusinessDay(LocalDate date) {
+-        java.time.DayOfWeek day = date.getDayOfWeek();
+-        if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) {
+-            return date.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
++        while (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
++                || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY
++                || PUBLIC_HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
