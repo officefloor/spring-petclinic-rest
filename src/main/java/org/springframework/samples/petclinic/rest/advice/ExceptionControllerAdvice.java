@@ -185,6 +185,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidPostcodeException}, thrown when an owner supplies a 4-digit postcode that is out of range
+     * for its city's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). Returns a {@code 400 Bad Request} reporting
+     * the {@code postcode} field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
+        logger.debug("Invalid postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("postcode"));
+    }
+
+    /**
      * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
      * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
      * single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the {@code telephone},

@@ -12,14 +12,31 @@ package org.springframework.samples.petclinic.mapper;
  */
 public enum Region {
 
-    NSW("Sydney"),
-    VIC("Melbourne"),
-    QLD("Brisbane");
+    NSW("Sydney", 2000, 2099),
+    VIC("Melbourne", 3000, 3099),
+    QLD("Brisbane", 4000, 4099);
 
     private final String city;
 
-    Region(String city) {
+    private final int minPostcode;
+
+    private final int maxPostcode;
+
+    Region(String city, int minPostcode, int maxPostcode) {
         this.city = city;
+        this.minPostcode = minPostcode;
+        this.maxPostcode = maxPostcode;
+    }
+
+    /**
+     * Returns whether the given (already 4-digit) postcode falls within this region's inclusive
+     * postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     *
+     * @param postcode the numeric postcode value to test
+     * @return {@code true} when the postcode is within the region's range, {@code false} otherwise
+     */
+    public boolean acceptsPostcode(int postcode) {
+        return postcode >= this.minPostcode && postcode <= this.maxPostcode;
     }
 
     /**

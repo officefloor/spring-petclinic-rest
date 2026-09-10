@@ -31,12 +31,14 @@ import org.springframework.samples.petclinic.mapper.IdentityKeyResolver;
 import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
+import org.springframework.samples.petclinic.mapper.Region;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
+import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -197,6 +199,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
+        validatePostcode(ownerFieldsDto);
         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         requireCityHasCapacity(ownerFieldsDto.getCity());
@@ -323,6 +326,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Validates an owner's optional {@code postcode} against its city's region. The postcode is validated only when
+     * present; an owner created without one is accepted. Its 4-digit shape is already enforced by Bean Validation, so
+     * this check only applies the region rule: when the city belongs to a known region (Sydney-&gt;NSW,
+     * Melbourne-&gt;VIC, Brisbane-&gt;QLD) the postcode must fall within that region's inclusive range (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
+     *
+     * @param ownerFieldsDto the incoming owner payload
+     * @throws InvalidPostcodeException if a supplied postcode is out of range for its city's region
+     */
+    private void validatePostcode(OwnerFieldsDto ownerFieldsDto) {
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        Region region = Region.forCity(ownerFieldsDto.getCity());
+        if (region != null && !region.acceptsPostcode(Integer.parseInt(postcode))) {
+            throw new InvalidPostcodeException(
+                "postcode " + postcode + " is not valid for the city's region " + region.name());
+        }
+    }
+
+    /**
      * Rejects creating an owner whose whole derived {@code identityKey} (see
      * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner. This is the single, consolidated
      * duplicate check: the former separate telephone, email and household rules are all expressed through this one key,
@@ -445,11 +470,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        validatePostcode(ownerFieldsDto);
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setPostcode(ownerFieldsDto.getPostcode());
         currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
