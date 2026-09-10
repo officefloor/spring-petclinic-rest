@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
 import org.springframework.samples.petclinic.rest.function.common.Sha256;
 import org.springframework.samples.petclinic.rest.function.common.Soundex;
 
@@ -35,6 +36,7 @@ public final class OwnerIdentityKey {
         String tel = OwnerTelephone.canonical(telephone);
         String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
         String soundex = Soundex.of(lastName);
-        return Sha256.hex(tel + "|" + mail + "|" + soundex);
+        // Version 2: mix the fixed 'V2' tag into the digest input so no version-1 identityKey recurs.
+        return Sha256.hex(IdentityVersion.TAG + "|" + tel + "|" + mail + "|" + soundex);
     }
 }

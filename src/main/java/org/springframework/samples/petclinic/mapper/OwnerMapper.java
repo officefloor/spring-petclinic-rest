@@ -36,8 +36,9 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.timezoneOf(owner.getMemberId(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() == null || owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL)")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+    @Mapping(target = "apiVersion",
+        expression = "java(org.springframework.samples.petclinic.rest.function.common.IdentityVersion.API_VERSION)")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentity(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -47,6 +48,20 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identifiers (memberId, householdId and the derived identityKey)
+     * into the nested {@code identity} object of the response.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toOwnerIdentity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

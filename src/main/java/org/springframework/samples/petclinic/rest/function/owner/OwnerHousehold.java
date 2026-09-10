@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
 import org.springframework.samples.petclinic.rest.function.common.Sha256;
 
 /**
@@ -32,9 +33,13 @@ final class OwnerHousehold {
         return id(normalizeName(lastName), postcode.trim());
     }
 
-    /** Stable 12-char upper-hex identifier derived from the deterministic household key. */
+    /**
+     * Stable 12-char upper-hex identifier derived from the deterministic household key. Version 2
+     * mixes the fixed 'V2' tag into the hash input so no version-1 householdId recurs, while owners
+     * of the same household still resolve to the same identifier.
+     */
     static String id(String normalizedLastName, String postcode) {
-        return Sha256.hexPrefix(normalizedLastName + "|" + postcode, 12);
+        return Sha256.hexPrefix(IdentityVersion.TAG + "|" + normalizedLastName + "|" + postcode, 12);
     }
 
     /** Lower-cases and collapses runs of whitespace to a single space, trimming the ends. */

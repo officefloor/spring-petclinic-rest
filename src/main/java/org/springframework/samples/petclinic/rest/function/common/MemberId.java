@@ -40,7 +40,11 @@ public final class MemberId {
     public static String base(String region, String twoDigitFiscalYear, String normalizedTelephone,
             String lastName) {
         String name = lastName == null ? "" : lastName;
-        String hash8 = Sha256.hexPrefix(normalizedTelephone + name, 8);
+        // Version 2: mix the fixed 'V2' tag and the region code into the hash input, so every
+        // identifier changes and no value produced under version 1 recurs. The visible REGION
+        // prefix stays the plain region, so the locality/timezone read back from it carry no tag.
+        String hash8 = Sha256.hexPrefix(
+                IdentityVersion.TAG + "|" + region + "|" + normalizedTelephone + name, 8);
         String core = region + twoDigitFiscalYear + hash8;
         return core + Luhn.checkDigit(core);
     }
