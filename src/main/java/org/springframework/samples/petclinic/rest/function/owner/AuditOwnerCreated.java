@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.common.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.common.MembershipLevels;
 
 /**
@@ -29,6 +30,6 @@ public class AuditOwnerCreated {
             return null;
         }
         return owner.getCustomerCode() + "-M"
-                + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
     }
 }

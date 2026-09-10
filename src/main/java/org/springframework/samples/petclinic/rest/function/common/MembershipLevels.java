@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.common;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -14,8 +13,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * has an email, {@link #POINTS_NO_NAMESAKE} (1) when the owner's {@code namesakeCount} is
  * 0, {@link #POINTS_HOUSEHOLD} (2) when the owner belongs to a household of three or more
  * members ({@code householdSize} of 3 or more), and {@link #POINTS_TENURE} (3) for a
- * tenure of more than {@link #TENURE_DAYS_FOR_POINTS} days measured from the registration
- * date.
+ * tenure of more than {@link #TENURE_FISCAL_YEARS_FOR_POINTS} elapsed fiscal years,
+ * counted as the difference between the fiscal year of the registration date and the
+ * current fiscal year (see {@link FiscalYear}).
  *
  * <p>The points map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points and
  * 4 for 6 or more points.
@@ -31,11 +31,12 @@ public final class MembershipLevels {
     /** Points gained for a household of three or more members. */
     public static final int POINTS_HOUSEHOLD = 2;
 
-    /** Points gained for a tenure of more than {@link #TENURE_DAYS_FOR_POINTS} days. */
+    /** Points gained for a tenure of more than {@link #TENURE_FISCAL_YEARS_FOR_POINTS}
+     *  elapsed fiscal years. */
     public static final int POINTS_TENURE = 3;
 
-    /** Tenure points require strictly more than this many days of tenure. */
-    public static final int TENURE_DAYS_FOR_POINTS = 365;
+    /** Tenure points require strictly more than this many elapsed fiscal years of tenure. */
+    public static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     private MembershipLevels() {
     }
@@ -85,6 +86,7 @@ public final class MembershipLevels {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_POINTS;
+        int elapsedFiscalYears = FiscalYear.of(LocalDate.now()) - FiscalYear.of(registrationDate);
+        return elapsedFiscalYears > TENURE_FISCAL_YEARS_FOR_POINTS;
     }
 }
