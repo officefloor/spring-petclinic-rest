@@ -40,6 +40,32 @@ public enum Region {
     }
 
     /**
+     * Returns the region whose inclusive postcode range contains the given postcode, or
+     * {@code null} when the postcode is absent, not a 4-digit number, or in no known range.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the matching region, or {@code null} when the postcode maps to no known region
+     */
+    public static Region forPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Region region : values()) {
+            if (region.acceptsPostcode(value)) {
+                return region;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns the region the given city belongs to, or {@code null} when the city is not in the
      * table (including a {@code null} city).
      *
