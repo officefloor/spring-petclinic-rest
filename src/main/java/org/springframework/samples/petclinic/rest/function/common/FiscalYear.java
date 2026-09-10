@@ -31,10 +31,19 @@ public final class FiscalYear {
     }
 
     /**
+     * The two-digit fiscal year {@code YY} — the last two digits of the fiscal year (see
+     * {@link #of(LocalDate)}), zero-padded, e.g. {@code 27}. The shared year segment of both
+     * the {@link #label(LocalDate) FY label} and the membership number.
+     */
+    public static String twoDigit(LocalDate date) {
+        return String.format("%02d", of(date) % 100);
+    }
+
+    /**
      * The fiscal year label {@code FY<YY>}, where {@code YY} is the last two digits of the
      * fiscal year (see {@link #of(LocalDate)}), e.g. {@code FY27}.
      */
     public static String label(LocalDate date) {
-        return String.format("FY%02d", of(date) % 100);
+        return "FY" + twoDigit(date);
     }
 }

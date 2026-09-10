@@ -72,20 +72,15 @@ public final class Localities {
     }
 
     /**
-     * The locality of a stored owner: the {@code REGION} component of its customerCode
-     * (everything before the first {@code '-'} of the {@code <REGION>-<HASH8>} identity),
-     * so the locality now follows from the same region-and-hash identity the customerCode
-     * carries. Falls back to {@link #locality(String, String)} when the customerCode is
-     * absent or carries no region prefix (e.g. legacy records).
+     * The locality of a stored owner: the {@code REGION} component of its customerCode (see
+     * {@link CustomerCode#regionOf(String)}), so the locality follows from the same
+     * region-and-hash identity the customerCode carries. Falls back to
+     * {@link #locality(String, String)} when the customerCode is absent or carries no region
+     * prefix (e.g. legacy records).
      */
     public static String localityOf(String customerCode, String city, String postcode) {
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
-        }
-        return locality(city, postcode);
+        String region = CustomerCode.regionOf(customerCode);
+        return region != null ? region : locality(city, postcode);
     }
 
     /**

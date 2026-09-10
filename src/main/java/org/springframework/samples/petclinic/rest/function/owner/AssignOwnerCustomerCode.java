@@ -7,8 +7,8 @@ import java.util.stream.Collectors;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.function.common.CustomerCode;
 import org.springframework.samples.petclinic.rest.function.common.Localities;
-import org.springframework.samples.petclinic.rest.function.common.Sha256;
 
 /**
  * Assigns the {@code customerCode} to a newly built owner, formatted
@@ -32,8 +32,7 @@ public class AssignOwnerCustomerCode {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = Localities.locality(owner.getCity(), owner.getPostcode());
         String telephone = OwnerTelephone.canonical(owner.getTelephone());
-        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = region + "-" + Sha256.hexPrefix(telephone + lastName, 8);
+        String base = CustomerCode.base(region, telephone, owner.getLastName());
 
         Set<String> taken = ownerRepository.findAll().stream()
                 .filter(existing -> existing.getId() == null
