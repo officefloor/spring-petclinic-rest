@@ -36,6 +36,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -87,6 +90,29 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * Returns this owner's salutation: the honorific {@code title}, a single space and the
+     * {@code lastName} (for example {@code 'DR Who'}), or just the {@code lastName} when the owner
+     * has no title (null or blank). This is the single definition of an owner's salutation.
+     *
+     * @return the composed salutation
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
+    }
 
     public String getAddress() {
         return this.address;
