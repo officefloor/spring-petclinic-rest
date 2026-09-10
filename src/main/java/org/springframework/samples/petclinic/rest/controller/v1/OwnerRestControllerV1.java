@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -66,6 +67,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
     private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /** Maximum number of owners that may be created in a single day; creating an owner past this cap is rejected. */
+    private static final int MAX_OWNERS_PER_DAY = 100;
 
     private final ClinicService clinicService;
 
@@ -154,9 +158,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireUniqueTelephone(telephone);
         requireUniqueHousehold(ownerFieldsDto);
         requireCityHasCapacity(ownerFieldsDto.getCity());
+        requireDailyLimitNotReached();
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         if (ownerFieldsDto.getRegistrationDate() == null) {
             ownerFieldsDto.setRegistrationDate(LocalDate.now());
+        }
+    }
+
+    /**
+     * Rejects creating an owner once the maximum number of owners for the current day has already been reached. The cap
+     * is 100, so when 100 or more existing owners carry today's {@code registrationDate} no further owner may be created
+     * today.
+     *
+     * @throws DailyOwnerLimitExceededException if 100 or more owners have already been created today
+     */
+    private void requireDailyLimitNotReached() {
+        LocalDate today = LocalDate.now();
+        long createdToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (createdToday >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(
+                "the maximum number of owners for today has already been reached");
         }
     }
 

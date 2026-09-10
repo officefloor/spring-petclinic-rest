@@ -242,6 +242,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DailyOwnerLimitExceededException}, thrown when a request to create an owner arrives once 100 or
+     * more owners have already been created today (compared by {@code registrationDate}). Returns a
+     * {@code 429 Too Many Requests}.
+     *
+     * @param e The {@link DailyOwnerLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitExceededException(DailyOwnerLimitExceededException e, HttpServletRequest request) {
+        logger.debug("Daily owner creation limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.TOO_MANY_REQUESTS, request, e.getMessage(), List.of());
+    }
+
+    /**
      * Builds the response body shared by the handlers that report a single business-rule violation: a
      * {@link ProblemDetail} for the given status carrying {@code detail} as its detail message and the offending field
      * names in its {@code errors} property.
