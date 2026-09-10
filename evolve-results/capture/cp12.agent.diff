@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7c06b9e4e..f1855f848 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -72,16 +73,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final TelephoneNormalizer telephoneNormalizer;
+ 
++    private final AddressNormalizer addressNormalizer;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+-                                 TelephoneNormalizer telephoneNormalizer) {
++                                 TelephoneNormalizer telephoneNormalizer,
++                                 AddressNormalizer addressNormalizer) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.telephoneNormalizer = telephoneNormalizer;
++        this.addressNormalizer = addressNormalizer;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -126,16 +131,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Prepares a new owner's payload for persistence, applying every rule an incoming owner must satisfy before it is
+-     * saved. Required fields are checked first; the telephone is then normalized to its canonical stored form, written
+-     * back onto the payload and rejected if another owner already uses it; the email is canonicalized; and a missing
+-     * registration date defaults to the current date. The payload is mutated in place so the caller can map and save it
+-     * directly.
++     * saved. The address is first normalized to its canonical stored form and written back onto the payload; required
++     * fields are then checked (so an address that is blank after normalization is rejected); the telephone is
++     * normalized to its canonical stored form, written back onto the payload and rejected if another owner already uses
++     * it; the email is canonicalized; and a missing registration date defaults to the current date. The payload is
++     * mutated in place so the caller can map and save it directly.
+      *
+      * @param ownerFieldsDto the incoming owner payload, mutated in place
+      * @throws MissingOwnerFieldsException if any required field is missing or blank
+      * @throws DuplicateTelephoneException if another owner already uses the normalized telephone
+      */
+     private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+         validateRequiredFields(ownerFieldsDto);
+         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+         ownerFieldsDto.setTelephone(telephone);
+@@ -239,8 +246,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Finds the existing owners that belong to the same household as the given payload, i.e. those sharing both its
+-     * last name and address. Both fields are compared case-insensitively after collapsing runs of whitespace to a
+-     * single space and trimming, so incidental formatting differences do not affect membership.
++     * last name and address. The last name is compared case-insensitively after collapsing runs of whitespace to a
++     * single space and trimming; the address is compared in its normalized form (see {@link AddressNormalizer}), so
++     * incidental formatting differences and abbreviation variants do not affect membership.
+      *
+      * @param ownerFieldsDto the incoming owner payload
+      * @return the existing owners in the same household, in the order {@link ClinicService#findAllOwners()} returns
+@@ -248,10 +256,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
+         String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
+-        String address = collapseWhitespace(ownerFieldsDto.getAddress());
++        String address = addressNormalizer.normalize(ownerFieldsDto.getAddress());
+         return this.clinicService.findAllOwners().stream()
+             .filter(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+-                && collapseWhitespace(existing.getAddress()).equalsIgnoreCase(address))
++                && addressNormalizer.normalize(existing.getAddress()).equals(address))
+             .toList();
+     }
+ 
+@@ -300,15 +308,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Derives a household's stable identifier, formatted {@code HH-<12 hex chars>}, from the case-insensitive,
+-     * whitespace-collapsed last name and address. Being a pure function of those fields, it is identical for every
+-     * owner in the same household and never changes over time.
++     * whitespace-collapsed last name and the normalized address (see {@link AddressNormalizer}). Being a pure function
++     * of those fields, it is identical for every owner in the same household and never changes over time.
+      *
+      * @param ownerFieldsDto the incoming owner payload
+      * @return the household identifier
+      */
+     private String generateHouseholdId(OwnerFieldsDto ownerFieldsDto) {
+         String key = collapseWhitespace(ownerFieldsDto.getLastName()).toLowerCase()
+-            + "\n" + collapseWhitespace(ownerFieldsDto.getAddress()).toLowerCase();
++            + "\n" + addressNormalizer.normalize(ownerFieldsDto.getAddress()).toLowerCase();
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder hex = new StringBuilder();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+new file mode 100644
+index 000000000..72d45a117
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+@@ -0,0 +1,70 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Turns owner addresses into the single canonical form that gets stored, returned and compared, so the REST
++ * controllers do not have to carry the address rules themselves.
++ *
++ * <p>Normalization trims the value and collapses every run of whitespace to a single space, upper-cases it, and expands
++ * a small set of common abbreviations that appear as whole words: {@code ST -> STREET}, {@code RD -> ROAD} and
++ * {@code AVE -> AVENUE}. So {@code "  12  main  st "} becomes {@code "12 MAIN STREET"} and {@code "7 elm ave"} becomes
++ * {@code "7 ELM AVENUE"}.
++ *
++ * <p>The same canonical form is used both for the value that is stored and returned and for every address comparison
++ * (household duplicate detection and the shared household id), so incidental formatting differences never affect the
++ * outcome.
++ */
++@Component
++public class AddressNormalizer {
++
++    /** Whole-word abbreviations expanded during normalization, keyed by their upper-cased form. */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    /**
++     * Normalizes an owner address into its canonical stored form: trimmed, whitespace-collapsed, upper-cased and with
++     * common abbreviations expanded. A {@code null} input yields an empty string, so callers can uniformly treat a
++     * blank result as a missing address.
++     *
++     * @param address the raw address value from the request, may be {@code null}
++     * @return the normalized canonical address, never {@code null}
++     */
++    public String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.strip().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        StringBuilder result = new StringBuilder(collapsed.length());
++        for (String token : collapsed.split(" ")) {
++            if (result.length() > 0) {
++                result.append(' ');
++            }
++            result.append(ABBREVIATIONS.getOrDefault(token, token));
++        }
++        return result.toString();
++    }
++}
