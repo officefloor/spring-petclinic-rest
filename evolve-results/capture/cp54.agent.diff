@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 973c71d5e..fab0e3cba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -93,6 +93,14 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    /**
++     * Whether this owner's city is approaching the per-city capacity limit — the city
++     * already holds between 40 and 49 owners (the hard limit being 50). Derived at
++     * response time from the persisted city, never persisted.
++     */
++    @Transient
++    private Boolean capacityWarning;
++
+     /**
+      * The number of owners sharing this owner's household (the same householdId),
+      * counting this owner. Derived at response time from the persisted householdId,
+@@ -249,6 +257,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java
+new file mode 100644
+index 000000000..6c03ae273
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Sets the owner's {@code capacityWarning} flag to true when its city is approaching the
++ * per-city capacity limit — the city already holds between {@value #WARN_LOW} and
++ * {@value #WARN_HIGH} owners (the hard limit enforced by {@link EnsureCityCapacity} being
++ * {@value EnsureCityCapacity#CAPACITY}), otherwise false. Counts all owners in the city
++ * including this one, so the flag is identical whether returned from the create response
++ * (runs after Save, so the new owner is counted) or a later GET, mirroring
++ * {@link AssignOwnerBulkSignupWarning}.
++ */
++public class AssignOwnerCapacityWarning {
++
++    /** Lowest owners-in-city count (inclusive) that raises the approaching-capacity warning. */
++    static final int WARN_LOW = 40;
++
++    /** Highest owners-in-city count (inclusive) that raises the approaching-capacity warning. */
++    static final int WARN_HIGH = EnsureCityCapacity.CAPACITY - 1;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        long count = ownerRepository.findAll().stream()
++                .filter(o -> city == null ? o.getCity() == null : city.equals(o.getCity()))
++                .count();
++        owner.setCapacityWarning(count >= WARN_LOW && count <= WARN_HIGH);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a57efb2b0..2719e0752 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -96,6 +96,14 @@ audit:
+ warn:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerBulkSignupWarning
+   govern: [ transaction ]
++  next: capacityWarning
++
++# Flag whether this owner's city is approaching its per-city capacity limit (already holds
++# 40-49 of the max 50 owners). Runs after Save so the new owner is counted, matching what a
++# later GET recomputes.
++capacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCapacityWarning
++  govern: [ transaction ]
+   next: householdSize
+ 
+ # Record the owner's household size (owners sharing its householdId, including itself).
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index dbf2c6a65..b89ab11ef 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -10,6 +10,13 @@ load:
+ warn:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerBulkSignupWarning
+   govern: [ readonly-transaction ]
++  next: capacityWarning
++
++# Flag whether this owner's city is approaching its per-city capacity limit (already holds
++# 40-49 of the max 50 owners). Recomputed here to match the create response.
++capacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCapacityWarning
++  govern: [ readonly-transaction ]
+   next: householdSize
+ 
+ # Record the owner's household size (owners sharing its householdId, including itself),
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5220eb7f9..22b3f6654 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2215,6 +2215,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city is approaching its per-city capacity limit — the city already holds between 40 and 49 owners (the hard limit being 50), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when this owner is not a hard duplicate (its identityKey differs) but shares an existing (other, non-deleted) owner's Soundex last name and postcode, otherwise false. A soft-match warning; such an owner is still created.
