@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -106,6 +109,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects an owner payload that omits or leaves blank any required field. Bean Validation already rejects missing
+     * ({@code null}) required fields, but permits values that are blank (empty or whitespace-only) for fields without a
+     * stricter pattern, so this check enforces the "missing or blank" rule uniformly across every required field.
+     *
+     * @param ownerFieldsDto the owner payload to validate
+     * @throws MissingOwnerFieldsException if any of firstName, lastName, address, city or telephone is missing or blank
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missingFields = new ArrayList<>();
+        requireText(missingFields, "firstName", ownerFieldsDto.getFirstName());
+        requireText(missingFields, "lastName", ownerFieldsDto.getLastName());
+        requireText(missingFields, "address", ownerFieldsDto.getAddress());
+        requireText(missingFields, "city", ownerFieldsDto.getCity());
+        requireText(missingFields, "telephone", ownerFieldsDto.getTelephone());
+        if (!missingFields.isEmpty()) {
+            throw new MissingOwnerFieldsException(missingFields);
+        }
+    }
+
+    private void requireText(List<String> missingFields, String fieldName, String value) {
+        if (value == null || value.isBlank()) {
+            missingFields.add(fieldName);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

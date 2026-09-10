@@ -141,8 +141,45 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors(bindingResult));
+            detail.setProperty("errors", rejectedFieldNames(bindingResult));
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException}, thrown when a request to create or update an owner omits or leaves
+     * blank one or more required fields. Reports the offending field names in the {@code errors} array of a
+     * {@code 400 Bad Request} response.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Missing or blank required fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Collects the distinct field names carried by the given {@link BindingResult}, in binding order, so they can be
+     * reported in the {@code errors} array of a validation error response.
+     *
+     * @param bindingResult the binding result carrying the field errors
+     * @return the names of the rejected fields, without duplicates
+     */
+    private List<String> rejectedFieldNames(BindingResult bindingResult) {
+        return bindingResult.getFieldErrors().stream()
+            .map(FieldError::getField)
+            .distinct()
+            .toList();
     }
 
     /**
