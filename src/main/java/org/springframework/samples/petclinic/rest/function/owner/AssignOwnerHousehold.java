@@ -29,11 +29,11 @@ public class AssignOwnerHousehold {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = normalizeAddress(owner.getAddress());
         List<Owner> housemates = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(normalizeAddress(existing.getAddress()))) {
                 housemates.add(existing);
             }
         }
@@ -73,5 +73,11 @@ public class AssignOwnerHousehold {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** Address comparison uses the same normalized form the endpoint stores (see {@link OwnerAddress}). */
+    private static String normalizeAddress(String value) {
+        String normalized = OwnerAddress.normalize(value);
+        return normalized == null ? "" : normalized;
     }
 }

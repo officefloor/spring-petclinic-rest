@@ -22,10 +22,10 @@ public class EnsureUniqueOwnerHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = normalizeAddress(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(normalizeAddress(existing.getAddress()))) {
                 throw new DuplicateOwnerHouseholdException(request.getLastName(), request.getAddress());
             }
         }
@@ -37,5 +37,11 @@ public class EnsureUniqueOwnerHousehold {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** Address comparison uses the same normalized form the endpoint stores (see {@link OwnerAddress}). */
+    private static String normalizeAddress(String value) {
+        String normalized = OwnerAddress.normalize(value);
+        return normalized == null ? "" : normalized;
     }
 }
