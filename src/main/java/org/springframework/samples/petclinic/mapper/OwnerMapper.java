@@ -48,6 +48,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone.toDisplay(owner.getTelephone()))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+    @Mapping(target = "ownerSegment",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
