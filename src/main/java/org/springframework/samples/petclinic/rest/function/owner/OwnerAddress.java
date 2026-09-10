@@ -16,6 +16,12 @@ import java.util.Map;
  * check (a value blank after normalization is rejected), the duplicate identityKey
  * ({@link EnsureUniqueOwnerIdentity}) and the shared household id ({@link AssignOwnerHousehold}).
  * The transformation is idempotent, so re-normalizing an already-normalized value is a no-op.
+ *
+ * <p>The same normalization applies to the structured address fields ({@code addressLine1} /
+ * {@code addressLine2}). When {@code addressLine1} is supplied the structured form is preferred:
+ * {@link #compose} joins the normalized {@code addressLine1} with the normalized
+ * {@code addressLine2} (single space, only when present) to form the composed {@code address}
+ * that is persisted and returned; otherwise the flat {@code address} is used.
  */
 final class OwnerAddress {
 
@@ -49,5 +55,17 @@ final class OwnerAddress {
             sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return sb.toString();
+    }
+
+    /**
+     * Compose a display address from already-normalized structured lines: {@code line1}, with a
+     * single space and {@code line2} appended when {@code line2} is present (non-null and not
+     * blank).
+     */
+    static String compose(String line1, String line2) {
+        if (line2 != null && !line2.isBlank()) {
+            return line1 + " " + line2;
+        }
+        return line1;
     }
 }
