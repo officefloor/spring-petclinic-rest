@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -61,6 +62,24 @@ public interface OwnerMapper {
         }
         return Owner.hasEmail(owner.getEmail())
             ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Derives the owner's segment as {@code '<TIER>_<AREA>'}. TIER is {@code 'PREMIUM'} when the
+     * owner's derived {@code membershipLevel} (see {@link Owner#getMembershipLevel()}) is 3 or more,
+     * otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality is a known
+     * region ({@code NSW}, {@code VIC} or {@code QLD}; see {@link #localityRegion(Owner)}), otherwise
+     * {@code 'REGIONAL'}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = owner.getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String region = localityRegion(owner);
+        String area = (region != null && REGION_TIMEZONES.containsKey(region)) ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
     }
 
     /**
