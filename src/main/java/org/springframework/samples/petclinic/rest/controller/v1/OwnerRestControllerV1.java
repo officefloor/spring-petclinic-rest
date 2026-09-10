@@ -71,6 +71,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -225,7 +227,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         applyHouseholdMemberCount(owner);
         auditOwnerCreated(owner);
         emitOwnerCreatedEvent(owner);
+        enqueueWelcomeNotification(owner);
         return owner;
+    }
+
+    /**
+     * Enqueues a welcome notification for a freshly persisted owner by emitting a line to the
+     * dedicated {@code NOTIFY} logger carrying the owner's {@code id} and its unified
+     * {@code memberId}. This runs only on a successful create — once the owner has its generated
+     * identity and derived member id — so downstream consumers watching the {@code NOTIFY} logger
+     * can react to new members structurally.
+     *
+     * @param owner the persisted owner, already carrying its generated id and derived member id
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("Welcome notification queued: id={} memberId={}",
+            owner.getId(), owner.getMemberId());
     }
 
     /**
