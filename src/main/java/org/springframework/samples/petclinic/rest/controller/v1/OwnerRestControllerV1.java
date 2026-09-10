@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -62,6 +63,9 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -149,6 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(telephone);
         requireUniqueTelephone(telephone);
         requireUniqueHousehold(ownerFieldsDto);
+        requireCityHasCapacity(ownerFieldsDto.getCity());
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         if (ownerFieldsDto.getRegistrationDate() == null) {
             ownerFieldsDto.setRegistrationDate(LocalDate.now());
@@ -246,6 +251,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(telephone::equals);
         if (inUse) {
             throw new DuplicateTelephoneException("telephone is already in use by another owner");
+        }
+    }
+
+    /**
+     * Rejects creating an owner whose city (compared case-insensitively) already contains the maximum number of
+     * owners. The cap is 50, so a city holding 50 or more owners is full and no further owner may be created there.
+     *
+     * @param city the city of the owner being created
+     * @throws OwnerCityFullException if the city already contains 50 or more owners
+     */
+    private void requireCityHasCapacity(String city) {
+        long cityOwners = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (cityOwners >= MAX_OWNERS_PER_CITY) {
+            throw new OwnerCityFullException("the owner's city already contains the maximum number of owners");
         }
     }
 

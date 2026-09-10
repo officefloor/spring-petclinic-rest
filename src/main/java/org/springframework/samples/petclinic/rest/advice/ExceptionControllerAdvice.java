@@ -223,6 +223,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link OwnerCityFullException}, thrown when a request to create an owner names a city that already
+     * contains 50 or more owners (compared case-insensitively). Returns a {@code 409 Conflict} reporting the
+     * {@code city} field.
+     *
+     * @param e The {@link OwnerCityFullException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(OwnerCityFullException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityFullException(OwnerCityFullException e, HttpServletRequest request) {
+        logger.debug("Owner city at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("city"));
+    }
+
+    /**
      * Builds the response body shared by the handlers that report a single business-rule violation: a
      * {@link ProblemDetail} for the given status carrying {@code detail} as its detail message and the offending field
      * names in its {@code errors} property.
