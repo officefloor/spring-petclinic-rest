@@ -63,6 +63,13 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * Whether this owner was one of a bulk signup for its registration day (more than
+     * 80 owners created for that day). Derived at response time, never persisted.
+     */
+    @Transient
+    private Boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -128,6 +135,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Boolean getBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     protected Set<Pet> getPetsInternal() {
