@@ -84,6 +84,21 @@ public class Owner extends Person {
     @Transient
     private Integer householdSize;
 
+    /**
+     * Whether this owner is a soft-match of an existing (other) owner — sharing that
+     * owner's lastName and postcode but carrying a different telephone (so it is not a
+     * hard duplicate). Derived at response time, never persisted.
+     */
+    @Transient
+    private Boolean possibleDuplicate;
+
+    /**
+     * The id of the existing owner this owner soft-matches (see {@link #possibleDuplicate}),
+     * or null when it soft-matches none. Derived at response time, never persisted.
+     */
+    @Transient
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -181,6 +196,22 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     protected Set<Pet> getPetsInternal() {
