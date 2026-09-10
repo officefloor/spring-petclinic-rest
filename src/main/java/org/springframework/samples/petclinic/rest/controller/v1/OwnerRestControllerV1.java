@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -143,8 +144,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * saved. The address is first normalized to its canonical stored form and written back onto the payload; required
      * fields are then checked (so an address that is blank after normalization is rejected); the telephone is
      * normalized to its canonical stored form, written back onto the payload and rejected if another owner already uses
-     * it; the email is canonicalized; and a missing registration date defaults to the current date. The payload is
-     * mutated in place so the caller can map and save it directly.
+     * it; the email is canonicalized; and the registration date is resolved to its effective business day. The
+     * effective registration date is the supplied value or, when none was supplied, the current server date; when it
+     * falls on a weekend it is rolled forward to the following Monday and that adjusted date is written back onto the
+     * payload, so every value derived from it (such as the membership number's year segment and the per-day limit)
+     * uses the adjusted date. The payload is mutated in place so the caller can map and save it directly.
      *
      * @param ownerFieldsDto the incoming owner payload, mutated in place
      * @throws MissingOwnerFieldsException if any required field is missing or blank
@@ -158,26 +162,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireUniqueTelephone(telephone);
         requireUniqueHousehold(ownerFieldsDto);
         requireCityHasCapacity(ownerFieldsDto.getCity());
-        requireDailyLimitNotReached();
+        LocalDate registrationDate = resolveRegistrationDate(ownerFieldsDto);
+        ownerFieldsDto.setRegistrationDate(registrationDate);
+        requireDailyLimitNotReached(registrationDate);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (ownerFieldsDto.getRegistrationDate() == null) {
-            ownerFieldsDto.setRegistrationDate(LocalDate.now());
-        }
     }
 
     /**
-     * Rejects creating an owner once the maximum number of owners for the current day has already been reached. The cap
-     * is 100, so when 100 or more existing owners carry today's {@code registrationDate} no further owner may be created
-     * today.
+     * Resolves an owner's effective registration date and rolls it onto a business day. The effective date is the value
+     * supplied on the payload, or the current server date when none was supplied; when that date is a Saturday or
+     * Sunday it is rolled forward to the following Monday. The returned date is always a business day.
      *
-     * @throws DailyOwnerLimitExceededException if 100 or more owners have already been created today
+     * @param ownerFieldsDto the incoming owner payload
+     * @return the effective registration date rolled forward onto a business day
      */
-    private void requireDailyLimitNotReached() {
-        LocalDate today = LocalDate.now();
-        long createdToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+    private LocalDate resolveRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
+        LocalDate effective = ownerFieldsDto.getRegistrationDate();
+        if (effective == null) {
+            effective = LocalDate.now();
+        }
+        while (effective.getDayOfWeek() == DayOfWeek.SATURDAY || effective.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            effective = effective.plusDays(1);
+        }
+        return effective;
+    }
+
+    /**
+     * Rejects creating an owner once the maximum number of owners for the adjusted business day has already been
+     * reached. The cap is 100, so when 100 or more existing owners carry the given adjusted {@code registrationDate} no
+     * further owner may be created for that day.
+     *
+     * @param registrationDate the adjusted business-day registration date of the owner being created
+     * @throws DailyOwnerLimitExceededException if 100 or more owners have already been created for that day
+     */
+    private void requireDailyLimitNotReached(LocalDate registrationDate) {
+        long createdThatDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
-        if (createdToday >= MAX_OWNERS_PER_DAY) {
+        if (createdThatDay >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(
                 "the maximum number of owners for today has already been reached");
         }
