@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws InvalidOwnerEmailException, InvalidOwnerPostcodeException {
+            throws InvalidOwnerEmailException, DisposableOwnerEmailException, InvalidOwnerPostcodeException {
         OwnerEmail.normalize(request);
         OwnerPostcode.validate(request.getPostcode(), request.getCity());
         validated.set(request);
