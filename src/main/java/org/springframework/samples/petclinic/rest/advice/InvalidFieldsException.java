@@ -21,22 +21,12 @@ import java.util.List;
 /**
  * Thrown when a request supplies one or more fields whose value is present but
  * fails a business rule (for example a telephone that does not normalize to
- * exactly ten digits).
- * <p>
- * Carries the names of the offending fields so the {@link ExceptionControllerAdvice}
- * can surface them to the client under the {@code errors} property of a
- * {@code 400 Bad Request} response.
+ * exactly ten digits). See {@link FieldValidationException} for how the offending
+ * field names are surfaced to the client.
  */
-public class InvalidFieldsException extends RuntimeException {
-
-    private final List<String> fields;
+public class InvalidFieldsException extends FieldValidationException {
 
     public InvalidFieldsException(List<String> fields) {
-        super("Invalid field values: " + fields);
-        this.fields = List.copyOf(fields);
-    }
-
-    public List<String> getFields() {
-        return this.fields;
+        super("Invalid field values: " + fields, fields);
     }
 }

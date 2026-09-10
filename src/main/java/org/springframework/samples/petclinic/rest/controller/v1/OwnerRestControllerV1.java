@@ -244,7 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param ownerFieldsDto the submitted owner fields, normalized in place
      */
     private void prepareNewOwner(OwnerFieldsDto ownerFieldsDto, LocalDate registrationDate) {
-        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddress(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -252,6 +252,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateIdentity(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectDailyLimitExceeded(registrationDate);
+    }
+
+    /**
+     * Applies an owner's address to the submitted fields, normalizing it in place into the
+     * canonical form stored and returned for the owner. This is the single intake step that owns
+     * how a submitted address becomes an owner's stored address: it delegates the transform to
+     * {@link #normalizeAddress(String)}, the single definition of address normalization, and writes
+     * the result back onto {@code ownerFieldsDto}. It runs ahead of {@link
+     * #validateRequiredFields(OwnerFieldsDto)} so an address that is blank after normalization is
+     * rejected by the required-field check that follows. Isolating the step here keeps {@link
+     * #prepareNewOwner(OwnerFieldsDto, LocalDate)} a list of named intake steps and gives address
+     * handling one place to grow.
+     *
+     * @param ownerFieldsDto the submitted owner fields, whose address is normalized in place
+     */
+    private void applyAddress(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
     }
 
     /**
@@ -308,12 +325,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param registrationDate the adjusted business-day registration date of the owner being created
      */
     private void rejectDailyLimitExceeded(LocalDate registrationDate) {
-        long count = this.clinicService.findAllOwners().stream()
-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-            .count();
-        if (count >= DAILY_OWNER_LIMIT) {
+        if (countOwnersRegisteredOn(registrationDate) >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(registrationDate);
         }
+    }
+
+    /**
+     * Counts the existing owners whose adjusted business-day {@code registrationDate} equals the
+     * given date. This is the single definition of the per-day owner count, shared by the per-day
+     * create limit ({@link #rejectDailyLimitExceeded(LocalDate)}) and the bulk-signup warning
+     * ({@link #bulkSignupWarning(LocalDate)}), so both accumulate owners against a day identically.
+     *
+     * @param registrationDate the adjusted business-day registration date to count owners against
+     * @return the number of existing owners carrying that registration date
+     */
+    private long countOwnersRegisteredOn(LocalDate registrationDate) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
     }
 
     /**
@@ -336,10 +365,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (registrationDate == null) {
             return false;
         }
-        long count = this.clinicService.findAllOwners().stream()
-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-            .count();
-        return count > BULK_SIGNUP_WARNING_THRESHOLD;
+        return countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**

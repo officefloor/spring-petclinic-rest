@@ -19,22 +19,13 @@ package org.springframework.samples.petclinic.rest.advice;
 import java.util.List;
 
 /**
- * Thrown when a request omits or leaves blank one or more required fields.
- * <p>
- * Carries the names of the offending fields so the {@link ExceptionControllerAdvice}
- * can surface them to the client under the {@code errors} property of a
- * {@code 400 Bad Request} response.
+ * Thrown when a request omits or leaves blank one or more required fields. See
+ * {@link FieldValidationException} for how the offending field names are surfaced
+ * to the client.
  */
-public class RequiredFieldsMissingException extends RuntimeException {
-
-    private final List<String> fields;
+public class RequiredFieldsMissingException extends FieldValidationException {
 
     public RequiredFieldsMissingException(List<String> fields) {
-        super("Required fields missing or blank: " + fields);
-        this.fields = List.copyOf(fields);
-    }
-
-    public List<String> getFields() {
-        return this.fields;
+        super("Required fields missing or blank: " + fields, fields);
     }
 }

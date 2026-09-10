@@ -153,42 +153,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link RequiredFieldsMissingException} thrown when a request omits or leaves
-     * blank one or more required fields. Returns a 400 Bad Request whose {@code errors}
-     * property lists the name of each offending field.
+     * Handles the {@link FieldValidationException} family thrown when a request omits or leaves
+     * blank a required field ({@link RequiredFieldsMissingException}) or supplies a field whose
+     * value is present but fails a business rule ({@link InvalidFieldsException}). Returns a 400
+     * Bad Request whose {@code errors} property lists the name of each offending field.
      *
-     * @param e The {@link RequiredFieldsMissingException} to be handled
+     * @param e The {@link FieldValidationException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
      */
-    @ExceptionHandler(RequiredFieldsMissingException.class)
+    @ExceptionHandler(FieldValidationException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleRequiredFieldsMissingException(RequiredFieldsMissingException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleFieldValidationException(FieldValidationException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
-        logger.debug("Missing or blank required fields at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getFields());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", e.getFields());
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link InvalidFieldsException} thrown when a request supplies one or more
-     * fields whose value is present but fails a business rule (for example a telephone
-     * that does not normalize to exactly ten digits). Returns a 400 Bad Request whose
-     * {@code errors} property lists the name of each offending field.
-     *
-     * @param e The {@link InvalidFieldsException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
-     */
-    @ExceptionHandler(InvalidFieldsException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleInvalidFieldsException(InvalidFieldsException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        logger.debug("Invalid field values at {} {}: {}",
+        logger.debug("Field validation failed at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getFields());
@@ -209,13 +187,7 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        logger.debug("Duplicate identity at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
-        return ResponseEntity.status(status).body(detail);
+        return conflictOrLimit(e, HttpStatus.CONFLICT, request, ERROR_DUPLICATE_IDENTITY);
     }
 
     /**
@@ -229,13 +201,7 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(CityCapacityExceededException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        logger.debug("City at capacity at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
-        return ResponseEntity.status(status).body(detail);
+        return conflictOrLimit(e, HttpStatus.CONFLICT, request, ERROR_CITY_AT_CAPACITY);
     }
 
     /**
@@ -250,12 +216,28 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DailyOwnerLimitExceededException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDailyOwnerLimitExceededException(DailyOwnerLimitExceededException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
-        logger.debug("Daily owner limit exceeded at {} {}: {}",
+        return conflictOrLimit(e, HttpStatus.TOO_MANY_REQUESTS, request, ERROR_DAILY_LIMIT_EXCEEDED);
+    }
+
+    /**
+     * Renders a create-time business-rule rejection (an owner-identity conflict or an exhausted
+     * per-day/per-city quota) as a {@link ProblemDetail} response carrying the given status and
+     * detail message. This is the single definition of how those rejections are logged and
+     * rendered, shared by every handler that maps such an exception to its response.
+     *
+     * @param e The rejection to be handled
+     * @param status HTTP response status the rejection maps to.
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @param detailMessage the human-readable detail message for the response body.
+     * @return A {@link ResponseEntity} containing the error information and the given status.
+     */
+    private ResponseEntity<ProblemDetail> conflictOrLimit(Exception e, HttpStatus status, HttpServletRequest request, String detailMessage) {
+        logger.debug("{} at {} {}: {}",
+            status.getReasonPhrase(),
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT_EXCEEDED);
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
         return ResponseEntity.status(status).body(detail);
     }
 
