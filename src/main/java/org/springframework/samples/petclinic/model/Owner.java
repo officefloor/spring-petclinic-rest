@@ -216,6 +216,52 @@ public class Owner extends Person {
     }
 
     /**
+     * Fixed telephone country-code table: the exact national-number length (the count of digits
+     * following the country code) each country code this application recognizes admits
+     * ({@code '61'} Australia => 9, {@code '1'} NANP => 10). Keyed by the country-code digits
+     * without the leading {@code '+'}. A country code absent from this table is not recognized.
+     */
+    private static final Map<String, Integer> COUNTRY_CODE_NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
+
+    /**
+     * Resolves the recognized country code a normalized E.164 telephone carries: the longest entry
+     * of the fixed country-code table (see {@link #COUNTRY_CODE_NATIONAL_LENGTHS}) whose digits the
+     * number begins with, so a shorter code can never shadow a longer one. Returns the country-code
+     * digits without the leading {@code '+'} (for example {@code '61'} for {@code '+61412345678'}),
+     * or {@code null} when the value is {@code null}, carries no leading {@code '+'}, or begins with
+     * no recognized country code. This is the single definition of how an E.164 telephone splits
+     * from its country code, shared by every rule that reasons about a telephone's country code.
+     *
+     * @param telephone the normalized E.164 telephone (a {@code '+'} followed by digits), or {@code null}
+     * @return the recognized country-code digits, or {@code null} when none is recognized
+     */
+    public static String countryCodeOf(String telephone) {
+        if (telephone == null || !telephone.startsWith("+")) {
+            return null;
+        }
+        String digits = telephone.substring(1);
+        return COUNTRY_CODE_NATIONAL_LENGTHS.keySet().stream()
+            .filter(digits::startsWith)
+            .max(Comparator.comparingInt(String::length))
+            .orElse(null);
+    }
+
+    /**
+     * Resolves the exact national-number length (the count of digits following the country code) a
+     * recognized country code admits using the fixed country-code table ({@code '61'} => 9,
+     * {@code '1'} => 10, see {@link #COUNTRY_CODE_NATIONAL_LENGTHS}). Returns the length, or
+     * {@code null} when the country code is {@code null} or not recognized (it then carries no
+     * per-country length rule). This is the single definition of the per-country national-number
+     * lengths, shared by every rule that relates a telephone's national number to its country code.
+     *
+     * @param countryCode the country-code digits without the leading {@code '+'}, or {@code null}
+     * @return the required national-number length, or {@code null} when the code is not recognized
+     */
+    public static Integer nationalNumberLength(String countryCode) {
+        return countryCode == null ? null : COUNTRY_CODE_NATIONAL_LENGTHS.get(countryCode);
+    }
+
+    /**
      * Fixed city-to-region table: the canonical region each known city belongs to
      * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). A city
      * absent from this table has no known region.

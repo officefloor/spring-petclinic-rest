@@ -508,36 +508,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The required national-number length (the digits after the country code) for each country
-     * code we recognize: {@code '+61'} (Australia) requires 9 national digits and {@code '+1'}
-     * (NANP) requires 10. Keyed by the country-code digits without the leading {@code '+'}.
-     */
-    private static final java.util.Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
-        java.util.Map.of("61", 9, "1", 10);
-
-    /**
      * Validates the national-number length of an already syntactically valid E.164 telephone
-     * against its country code. For each recognized country code the digits following the code
-     * must have exactly the expected length ({@code '+61'} => 9 national digits, {@code '+1'} =>
-     * 10). When the country code is recognized but the national number is the wrong length an
-     * {@link InvalidFieldsException} is thrown, which the exception advice renders as a 400
-     * response naming the {@code telephone} field. A country code that is not recognized carries
-     * no per-country length rule and is left to the general 8-to-15-digit E.164 check.
+     * against its country code. When the number carries a country code this application recognizes
+     * (see {@link Owner#countryCodeOf(String)}) the digits following that code must have exactly the
+     * length that code admits ({@code '+61'} => 9 national digits, {@code '+1'} => 10, see
+     * {@link Owner#nationalNumberLength(String)}). When the country code is recognized but the
+     * national number is the wrong length an {@link InvalidFieldsException} is thrown, which the
+     * exception advice renders as a 400 response naming the {@code telephone} field. A country code
+     * that is not recognized carries no per-country length rule and is left to the general
+     * 8-to-15-digit E.164 check.
      *
      * @param e164 the normalized E.164 telephone (a {@code '+'} followed by digits)
      */
     private void validateNationalNumberLength(String e164) {
-        String digits = e164.substring(1);
-        NATIONAL_NUMBER_LENGTHS.entrySet().stream()
-            .filter(entry -> digits.startsWith(entry.getKey()))
-            // longest matching country code wins, so a shorter code cannot shadow a longer one
-            .max(java.util.Comparator.comparingInt(entry -> entry.getKey().length()))
-            .ifPresent(entry -> {
-                int nationalLength = digits.length() - entry.getKey().length();
-                if (nationalLength != entry.getValue()) {
-                    throw new InvalidFieldsException(List.of("telephone"));
-                }
-            });
+        String countryCode = Owner.countryCodeOf(e164);
+        if (countryCode == null) {
+            return;
+        }
+        int nationalLength = e164.length() - 1 - countryCode.length();
+        if (nationalLength != Owner.nationalNumberLength(countryCode)) {
+            throw new InvalidFieldsException(List.of("telephone"));
+        }
     }
 
     /**
