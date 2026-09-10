@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -72,16 +73,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -126,16 +131,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Prepares a new owner's payload for persistence, applying every rule an incoming owner must satisfy before it is
-     * saved. Required fields are checked first; the telephone is then normalized to its canonical stored form, written
-     * back onto the payload and rejected if another owner already uses it; the email is canonicalized; and a missing
-     * registration date defaults to the current date. The payload is mutated in place so the caller can map and save it
-     * directly.
+     * saved. The address is first normalized to its canonical stored form and written back onto the payload; required
+     * fields are then checked (so an address that is blank after normalization is rejected); the telephone is
+     * normalized to its canonical stored form, written back onto the payload and rejected if another owner already uses
+     * it; the email is canonicalized; and a missing registration date defaults to the current date. The payload is
+     * mutated in place so the caller can map and save it directly.
      *
      * @param ownerFieldsDto the incoming owner payload, mutated in place
      * @throws MissingOwnerFieldsException if any required field is missing or blank
      * @throws DuplicateTelephoneException if another owner already uses the normalized telephone
      */
     private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
@@ -239,8 +246,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds the existing owners that belong to the same household as the given payload, i.e. those sharing both its
-     * last name and address. Both fields are compared case-insensitively after collapsing runs of whitespace to a
-     * single space and trimming, so incidental formatting differences do not affect membership.
+     * last name and address. The last name is compared case-insensitively after collapsing runs of whitespace to a
+     * single space and trimming; the address is compared in its normalized form (see {@link AddressNormalizer}), so
+     * incidental formatting differences and abbreviation variants do not affect membership.
      *
      * @param ownerFieldsDto the incoming owner payload
      * @return the existing owners in the same household, in the order {@link ClinicService#findAllOwners()} returns
@@ -248,10 +256,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
         String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
-        String address = collapseWhitespace(ownerFieldsDto.getAddress());
+        String address = addressNormalizer.normalize(ownerFieldsDto.getAddress());
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
-                && collapseWhitespace(existing.getAddress()).equalsIgnoreCase(address))
+                && addressNormalizer.normalize(existing.getAddress()).equals(address))
             .toList();
     }
 
@@ -300,15 +308,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives a household's stable identifier, formatted {@code HH-<12 hex chars>}, from the case-insensitive,
-     * whitespace-collapsed last name and address. Being a pure function of those fields, it is identical for every
-     * owner in the same household and never changes over time.
+     * whitespace-collapsed last name and the normalized address (see {@link AddressNormalizer}). Being a pure function
+     * of those fields, it is identical for every owner in the same household and never changes over time.
      *
      * @param ownerFieldsDto the incoming owner payload
      * @return the household identifier
      */
     private String generateHouseholdId(OwnerFieldsDto ownerFieldsDto) {
         String key = collapseWhitespace(ownerFieldsDto.getLastName()).toLowerCase()
-            + "\n" + collapseWhitespace(ownerFieldsDto.getAddress()).toLowerCase();
+            + "\n" + addressNormalizer.normalize(ownerFieldsDto.getAddress()).toLowerCase();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
