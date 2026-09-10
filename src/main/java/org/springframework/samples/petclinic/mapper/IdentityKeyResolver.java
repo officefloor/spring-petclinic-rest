@@ -4,23 +4,55 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.stereotype.Component;
 
 /**
- * Derives the stable identifiers an owner is matched on. Today that is the shared household id, computed as a pure
- * function of the household's last name and address; keeping it here (rather than in {@link OwnerMapper} or the REST
- * controller) mirrors {@link LocalityResolver} and {@link MembershipLevelResolver} and gives owner-identity derivation a
- * single home. Unlike those two it collaborates with {@link AddressNormalizer}, so it is a Spring component rather than a
- * static utility.
+ * Derives the stable identifiers an owner is matched on: the shared household id (a pure function of the household's
+ * last name and address) and the single {@code identityKey} that all duplicate detection is expressed through. Keeping
+ * this here (rather than in {@link OwnerMapper} or the REST controller) mirrors {@link LocalityResolver} and
+ * {@link MembershipLevelResolver} and gives owner-identity derivation a single home. Unlike those two it collaborates
+ * with the field normalizers, so it is a Spring component rather than a static utility.
  */
 @Component
 public class IdentityKeyResolver {
 
     private final AddressNormalizer addressNormalizer;
 
-    public IdentityKeyResolver(AddressNormalizer addressNormalizer) {
+    private final TelephoneNormalizer telephoneNormalizer;
+
+    private final EmailNormalizer emailNormalizer;
+
+    public IdentityKeyResolver(AddressNormalizer addressNormalizer,
+                               TelephoneNormalizer telephoneNormalizer,
+                               EmailNormalizer emailNormalizer) {
         this.addressNormalizer = addressNormalizer;
+        this.telephoneNormalizer = telephoneNormalizer;
+        this.emailNormalizer = emailNormalizer;
+    }
+
+    /**
+     * Derives the owner's {@code identityKey}, the single value all duplicate detection is expressed through. It is
+     * formatted {@code <normalizedTelephone>|<email or empty>|<householdId or empty>}, joining the canonical E.164
+     * telephone (see {@link TelephoneNormalizer#canonicalize}), the normalized email (see
+     * {@link EmailNormalizer#normalize}, empty when the owner has none) and the shared {@code householdId} (empty when
+     * the owner belongs to no household). Because the telephone is part of the key, two owners that differ only in
+     * telephone — such as two members of the same household — have different keys; only owners whose whole key matches
+     * are duplicates.
+     *
+     * @param owner the owner whose identity key should be derived
+     * @return the owner's identity key
+     */
+    public String deriveIdentityKey(Owner owner) {
+        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
+        String email = emailNormalizer.normalize(owner.getEmail());
+        String householdId = owner.getHouseholdId();
+        return telephone
+            + "|" + (email == null || email.isBlank() ? "" : email)
+            + "|" + (householdId == null ? "" : householdId);
     }
 
     /**

@@ -36,9 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -128,7 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         owners.forEach(this::populateHouseholdMemberCount);
-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+        List<OwnerDto> ownerDtos = owners.stream().map(this::toOwnerDto).toList();
+        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -139,10 +138,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         populateHouseholdMemberCount(owner);
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        return new ResponseEntity<>(toOwnerDto(owner), HttpStatus.OK);
+    }
+
+    /**
+     * Maps an owner to its DTO and stamps on the derived {@code identityKey} (see
+     * {@link IdentityKeyResolver#deriveIdentityKey}), which is not a stored field of the owner and so cannot be produced
+     * by the mapper alone.
+     *
+     * @param owner the owner to map
+     * @return the owner DTO carrying its identity key
+     */
+    private OwnerDto toOwnerDto(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+    @Transactional
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         normalizeAndValidate(ownerFieldsDto);
@@ -152,12 +166,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         assignHouseholdId(owner, ownerFieldsDto);
+        requireUniqueIdentity(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()));
         populateHouseholdMemberCount(owner);
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -172,47 +187,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * effective registration date is the supplied value or, when none was supplied, the current server date; when it
      * falls on a weekend it is rolled forward to the following Monday and that adjusted date is written back onto the
      * payload, so every value derived from it (such as the membership number's year segment and the per-day limit)
-     * uses the adjusted date. The payload is mutated in place so the caller can map and save it directly.
+     * uses the adjusted date. The payload is mutated in place so the caller can map and save it directly. Duplicate
+     * detection is deferred: it runs once, against the derived {@code identityKey}, after the household id has been
+     * assigned (see {@link #requireUniqueIdentity}).
      *
      * @param ownerFieldsDto the incoming owner payload, mutated in place
      * @throws MissingOwnerFieldsException if any required field is missing or blank
-     * @throws DuplicateTelephoneException if another owner already uses the normalized telephone
      */
     private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
-        requireUniqueTelephone(telephone);
-        requireUniqueHousehold(ownerFieldsDto);
         requireCityHasCapacity(ownerFieldsDto.getCity());
         LocalDate registrationDate = resolveRegistrationDate(ownerFieldsDto);
         ownerFieldsDto.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
         String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
         ownerFieldsDto.setEmail(email);
-        requireUniqueEmail(email);
-    }
-
-    /**
-     * Rejects creating an owner whose normalized (lower-cased) email is already used by another owner. Existing owners'
-     * stored emails are normalized the same way before comparison, so the rule holds regardless of the case the email
-     * was originally supplied in. A missing (blank or {@code null}) email is never rejected, since the field is
-     * optional.
-     *
-     * @param email the normalized email of the owner being created, may be {@code null}
-     * @throws DuplicateEmailException if any existing owner already uses the same normalized email
-     */
-    private void requireUniqueEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return;
-        }
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(existing -> emailNormalizer.normalize(existing.getEmail()))
-            .anyMatch(email::equals);
-        if (inUse) {
-            throw new DuplicateEmailException("email is already in use by another owner");
-        }
     }
 
     /**
@@ -331,19 +323,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose normalized telephone is already used by another owner. Existing owners' stored
-     * telephones are canonicalized the same way before comparison, so the rule holds regardless of how their number was
-     * originally formatted.
+     * Rejects creating an owner whose whole derived {@code identityKey} (see
+     * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner. This is the single, consolidated
+     * duplicate check: the former separate telephone, email and household rules are all expressed through this one key,
+     * so an owner is a duplicate only when its normalized telephone, email and {@code householdId} all match another
+     * owner's. It runs after the household id has been assigned, so the key reflects the household the owner belongs to.
      *
-     * @param telephone the normalized telephone of the owner being created
-     * @throws DuplicateTelephoneException if any existing owner already uses the same normalized telephone
+     * @param owner the newly mapped owner about to be saved, with its household id already assigned
+     * @throws DuplicateOwnerException if any existing owner already has the same identity key
      */
-    private void requireUniqueTelephone(String telephone) {
+    private void requireUniqueIdentity(Owner owner) {
+        String identityKey = identityKeyResolver.deriveIdentityKey(owner);
         boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(existing -> telephoneNormalizer.canonicalize(existing.getTelephone()))
-            .anyMatch(telephone::equals);
+            .anyMatch(existing -> identityKey.equals(identityKeyResolver.deriveIdentityKey(existing)));
         if (inUse) {
-            throw new DuplicateTelephoneException("telephone is already in use by another owner");
+            throw new DuplicateOwnerException("an owner with the same identity key already exists");
         }
     }
 
@@ -360,24 +354,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
         if (cityOwners >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityFullException("the owner's city already contains the maximum number of owners");
-        }
-    }
-
-    /**
-     * Rejects creating an owner who shares a household (see {@link #findHouseholdMembers}) with an existing owner,
-     * unless the request opts in by setting {@code sharesHousehold} to {@code true}.
-     *
-     * @param ownerFieldsDto the incoming owner payload
-     * @throws DuplicateOwnerException if another owner already belongs to the same household and the request does not
-     *                                 set {@code sharesHousehold}
-     */
-    private void requireUniqueHousehold(OwnerFieldsDto ownerFieldsDto) {
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return;
-        }
-        if (!findHouseholdMembers(ownerFieldsDto).isEmpty()) {
-            throw new DuplicateOwnerException(
-                "an owner with the same last name and address already exists in this household");
         }
     }
 

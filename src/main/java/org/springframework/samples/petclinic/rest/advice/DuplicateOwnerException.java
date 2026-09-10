@@ -17,9 +17,10 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an attempt is made to create an owner whose last name and address (compared case-insensitively with
- * collapsed whitespace) are already used by another owner, without the request opting in via {@code sharesHousehold}.
- * Reported as a {@code 409 Conflict} by the {@link ExceptionControllerAdvice}.
+ * Thrown when an attempt is made to create an owner whose whole derived {@code identityKey} (normalized telephone,
+ * email and household id) equals that of an existing owner. This is the single, consolidated duplicate rule, replacing
+ * the former separate telephone, email and household checks. Reported as a {@code 409 Conflict} by the
+ * {@link ExceptionControllerAdvice}.
  */
 public class DuplicateOwnerException extends RuntimeException {
 

@@ -185,28 +185,10 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException}, thrown when a request to create an owner carries a normalized
-     * telephone number that is already used by another owner. Returns a {@code 409 Conflict} reporting the
-     * {@code telephone} field.
-     *
-     * @param e The {@link DuplicateTelephoneException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateTelephoneException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
-        logger.debug("Duplicate telephone at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("telephone"));
-    }
-
-    /**
-     * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a last name and address
-     * already used by another owner (compared case-insensitively with collapsed whitespace) without opting in via
-     * {@code sharesHousehold}. Returns a {@code 409 Conflict} reporting the {@code lastName} and {@code address} fields.
+     * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
+     * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
+     * single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the {@code telephone},
+     * {@code email} and {@code householdId} fields the key is composed of.
      *
      * @param e The {@link DuplicateOwnerException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
@@ -215,30 +197,12 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DuplicateOwnerException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner household at {} {}: {}",
+        logger.debug("Duplicate owner identity at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("lastName", "address"));
-    }
-
-    /**
-     * Handles {@link DuplicateEmailException}, thrown when a request to create an owner carries an email whose
-     * lower-cased form is already used by another owner. Returns a {@code 409 Conflict} reporting the {@code email}
-     * field.
-     *
-     * @param e The {@link DuplicateEmailException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
-        logger.debug("Duplicate email at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("email"));
+        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(),
+            List.of("telephone", "email", "householdId"));
     }
 
     /**
