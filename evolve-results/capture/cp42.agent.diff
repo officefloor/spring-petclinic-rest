@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 81210024a..cd2d1ae36 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.localityOf(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.timezoneOf(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() == null || owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL)")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+index b7526ca00..2a586e409 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+@@ -24,6 +24,12 @@ public final class Localities {
+             "VIC", new int[] {3000, 3099},
+             "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
+     private Localities() {
+     }
+ 
+@@ -82,6 +88,17 @@ public final class Localities {
+         return locality(city, postcode);
+     }
+ 
++    /**
++     * The IANA timezone name for an owner's locality, derived from the same customerCode
++     * region prefix (falling back to city/postcode) that {@link #localityOf(String, String,
++     * String)} yields, via the fixed region-to-timezone table (NSW-&gt;Australia/Sydney,
++     * VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane). Returns {@code null} when the
++     * locality has no mapped timezone (i.e. {@link #UNKNOWN}).
++     */
++    public static String timezoneOf(String customerCode, String city, String postcode) {
++        return REGION_TIMEZONE.get(localityOf(customerCode, city, postcode));
++    }
++
+     /**
+      * The inclusive {@code {low, high}} 4-digit postcode range for a region, or {@code null}
+      * when the region is not in the fixed table (i.e. {@link #UNKNOWN}), meaning any 4-digit
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ba5a09e3d..d0ee02614 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2168,6 +2168,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The IANA timezone for the owner's locality, from the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the locality has no mapped timezone (i.e. 'UNKNOWN').
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners share this owner's registration date (i.e. more than 80 owners were created for that business day), otherwise false.
