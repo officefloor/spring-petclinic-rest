@@ -13,8 +13,8 @@ import java.util.Map;
  *
  * <p>The normalized value is what {@link ValidateOwnerFields} stores on the request (so it is
  * persisted and returned) and is the form used for every address comparison — the required-field
- * check (a value blank after normalization is rejected), household duplicate detection
- * ({@link EnsureUniqueOwnerHousehold}) and the shared household id ({@link AssignOwnerHousehold}).
+ * check (a value blank after normalization is rejected), the duplicate identityKey
+ * ({@link EnsureUniqueOwnerIdentity}) and the shared household id ({@link AssignOwnerHousehold}).
  * The transformation is idempotent, so re-normalizing an already-normalized value is a no-op.
  */
 final class OwnerAddress {
