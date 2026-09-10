@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 441b51e72..df75ae19c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -56,6 +56,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -99,6 +102,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7ea2ef389..7e3823aa2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -118,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -125,6 +126,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>}. {@code LAST3} is the upper-cased first
++     * three letters of the last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than
++     * the current number of owners (e.g. {@code SMI-0007}).
++     *
++     * @param lastName the owner's last name
++     * @return the generated customer code
++     */
++    private String generateCustomerCode(String lastName) {
++        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
++        int sequence = this.clinicService.findAllOwners().size() + 1;
++        return String.format("%s-%04d", prefix, sequence);
++    }
++
+     /**
+      * Rejects an owner payload that omits or leaves blank any required field. Bean Validation already rejects missing
+      * ({@code null}) required fields, but permits values that are blank (empty or whitespace-only) for fields without a
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 77bb1228b..9ba24c192 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4a767727f..70fd8db41 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4e5bc62e3..6e7c1871a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  customer_code VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a363d7467..98b796581 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+-                                      registration_date DATE
++                                      registration_date DATE,
++                                      customer_code TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index caff5dbe7..a60e26cf6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2089,6 +2089,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: >-
++                A generated identifier formatted '<LAST3>-<NNNN>', where LAST3
++                is the upper-cased first three letters of the last name and NNNN
++                is a global 4-digit zero-padded sequence.
++              type: string
++              example: 'SMI-0007'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
