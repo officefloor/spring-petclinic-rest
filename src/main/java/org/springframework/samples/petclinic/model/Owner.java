@@ -85,6 +85,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
     @Transient
     private Integer householdMemberCount;
 
@@ -252,6 +255,26 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /**
+     * Reports whether an owner is flagged deleted (soft-deleted). A {@code null} flag is treated as
+     * not deleted. This is the single definition of an owner being deleted, shared by every rule
+     * that must ignore soft-deleted owners.
+     *
+     * @param deleted the owner's {@code deleted} flag, or {@code null}
+     * @return {@code true} when the owner is flagged deleted
+     */
+    public static boolean isDeleted(Boolean deleted) {
+        return Boolean.TRUE.equals(deleted);
     }
 
     public Integer getHouseholdMemberCount() {
