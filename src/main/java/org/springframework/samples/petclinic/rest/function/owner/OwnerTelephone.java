@@ -20,7 +20,7 @@ import java.util.Map;
  * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and {@code "+64 21 123 456"}
  * becomes {@code "+6421123456"}.
  */
-final class OwnerTelephone {
+public final class OwnerTelephone {
 
     /** Default country code assumed when the input carries no explicit {@code '+'} prefix. */
     private static final String DEFAULT_COUNTRY_CODE = "61";
@@ -81,6 +81,40 @@ final class OwnerTelephone {
             }
         }
         return "+" + e164Digits;
+    }
+
+    /**
+     * Format a stored telephone for humans: the country code, a space, then the national digits
+     * grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}). Values
+     * that cannot form a valid E.164 number are returned unchanged.
+     */
+    public static String toDisplay(String raw) {
+        String canonical = canonical(raw);
+        if (!canonical.startsWith("+")) {
+            // Not a valid E.164 value (e.g. legacy data) - nothing sensible to group.
+            return raw;
+        }
+        String digits = canonical.substring(1);
+        for (String countryCode : NATIONAL_LENGTH.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                String national = digits.substring(countryCode.length());
+                return "+" + countryCode + " " + groupInThrees(national);
+            }
+        }
+        // Unrecognised country code: group everything after the '+' in threes.
+        return "+" + groupInThrees(digits);
+    }
+
+    /** Group a run of digits into space-separated groups of three, from the left. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder(digits.length() + digits.length() / 3);
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
     }
 
     /**
