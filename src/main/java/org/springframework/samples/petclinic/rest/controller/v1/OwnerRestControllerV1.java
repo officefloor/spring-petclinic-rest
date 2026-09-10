@@ -626,15 +626,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Flags a newly created owner as a possible (soft) duplicate. Reaching this point means the
-     * owner already cleared {@link #rejectDuplicateIdentity(OwnerFieldsDto)}, so it is not a hard
-     * household duplicate. A member that declared its household via {@code sharesHousehold} is a
-     * deliberate addition to a known household, not a suspected duplicate, so it is never flagged.
-     * Otherwise it is a possible duplicate when an existing owner shares its {@code lastName}
-     * (compared case-insensitively) and its {@code postcode} while carrying a different (normalized)
-     * {@code telephone}. When such an owner is found, {@code possibleDuplicate} is set {@code true}
-     * and {@code possibleDuplicateOf} to the matching owner's id; otherwise {@code possibleDuplicate}
-     * is set {@code false} and no matching id is recorded. An owner without a postcode can share no
-     * postcode and is never a possible duplicate.
+     * owner already cleared {@link #rejectDuplicateIdentity(OwnerFieldsDto)}, so it does not share
+     * an existing owner's identity key. A member that declared its household via
+     * {@code sharesHousehold} is a deliberate addition to a known household, not a suspected
+     * duplicate, so it is never flagged. Otherwise it is a possible duplicate when an existing owner
+     * shares the Soundex code of its {@code lastName} and its {@code postcode} while carrying a
+     * different identity key (see {@link #findPossibleDuplicate(Owner)}). When such an owner is
+     * found, {@code possibleDuplicate} is set {@code true} and {@code possibleDuplicateOf} to the
+     * matching owner's id; otherwise {@code possibleDuplicate} is set {@code false} and no matching
+     * id is recorded. An owner without a postcode can share no postcode and is never a possible
+     * duplicate.
      *
      * @param owner the owner being created, already carrying its normalized telephone and postcode
      * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
@@ -653,11 +654,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds the existing owner, if any, that makes the given newly created owner a possible (soft)
-     * duplicate: an owner sharing its {@code lastName} (compared case-insensitively) and its
-     * {@code postcode} while carrying a different (normalized) {@code telephone}. This is the single
-     * definition of the soft-duplicate match; {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)} only records the
-     * outcome on the owner. An owner without a postcode can share no postcode and matches nothing, so
-     * {@link java.util.Optional#empty()} is returned.
+     * duplicate: a non-deleted owner whose {@code lastName} shares the new owner's Soundex code (see
+     * {@link Owner#soundex(String)}) and whose {@code postcode} matches, while carrying a different
+     * identity key (see {@link Owner#identityKey(String, String, String)}). Requiring a differing
+     * identity key keeps a hard duplicate — already rejected with 409 by
+     * {@link #rejectDuplicateIdentity(OwnerFieldsDto)} — from also being flagged as a soft match, so
+     * the two household members whose telephones differ (hence differing identity keys, but matching
+     * Soundex and postcode) are exactly the soft matches surfaced here. This is the single definition
+     * of the soft-duplicate match; {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)} only records
+     * the outcome on the owner. An owner without a postcode can share no postcode and matches nothing,
+     * so {@link java.util.Optional#empty()} is returned.
      *
      * @param owner the owner being created, already carrying its normalized telephone and postcode
      * @return the matching existing owner, or {@link java.util.Optional#empty()} when none matches
@@ -666,11 +672,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getPostcode() == null) {
             return java.util.Optional.empty();
         }
+        String soundex = Owner.soundex(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
-                && owner.getPostcode().equals(existing.getPostcode())
-                && !owner.getTelephone().equals(existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey())
+                && soundex.equals(Owner.soundex(existing.getLastName()))
+                && owner.getPostcode().equals(existing.getPostcode()))
             .findFirst();
     }
 
@@ -851,17 +859,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a new owner that is an exact identity duplicate of an existing owner. An owner's
-     * identity is its derived identity key (see {@link Owner#identityKey(String, String, String)}) — its
-     * normalized {@code telephone}, canonical {@code email} and shared {@code householdId} joined by
-     * {@code '|'} — so a new owner is a hard duplicate only when an existing, non-deleted owner
-     * matches it on all three. Two owners that merely share a household (the same last name and
-     * postcode) but differ in telephone or email are distinct owners and are not rejected here; such a
-     * near-match is instead recorded as a soft {@code possibleDuplicate} (see
+     * identity is its single derived identity key (see
+     * {@link Owner#identityKey(String, String, String)}) — the SHA-256 hex digest over its
+     * normalized {@code telephone}, canonical {@code email} and the Soundex code of its
+     * {@code lastName} — so a new owner is a hard duplicate only when some existing, non-deleted
+     * owner carries the same identity key. The email-domain blocklist has already been applied when
+     * the email was normalized ahead of this check, so a disposable-domain email is rejected before
+     * duplicate detection runs. Two owners that merely belong to the same household (the same last
+     * name and postcode) but carry different telephones now have distinct identity keys and are not
+     * rejected here; such a near-match is instead recorded as a soft {@code possibleDuplicate} (see
      * {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)}). When an existing owner shares the new
      * owner's identity key a {@link DuplicateIdentityException} is thrown, which the exception advice
      * renders as a 409 Conflict response. Setting {@code sharesHousehold} declares the owner a
-     * deliberate household member and bypasses this block. An owner without a postcode belongs to no
-     * shared household and is never a duplicate here.
+     * deliberate household member and bypasses this block.
      *
      * @param ownerFieldsDto the submitted owner fields, already normalized in place
      */
@@ -869,12 +879,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold(ownerFieldsDto)) {
             return;
         }
-        String householdId = householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
-        if (householdId == null) {
-            return;
-        }
-        String identityKey = Owner.identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
-        boolean taken = householdMembers(householdId).stream()
+        String identityKey = Owner.identityKey(ownerFieldsDto.getTelephone(),
+            ownerFieldsDto.getEmail(), ownerFieldsDto.getLastName());
+        boolean taken = this.clinicService.findAllOwners().stream()
             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (taken) {

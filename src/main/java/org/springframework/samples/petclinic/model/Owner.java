@@ -297,21 +297,24 @@ public class Owner extends Person {
 
     /**
      * Builds the derived identity key that consolidates all owner duplicate detection into a
-     * single value: the normalized E.164 {@code telephone}, the lower-cased {@code email}
-     * (empty when none) and the {@code householdId} (empty when the owner shares no household),
-     * joined by {@code '|'}. Two owners are duplicates exactly when their whole identity keys are
-     * equal, so a difference in any of the three parts (for example two household mates with
-     * different telephones) yields distinct keys. A {@code null} part contributes the empty string.
+     * single value: the SHA-256 hex digest (see {@link #sha256Hex(String)}) over the normalized
+     * E.164 {@code telephone}, the lower-cased {@code email} (empty when none) and the Soundex
+     * code of the {@code lastName} (see {@link #soundex(String)}), joined by {@code '|'}. Two
+     * owners are duplicates exactly when their whole identity keys are equal, so a difference in
+     * any of the three parts — for example two household mates (same last name, so same Soundex)
+     * with different telephones — yields distinct keys. A {@code null} telephone or email
+     * contributes the empty string. The result is a 64-character lower-case hex string.
      *
      * @param telephone the normalized E.164 telephone
      * @param email the lower-cased email, or {@code null} when none
-     * @param householdId the shared household identifier, or {@code null} when none
-     * @return the derived identity key
+     * @param lastName the owner's last name, reduced to its Soundex code
+     * @return the derived identity key, a 64-character lower-case hex SHA-256 digest
      */
-    public static String identityKey(String telephone, String email, String householdId) {
-        return (telephone == null ? "" : telephone) + "|"
-            + (email == null ? "" : email) + "|"
-            + (householdId == null ? "" : householdId);
+    public static String identityKey(String telephone, String email, String lastName) {
+        String key = (telephone == null ? "" : telephone) + "|"
+            + (email == null ? "" : email.toLowerCase(Locale.ROOT)) + "|"
+            + soundex(lastName);
+        return sha256Hex(key);
     }
 
     /**
@@ -322,7 +325,75 @@ public class Owner extends Person {
      */
     @Transient
     public String getIdentityKey() {
-        return identityKey(this.telephone, this.email, this.householdId);
+        return identityKey(this.telephone, this.email, this.lastName);
+    }
+
+    /**
+     * Computes the American Soundex code of a name: the retained first letter followed by up to
+     * three digits encoding the remaining consonants ({@code B,F,P,V => 1}; {@code C,G,J,K,Q,S,X,Z
+     * => 2}; {@code D,T => 3}; {@code L => 4}; {@code M,N => 5}; {@code R => 6}), with vowels and
+     * {@code Y} acting as separators, {@code H} and {@code W} transparent (they do not break a run
+     * of same-coded consonants), adjacent same-coded letters collapsed to a single digit, and the
+     * code zero-padded to length 4. Non-letters are ignored. A {@code null} or letter-free name
+     * yields the empty string. This is the single definition of the Soundex reduction shared by the
+     * identity key ({@link #identityKey(String, String, String)}).
+     *
+     * @param name the name to encode, or {@code null}
+     * @return the 4-character Soundex code, or the empty string when {@code name} has no letters
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previousCode = soundexCode(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexCode(c);
+            if (digit != '0' && digit != previousCode) {
+                code.append(digit);
+            }
+            previousCode = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * Maps a single upper-case letter to its Soundex digit, or {@code '0'} for a vowel, {@code Y},
+     * {@code H} or {@code W} (the letters that do not contribute a digit). See
+     * {@link #soundex(String)} for the digit groups.
+     *
+     * @param c the upper-case letter to encode
+     * @return the Soundex digit {@code '1'}-{@code '6'}, or {@code '0'} when the letter contributes none
+     */
+    private static char soundexCode(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**
