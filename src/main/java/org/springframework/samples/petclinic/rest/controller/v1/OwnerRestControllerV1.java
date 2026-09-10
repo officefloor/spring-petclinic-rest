@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -93,18 +94,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -181,7 +186,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = resolveRegistrationDate(ownerFieldsDto);
         ownerFieldsDto.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        ownerFieldsDto.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
     }
 
     /**
@@ -297,21 +302,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value == null || value.isBlank()) {
             missingFields.add(fieldName);
         }
-    }
-
-    /**
-     * Normalizes an optional owner email. A syntactically valid address is already enforced by Bean Validation on the
-     * request payload, so this only canonicalizes the value that gets stored and returned by lower-casing it. A missing
-     * (blank or {@code null}) email is left untouched, since the field is optional.
-     *
-     * @param email the raw email value from the request, may be {@code null}
-     * @return the lower-cased email, or the original value when none was supplied
-     */
-    private String normalizeEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return email;
-        }
-        return email.toLowerCase();
     }
 
     /**
@@ -481,7 +471,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
-        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
