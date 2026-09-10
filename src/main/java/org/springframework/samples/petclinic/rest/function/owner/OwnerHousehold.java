@@ -5,15 +5,17 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
-import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-
 /**
- * Shared derivation of an owner's household identity — the normalized last name and address
- * (case-insensitive, collapsed whitespace) and the stable {@code householdId} computed from
- * them. Used by {@link AssignOwnerHousehold} (which assigns and back-fills the id) and by
- * {@link EnsureUniqueOwnerIdentity} (which needs the id a request would resolve to, to build
- * its {@link OwnerIdentityKey}), so both agree on exactly what a household is.
+ * Shared derivation of an owner's household identity. The {@code householdId} is now
+ * <em>deterministic</em>: the first 12 hex characters of SHA-256 over
+ * {@code normalizedLastName + "|" + postcode}. Owners with the same last name (compared
+ * case-insensitively with collapsed whitespace) and the same postcode therefore resolve to
+ * the same householdId automatically, without any creation-order back-fill.
+ *
+ * <p>Used by {@link AssignOwnerHousehold} (which stamps the id onto a new owner), by
+ * {@link EnsureUniqueOwnerIdentity} (which blocks a second owner of an existing household) and
+ * by {@link AssignOwnerPossibleDuplicate} (which treats fellow household members as declared,
+ * not suspected, duplicates), so all three agree on exactly what a household is.
  */
 final class OwnerHousehold {
 
@@ -21,25 +23,19 @@ final class OwnerHousehold {
     }
 
     /**
-     * The {@code householdId} the given last name and address would resolve to if at least one
-     * existing owner already shares that household, otherwise {@code null} (a solo owner keeps a
-     * null householdId).
+     * The deterministic {@code householdId} for the given last name and postcode, or
+     * {@code null} when no postcode is supplied (an owner with no postcode has no household).
      */
-    static String resolve(String lastName, String address, OwnerRepository ownerRepository) {
-        String ln = normalizeName(lastName);
-        String ad = normalizeAddress(address);
-        for (Owner existing : ownerRepository.findAll()) {
-            if (ln.equals(normalizeName(existing.getLastName()))
-                    && ad.equals(normalizeAddress(existing.getAddress()))) {
-                return id(ln, ad);
-            }
+    static String idFor(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
         }
-        return null;
+        return id(normalizeName(lastName), postcode.trim());
     }
 
-    /** Stable 12-char upper-hex identifier derived from the normalized household key. */
-    static String id(String normalizedLastName, String normalizedAddress) {
-        String key = normalizedLastName + "\n" + normalizedAddress;
+    /** Stable 12-char upper-hex identifier derived from the deterministic household key. */
+    static String id(String normalizedLastName, String postcode) {
+        String key = normalizedLastName + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
@@ -60,11 +56,5 @@ final class OwnerHousehold {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /** Address comparison uses the same normalized form the endpoint stores (see {@link OwnerAddress}). */
-    static String normalizeAddress(String value) {
-        String normalized = OwnerAddress.normalize(value);
-        return normalized == null ? "" : normalized;
     }
 }

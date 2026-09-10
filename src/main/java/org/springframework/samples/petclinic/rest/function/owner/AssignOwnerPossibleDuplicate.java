@@ -12,6 +12,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner's {@code lastName} (compared case-insensitively) and {@code postcode} while carrying a
  * different telephone (compared in canonical E.164 form, see {@link OwnerTelephone}).
  *
+ * <p>A fellow member of the same household (same deterministic {@code householdId}, see
+ * {@link OwnerHousehold}) is excluded: sharing a household is a <em>declared</em> relationship
+ * admitted via the {@code sharesHousehold} flag, not a suspected duplicate. Because the
+ * householdId is derived from (lastName, postcode), this is exactly the set of owners a soft
+ * match would otherwise catch, so a declared household member is never flagged.
+ *
  * <p>Such an owner is still created; this step only records the transient {@code possibleDuplicate}
  * flag and, when true, the {@code possibleDuplicateOf} id of the matching owner — the earliest
  * (lowest id) match when several exist. When nothing matches, {@code possibleDuplicate} is false
@@ -33,9 +39,11 @@ public class AssignOwnerPossibleDuplicate {
             return;
         }
         String telephone = OwnerTelephone.canonical(owner.getTelephone());
+        String householdId = owner.getHouseholdId();
         Owner match = ownerRepository.findAll().stream()
                 .filter(existing -> existing.getId() != null
                         && (owner.getId() == null || !existing.getId().equals(owner.getId())))
+                .filter(existing -> householdId == null || !householdId.equals(existing.getHouseholdId()))
                 .filter(existing -> equalsIgnoreCase(existing.getLastName(), lastName)
                         && postcode.equals(existing.getPostcode())
                         && !telephone.equals(OwnerTelephone.canonical(existing.getTelephone())))
