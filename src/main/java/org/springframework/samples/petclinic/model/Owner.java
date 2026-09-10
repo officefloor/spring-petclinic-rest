@@ -22,7 +22,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -473,19 +472,35 @@ public class Owner extends Person {
     }
 
     /**
+     * Resolves the fiscal year a date falls in. The fiscal year starts on 1 July, so a date in July
+     * through December belongs to the fiscal year of the following calendar year, while a date in
+     * January through June belongs to the fiscal year of its own calendar year (for example both
+     * 2025-08-01 and 2026-03-01 fall in fiscal year 2026). This is the single definition of the
+     * date-to-fiscal-year mapping, shared by every value derived on a fiscal-year basis (the
+     * {@code fiscalYear}, the membership number's year segment and tenure).
+     *
+     * @param date the date to resolve, never {@code null}
+     * @return the fiscal year the date falls in
+     */
+    public static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
      * Resolves whether an owner registered on {@code registrationDate} has long tenure as of
-     * {@code asOf}: the whole number of days between the two dates exceeds {@code 365}. Returns
-     * {@code false} when {@code registrationDate} is absent, so the owner has no derivable tenure;
-     * because a newly created owner has zero tenure, it never counts as long-tenured. This is the
+     * {@code asOf}: the number of elapsed fiscal years between the two dates (see
+     * {@link #fiscalYearOf(LocalDate)}) exceeds {@code 1}. Returns {@code false} when
+     * {@code registrationDate} is absent, so the owner has no derivable tenure; because a newly
+     * created owner has zero elapsed fiscal years, it never counts as long-tenured. This is the
      * single definition of the "long tenure" membership factor, shared by every rule that rewards
-     * an owner for tenure beyond a year.
+     * an owner for tenure beyond a fiscal year.
      *
      * @param registrationDate the owner's registration date, or {@code null}
      * @param asOf the date the tenure is measured against
-     * @return {@code true} when the owner's tenure exceeds 365 days
+     * @return {@code true} when the owner's tenure exceeds one elapsed fiscal year
      */
     public static boolean hasLongTenure(LocalDate registrationDate, LocalDate asOf) {
-        return registrationDate != null && ChronoUnit.DAYS.between(registrationDate, asOf) > 365;
+        return registrationDate != null && fiscalYearOf(asOf) - fiscalYearOf(registrationDate) > 1;
     }
 
     /**
@@ -505,8 +520,8 @@ public class Owner extends Person {
      * Returns this owner's membership points. Points start at {@code 0} and accumulate the membership
      * factors: {@code 2} when an email is present, {@code 1} when the owner has no namesakes
      * (namesakeCount is 0), {@code 2} when the owner belongs to a household of three or more, and
-     * {@code 3} when the owner's tenure exceeds 365 days. Because a newly created owner has zero
-     * tenure, the tenure points are never awarded on creation. This is the single source the
+     * {@code 3} when the owner's tenure exceeds one elapsed fiscal year. Because a newly created
+     * owner has zero tenure, the tenure points are never awarded on creation. This is the single source the
      * membership level is derived from (see {@link #getMembershipLevel()}).
      *
      * @return the owner's membership points
@@ -553,9 +568,28 @@ public class Owner extends Person {
     }
 
     /**
+     * Returns this owner's fiscal year formatted as {@code 'FY<YY>'}, where YY is the last two digits
+     * of the fiscal year (starting 1 July, see {@link #fiscalYearOf(LocalDate)}) the owner's
+     * business-day-adjusted {@code registrationDate} falls in, e.g. {@code 'FY26'}. Returns
+     * {@code null} when the owner has no registration date, so the fiscal year cannot be derived.
+     * This is the single definition of an owner's fiscal year, shared by every value derived on a
+     * fiscal-year basis (see {@link #getMembershipNumber()}).
+     *
+     * @return the owner's fiscal year, or {@code null} when it cannot be derived
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+    }
+
+    /**
      * Returns this owner's membership number formatted as {@code '<customerCode>-M<YY>'}, where YY is
-     * the last two digits of the registrationDate year, e.g. {@code 'NSW-A1B2C3D4-M26'}. Returns
-     * {@code null} when the owner has no customer code or registration date.
+     * the last two digits of the fiscal year (see {@link #fiscalYearOf(LocalDate)}) the owner's
+     * business-day-adjusted {@code registrationDate} falls in, e.g. {@code 'NSW-A1B2C3D4-M26'}.
+     * Returns {@code null} when the owner has no customer code or registration date.
      *
      * @return the owner's membership number, or {@code null} when it cannot be derived
      */
@@ -564,7 +598,7 @@ public class Owner extends Person {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
     }
 
     /**
