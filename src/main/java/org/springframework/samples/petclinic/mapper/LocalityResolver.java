@@ -1,34 +1,35 @@
 package org.springframework.samples.petclinic.mapper;
 
 /**
- * Derives an owner's canonical region ('locality'), preferring the postcode over the city.
- * Both the postcode-range and city-to-region tables live on {@link Region}; this resolver
- * looks the region up by postcode first and only falls back to the city when the postcode is
- * absent or in no known range, turning the resolved region into the {@code locality} string an
- * owner is mapped with, using {@link #UNKNOWN} when neither postcode nor city maps to a known
- * region. Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit
- * {@code String -> String} property mapping method.
+ * Derives an owner's canonical region ('locality') from its {@code customerCode}. Since the redesign of owner
+ * identity, the customer code is formatted {@code <REGION>-<HASH8>} (see
+ * {@link IdentityKeyResolver#deriveCustomerCode}), so the locality is simply the {@code REGION} segment — the region
+ * derived from the owner's postcode — rather than being recomputed from the city and postcode. {@link #UNKNOWN} is
+ * returned when the customer code is absent or carries no region segment. Kept out of {@link OwnerMapper} so MapStruct
+ * does not mistake it for an implicit {@code String -> String} property mapping method.
  */
 public final class LocalityResolver {
 
-    /** Locality returned for a city that belongs to no known {@link Region}. */
+    /** Locality returned for an owner whose customer code carries no known {@link Region}. */
     public static final String UNKNOWN = "UNKNOWN";
 
     private LocalityResolver() {
     }
 
     /**
-     * Returns the canonical region for the given owner, preferring the postcode range
-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) over the city-to-region table
-     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). Falls back to the city only when the
-     * postcode is absent or in no known range, and returns "UNKNOWN" when neither maps to a
-     * known region (including a {@code null} city and postcode).
+     * Returns the canonical region ('locality') for the given {@code customerCode}, which is the {@code REGION} segment
+     * of the {@code <REGION>-<HASH8>} customer code (the region derived from the owner's postcode). Returns
+     * {@link #UNKNOWN} when the customer code is {@code null}, blank, or carries no region segment.
+     *
+     * @param customerCode the owner's customer code, may be {@code null}
+     * @return the region segment of the customer code, or {@link #UNKNOWN} when none is present
      */
-    public static String deriveLocality(String city, String postcode) {
-        Region region = Region.forPostcode(postcode);
-        if (region == null) {
-            region = Region.forCity(city);
+    public static String deriveLocality(String customerCode) {
+        if (customerCode == null) {
+            return UNKNOWN;
         }
-        return region == null ? UNKNOWN : region.name();
+        int dash = customerCode.indexOf('-');
+        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
+        return region.isBlank() ? UNKNOWN : region;
     }
 }

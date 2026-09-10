@@ -29,7 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCity(), owner.getPostcode()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "contactPreference",

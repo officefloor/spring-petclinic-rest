@@ -67,13 +67,45 @@ public class IdentityKeyResolver {
     public String deriveHouseholdId(String lastName, String address) {
         String key = collapseWhitespace(lastName).toLowerCase()
             + "\n" + addressNormalizer.normalize(address).toLowerCase();
+        return "HH-" + upperHexDigest(key, 12);
+    }
+
+    /**
+     * Derives an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}. {@code REGION} is the region code
+     * derived from the owner's postcode (see {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN}
+     * when the postcode maps to no known region; {@code HASH8} is the first 8 upper-case hex characters of the SHA-256
+     * digest of the normalized telephone (see {@link TelephoneNormalizer#canonicalize}) concatenated with the owner's
+     * last name (e.g. {@code NSW-1A2B3C4D}). Being a pure function of the postcode, telephone and last name it carries
+     * no sequence number and is stable for a given owner.
+     *
+     * @param owner the newly mapped owner about to be saved, with its telephone already normalized
+     * @return the generated customer code
+     */
+    public String deriveCustomerCode(Owner owner) {
+        Region region = Region.forPostcode(owner.getPostcode());
+        String regionCode = region == null ? LocalityResolver.UNKNOWN : region.name();
+        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
+        String hash8 = upperHexDigest(telephone + owner.getLastName(), 8);
+        return regionCode + "-" + hash8;
+    }
+
+    /**
+     * Returns the first {@code chars} upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of
+     * {@code value}. Shared by {@link #deriveHouseholdId} and {@link #deriveCustomerCode} so both express the same
+     * hashing in one place.
+     *
+     * @param value the value to hash
+     * @param chars the number of leading hex characters to return
+     * @return the leading upper-case hex characters of the digest
+     */
+    private String upperHexDigest(String value, int chars) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                hex.append(String.format("%02X", digest[i]));
+            for (byte b : digest) {
+                hex.append(String.format("%02X", b));
             }
-            return "HH-" + hex;
+            return hex.substring(0, chars);
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }

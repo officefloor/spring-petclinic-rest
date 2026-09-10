@@ -164,7 +164,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeAndValidate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         assignHouseholdId(owner, ownerFieldsDto);
@@ -261,25 +261,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return createdThatDay > BULK_SIGNUP_WARNING_THRESHOLD;
-    }
-
-    /**
-     * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>}. {@code CITY3} is the upper-cased
-     * first three letters of the city, {@code LAST3} the upper-cased first three letters of the last name, and
-     * {@code NNNN} a per-city 4-digit zero-padded sequence equal to one more than the number of owners already in that
-     * city (e.g. {@code LON-SMI-0007}).
-     *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
-     * @return the generated customer code
-     */
-    private String generateCustomerCode(String city, String lastName) {
-        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
     }
 
     /**
