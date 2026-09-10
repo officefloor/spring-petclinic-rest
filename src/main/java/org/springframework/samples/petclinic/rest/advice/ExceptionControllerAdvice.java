@@ -158,14 +158,11 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(MissingOwnerFieldsException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.BAD_REQUEST;
         logger.debug("Missing or blank required fields at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getFields());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", e.getFields());
-        return ResponseEntity.status(status).body(detail);
+        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, e.getFields());
     }
 
     /**
@@ -180,14 +177,11 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(InvalidTelephoneException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.BAD_REQUEST;
         logger.debug("Invalid telephone at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
+        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("telephone"));
     }
 
     /**
@@ -202,14 +196,30 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(DuplicateTelephoneException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
         logger.debug("Duplicate telephone at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
+        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("telephone"));
+    }
+
+    /**
+     * Builds the response body shared by the handlers that report a single business-rule violation: a
+     * {@link ProblemDetail} for the given status carrying {@code detail} as its detail message and the offending field
+     * names in its {@code errors} property.
+     *
+     * @param e the exception being handled, used to title the {@link ProblemDetail}
+     * @param status the HTTP status to return
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @param detail the human-readable detail message
+     * @param errors the names of the fields the violation is reported against
+     * @return a {@link ResponseEntity} carrying the problem detail and the given status
+     */
+    private ResponseEntity<ProblemDetail> errorResponse(Exception e, HttpStatus status, HttpServletRequest request,
+                                                        String detail, List<String> errors) {
+        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
+        problemDetail.setProperty("errors", errors);
+        return ResponseEntity.status(status).body(problemDetail);
     }
 
     /**

@@ -108,14 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        validateRequiredFields(ownerFieldsDto);
-        String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
-        ownerFieldsDto.setTelephone(telephone);
-        requireUniqueTelephone(telephone);
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (ownerFieldsDto.getRegistrationDate() == null) {
-            ownerFieldsDto.setRegistrationDate(LocalDate.now());
-        }
+        normalizeAndValidate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
@@ -124,6 +117,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Prepares a new owner's payload for persistence, applying every rule an incoming owner must satisfy before it is
+     * saved. Required fields are checked first; the telephone is then normalized to its canonical stored form, written
+     * back onto the payload and rejected if another owner already uses it; the email is canonicalized; and a missing
+     * registration date defaults to the current date. The payload is mutated in place so the caller can map and save it
+     * directly.
+     *
+     * @param ownerFieldsDto the incoming owner payload, mutated in place
+     * @throws MissingOwnerFieldsException if any required field is missing or blank
+     * @throws DuplicateTelephoneException if another owner already uses the normalized telephone
+     */
+    private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
+        String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+        ownerFieldsDto.setTelephone(telephone);
+        requireUniqueTelephone(telephone);
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        if (ownerFieldsDto.getRegistrationDate() == null) {
+            ownerFieldsDto.setRegistrationDate(LocalDate.now());
+        }
     }
 
     /**
