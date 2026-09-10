@@ -68,6 +68,14 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    /**
+     * Number of owners belonging to this owner's household (owners sharing the same
+     * {@code householdId}), including this owner. Derived at request time rather than stored, and
+     * used to award the {@code GOLD} membership tier to households of three or more members.
+     */
+    @Transient
+    private Integer householdMemberCount;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -141,6 +149,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getHouseholdMemberCount() {
+        return this.householdMemberCount;
+    }
+
+    public void setHouseholdMemberCount(Integer householdMemberCount) {
+        this.householdMemberCount = householdMemberCount;
     }
 
     protected Set<Pet> getPetsInternal() {

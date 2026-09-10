@@ -118,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owners.forEach(this::populateHouseholdMemberCount);
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
@@ -128,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        populateHouseholdMemberCount(owner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
@@ -144,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        populateHouseholdMemberCount(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -443,6 +446,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }
+    }
+
+    /**
+     * Populates the owner's transient {@code householdMemberCount} with the number of owners that belong to its
+     * household, i.e. those sharing the same non-null {@code householdId} (including the owner itself). An owner with no
+     * household is counted as a household of one. This drives the {@code GOLD} membership tier, awarded once a household
+     * reaches three or more members.
+     *
+     * @param owner the owner whose household size should be resolved
+     */
+    private void populateHouseholdMemberCount(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            owner.setHouseholdMemberCount(1);
+            return;
+        }
+        long members = this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+        owner.setHouseholdMemberCount((int) members);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
