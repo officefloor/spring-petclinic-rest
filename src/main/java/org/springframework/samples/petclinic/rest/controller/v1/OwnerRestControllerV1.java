@@ -223,11 +223,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
         this.clinicService.saveOwner(owner);
         applyHouseholdMemberCount(owner);
+        auditOwnerCreated(owner);
+        emitOwnerCreatedEvent(owner);
+        return owner;
+    }
+
+    /**
+     * Writes the human-readable {@code Owner created} audit line for a freshly persisted owner,
+     * carrying its {@code id}, its derived identifiers ({@code customerCode} and
+     * {@code membershipNumber}), its stored {@code registrationDate} and its derived
+     * {@code membershipLevel}. This is the free-form companion to the structured
+     * {@code OWNER_CREATED} event (see {@link #emitOwnerCreatedEvent(Owner)}); isolating it here
+     * keeps {@link #createOwner(OwnerFieldsDto)} a thin orchestration and gives the audit line one
+     * place to grow.
+     *
+     * @param owner the persisted owner, already carrying its generated id and derived values
+     */
+    private void auditOwnerCreated(Owner owner) {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
-        emitOwnerCreatedEvent(owner);
-        return owner;
     }
 
     /**
@@ -663,22 +678,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the customer code assigned to a newly created owner. The code is formatted as
-     * {@code '<REGION>-<HASH8>'}, where {@code REGION} is the owner's canonical region (see
-     * {@link Owner#getRegion()}), rendered {@code 'UNKNOWN'} when the owner has no known region,
-     * and {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest over the
-     * owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}. The code
-     * carries no sequence number, so two owners sharing a region, telephone and last name resolve to
-     * the same code. The whole owner is taken so the code is derived from whichever of its fields the
-     * identity scheme needs.
+     * {@code '<REGION>-<HASH8>'}, joining the owner's region code (see {@link Owner#getRegionCode()},
+     * rendered {@code 'UNKNOWN'} when the owner has no known region) to its identity hash (see
+     * {@link Owner#getIdentityHash()}, the first 8 upper-case hex characters of the SHA-256 digest
+     * over the owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}),
+     * then de-duplicated against existing owners (see {@link #deduplicateCustomerCode(String)}). The
+     * composed base carries no sequence number, so two owners sharing a region, telephone and last
+     * name resolve to the same base code and are separated only by de-duplication.
      *
      * @param owner the owner being created, whose fields the code is derived from
      * @return the formatted customer code
      */
     private String customerCodeFor(Owner owner) {
-        String region = owner.getRegion();
-        String regionCode = region != null ? region : "UNKNOWN";
-        String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
-        return deduplicateCustomerCode(regionCode + "-" + hash8);
+        return deduplicateCustomerCode(owner.getRegionCode() + "-" + owner.getIdentityHash());
     }
 
     /**
@@ -1051,17 +1063,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Returns the leading {@code hexChars} upper-case hex characters of the SHA-256 digest of a
      * string, the form used by the derived owner codes (for example the customer code and household
-     * identifier). The digest itself comes from {@link Owner#sha256Hex(String)}, the single
-     * definition of the SHA-256 hex derivation; this method only takes its leading characters and
-     * upper-cases them, so {@code hexChars} characters cover the leading {@code ceil(hexChars / 2)}
-     * bytes of the digest.
+     * identifier). Delegates to {@link Owner#shaHexPrefix(String, int)}, the single definition of the
+     * truncated upper-case hex derivation, so {@code hexChars} characters cover the leading
+     * {@code ceil(hexChars / 2)} bytes of the digest.
      *
      * @param input the string to hash
      * @param hexChars the number of leading upper-case hex characters to return
      * @return the first {@code hexChars} upper-case hex characters of the SHA-256 digest
      */
     private String shaHex(String input, int hexChars) {
-        return Owner.sha256Hex(input).substring(0, hexChars).toUpperCase(java.util.Locale.ROOT);
+        return Owner.shaHexPrefix(input, hexChars);
     }
 
     /**

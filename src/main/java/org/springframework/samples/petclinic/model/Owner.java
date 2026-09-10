@@ -329,6 +329,20 @@ public class Owner extends Person {
     }
 
     /**
+     * Returns this owner's identity hash: the leading 8 upper-case hex characters (see
+     * {@link #shaHexPrefix(String, int)}) of the SHA-256 digest over the owner's normalized E.164
+     * {@code telephone} concatenated with its {@code lastName}. This is the single definition of the
+     * {@code HASH8} segment the region-and-hash identity is built from (see {@link #getRegionCode()}),
+     * shared by every derived code that carries it.
+     *
+     * @return the owner's 8-character upper-case hex identity hash
+     */
+    @Transient
+    public String getIdentityHash() {
+        return shaHexPrefix(this.telephone + this.lastName, 8);
+    }
+
+    /**
      * Computes the American Soundex code of a name: the retained first letter followed by up to
      * three digits encoding the remaining consonants ({@code B,F,P,V => 1}; {@code C,G,J,K,Q,S,X,Z
      * => 2}; {@code D,T => 3}; {@code L => 4}; {@code M,N => 5}; {@code R => 6}), with vowels and
@@ -420,6 +434,22 @@ public class Owner extends Person {
         catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }
+    }
+
+    /**
+     * Returns the leading {@code hexChars} upper-case hex characters of the SHA-256 digest of a
+     * string (see {@link #sha256Hex(String)}). This is the single definition of the truncated
+     * upper-case hex form the derived owner codes are built from — the region-and-hash identity's
+     * {@code HASH8} (see {@link #getIdentityHash()}) and the household identifier each take a leading
+     * slice of a digest — so {@code hexChars} characters cover the leading {@code ceil(hexChars / 2)}
+     * bytes of the digest.
+     *
+     * @param input the string to hash
+     * @param hexChars the number of leading upper-case hex characters to return
+     * @return the first {@code hexChars} upper-case hex characters of the SHA-256 digest of {@code input}
+     */
+    public static String shaHexPrefix(String input, int hexChars) {
+        return sha256Hex(input).substring(0, hexChars).toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -554,6 +584,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Returns the region code carried by this owner's derived identity: the owner's canonical region
+     * (see {@link #getRegion()}), or the sentinel {@code 'UNKNOWN'} when the owner has no known
+     * region. Unlike {@link #getRegion()} this never returns {@code null}, so it is the single
+     * definition of the {@code REGION} segment the region-and-hash identity leads with (see
+     * {@link #getIdentityHash()}).
+     *
+     * @return the owner's region code, or {@code 'UNKNOWN'} when it has no known region
+     */
+    @Transient
+    public String getRegionCode() {
+        String region = getRegion();
+        return region != null ? region : "UNKNOWN";
+    }
+
+    /**
      * Resolves whether an {@code email} counts as present for membership purposes: the value is
      * non-null and not blank. Returns {@code false} otherwise. This is the single definition of an
      * owner "having an email", shared by every rule that turns email presence into a derived value
@@ -592,6 +637,20 @@ public class Owner extends Person {
      */
     public static int fiscalYearOf(LocalDate date) {
         return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Renders the two-digit fiscal-year segment ({@code YY}) of a date: the last two digits of the
+     * fiscal year the date falls in (see {@link #fiscalYearOf(LocalDate)}), zero-padded to two
+     * characters (for example both 2025-08-01 and 2026-03-01 render {@code '26'}). This is the single
+     * definition of the {@code YY} fiscal-year segment, shared by every value that carries it (the
+     * {@code fiscalYear} and the membership number's year segment).
+     *
+     * @param date the date to resolve, never {@code null}
+     * @return the two-digit fiscal-year segment the date falls in
+     */
+    public static String fiscalYearSegment(LocalDate date) {
+        return String.format("%02d", fiscalYearOf(date) % 100);
     }
 
     /**
@@ -722,7 +781,7 @@ public class Owner extends Person {
         if (this.registrationDate == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+        return "FY" + fiscalYearSegment(this.registrationDate);
     }
 
     /**
@@ -738,7 +797,7 @@ public class Owner extends Person {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
+        return String.format("%s-M%s", this.customerCode, fiscalYearSegment(this.registrationDate));
     }
 
     /**
@@ -752,7 +811,21 @@ public class Owner extends Person {
         if (this.customerCode == null) {
             return null;
         }
-        String code = this.customerCode;
+        return luhnCheckDigit(this.customerCode);
+    }
+
+    /**
+     * Computes the single Luhn check digit (0-9) over the digits contained in a string: reading from
+     * the right, every second digit is doubled (subtracting 9 when the result exceeds 9), the digits
+     * are summed and the check digit is the amount that rounds the sum up to the next multiple of ten.
+     * Non-digit characters are skipped, so a code mixing letters and digits contributes only its
+     * digits. This is the single definition of the Luhn check digit, shared by every value that
+     * carries one (see {@link #getCheckDigit()}).
+     *
+     * @param code the string whose digits the check digit is computed over
+     * @return the Luhn check digit (0-9) of {@code code}
+     */
+    public static int luhnCheckDigit(String code) {
         int sum = 0;
         boolean dbl = true;
         for (int i = code.length() - 1; i >= 0; i--) {
