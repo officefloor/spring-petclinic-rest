@@ -6,24 +6,20 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Rejects a create-owner request whose normalized telephone is already used by any other
- * owner, responding 409. Runs after {@link ValidateOwnerFields} (which normalizes the
- * telephone to exactly ten digits) and before {@link BuildOwner}, comparing against the
- * normalized telephone of every existing owner.
+ * Rejects a create-owner request whose E.164 telephone is already used by any other owner,
+ * responding 409. Runs after {@link ValidateOwnerFields} (which normalizes the telephone to
+ * E.164 form) and before {@link BuildOwner}, comparing E.164 values against every existing
+ * owner.
  */
 public class EnsureUniqueOwnerTelephone {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerTelephoneException {
-        String telephone = normalize(request.getTelephone());
+        String telephone = OwnerTelephone.canonical(request.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
-            if (telephone.equals(normalize(existing.getTelephone()))) {
+            if (telephone.equals(OwnerTelephone.canonical(existing.getTelephone()))) {
                 throw new DuplicateOwnerTelephoneException(telephone);
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }

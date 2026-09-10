@@ -10,9 +10,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Rejects a create-owner request that is missing or blank in any of firstName, lastName,
  * address, city or telephone, before {@link BuildOwner} runs. Runs first so an incomplete
- * body is a 400 naming the offending fields. Also normalizes the telephone by stripping
- * every non-digit character and requires exactly ten digits, rejecting otherwise with a
- * 400; the normalized value is stored on the body so it is persisted and returned.
+ * body is a 400 naming the offending fields. Also normalizes the telephone into E.164 form
+ * (see {@link OwnerTelephone}), rejecting otherwise with a 400; the normalized value is
+ * stored on the body so it is persisted and returned.
  * When an {@code email} is present it must be a syntactically valid address and is stored
  * lower-cased (rejected with 400 otherwise); an absent email is allowed.
  * Publishes the validated body for later steps.
@@ -30,11 +30,7 @@ public class ValidateOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
-            throw new InvalidOwnerTelephoneException(telephone);
-        }
-        request.setTelephone(telephone);
+        request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         OwnerEmail.normalize(request);
         validated.set(request);
     }
