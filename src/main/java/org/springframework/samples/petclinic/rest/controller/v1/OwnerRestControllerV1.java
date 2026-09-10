@@ -77,6 +77,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners that may be created in a single day; creating an owner past this cap is rejected. */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /** Once more than this many owners already exist for a day, a further create for that day is flagged as a bulk signup. */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -136,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
+        owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
@@ -210,6 +214,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DailyOwnerLimitExceededException(
                 "the maximum number of owners for today has already been reached");
         }
+    }
+
+    /**
+     * Determines whether creating an owner for the given adjusted business-day registration date should carry a bulk
+     * signup warning. The warning is raised once more than 80 owners already carry that {@code registrationDate},
+     * i.e. this create is at least the 82nd for the day. Evaluated before the new owner is saved, so the count
+     * reflects only owners that predate it.
+     *
+     * @param registrationDate the adjusted business-day registration date of the owner being created
+     * @return {@code true} when more than 80 owners already exist for that day, {@code false} otherwise
+     */
+    private boolean computeBulkSignupWarning(LocalDate registrationDate) {
+        long createdThatDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return createdThatDay > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
