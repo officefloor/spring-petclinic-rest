@@ -48,7 +48,7 @@ CREATE TABLE owners (
   email      VARCHAR(255),
   postcode   VARCHAR(4),
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(32),
   household_id VARCHAR(64),
   namesake_count INTEGER,
   possible_duplicate BOOLEAN,

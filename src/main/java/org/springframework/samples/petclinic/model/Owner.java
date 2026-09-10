@@ -69,8 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -219,12 +219,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -767,51 +767,29 @@ public class Owner extends Person {
     }
 
     /**
-     * Returns this owner's fiscal year formatted as {@code 'FY<YY>'}, where YY is the last two digits
-     * of the fiscal year (starting 1 July, see {@link #fiscalYearOf(LocalDate)}) the owner's
-     * business-day-adjusted {@code registrationDate} falls in, e.g. {@code 'FY26'}. Returns
-     * {@code null} when the owner has no registration date, so the fiscal year cannot be derived.
-     * This is the single definition of an owner's fiscal year, shared by every value derived on a
-     * fiscal-year basis (see {@link #getMembershipNumber()}).
+     * Returns this owner's fiscal year formatted as {@code 'FY<YY>'}, where YY is the two-digit
+     * fiscal-year segment carried by the owner's {@code memberId} (see {@link #getMemberId()}), the
+     * segment immediately following the leading region code. Because the {@code memberId} is the
+     * unified identity the fiscal year is now read from, this returns {@code null} when the owner has
+     * no {@code memberId}, so the fiscal year cannot be derived. The two-digit segment is the last two
+     * digits of the fiscal year (starting 1 July, see {@link #fiscalYearOf(LocalDate)}) the owner's
+     * business-day-adjusted {@code registrationDate} fell in when the {@code memberId} was assigned,
+     * e.g. a {@code memberId} of {@code 'NSW26A1B2C3D45'} yields {@code 'FY26'}. This is the single
+     * definition of an owner's fiscal year.
      *
      * @return the owner's fiscal year, or {@code null} when it cannot be derived
      */
     @Transient
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        if (this.memberId == null) {
             return null;
         }
-        return "FY" + fiscalYearSegment(this.registrationDate);
-    }
-
-    /**
-     * Returns this owner's membership number formatted as {@code '<customerCode>-M<YY>'}, where YY is
-     * the last two digits of the fiscal year (see {@link #fiscalYearOf(LocalDate)}) the owner's
-     * business-day-adjusted {@code registrationDate} falls in, e.g. {@code 'NSW-A1B2C3D4-M26'}.
-     * Returns {@code null} when the owner has no customer code or registration date.
-     *
-     * @return the owner's membership number, or {@code null} when it cannot be derived
-     */
-    @Transient
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
+        String core = this.memberId;
+        int dash = core.indexOf('-');
+        if (dash >= 0) {
+            core = core.substring(0, dash);
         }
-        return String.format("%s-M%s", this.customerCode, fiscalYearSegment(this.registrationDate));
-    }
-
-    /**
-     * Returns this owner's check digit: a single Luhn check digit (0-9) over the digits contained in
-     * the owner's customerCode. Returns {@code null} when the owner has no customer code.
-     *
-     * @return the owner's check digit, or {@code null} when it has no customer code
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        return luhnCheckDigit(this.customerCode);
+        return "FY" + core.substring(core.length() - 11, core.length() - 9);
     }
 
     /**
@@ -820,7 +798,7 @@ public class Owner extends Person {
      * are summed and the check digit is the amount that rounds the sum up to the next multiple of ten.
      * Non-digit characters are skipped, so a code mixing letters and digits contributes only its
      * digits. This is the single definition of the Luhn check digit, shared by every value that
-     * carries one (see {@link #getCheckDigit()}).
+     * carries one (the {@code CHK} segment of the unified member id, see {@link #getMemberId()}).
      *
      * @param code the string whose digits the check digit is computed over
      * @return the Luhn check digit (0-9) of {@code code}

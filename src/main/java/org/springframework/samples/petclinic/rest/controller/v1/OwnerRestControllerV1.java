@@ -198,7 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the saved {@link Owner}. The submitted fields are normalized and validated
      * ({@link #prepareNewOwner(OwnerFieldsDto, LocalDate)}) against the effective business-day
      * {@code registrationDate} ({@link #effectiveRegistrationDate(OwnerFieldsDto)}); the owner is
-     * then mapped, stamped with that registration date and every derived value (customer code,
+     * then mapped, stamped with that registration date and every derived value (member id,
      * namesake count, household), flagged as a possible duplicate where applicable, saved, and
      * finally stamped with its household member count. A rule that rejects the owner signals it by
      * throwing, which the exception advice renders as the matching 4xx response, so this method
@@ -216,7 +216,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         prepareNewOwner(ownerFieldsDto, registrationDate);
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(customerCodeFor(owner));
+        owner.setMemberId(memberIdFor(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner);
         applyPossibleDuplicate(owner, ownerFieldsDto);
@@ -230,9 +230,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Writes the human-readable {@code Owner created} audit line for a freshly persisted owner,
-     * carrying its {@code id}, its derived identifiers ({@code customerCode} and
-     * {@code membershipNumber}), its stored {@code registrationDate} and its derived
-     * {@code membershipLevel}. This is the free-form companion to the structured
+     * carrying its {@code id}, its unified {@code memberId}, its stored {@code registrationDate} and
+     * its derived {@code membershipLevel}. This is the free-form companion to the structured
      * {@code OWNER_CREATED} event (see {@link #emitOwnerCreatedEvent(Owner)}); isolating it here
      * keeps {@link #createOwner(OwnerFieldsDto)} a thin orchestration and gives the audit line one
      * place to grow.
@@ -240,9 +239,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the persisted owner, already carrying its generated id and derived values
      */
     private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            owner.getMembershipLevel());
     }
 
     /**
@@ -250,7 +249,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * alongside the human-readable audit line. The event is a JSON object carrying, in order, a
      * {@code seq} (a monotonically increasing integer across creates, see {@link #OWNER_CREATED_SEQ}),
      * the owner's {@code ownerId}, the owner's current primary identifier (see
-     * {@link #primaryIdentifier(Owner)}) under the {@code customerCode} key, the owner's derived
+     * {@link #primaryIdentifier(Owner)}) under the {@code memberId} key, the owner's derived
      * {@code membershipLevel}, and the {@code event} marker {@code 'OWNER_CREATED'}. Published to the
      * dedicated {@code AUDIT} logger so downstream consumers can react to owner creation structurally
      * rather than by parsing the free-form line.
@@ -259,22 +258,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         long seq = OWNER_CREATED_SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             seq, owner.getId(), jsonString(primaryIdentifier(owner)), owner.getMembershipLevel());
     }
 
     /**
      * Returns the owner's current primary identifier, the single identity the structured
-     * {@code OWNER_CREATED} event carries. Today that is the owner's {@code customerCode}; this is the
-     * one seam that decides which field is primary, so when the customer code is later unified into the
-     * member id it is enough to return the member id here for the event to carry it instead — the event
-     * shape (a {@code customerCode} field holding the primary identifier) stays the same.
+     * {@code OWNER_CREATED} event carries: the owner's unified {@code memberId}. This is the one seam
+     * that decides which field is primary, so the event carries the member id under its
+     * {@code memberId} key.
      *
      * @param owner the persisted owner whose primary identifier the event should carry
      * @return the owner's current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
@@ -677,33 +675,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code assigned to a newly created owner. The code is formatted as
-     * {@code '<REGION>-<HASH8>'}, joining the owner's region code (see {@link Owner#getRegionCode()},
-     * rendered {@code 'UNKNOWN'} when the owner has no known region) to its identity hash (see
+     * Builds the unified {@code memberId} assigned to a newly created owner. The id is formatted as
+     * {@code '<REGION><FY><HASH8><CHK>'}, concatenating (with no separators) the owner's region code
+     * (see {@link Owner#getRegionCode()}, rendered {@code 'UNKNOWN'} when the owner has no known
+     * region), the two-digit fiscal-year segment its business-day-adjusted {@code registrationDate}
+     * falls in (see {@link Owner#fiscalYearSegment(LocalDate)}), its identity hash (see
      * {@link Owner#getIdentityHash()}, the first 8 upper-case hex characters of the SHA-256 digest
-     * over the owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}),
-     * then de-duplicated against existing owners (see {@link #deduplicateCustomerCode(String)}). The
-     * composed base carries no sequence number, so two owners sharing a region, telephone and last
-     * name resolve to the same base code and are separated only by de-duplication.
+     * over the owner's normalized E.164 {@code telephone} concatenated with its {@code lastName}) and
+     * a single Luhn check digit (see {@link Owner#luhnCheckDigit(String)}) computed over the digits of
+     * {@code <REGION><FY><HASH8>}. The composed base is then de-duplicated against existing owners
+     * (see {@link #deduplicateMemberId(String)}). The base carries no sequence number, so two owners
+     * sharing a region, fiscal year, telephone and last name resolve to the same base and are
+     * separated only by de-duplication.
      *
-     * @param owner the owner being created, whose fields the code is derived from
-     * @return the formatted customer code
+     * @param owner the owner being created, whose fields the id is derived from
+     * @return the formatted member id
      */
-    private String customerCodeFor(Owner owner) {
-        return deduplicateCustomerCode(owner.getRegionCode() + "-" + owner.getIdentityHash());
+    private String memberIdFor(Owner owner) {
+        String prefix = owner.getRegionCode()
+            + Owner.fiscalYearSegment(owner.getRegistrationDate())
+            + owner.getIdentityHash();
+        return deduplicateMemberId(prefix + Owner.luhnCheckDigit(prefix));
     }
 
     /**
-     * Ensures the computed {@code customerCode} is unique across existing owners. When the given base
-     * code collides with an existing owner's {@code customerCode}, {@code '-<n>'} is appended with the
-     * smallest {@code n} of 2 or more that yields a code no existing owner already carries.
+     * Ensures the computed {@code memberId} is unique across existing owners. When the given base id
+     * collides with an existing owner's {@code memberId}, {@code '-<n>'} is appended with the smallest
+     * {@code n} of 2 or more that yields an id no existing owner already carries.
      *
-     * @param baseCode the customer code computed for the owner being created
-     * @return the base code when it is already unique, otherwise the de-duplicated code
+     * @param baseCode the member id computed for the owner being created
+     * @return the base id when it is already unique, otherwise the de-duplicated id
      */
-    private String deduplicateCustomerCode(String baseCode) {
+    private String deduplicateMemberId(String baseCode) {
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         if (!existing.contains(baseCode)) {

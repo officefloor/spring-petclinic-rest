@@ -97,10 +97,11 @@ public interface OwnerMapper {
 
     /**
      * Resolves the region an owner's {@link #locality(Owner)} is derived from. This is the
-     * {@code REGION} segment carried by the owner's {@code customerCode}, whose new
-     * {@code '<REGION>-<HASH8>'} identity encodes the region ahead of the first {@code '-'}. The
-     * sentinel {@code 'UNKNOWN'} region (used when the owner has no known region) and a missing
-     * customer code both resolve to {@code null}. Keeping the region source in its own method leaves
+     * {@code REGION} segment the owner's unified {@code memberId} leads with, whose
+     * {@code '<REGION><FY><HASH8><CHK>'} identity encodes the region as its prefix. The sentinel
+     * {@code 'UNKNOWN'} region (used when the owner has no known region) and a missing member id both
+     * resolve to {@code null}, since only the known regions ({@code NSW}, {@code VIC}, {@code QLD})
+     * the member id can begin with are returned. Keeping the region source in its own method leaves
      * {@link #locality(Owner)} owning only the {@code null -> 'UNKNOWN'} rendering, so where the
      * region itself comes from can change without disturbing that rendering.
      *
@@ -108,13 +109,16 @@ public interface OwnerMapper {
      * @return the region string, or {@code null} when the owner has no known region
      */
     default String localityRegion(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
+        String memberId = owner.getMemberId();
+        if (memberId == null) {
             return null;
         }
-        int dash = code.indexOf('-');
-        String region = dash >= 0 ? code.substring(0, dash) : code;
-        return "UNKNOWN".equals(region) ? null : region;
+        for (String region : REGION_TIMEZONES.keySet()) {
+            if (memberId.startsWith(region)) {
+                return region;
+            }
+        }
+        return null;
     }
 
     /**
