@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index aa66bf26f..2bc56f9f5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,8 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.GOLD : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER : org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.region(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+new file mode 100644
+index 000000000..d0bcb00a0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.common;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's numeric membership level (1 to 3) from stable owner fields,
++ * replacing the former string membership tier.
++ *
++ * <p>The level starts at 1, gains 1 when the owner has an email, gains 1 when the
++ * owner's {@code namesakeCount} is 0, and is capped at 3. Level 4 is reserved for
++ * tenure. Because it depends only on the persisted email and namesakeCount, the
++ * create response and any later GET compute the same value.
++ */
++public final class MembershipLevels {
++
++    /** The highest level derivable at creation; level 4 is reserved for tenure. */
++    public static final int MAX_LEVEL = 3;
++
++    private MembershipLevels() {
++    }
++
++    /**
++     * Compute the membership level for the given owner.
++     */
++    public static int of(Owner owner) {
++        int level = 1;
++        String email = owner.getEmail();
++        if (email != null && !email.isBlank()) {
++            level++;
++        }
++        Integer namesakeCount = owner.getNamesakeCount();
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, MAX_LEVEL);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index f9c1c0a04..b79ae6306 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,18 +5,20 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.function.common.MembershipLevels;
+ 
+ /**
+  * Emits an audit trail entry, via the dedicated {@code AUDIT} logger, for a
+  * successfully created owner. The line carries the owner id, the assigned
+- * customerCode and the registrationDate.
++ * customerCode, the registrationDate and the assigned membershipLevel.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger audit = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        audit.info("Owner created: id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        audit.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                MembershipLevels.of(owner));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2b7749800..4fc9d5ac3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2110,15 +2110,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier. 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members after this create. Otherwise 'SILVER' when namesakeCount is 0 and an email is present, or 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's numeric membership level, from 1 to 3, assigned on creation. Starts at 1, gains 1 when an email is present, gains 1 when namesakeCount is 0, and is capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
