@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f7d0ba4dc..e0bf4660c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,8 +20,10 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Objects;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.stream.Collectors;
+ 
+ import org.slf4j.Logger;
+@@ -54,6 +56,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -75,14 +78,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final HttpServletRequest request;
++
++    /**
++     * HTTP header carrying the client-supplied idempotency key for the create endpoint. When a
++     * create repeats with a key already seen, the originally created owner is returned instead of
++     * creating a duplicate.
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Remembers, per seen {@code Idempotency-Key}, the id of the owner that key's create produced,
++     * so a repeat create with the same key can return the originally created owner rather than
++     * persisting a duplicate. Shared across requests, hence concurrency-safe.
++     */
++    private static final Map<String, Integer> IDEMPOTENT_CREATES = new ConcurrentHashMap<>();
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -116,10 +137,60 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = idempotencyKey();
++        if (idempotencyKey != null) {
++            ResponseEntity<OwnerDto> replay = replayIdempotentCreate(idempotencyKey);
++            if (replay != null) {
++                return replay;
++            }
++        }
+         Owner owner = createOwner(ownerFieldsDto);
++        if (idempotencyKey != null) {
++            IDEMPOTENT_CREATES.put(idempotencyKey, owner.getId());
++        }
+         return createdOwnerResponse(owner);
+     }
+ 
++    /**
++     * Reads the request's {@code Idempotency-Key} header, returning the trimmed key or {@code null}
++     * when the header is absent or blank. A blank key carries no intent to deduplicate, so the
++     * create proceeds normally.
++     *
++     * @return the non-blank idempotency key, or {@code null} when none was supplied
++     */
++    private String idempotencyKey() {
++        String key = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
++        if (key == null || key.isBlank()) {
++            return null;
++        }
++        return key.trim();
++    }
++
++    /**
++     * Replays the create originally produced by the given {@code Idempotency-Key}, if any: when the
++     * key has already created an owner that still exists, that owner is rendered with {@code 200 OK}
++     * (rather than creating a duplicate with {@code 201 Created}). When the key has not been seen, or
++     * the owner it created no longer exists, {@code null} is returned so the caller creates the owner
++     * normally.
++     *
++     * @param idempotencyKey the non-blank idempotency key supplied on the request
++     * @return the {@code 200 OK} response carrying the originally created owner, or {@code null}
++     */
++    private ResponseEntity<OwnerDto> replayIdempotentCreate(String idempotencyKey) {
++        Integer existingId = IDEMPOTENT_CREATES.get(idempotencyKey);
++        if (existingId == null) {
++            return null;
++        }
++        Owner existing = this.clinicService.findOwnerById(existingId);
++        if (existing == null) {
++            return null;
++        }
++        existing.setHouseholdMemberCount(countHouseholdMembers(existing.getHouseholdId()));
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(existing);
++        ownerDto.setBulkSignupWarning(bulkSignupWarning(existing.getRegistrationDate()));
++        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
++    }
++
+     /**
+      * Runs the full intake pipeline for a newly submitted owner and persists the result, returning
+      * the saved {@link Owner}. The submitted fields are normalized and validated
