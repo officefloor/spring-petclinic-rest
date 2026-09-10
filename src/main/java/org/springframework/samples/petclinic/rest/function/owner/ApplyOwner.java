@@ -14,5 +14,6 @@ public class ApplyOwner {
         owner.setTelephone(request.getTelephone());
         owner.setEmail(request.getEmail());
         owner.setPostcode(request.getPostcode());
+        owner.setBirthDate(request.getBirthDate());
     }
 }
