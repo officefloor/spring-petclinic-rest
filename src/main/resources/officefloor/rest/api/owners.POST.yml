@@ -1,6 +1,21 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Runs first. When the request carries an 'Idempotency-Key' already seen, publish the
+# originally created owner and branch to respond 200 (no duplicate is created); otherwise
+# publish the key (possibly absent) and continue to validate.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotentCreate
+  govern: [ transaction ]
+  next: validate
+  outputs:
+    existing: respondExisting
+
+# Respond 200 with the originally created owner for a repeated idempotent create.
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ transaction ]
+
 # Validate before Build so a missing or blank field is a 400 naming the offending
 # fields, and the body is read (and republished) exactly once here.
 validate:
@@ -59,6 +74,13 @@ assignNamesakeCount:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Record the new owner against its 'Idempotency-Key' (if any) so a later repeat with the
+# same key returns this owner instead of creating a duplicate. Runs after Save so the id exists.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotentCreate
   govern: [ transaction ]
   next: audit
 
