@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -144,8 +145,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()));
         populateHouseholdMemberCount(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -451,8 +453,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Populates the owner's transient {@code householdMemberCount} with the number of owners that belong to its
      * household, i.e. those sharing the same non-null {@code householdId} (including the owner itself). An owner with no
-     * household is counted as a household of one. This drives the {@code GOLD} membership tier, awarded once a household
-     * reaches three or more members.
+     * household is counted as a household of one.
      *
      * @param owner the owner whose household size should be resolved
      */
