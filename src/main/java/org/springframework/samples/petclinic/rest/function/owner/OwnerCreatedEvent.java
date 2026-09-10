@@ -5,17 +5,17 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * owner is created (see {@link AuditOwnerCreated}). Serialised to a compact JSON object so the
  * audit trail carries a machine-readable record of every create.
  *
- * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em>. It
- * is the customerCode today; when that identity is unified into a memberId the producer supplies
- * the memberId instead, so the event always names whatever identifier is primary at the time.
+ * <p>The {@code memberId} field carries the owner's primary identifier — the unified
+ * {@code <REGION><FY><HASH8><CHK>} memberId — so the event always names whatever identifier is
+ * primary at the time.
  *
  * @param seq             monotonically increasing sequence number across all owner creates
  * @param ownerId         the created owner's id
- * @param customerCode    the owner's current primary identifier (the customerCode today)
+ * @param memberId        the owner's primary identifier (the memberId)
  * @param membershipLevel the owner's membership level at creation
  * @param event           the event marker, always {@code OWNER_CREATED}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     /** The marker every owner-created event carries. */
@@ -25,7 +25,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
     public String toJson() {
         return "{\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
-                + ",\"customerCode\":" + quote(this.customerCode)
+                + ",\"memberId\":" + quote(this.memberId)
                 + ",\"membershipLevel\":" + this.membershipLevel
                 + ",\"event\":" + quote(this.event)
                 + "}";

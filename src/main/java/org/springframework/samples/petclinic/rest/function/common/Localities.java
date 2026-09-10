@@ -72,26 +72,26 @@ public final class Localities {
     }
 
     /**
-     * The locality of a stored owner: the {@code REGION} component of its customerCode (see
-     * {@link CustomerCode#regionOf(String)}), so the locality follows from the same
-     * region-and-hash identity the customerCode carries. Falls back to
-     * {@link #locality(String, String)} when the customerCode is absent or carries no region
+     * The locality of a stored owner: the {@code REGION} component of its memberId (see
+     * {@link MemberId#regionOf(String)}), so the locality follows from the same
+     * region-and-hash identity the memberId carries. Falls back to
+     * {@link #locality(String, String)} when the memberId is absent or carries no region
      * prefix (e.g. legacy records).
      */
-    public static String localityOf(String customerCode, String city, String postcode) {
-        String region = CustomerCode.regionOf(customerCode);
+    public static String localityOf(String memberId, String city, String postcode) {
+        String region = MemberId.regionOf(memberId);
         return region != null ? region : locality(city, postcode);
     }
 
     /**
-     * The IANA timezone name for an owner's locality, derived from the same customerCode
+     * The IANA timezone name for an owner's locality, derived from the same memberId
      * region prefix (falling back to city/postcode) that {@link #localityOf(String, String,
      * String)} yields, via the fixed region-to-timezone table (NSW-&gt;Australia/Sydney,
      * VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane). Returns {@code null} when the
      * locality has no mapped timezone (i.e. {@link #UNKNOWN}).
      */
-    public static String timezoneOf(String customerCode, String city, String postcode) {
-        return REGION_TIMEZONE.get(localityOf(customerCode, city, postcode));
+    public static String timezoneOf(String memberId, String city, String postcode) {
+        return REGION_TIMEZONE.get(localityOf(memberId, city, postcode));
     }
 
     /**

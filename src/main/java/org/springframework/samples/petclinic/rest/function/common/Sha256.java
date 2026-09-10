@@ -10,7 +10,7 @@ import java.util.Locale;
  * SHA-256 digest — the full lower-case digest (the duplicate-detection identity key), the
  * first 12 upper-hex chars (the household id, see
  * {@code org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold}) and the
- * first 8 upper-hex chars (the customerCode hash, see {@link CustomerCode#base}) — so the
+ * first 8 upper-hex chars (the memberId hash, see {@link MemberId#base}) — so the
  * digest itself is computed here once rather than reimplemented per call site.
  */
 public final class Sha256 {
