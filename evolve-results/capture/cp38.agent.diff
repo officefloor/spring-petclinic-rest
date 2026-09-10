@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableOwnerEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableOwnerEmailExceptionHandler.java
+new file mode 100644
+index 000000000..29ec014ca
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableOwnerEmailExceptionHandler.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.function.owner.DisposableOwnerEmailException;
++
++public class DisposableOwnerEmailExceptionHandler {
++
++    public void handle(@Parameter DisposableOwnerEmailException ex,
++            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
++                .body(Map.of("errors", List.of("email"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableOwnerEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableOwnerEmailException.java
+new file mode 100644
+index 000000000..b18ced8b2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableOwnerEmailException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Thrown by {@link ValidateOwnerFields} and {@link ValidateOwner} when an owner request supplies
++ * an {@code email} whose domain is on the disposable-domain blocklist (see {@link OwnerEmail}).
++ * Handled by {@code DisposableOwnerEmailExceptionHandler}, which responds 400.
++ */
++public class DisposableOwnerEmailException extends Exception {
++
++    public DisposableOwnerEmailException(String email) {
++        super("Email domain is on the disposable-domain blocklist, but was: '" + email + "'");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index 24cee7797..f4e7826b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -1,19 +1,26 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Normalization for the optional owner {@code email}: when present it must be a syntactically
+- * valid address; it is stored and returned lower-cased. An absent (null/blank) email is left
+- * untouched. Invalid values raise {@link InvalidOwnerEmailException} so the endpoint responds 400.
++ * valid address whose domain is not on the disposable-domain blocklist; it is stored and returned
++ * lower-cased. An absent (null/blank) email is left untouched. A syntactically invalid value
++ * raises {@link InvalidOwnerEmailException}; a blocklisted domain raises
++ * {@link DisposableOwnerEmailException}; both make the endpoint respond 400.
+  */
+ final class OwnerEmail {
+ 
+     /** A pragmatic address check: one {@code @}, non-empty local and domain parts, a dotted domain. */
+     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /** Disposable email domains rejected outright. */
++    private static final Set<String> BLOCKED_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     private OwnerEmail() {
+     }
+ 
+@@ -21,7 +28,8 @@ final class OwnerEmail {
+      * If the request carries a non-blank email, validate and lower-case it in place; otherwise leave
+      * it as-is.
+      */
+-    static void normalize(OwnerFieldsDto request) throws InvalidOwnerEmailException {
++    static void normalize(OwnerFieldsDto request)
++            throws InvalidOwnerEmailException, DisposableOwnerEmailException {
+         String email = request.getEmail();
+         if (email == null || email.isBlank()) {
+             return;
+@@ -29,6 +37,11 @@ final class OwnerEmail {
+         if (!EMAIL.matcher(email).matches()) {
+             throw new InvalidOwnerEmailException(email);
+         }
+-        request.setEmail(email.toLowerCase());
++        String normalized = email.toLowerCase();
++        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
++        if (BLOCKED_DOMAINS.contains(domain)) {
++            throw new DisposableOwnerEmailException(email);
++        }
++        request.setEmail(normalized);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index 95e6b1a23..cd89d127d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+ public class ValidateOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+-            throws InvalidOwnerEmailException, InvalidOwnerPostcodeException {
++            throws InvalidOwnerEmailException, DisposableOwnerEmailException, InvalidOwnerPostcodeException {
+         OwnerEmail.normalize(request);
+         OwnerPostcode.validate(request.getPostcode(), request.getCity());
+         validated.set(request);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 50d58c569..900a2a02b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -22,7 +22,7 @@ public class ValidateOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException, InvalidOwnerTelephoneException, InvalidOwnerEmailException,
+-            InvalidOwnerPostcodeException, FutureRegistrationDateException {
++            DisposableOwnerEmailException, InvalidOwnerPostcodeException, FutureRegistrationDateException {
+         // Normalize the address up front so the required-field check below rejects an address that
+         // is blank after normalization, and the persisted/returned value is the normalized form.
+         request.setAddress(OwnerAddress.normalize(request.getAddress()));
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.DisposableOwnerEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.DisposableOwnerEmailException.yml
+new file mode 100644
+index 000000000..5148d94bd
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.function.owner.DisposableOwnerEmailException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DisposableOwnerEmailExceptionHandler
