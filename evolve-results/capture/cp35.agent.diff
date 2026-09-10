@@ -1,0 +1,174 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 34b30459e..24842cca4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,21 @@ public class Owner extends Person {
+     @Transient
+     private Integer householdSize;
+ 
++    /**
++     * Whether this owner is a soft-match of an existing (other) owner — sharing that
++     * owner's lastName and postcode but carrying a different telephone (so it is not a
++     * hard duplicate). Derived at response time, never persisted.
++     */
++    @Transient
++    private Boolean possibleDuplicate;
++
++    /**
++     * The id of the existing owner this owner soft-matches (see {@link #possibleDuplicate}),
++     * or null when it soft-matches none. Derived at response time, never persisted.
++     */
++    @Transient
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -183,6 +198,22 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+new file mode 100644
+index 000000000..08a4a18c4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+@@ -0,0 +1,57 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Comparator;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags an owner as a soft-match ("possible duplicate") of an existing owner: one that is
++ * <em>not</em> a hard duplicate (see {@link EnsureUniqueOwnerIdentity}) yet shares another
++ * owner's {@code lastName} (compared case-insensitively) and {@code postcode} while carrying a
++ * different telephone (compared in canonical E.164 form, see {@link OwnerTelephone}).
++ *
++ * <p>Such an owner is still created; this step only records the transient {@code possibleDuplicate}
++ * flag and, when true, the {@code possibleDuplicateOf} id of the matching owner — the earliest
++ * (lowest id) match when several exist. When nothing matches, {@code possibleDuplicate} is false
++ * and {@code possibleDuplicateOf} is null.
++ *
++ * <p>Runs on both the create pipeline (after Save) and the read pipeline, so the flag is identical
++ * whether returned from the create response or a later GET, mirroring
++ * {@link AssignOwnerBulkSignupWarning} and {@link AssignOwnerHouseholdSize}. Both derived values
++ * are never persisted.
++ */
++public class AssignOwnerPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            owner.setPossibleDuplicate(false);
++            owner.setPossibleDuplicateOf(null);
++            return;
++        }
++        String telephone = OwnerTelephone.canonical(owner.getTelephone());
++        Owner match = ownerRepository.findAll().stream()
++                .filter(existing -> existing.getId() != null
++                        && (owner.getId() == null || !existing.getId().equals(owner.getId())))
++                .filter(existing -> equalsIgnoreCase(existing.getLastName(), lastName)
++                        && postcode.equals(existing.getPostcode())
++                        && !telephone.equals(OwnerTelephone.canonical(existing.getTelephone())))
++                .min(Comparator.comparingInt(Owner::getId))
++                .orElse(null);
++        if (match == null) {
++            owner.setPossibleDuplicate(false);
++            owner.setPossibleDuplicateOf(null);
++        }
++        else {
++            owner.setPossibleDuplicate(true);
++            owner.setPossibleDuplicateOf(match.getId());
++        }
++    }
++
++    private static boolean equalsIgnoreCase(String a, String b) {
++        return a == null ? b == null : a.equalsIgnoreCase(b);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index d28945ca7..2baca11d0 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -81,6 +81,14 @@ warn:
+ householdSize:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+   govern: [ transaction ]
++  next: possibleDuplicate
++
++# Flag whether this owner soft-matches an existing owner's lastName + postcode with a
++# different telephone (not a hard duplicate). Runs after Save so the same value is
++# recomputed by a later GET; records possibleDuplicate and possibleDuplicateOf.
++possibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerPossibleDuplicate
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 905829d01..bf3330570 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -17,6 +17,13 @@ warn:
+ householdSize:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+   govern: [ readonly-transaction ]
++  next: possibleDuplicate
++
++# Flag whether this owner soft-matches an existing owner's lastName + postcode with a
++# different telephone. Recomputed here to match the create response.
++possibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerPossibleDuplicate
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4ec622799..3612b53f0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2160,6 +2160,20 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner is not a hard duplicate but shares an existing (other) owner's lastName and postcode while carrying a different telephone, otherwise false. A soft-match warning; such an owner is still created.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner soft-matches on lastName and postcode (with a different telephone), set only when possibleDuplicate is true; the earliest such owner when several match. Absent otherwise.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, 'EMAIL' when an email is present, otherwise 'PHONE'.
