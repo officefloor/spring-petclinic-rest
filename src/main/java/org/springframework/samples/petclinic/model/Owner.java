@@ -418,30 +418,67 @@ public class Owner extends Person {
     }
 
     /**
-     * Returns this owner's numeric membership level. The level starts at {@code 1}, gains {@code 1}
-     * when an email is present, and gains {@code 1} when the owner has no namesakes (namesakeCount
-     * is 0). These pre-tenure factors cap the level at {@code 3}. Level {@code 4} is reserved for
-     * tenure and is granted only when the owner's tenure exceeds 365 days; because a newly created
-     * owner has zero tenure, a new owner never exceeds level {@code 3}. The overall level is capped
-     * at {@code 4}.
+     * Resolves whether an owner with the given {@code householdMemberCount} belongs to a large
+     * household: the count is present and at least {@code 3}. Returns {@code false} when the count is
+     * {@code null} (unknown) or smaller. This is the single definition of the "large household"
+     * membership factor, shared by every rule that rewards an owner for a household of three or more.
+     *
+     * @param householdMemberCount the number of owners sharing the household, or {@code null}
+     * @return {@code true} when the owner is known to belong to a household of three or more
+     */
+    public static boolean hasLargeHousehold(Integer householdMemberCount) {
+        return householdMemberCount != null && householdMemberCount >= 3;
+    }
+
+    /**
+     * Returns this owner's membership points. Points start at {@code 0} and accumulate the membership
+     * factors: {@code 2} when an email is present, {@code 1} when the owner has no namesakes
+     * (namesakeCount is 0), {@code 2} when the owner belongs to a household of three or more, and
+     * {@code 3} when the owner's tenure exceeds 365 days. Because a newly created owner has zero
+     * tenure, the tenure points are never awarded on creation. This is the single source the
+     * membership level is derived from (see {@link #getMembershipLevel()}).
+     *
+     * @return the owner's membership points
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        LocalDate today = LocalDate.now();
+        int points = 0;
+        if (hasEmail(this.email)) {
+            points += 2;
+        }
+        if (hasNoNamesakes(this.namesakeCount)) {
+            points += 1;
+        }
+        if (hasLargeHousehold(this.householdMemberCount)) {
+            points += 2;
+        }
+        if (hasLongTenure(this.registrationDate, today)) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Returns this owner's numeric membership level, derived from its membership points (see
+     * {@link #getMembershipPoints()}): {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
+     * {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
      *
      * @return the owner's membership level
      */
     @Transient
     public Integer getMembershipLevel() {
-        LocalDate today = LocalDate.now();
-        int level = 1;
-        if (hasEmail(this.email)) {
-            level++;
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
         }
-        if (hasNoNamesakes(this.namesakeCount)) {
-            level++;
+        if (points >= 4) {
+            return 3;
         }
-        level = Math.min(level, 3);
-        if (hasLongTenure(this.registrationDate, today)) {
-            level++;
+        if (points >= 2) {
+            return 2;
         }
-        return Math.min(level, 4);
+        return 1;
     }
 
     /**
