@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -375,9 +376,12 @@ public class Owner extends Person {
     }
 
     /**
-     * Returns this owner's numeric membership level, assigned on creation. The level starts at
-     * {@code 1}, gains {@code 1} when an email is present, gains {@code 1} when the owner has no
-     * namesakes (namesakeCount is 0), and is capped at {@code 3} (level 4 is reserved for tenure).
+     * Returns this owner's numeric membership level. The level starts at {@code 1}, gains {@code 1}
+     * when an email is present, and gains {@code 1} when the owner has no namesakes (namesakeCount
+     * is 0). These pre-tenure factors cap the level at {@code 3}. Level {@code 4} is reserved for
+     * tenure and is granted only when the owner's tenure exceeds 365 days; because a newly created
+     * owner has zero tenure, a new owner never exceeds level {@code 3}. The overall level is capped
+     * at {@code 4}.
      *
      * @return the owner's membership level
      */
@@ -392,7 +396,12 @@ public class Owner extends Person {
         if (noNamesakes) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (this.registrationDate != null
+                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
