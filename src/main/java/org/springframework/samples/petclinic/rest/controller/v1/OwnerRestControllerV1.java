@@ -540,9 +540,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     /**
+     * Disposable email domains an owner may not register with. An email whose domain (compared
+     * case-insensitively) is one of these is rejected, since it identifies a throwaway mailbox.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Normalizes an optional owner email. An email is optional, so a {@code null} value is
-     * accepted and returned unchanged. When present it must be a syntactically valid address;
-     * the value is stored and returned lower-cased. When present but invalid an
+     * accepted and returned unchanged. When present it must be a syntactically valid address
+     * whose domain is not on the disposable-domain blocklist (see
+     * {@link #DISPOSABLE_EMAIL_DOMAINS}); the value is stored and returned lower-cased. When
+     * present but syntactically invalid or on a disposable domain an
      * {@link InvalidFieldsException} is thrown, which the exception advice renders as a 400
      * response naming the {@code email} field.
      *
@@ -555,6 +564,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String trimmed = email.trim();
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidFieldsException(List.of("email"));
+        }
+        String domain = trimmed.substring(trimmed.lastIndexOf('@') + 1).toLowerCase(java.util.Locale.ROOT);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
             throw new InvalidFieldsException(List.of("email"));
         }
         return canonicalEmail(trimmed);
