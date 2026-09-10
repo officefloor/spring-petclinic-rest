@@ -931,7 +931,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidFieldsException(List.of("email"));
         }
-        String domain = trimmed.substring(trimmed.lastIndexOf('@') + 1).toLowerCase(java.util.Locale.ROOT);
+        String domain = emailDomain(trimmed);
         if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
             throw new InvalidFieldsException(List.of("email"));
         }
@@ -957,6 +957,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return email.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Extracts the lower-cased domain of an email — everything after its final {@code '@'}. This is
+     * the single definition of an email's domain, shared wherever an owner's email is matched by its
+     * domain (for example the disposable-domain blocklist applied in {@link #normalizeEmail(String)}),
+     * so every such rule reads the domain identically rather than re-deriving it. A {@code null} email
+     * (none was supplied) has no domain and yields {@code null}. Like {@link #canonicalEmail(String)}
+     * no validation is performed, so this can be applied to a value read back off an existing owner as
+     * readily as to one being normalized; a caller that needs a syntactically valid address validates
+     * it first. The domain is lower-cased so it compares case-insensitively, matching how
+     * {@link #DISPOSABLE_EMAIL_DOMAINS} is compared. For example {@code "jane@Example.COM"} yields
+     * {@code "example.com"}.
+     *
+     * @param email the email whose domain to extract, or {@code null} when none was supplied
+     * @return the lower-cased domain, or {@code null} when {@code email} is {@code null}
+     */
+    private String emailDomain(String email) {
+        if (email == null) {
+            return null;
+        }
+        return email.substring(email.lastIndexOf('@') + 1).toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
