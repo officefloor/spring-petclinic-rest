@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class ValidateOwner {
 
-    public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated) {
+    public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+            throws InvalidOwnerEmailException {
+        OwnerEmail.normalize(request);
         validated.set(request);
     }
 }

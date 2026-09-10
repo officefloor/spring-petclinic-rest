@@ -13,12 +13,14 @@ import org.springframework.web.bind.annotation.RequestBody;
  * body is a 400 naming the offending fields. Also normalizes the telephone by stripping
  * every non-digit character and requires exactly ten digits, rejecting otherwise with a
  * 400; the normalized value is stored on the body so it is persisted and returned.
+ * When an {@code email} is present it must be a syntactically valid address and is stored
+ * lower-cased (rejected with 400 otherwise); an absent email is allowed.
  * Publishes the validated body for later steps.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidOwnerTelephoneException {
+            throws MissingOwnerFieldsException, InvalidOwnerTelephoneException, InvalidOwnerEmailException {
         List<String> missing = new ArrayList<>();
         checkField("firstName", request.getFirstName(), missing);
         checkField("lastName", request.getLastName(), missing);
@@ -33,6 +35,7 @@ public class ValidateOwnerFields {
             throw new InvalidOwnerTelephoneException(telephone);
         }
         request.setTelephone(telephone);
+        OwnerEmail.normalize(request);
         validated.set(request);
     }
 
