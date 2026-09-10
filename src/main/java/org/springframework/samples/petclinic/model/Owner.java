@@ -134,6 +134,15 @@ public class Owner extends Person {
     @Transient
     private Integer membershipLevel;
 
+    /**
+     * Whether this owner warrants a manual review — true when any one of three independent
+     * risk signals holds: it is a possible duplicate, its email domain is disposable-adjacent,
+     * or its city is over its soft capacity; otherwise false. Derived at response time, never
+     * persisted.
+     */
+    @Transient
+    private Boolean riskFlag;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -295,6 +304,14 @@ public class Owner extends Person {
 
     public void setMembershipLevel(Integer membershipLevel) {
         this.membershipLevel = membershipLevel;
+    }
+
+    public Boolean getRiskFlag() {
+        return this.riskFlag;
+    }
+
+    public void setRiskFlag(Boolean riskFlag) {
+        this.riskFlag = riskFlag;
     }
 
     protected Set<Pet> getPetsInternal() {
