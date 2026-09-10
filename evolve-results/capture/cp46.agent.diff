@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 673d0e675..3cc844df4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -85,6 +85,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted = Boolean.FALSE;
++
+     @Transient
+     private Integer householdMemberCount;
+ 
+@@ -254,6 +257,26 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
++    /**
++     * Reports whether an owner is flagged deleted (soft-deleted). A {@code null} flag is treated as
++     * not deleted. This is the single definition of an owner being deleted, shared by every rule
++     * that must ignore soft-deleted owners.
++     *
++     * @param deleted the owner's {@code deleted} flag, or {@code null}
++     * @return {@code true} when the owner is flagged deleted
++     */
++    public static boolean isDeleted(Boolean deleted) {
++        return Boolean.TRUE.equals(deleted);
++    }
++
+     public Integer getHouseholdMemberCount() {
+         return this.householdMemberCount;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 436a936b0..c200ef243 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -163,7 +163,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        this.clinicService.deleteOwner(owner);
++        owner.setDeleted(true);
++        this.clinicService.saveOwner(owner);
+         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+     }
+ 
+@@ -519,6 +520,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return java.util.Optional.empty();
+         }
+         return this.clinicService.findAllOwners().stream()
++            .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
+             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
+                 && owner.getPostcode().equals(existing.getPostcode())
+                 && !owner.getTelephone().equals(existing.getTelephone()))
+@@ -722,6 +724,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return;
+         }
+         boolean taken = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
+             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+         if (taken) {
+             throw new DuplicateIdentityException(householdId);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8722c7a25..0bc9ced06 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   birth_date DATE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 72932a6f1..8f6652471 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   birth_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 07fa87af0..137468bd6 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   possible_duplicate BIT,
+   possible_duplicate_of INT,
++  deleted BIT,
+   birth_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 21cf3cbcf..e2ee0e8e3 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN,
+                                       birth_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8be5a523b..806ab497d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2300,6 +2300,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: True when this owner has been soft-deleted via DELETE /api/owners/{id};
++                the record is retained and still readable. A newly created owner is false. Deleted
++                owners are ignored by the create endpoint's duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
