@@ -2070,9 +2070,11 @@ components:
           example: '1990-01-01'
         sharesHousehold:
           title: Shares household
-          description: When true, allows creating this owner even though another owner
-            already has the same lastName and address (compared case-insensitively with
-            collapsed whitespace). Otherwise such a request is rejected with 409 Conflict.
+          description: When true, declares this owner a deliberate member of an existing
+            household and bypasses the household duplicate block, allowing creation even though
+            another owner already shares the same lastName and postcode (the household key).
+            Otherwise such a request is rejected with 409 Conflict. A declared member is created
+            and is not flagged as a possible duplicate.
           type: boolean
           example: false
       required:
@@ -2130,22 +2132,24 @@ components:
               readOnly: true
             householdId:
               title: Household ID
-              description: A stable identifier shared by owners that belong to the same household
-                (same lastName and address, compared case-insensitively with collapsed
-                whitespace). Assigned when an owner is created with 'sharesHousehold' set to true;
-                every owner joining that household receives the same value. Absent for owners that
-                do not share a household.
+              description: A stable identifier shared by owners that belong to the same household.
+                The household is keyed on (lastName, postcode) and is the first 12 hex characters of
+                the SHA-256 digest over the normalized lastName (case-insensitive, collapsed
+                whitespace) joined to the postcode by '|', so any two owners sharing a lastName and
+                postcode automatically receive the same value. Absent for owners without a postcode,
+                which belong to no shared household.
               type: string
-              example: 'HH-3F2A1B0C9D8E7F60'
+              example: '3F2A1B0C9D8E'
               readOnly: true
             identityKey:
               title: Identity key
-              description: The owner's derived identity key used for duplicate detection,
-                formed as '<telephone>|<email>|<householdId>' where telephone is the
-                normalized E.164 telephone, email is the lower-cased email (empty when the
-                owner has no email) and householdId is the shared household identifier
-                (empty when the owner shares no household). Two owners are duplicates exactly
-                when their whole identityKey values are equal.
+              description: The owner's derived identity key, formed as
+                '<telephone>|<email>|<householdId>' where telephone is the normalized E.164
+                telephone, email is the lower-cased email (empty when the owner has no email)
+                and householdId is the shared household identifier (empty when the owner shares
+                no household). Hard duplicate detection is keyed on the household, so two owners
+                sharing a lastName and postcode are the same household, and a second such owner
+                is rejected with 409 Conflict unless it sets sharesHousehold.
               type: string
               example: '+61412345678||'
               readOnly: true
@@ -2216,9 +2220,10 @@ components:
               readOnly: true
             possibleDuplicate:
               title: Possible duplicate
-              description: True when this owner, though not a hard duplicate, shares an existing
-                owner's lastName (compared case-insensitively) and postcode while having a
-                different telephone; otherwise false.
+              description: True when this owner, though not a hard household duplicate, shares an
+                existing owner's lastName (compared case-insensitively) and postcode while having a
+                different telephone; otherwise false. An owner that declared its household via
+                sharesHousehold is a deliberate member and is never flagged.
               type: boolean
               example: false
               readOnly: true
