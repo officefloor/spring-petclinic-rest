@@ -7,6 +7,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class DeleteOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        ownerRepository.delete(owner);
+        // Soft delete: flag the owner deleted and keep the row so a later GET still returns it,
+        // while the create endpoint's duplicate/identity checks ignore it.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 }

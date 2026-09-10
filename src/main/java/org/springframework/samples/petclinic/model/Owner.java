@@ -79,6 +79,14 @@ public class Owner extends Person {
     private Integer namesakeCount;
 
     /**
+     * Whether this owner has been soft-deleted. A soft-deleted owner keeps its row and is
+     * still returned by {@code GET /api/owners/{id}}, but is ignored by the create endpoint's
+     * duplicate/identity checks. A newly created owner is not deleted.
+     */
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    /**
      * Whether this owner was one of a bulk signup for its registration day (more than
      * 80 owners created for that day). Derived at response time, never persisted.
      */
@@ -213,6 +221,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public Boolean getBulkSignupWarning() {
