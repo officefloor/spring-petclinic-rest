@@ -326,6 +326,32 @@ public class Owner extends Person {
     }
 
     /**
+     * Computes the full lower-case hex SHA-256 digest of a string: the input is hashed as UTF-8
+     * bytes and each of the 32 digest bytes is rendered as two lower-case hex digits, yielding a
+     * 64-character string. This is the single definition of the SHA-256 hex derivation shared by
+     * every rule that hashes owner fields (for example the customer code and household identifier,
+     * each formed from the leading upper-case characters of this digest). SHA-256 is a required
+     * platform algorithm; were it ever unavailable an {@link IllegalStateException} is thrown.
+     *
+     * @param input the string to hash
+     * @return the 64-character lower-case hex SHA-256 digest of {@code input}
+     */
+    public static String sha256Hex(String input) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
+    }
+
+    /**
      * Fixed telephone country-code table: the exact national-number length (the count of digits
      * following the country code) each country code this application recognizes admits
      * ({@code '61'} Australia => 9, {@code '1'} NANP => 10). Keyed by the country-code digits

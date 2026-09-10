@@ -851,7 +851,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a new owner that is an exact identity duplicate of an existing owner. An owner's
-     * identity is its derived identity key (see {@link #identityKey(String, String, String)}) — its
+     * identity is its derived identity key (see {@link Owner#identityKey(String, String, String)}) — its
      * normalized {@code telephone}, canonical {@code email} and shared {@code householdId} joined by
      * {@code '|'} — so a new owner is a hard duplicate only when an existing, non-deleted owner
      * matches it on all three. Two owners that merely share a household (the same last name and
@@ -873,31 +873,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (householdId == null) {
             return;
         }
-        String identityKey = identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
+        String identityKey = Owner.identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
         boolean taken = householdMembers(householdId).stream()
             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
-            .anyMatch(existing -> identityKey.equals(
-                identityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (taken) {
             throw new DuplicateIdentityException(identityKey);
         }
-    }
-
-    /**
-     * Builds the identity key that decides whether two owners denote the same identity: their
-     * normalized {@code telephone}, canonical {@code email} (see {@link #canonicalEmail(String)}) and
-     * shared {@code householdId}, joined by {@code '|'}. This is the single definition of owner
-     * identity used by {@link #rejectDuplicateIdentity(OwnerFieldsDto)}; two owners are the same
-     * identity exactly when their keys are equal, so a value stored on an existing owner and the
-     * fields submitted for a new owner can be compared for identity after both pass through here.
-     *
-     * @param telephone the owner's normalized telephone
-     * @param email the owner's email, or {@code null} when none was supplied
-     * @param householdId the owner's shared household identifier
-     * @return the identity key
-     */
-    private String identityKey(String telephone, String email, String householdId) {
-        return telephone + "|" + canonicalEmail(email) + "|" + householdId;
     }
 
     /**
@@ -963,31 +945,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Computes the upper-case hex SHA-256 digest of a string, truncated to its first
-     * {@code hexChars} characters. The input is hashed as UTF-8 bytes and each digest byte is
-     * rendered as two upper-case hex digits, so {@code hexChars} characters cover the leading
-     * {@code ceil(hexChars / 2)} bytes of the digest. This is the single definition of the
-     * SHA-256 hex derivation shared by every rule that hashes owner fields (for example the
-     * household identifier). SHA-256 is a required platform algorithm; were it ever unavailable
-     * an {@link IllegalStateException} is thrown.
+     * Returns the leading {@code hexChars} upper-case hex characters of the SHA-256 digest of a
+     * string, the form used by the derived owner codes (for example the customer code and household
+     * identifier). The digest itself comes from {@link Owner#sha256Hex(String)}, the single
+     * definition of the SHA-256 hex derivation; this method only takes its leading characters and
+     * upper-cases them, so {@code hexChars} characters cover the leading {@code ceil(hexChars / 2)}
+     * bytes of the digest.
      *
      * @param input the string to hash
      * @param hexChars the number of leading upper-case hex characters to return
      * @return the first {@code hexChars} upper-case hex characters of the SHA-256 digest
      */
     private String shaHex(String input, int hexChars) {
-        try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < digest.length && sb.length() < hexChars; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.substring(0, hexChars);
-        }
-        catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
-        }
+        return Owner.sha256Hex(input).substring(0, hexChars).toUpperCase(java.util.Locale.ROOT);
     }
 
     /**
