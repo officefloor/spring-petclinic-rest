@@ -116,6 +116,16 @@ public class Owner extends Person {
     @Transient
     private Integer possibleDuplicateOf;
 
+    /**
+     * The owner's membership level, capped so it never exceeds one above the current
+     * maximum level among the other members of its household. Derived at response time
+     * from the persisted fields plus the household, never persisted. When null (e.g. for
+     * list responses that skip the assignment step) the level falls back to the uncapped
+     * value computed directly from the owner's fields.
+     */
+    @Transient
+    private Integer membershipLevel;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -261,6 +271,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     protected Set<Pet> getPetsInternal() {

@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.common;
 
 import java.time.LocalDate;
+import java.util.Collection;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -79,6 +80,24 @@ public final class MembershipLevels {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * Compute the membership level for the given owner, capped so it never exceeds one above
+     * the highest level among the other members of its household. The {@code householdMembers}
+     * are the owner's fellow household members (this owner excluded); when there are none the
+     * uncapped level from {@link #of(Owner)} is returned unchanged.
+     */
+    public static int capped(Owner owner, Collection<Owner> householdMembers) {
+        int base = of(owner);
+        int ceiling = Integer.MIN_VALUE;
+        for (Owner member : householdMembers) {
+            ceiling = Math.max(ceiling, of(member));
+        }
+        if (ceiling == Integer.MIN_VALUE) {
+            return base;
+        }
+        return Math.min(base, ceiling + 1);
     }
 
     private static boolean hasTenurePoints(Owner owner) {

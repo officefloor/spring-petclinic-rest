@@ -33,7 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.points(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+        expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.localityOf(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",

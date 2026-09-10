@@ -21,15 +21,11 @@ respondExisting:
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   govern: [ transaction ]
-  next: ensureUniqueIdentity
-
-# Reject a create that would be a second member of an existing household (same deterministic
-# householdId, keyed on lastName + postcode), responding 409 — unless 'sharesHousehold' is set,
-# which declares the caller intends to join the household and bypasses this block.
-ensureUniqueIdentity:
-  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueOwnerIdentity
-  govern: [ transaction ]
   next: ensureCityCapacity
+
+# Joining an existing household is now permitted (owners sharing a lastName + postcode
+# automatically share a householdId); rather than rejecting a second household member, the
+# new member's membershipLevel is capped later (see the 'membershipLevel' step).
 
 # Reject creating an owner when the request's city already contains 50 or more owners,
 # responding 409.
@@ -102,6 +98,14 @@ warn:
 # matching what a later GET recomputes.
 householdSize:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+  govern: [ transaction ]
+  next: membershipLevel
+
+# Cap the owner's membershipLevel at one above the current maximum among the other members of
+# its household. Runs after householdSize (the level depends on it) so the capped value matches
+# what a later GET recomputes.
+membershipLevel:
+  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipLevel
   govern: [ transaction ]
   next: possibleDuplicate
 
