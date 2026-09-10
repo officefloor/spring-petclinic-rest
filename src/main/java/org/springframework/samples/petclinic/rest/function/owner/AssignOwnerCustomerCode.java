@@ -1,9 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -12,6 +8,7 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.function.common.Localities;
+import org.springframework.samples.petclinic.rest.function.common.Sha256;
 
 /**
  * Assigns the {@code customerCode} to a newly built owner, formatted
@@ -36,7 +33,7 @@ public class AssignOwnerCustomerCode {
         String region = Localities.locality(owner.getCity(), owner.getPostcode());
         String telephone = OwnerTelephone.canonical(owner.getTelephone());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = region + "-" + hash8(telephone + lastName);
+        String base = region + "-" + Sha256.hexPrefix(telephone + lastName, 8);
 
         Set<String> taken = ownerRepository.findAll().stream()
                 .filter(existing -> existing.getId() == null
@@ -50,21 +47,5 @@ public class AssignOwnerCustomerCode {
             customerCode = base + "-" + n;
         }
         owner.setCustomerCode(customerCode);
-    }
-
-    /** The first 8 upper-case hex characters of the SHA-256 digest of {@code input}. */
-    private static String hash8(String input) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(8);
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }
