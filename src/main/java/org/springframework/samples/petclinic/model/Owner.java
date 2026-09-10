@@ -376,6 +376,48 @@ public class Owner extends Person {
     }
 
     /**
+     * Resolves whether an {@code email} counts as present for membership purposes: the value is
+     * non-null and not blank. Returns {@code false} otherwise. This is the single definition of an
+     * owner "having an email", shared by every rule that turns email presence into a derived value
+     * (its membership factor and its {@code contactPreference}).
+     *
+     * @param email the owner's email, or {@code null}
+     * @return {@code true} when the email is present and not blank
+     */
+    public static boolean hasEmail(String email) {
+        return email != null && !email.isBlank();
+    }
+
+    /**
+     * Resolves whether an owner with the given {@code namesakeCount} has no namesakes: the count is
+     * present and equal to {@code 0}. Returns {@code false} when the count is {@code null} (unknown)
+     * or positive. This is the single definition of the "no namesakes" membership factor, shared by
+     * every rule that rewards an owner for being unique by name.
+     *
+     * @param namesakeCount the owner's namesake count, or {@code null}
+     * @return {@code true} when the owner is known to have no namesakes
+     */
+    public static boolean hasNoNamesakes(Integer namesakeCount) {
+        return namesakeCount != null && namesakeCount == 0;
+    }
+
+    /**
+     * Resolves whether an owner registered on {@code registrationDate} has long tenure as of
+     * {@code asOf}: the whole number of days between the two dates exceeds {@code 365}. Returns
+     * {@code false} when {@code registrationDate} is absent, so the owner has no derivable tenure;
+     * because a newly created owner has zero tenure, it never counts as long-tenured. This is the
+     * single definition of the "long tenure" membership factor, shared by every rule that rewards
+     * an owner for tenure beyond a year.
+     *
+     * @param registrationDate the owner's registration date, or {@code null}
+     * @param asOf the date the tenure is measured against
+     * @return {@code true} when the owner's tenure exceeds 365 days
+     */
+    public static boolean hasLongTenure(LocalDate registrationDate, LocalDate asOf) {
+        return registrationDate != null && ChronoUnit.DAYS.between(registrationDate, asOf) > 365;
+    }
+
+    /**
      * Returns this owner's numeric membership level. The level starts at {@code 1}, gains {@code 1}
      * when an email is present, and gains {@code 1} when the owner has no namesakes (namesakeCount
      * is 0). These pre-tenure factors cap the level at {@code 3}. Level {@code 4} is reserved for
@@ -387,18 +429,16 @@ public class Owner extends Person {
      */
     @Transient
     public Integer getMembershipLevel() {
+        LocalDate today = LocalDate.now();
         int level = 1;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        if (hasEmail) {
+        if (hasEmail(this.email)) {
             level++;
         }
-        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
-        if (noNamesakes) {
+        if (hasNoNamesakes(this.namesakeCount)) {
             level++;
         }
         level = Math.min(level, 3);
-        if (this.registrationDate != null
-                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+        if (hasLongTenure(this.registrationDate, today)) {
             level++;
         }
         return Math.min(level, 4);

@@ -45,8 +45,8 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+        return Owner.hasEmail(owner.getEmail())
+            ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     /**
