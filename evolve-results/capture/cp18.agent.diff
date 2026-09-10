@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 68cbd0d62..967cd8d02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -222,6 +222,25 @@ public class ExceptionControllerAdvice {
+         return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("lastName", "address"));
+     }
+ 
++    /**
++     * Handles {@link OwnerCityFullException}, thrown when a request to create an owner names a city that already
++     * contains 50 or more owners (compared case-insensitively). Returns a {@code 409 Conflict} reporting the
++     * {@code city} field.
++     *
++     * @param e The {@link OwnerCityFullException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(OwnerCityFullException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleOwnerCityFullException(OwnerCityFullException e, HttpServletRequest request) {
++        logger.debug("Owner city at capacity at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("city"));
++    }
++
+     /**
+      * Builds the response body shared by the handlers that report a single business-rule violation: a
+      * {@link ProblemDetail} for the given status carrying {@code detail} as its detail message and the offending field
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCityFullException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCityFullException.java
+new file mode 100644
+index 000000000..5dcb554fa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCityFullException.java
+@@ -0,0 +1,28 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when an attempt is made to create an owner whose city (compared case-insensitively) already contains 50 or
++ * more owners. Reported as a {@code 409 Conflict} by the {@link ExceptionControllerAdvice}.
++ */
++public class OwnerCityFullException extends RuntimeException {
++
++    public OwnerCityFullException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9046693ff..3a3202ae6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
++import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -63,6 +64,9 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
++    private static final int MAX_OWNERS_PER_CITY = 50;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -149,6 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         ownerFieldsDto.setTelephone(telephone);
+         requireUniqueTelephone(telephone);
+         requireUniqueHousehold(ownerFieldsDto);
++        requireCityHasCapacity(ownerFieldsDto.getCity());
+         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         if (ownerFieldsDto.getRegistrationDate() == null) {
+             ownerFieldsDto.setRegistrationDate(LocalDate.now());
+@@ -249,6 +254,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Rejects creating an owner whose city (compared case-insensitively) already contains the maximum number of
++     * owners. The cap is 50, so a city holding 50 or more owners is full and no further owner may be created there.
++     *
++     * @param city the city of the owner being created
++     * @throws OwnerCityFullException if the city already contains 50 or more owners
++     */
++    private void requireCityHasCapacity(String city) {
++        long cityOwners = this.clinicService.findAllOwners().stream()
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        if (cityOwners >= MAX_OWNERS_PER_CITY) {
++            throw new OwnerCityFullException("the owner's city already contains the maximum number of owners");
++        }
++    }
++
+     /**
+      * Rejects creating an owner who shares a household (see {@link #findHouseholdMembers}) with an existing owner,
+      * unless the request opts in by setting {@code sharesHousehold} to {@code true}.
