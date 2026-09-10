@@ -17,6 +17,12 @@ public final class Localities {
             "Melbourne", "VIC",
             "Brisbane", "QLD");
 
+    /** Region -> inclusive 4-digit postcode range {@code {low, high}}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+            "NSW", new int[] {2000, 2099},
+            "VIC", new int[] {3000, 3099},
+            "QLD", new int[] {4000, 4099});
+
     private Localities() {
     }
 
@@ -26,5 +32,14 @@ public final class Localities {
      */
     public static String region(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * The inclusive {@code {low, high}} 4-digit postcode range for a region, or {@code null}
+     * when the region is not in the fixed table (i.e. {@link #UNKNOWN}), meaning any 4-digit
+     * postcode is acceptable.
+     */
+    public static int[] postcodeRange(String region) {
+        return REGION_POSTCODES.get(region);
     }
 }

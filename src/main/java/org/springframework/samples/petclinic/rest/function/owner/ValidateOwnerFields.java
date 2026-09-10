@@ -20,7 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidOwnerTelephoneException, InvalidOwnerEmailException {
+            throws MissingOwnerFieldsException, InvalidOwnerTelephoneException, InvalidOwnerEmailException,
+            InvalidOwnerPostcodeException {
         // Normalize the address up front so the required-field check below rejects an address that
         // is blank after normalization, and the persisted/returned value is the normalized form.
         request.setAddress(OwnerAddress.normalize(request.getAddress()));
@@ -35,6 +36,7 @@ public class ValidateOwnerFields {
         }
         request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         OwnerEmail.normalize(request);
+        OwnerPostcode.validate(request.getPostcode(), request.getCity());
         validated.set(request);
     }
 
