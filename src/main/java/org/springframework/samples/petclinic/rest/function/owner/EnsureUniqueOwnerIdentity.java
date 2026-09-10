@@ -6,39 +6,31 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Rejects a create-owner request that would be a second member of an existing household,
- * responding 409. The household is keyed on (lastName, postcode), so its deterministic
- * {@code householdId} (see {@link OwnerHousehold}) is shared by every owner with the same last
- * name and postcode; if any existing owner already carries that householdId, this request is a
- * household duplicate.
+ * Rejects a create-owner request whose {@link OwnerIdentityKey} equals that of an existing
+ * (non-deleted) owner, responding 409. The identityKey is the SHA-256 hex over the normalized
+ * telephone, lower-cased email and Soundex last name, so this is the single duplicate-detection
+ * check: there is no longer a separate household-duplicate block.
  *
- * <p>The {@code sharesHousehold} request flag bypasses this block: it no longer creates the
- * household link (the link is now automatic and deterministic) but declares that the caller
- * intends to join the existing household, so the owner is created as a declared household
- * member instead of being rejected. Such a declared member is later NOT flagged as a possible
- * duplicate (see {@link AssignOwnerPossibleDuplicate}).
+ * <p>Because the telephone is part of the key, two owners with the same last name and postcode but
+ * different telephones have different keys and are both allowed (the second is instead flagged as a
+ * possible duplicate — see {@link AssignOwnerPossibleDuplicate}).
  *
- * <p>Runs after {@link ValidateOwnerFields} and before {@link BuildOwner}; the request's
- * householdId is the same value {@link AssignOwnerHousehold} later stamps onto the owner. An
- * owner with no postcode has no household and is never a household duplicate.
+ * <p>Runs after {@link ValidateOwnerFields}, so the email-domain blocklist and telephone
+ * normalization have already been applied to the request. A soft-deleted owner no longer blocks a
+ * new one.
  */
 public class EnsureUniqueOwnerIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerIdentityException {
-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return; // declared household member — bypass the duplicate block
-        }
-        String householdId = OwnerHousehold.idFor(request.getLastName(), request.getPostcode());
-        if (householdId == null) {
-            return; // no postcode, so no household to collide with
-        }
+        String identityKey = OwnerIdentityKey.of(
+                request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner no longer blocks a new one
             }
-            if (householdId.equals(existing.getHouseholdId())) {
-                throw new DuplicateOwnerIdentityException(householdId);
+            if (identityKey.equals(OwnerIdentityKey.of(existing))) {
+                throw new DuplicateOwnerIdentityException(identityKey);
             }
         }
     }
