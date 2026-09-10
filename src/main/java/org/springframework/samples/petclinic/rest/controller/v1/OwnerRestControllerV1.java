@@ -316,16 +316,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Maps a persisted owner to the {@link OwnerDto} returned by every rendered response, stamping
      * its {@code bulkSignupWarning} from the owner's stored {@code registrationDate} (see
-     * {@link #bulkSignupWarning(LocalDate)}). This is the single definition of how an owner becomes
-     * its response representation, shared by the read, idempotent-replay and create responses, so all
-     * three derive the rendered fields identically rather than each copying the mapping.
+     * {@link #bulkSignupWarning(LocalDate)}) and its {@code capacityWarning} from the owner's
+     * {@code city} (see {@link #capacityWarning(String)}). This is the single definition of how an
+     * owner becomes its response representation, shared by the read, idempotent-replay and create
+     * responses, so all three derive the rendered fields identically rather than each copying the
+     * mapping.
      *
      * @param owner the persisted owner to map
-     * @return the owner representation with its {@code bulkSignupWarning} set
+     * @return the owner representation with its {@code bulkSignupWarning} and {@code capacityWarning} set
      */
     private OwnerDto toOwnerDtoWithWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
         return ownerDto;
     }
 
@@ -613,12 +616,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param city the city of the owner being created
      */
     private void rejectCityAtCapacity(String city) {
-        long count = this.clinicService.findAllOwners().stream()
-            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
-            .count();
-        if (count >= CITY_OWNER_CAPACITY) {
+        if (countOwnersInCity(city) >= CITY_OWNER_CAPACITY) {
             throw new CityCapacityExceededException(city);
         }
+    }
+
+    /**
+     * Counts the existing owners whose {@code city} equals the given city, compared
+     * case-insensitively. This is the single definition of the per-city owner count, shared by the
+     * hard capacity rejection ({@link #rejectCityAtCapacity(String)}) and the approaching-capacity
+     * warning ({@link #capacityWarning(String)}), so both measure a city's occupancy identically.
+     *
+     * @param city the city to count owners against
+     * @return the number of existing owners whose city matches
+     */
+    private long countOwnersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count();
+    }
+
+    /**
+     * The number of owners a city must already contain before it is flagged as approaching its
+     * capacity limit. Once a city holds at least this many owners (but is not yet at
+     * {@link #CITY_OWNER_CAPACITY}), the create and read responses report {@code capacityWarning}
+     * true for owners in that city.
+     */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
+    /**
+     * Reports whether the given city is approaching its capacity limit, i.e. whether it already
+     * contains between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and {@link #CITY_OWNER_CAPACITY}
+     * minus one owners (40 to 49) inclusive. The count is taken the same way the hard rejection
+     * counts a city's owners ({@link #countOwnersInCity(String)}). A {@code null} city never warns.
+     *
+     * @param city the city to test, or {@code null}
+     * @return {@code true} when the city holds 40 to 49 owners, otherwise {@code false}
+     */
+    private boolean capacityWarning(String city) {
+        if (city == null) {
+            return false;
+        }
+        long count = countOwnersInCity(city);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_OWNER_CAPACITY;
     }
 
     /**
