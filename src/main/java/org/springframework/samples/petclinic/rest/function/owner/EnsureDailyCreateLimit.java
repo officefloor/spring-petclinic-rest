@@ -5,13 +5,15 @@ import java.time.LocalDate;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.function.common.BusinessDays;
 
 /**
  * Rejects a create-owner request once the maximum number of owners has already been
- * created today, responding 429. "Today" is measured by each owner's
- * {@code registrationDate}: at most {@value #DAILY_LIMIT} owners may carry today's date.
- * Runs after {@link ValidateOwnerFields} and before {@link BuildOwner}, so the owner
- * being created is not yet counted.
+ * created for its business day, responding 429. The day is the request's effective
+ * registration date (supplied, else the server date) rolled forward onto a business
+ * day: at most {@value #DAILY_LIMIT} owners may carry that adjusted date. Runs after
+ * {@link ValidateOwnerFields} and before {@link BuildOwner}, so the owner being created
+ * is not yet counted.
  */
 public class EnsureDailyCreateLimit {
 
@@ -20,9 +22,10 @@ public class EnsureDailyCreateLimit {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DailyCreateLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate effective = request.getRegistrationDate() != null ? request.getRegistrationDate() : LocalDate.now();
+        LocalDate businessDay = BusinessDays.adjust(effective);
         long count = ownerRepository.findAll().stream()
-                .filter(o -> today.equals(o.getRegistrationDate()))
+                .filter(o -> businessDay.equals(o.getRegistrationDate()))
                 .count();
         if (count >= DAILY_LIMIT) {
             throw new DailyCreateLimitException(DAILY_LIMIT);
