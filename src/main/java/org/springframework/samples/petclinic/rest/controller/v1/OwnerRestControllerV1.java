@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -93,6 +94,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * persisting a duplicate. Shared across requests, hence concurrency-safe.
      */
     private static final Map<String, Integer> IDEMPOTENT_CREATES = new ConcurrentHashMap<>();
+
+    /**
+     * Source of the {@code seq} carried by each structured {@code OWNER_CREATED} audit event: a
+     * monotonically increasing integer stamped once per successful create, in creation order.
+     * Shared across requests, hence concurrency-safe.
+     */
+    private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong(0);
 
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
@@ -218,7 +226,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         return owner;
+    }
+
+    /**
+     * Emits the immutable, structured {@code OWNER_CREATED} audit event for a freshly persisted owner,
+     * alongside the human-readable audit line. The event is a JSON object carrying, in order, a
+     * {@code seq} (a monotonically increasing integer across creates, see {@link #OWNER_CREATED_SEQ}),
+     * the owner's {@code ownerId}, the owner's current primary identifier (see
+     * {@link #primaryIdentifier(Owner)}) under the {@code customerCode} key, the owner's derived
+     * {@code membershipLevel}, and the {@code event} marker {@code 'OWNER_CREATED'}. Published to the
+     * dedicated {@code AUDIT} logger so downstream consumers can react to owner creation structurally
+     * rather than by parsing the free-form line.
+     *
+     * @param owner the persisted owner, already carrying its generated id and derived values
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        long seq = OWNER_CREATED_SEQ.incrementAndGet();
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+            seq, owner.getId(), jsonString(primaryIdentifier(owner)), owner.getMembershipLevel());
+    }
+
+    /**
+     * Returns the owner's current primary identifier, the single identity the structured
+     * {@code OWNER_CREATED} event carries. Today that is the owner's {@code customerCode}; this is the
+     * one seam that decides which field is primary, so when the customer code is later unified into the
+     * member id it is enough to return the member id here for the event to carry it instead — the event
+     * shape (a {@code customerCode} field holding the primary identifier) stays the same.
+     *
+     * @param owner the persisted owner whose primary identifier the event should carry
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
+    /**
+     * Renders a value as a JSON string literal for the structured audit event: {@code null} becomes
+     * the JSON {@code null} keyword, otherwise the value is quoted with the JSON-significant
+     * characters ({@code "} and {@code \}) escaped. The derived identifiers this carries never contain
+     * such characters, but escaping keeps the emitted event valid JSON regardless.
+     *
+     * @param value the value to render, or {@code null}
+     * @return the JSON representation of the value
+     */
+    private String jsonString(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     /**
