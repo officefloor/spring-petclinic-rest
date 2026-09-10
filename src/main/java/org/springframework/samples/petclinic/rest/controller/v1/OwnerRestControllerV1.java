@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -186,7 +187,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = resolveRegistrationDate(ownerFieldsDto);
         ownerFieldsDto.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
-        ownerFieldsDto.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+        String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
+        ownerFieldsDto.setEmail(email);
+        requireUniqueEmail(email);
+    }
+
+    /**
+     * Rejects creating an owner whose normalized (lower-cased) email is already used by another owner. Existing owners'
+     * stored emails are normalized the same way before comparison, so the rule holds regardless of the case the email
+     * was originally supplied in. A missing (blank or {@code null}) email is never rejected, since the field is
+     * optional.
+     *
+     * @param email the normalized email of the owner being created, may be {@code null}
+     * @throws DuplicateEmailException if any existing owner already uses the same normalized email
+     */
+    private void requireUniqueEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(existing -> emailNormalizer.normalize(existing.getEmail()))
+            .anyMatch(email::equals);
+        if (inUse) {
+            throw new DuplicateEmailException("email is already in use by another owner");
+        }
     }
 
     /**
