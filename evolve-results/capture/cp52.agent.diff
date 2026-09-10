@@ -1,0 +1,260 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5f90fd76c..8cb762653 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -297,21 +297,24 @@ public class Owner extends Person {
+ 
+     /**
+      * Builds the derived identity key that consolidates all owner duplicate detection into a
+-     * single value: the normalized E.164 {@code telephone}, the lower-cased {@code email}
+-     * (empty when none) and the {@code householdId} (empty when the owner shares no household),
+-     * joined by {@code '|'}. Two owners are duplicates exactly when their whole identity keys are
+-     * equal, so a difference in any of the three parts (for example two household mates with
+-     * different telephones) yields distinct keys. A {@code null} part contributes the empty string.
++     * single value: the SHA-256 hex digest (see {@link #sha256Hex(String)}) over the normalized
++     * E.164 {@code telephone}, the lower-cased {@code email} (empty when none) and the Soundex
++     * code of the {@code lastName} (see {@link #soundex(String)}), joined by {@code '|'}. Two
++     * owners are duplicates exactly when their whole identity keys are equal, so a difference in
++     * any of the three parts — for example two household mates (same last name, so same Soundex)
++     * with different telephones — yields distinct keys. A {@code null} telephone or email
++     * contributes the empty string. The result is a 64-character lower-case hex string.
+      *
+      * @param telephone the normalized E.164 telephone
+      * @param email the lower-cased email, or {@code null} when none
+-     * @param householdId the shared household identifier, or {@code null} when none
+-     * @return the derived identity key
++     * @param lastName the owner's last name, reduced to its Soundex code
++     * @return the derived identity key, a 64-character lower-case hex SHA-256 digest
+      */
+-    public static String identityKey(String telephone, String email, String householdId) {
+-        return (telephone == null ? "" : telephone) + "|"
+-            + (email == null ? "" : email) + "|"
+-            + (householdId == null ? "" : householdId);
++    public static String identityKey(String telephone, String email, String lastName) {
++        String key = (telephone == null ? "" : telephone) + "|"
++            + (email == null ? "" : email.toLowerCase(Locale.ROOT)) + "|"
++            + soundex(lastName);
++        return sha256Hex(key);
+     }
+ 
+     /**
+@@ -322,7 +325,75 @@ public class Owner extends Person {
+      */
+     @Transient
+     public String getIdentityKey() {
+-        return identityKey(this.telephone, this.email, this.householdId);
++        return identityKey(this.telephone, this.email, this.lastName);
++    }
++
++    /**
++     * Computes the American Soundex code of a name: the retained first letter followed by up to
++     * three digits encoding the remaining consonants ({@code B,F,P,V => 1}; {@code C,G,J,K,Q,S,X,Z
++     * => 2}; {@code D,T => 3}; {@code L => 4}; {@code M,N => 5}; {@code R => 6}), with vowels and
++     * {@code Y} acting as separators, {@code H} and {@code W} transparent (they do not break a run
++     * of same-coded consonants), adjacent same-coded letters collapsed to a single digit, and the
++     * code zero-padded to length 4. Non-letters are ignored. A {@code null} or letter-free name
++     * yields the empty string. This is the single definition of the Soundex reduction shared by the
++     * identity key ({@link #identityKey(String, String, String)}).
++     *
++     * @param name the name to encode, or {@code null}
++     * @return the 4-character Soundex code, or the empty string when {@code name} has no letters
++     */
++    public static String soundex(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder();
++        code.append(letters.charAt(0));
++        char previousCode = soundexCode(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            if (c == 'H' || c == 'W') {
++                continue;
++            }
++            char digit = soundexCode(c);
++            if (digit != '0' && digit != previousCode) {
++                code.append(digit);
++            }
++            previousCode = digit;
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /**
++     * Maps a single upper-case letter to its Soundex digit, or {@code '0'} for a vowel, {@code Y},
++     * {@code H} or {@code W} (the letters that do not contribute a digit). See
++     * {@link #soundex(String)} for the digit groups.
++     *
++     * @param c the upper-case letter to encode
++     * @return the Soundex digit {@code '1'}-{@code '6'}, or {@code '0'} when the letter contributes none
++     */
++    private static char soundexCode(char c) {
++        switch (c) {
++            case 'B': case 'F': case 'P': case 'V':
++                return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
++                return '2';
++            case 'D': case 'T':
++                return '3';
++            case 'L':
++                return '4';
++            case 'M': case 'N':
++                return '5';
++            case 'R':
++                return '6';
++            default:
++                return '0';
++        }
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 400a1bfda..ec3795231 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -626,15 +626,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Flags a newly created owner as a possible (soft) duplicate. Reaching this point means the
+-     * owner already cleared {@link #rejectDuplicateIdentity(OwnerFieldsDto)}, so it is not a hard
+-     * household duplicate. A member that declared its household via {@code sharesHousehold} is a
+-     * deliberate addition to a known household, not a suspected duplicate, so it is never flagged.
+-     * Otherwise it is a possible duplicate when an existing owner shares its {@code lastName}
+-     * (compared case-insensitively) and its {@code postcode} while carrying a different (normalized)
+-     * {@code telephone}. When such an owner is found, {@code possibleDuplicate} is set {@code true}
+-     * and {@code possibleDuplicateOf} to the matching owner's id; otherwise {@code possibleDuplicate}
+-     * is set {@code false} and no matching id is recorded. An owner without a postcode can share no
+-     * postcode and is never a possible duplicate.
++     * owner already cleared {@link #rejectDuplicateIdentity(OwnerFieldsDto)}, so it does not share
++     * an existing owner's identity key. A member that declared its household via
++     * {@code sharesHousehold} is a deliberate addition to a known household, not a suspected
++     * duplicate, so it is never flagged. Otherwise it is a possible duplicate when an existing owner
++     * shares the Soundex code of its {@code lastName} and its {@code postcode} while carrying a
++     * different identity key (see {@link #findPossibleDuplicate(Owner)}). When such an owner is
++     * found, {@code possibleDuplicate} is set {@code true} and {@code possibleDuplicateOf} to the
++     * matching owner's id; otherwise {@code possibleDuplicate} is set {@code false} and no matching
++     * id is recorded. An owner without a postcode can share no postcode and is never a possible
++     * duplicate.
+      *
+      * @param owner the owner being created, already carrying its normalized telephone and postcode
+      * @param ownerFieldsDto the submitted owner fields carrying the {@code sharesHousehold} flag
+@@ -653,11 +654,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Finds the existing owner, if any, that makes the given newly created owner a possible (soft)
+-     * duplicate: an owner sharing its {@code lastName} (compared case-insensitively) and its
+-     * {@code postcode} while carrying a different (normalized) {@code telephone}. This is the single
+-     * definition of the soft-duplicate match; {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)} only records the
+-     * outcome on the owner. An owner without a postcode can share no postcode and matches nothing, so
+-     * {@link java.util.Optional#empty()} is returned.
++     * duplicate: a non-deleted owner whose {@code lastName} shares the new owner's Soundex code (see
++     * {@link Owner#soundex(String)}) and whose {@code postcode} matches, while carrying a different
++     * identity key (see {@link Owner#identityKey(String, String, String)}). Requiring a differing
++     * identity key keeps a hard duplicate — already rejected with 409 by
++     * {@link #rejectDuplicateIdentity(OwnerFieldsDto)} — from also being flagged as a soft match, so
++     * the two household members whose telephones differ (hence differing identity keys, but matching
++     * Soundex and postcode) are exactly the soft matches surfaced here. This is the single definition
++     * of the soft-duplicate match; {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)} only records
++     * the outcome on the owner. An owner without a postcode can share no postcode and matches nothing,
++     * so {@link java.util.Optional#empty()} is returned.
+      *
+      * @param owner the owner being created, already carrying its normalized telephone and postcode
+      * @return the matching existing owner, or {@link java.util.Optional#empty()} when none matches
+@@ -666,11 +672,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getPostcode() == null) {
+             return java.util.Optional.empty();
+         }
++        String soundex = Owner.soundex(owner.getLastName());
++        String identityKey = owner.getIdentityKey();
+         return this.clinicService.findAllOwners().stream()
+             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
+-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
+-                && owner.getPostcode().equals(existing.getPostcode())
+-                && !owner.getTelephone().equals(existing.getTelephone()))
++            .filter(existing -> !identityKey.equals(existing.getIdentityKey())
++                && soundex.equals(Owner.soundex(existing.getLastName()))
++                && owner.getPostcode().equals(existing.getPostcode()))
+             .findFirst();
+     }
+ 
+@@ -851,17 +859,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Rejects a new owner that is an exact identity duplicate of an existing owner. An owner's
+-     * identity is its derived identity key (see {@link Owner#identityKey(String, String, String)}) — its
+-     * normalized {@code telephone}, canonical {@code email} and shared {@code householdId} joined by
+-     * {@code '|'} — so a new owner is a hard duplicate only when an existing, non-deleted owner
+-     * matches it on all three. Two owners that merely share a household (the same last name and
+-     * postcode) but differ in telephone or email are distinct owners and are not rejected here; such a
+-     * near-match is instead recorded as a soft {@code possibleDuplicate} (see
++     * identity is its single derived identity key (see
++     * {@link Owner#identityKey(String, String, String)}) — the SHA-256 hex digest over its
++     * normalized {@code telephone}, canonical {@code email} and the Soundex code of its
++     * {@code lastName} — so a new owner is a hard duplicate only when some existing, non-deleted
++     * owner carries the same identity key. The email-domain blocklist has already been applied when
++     * the email was normalized ahead of this check, so a disposable-domain email is rejected before
++     * duplicate detection runs. Two owners that merely belong to the same household (the same last
++     * name and postcode) but carry different telephones now have distinct identity keys and are not
++     * rejected here; such a near-match is instead recorded as a soft {@code possibleDuplicate} (see
+      * {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)}). When an existing owner shares the new
+      * owner's identity key a {@link DuplicateIdentityException} is thrown, which the exception advice
+      * renders as a 409 Conflict response. Setting {@code sharesHousehold} declares the owner a
+-     * deliberate household member and bypasses this block. An owner without a postcode belongs to no
+-     * shared household and is never a duplicate here.
++     * deliberate household member and bypasses this block.
+      *
+      * @param ownerFieldsDto the submitted owner fields, already normalized in place
+      */
+@@ -869,12 +879,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (sharesHousehold(ownerFieldsDto)) {
+             return;
+         }
+-        String householdId = householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
+-        if (householdId == null) {
+-            return;
+-        }
+-        String identityKey = Owner.identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
+-        boolean taken = householdMembers(householdId).stream()
++        String identityKey = Owner.identityKey(ownerFieldsDto.getTelephone(),
++            ownerFieldsDto.getEmail(), ownerFieldsDto.getLastName());
++        boolean taken = this.clinicService.findAllOwners().stream()
+             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+         if (taken) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5234c2ea1..9e4548d0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2196,15 +2196,17 @@ components:
+               readOnly: true
+             identityKey:
+               title: Identity key
+-              description: The owner's derived identity key, formed as
+-                '<telephone>|<email>|<householdId>' where telephone is the normalized E.164
+-                telephone, email is the lower-cased email (empty when the owner has no email)
+-                and householdId is the shared household identifier (empty when the owner shares
+-                no household). Hard duplicate detection is keyed on the household, so two owners
+-                sharing a lastName and postcode are the same household, and a second such owner
+-                is rejected with 409 Conflict unless it sets sharesHousehold.
++              description: The owner's derived identity key, the 64-character lower-case hex
++                SHA-256 digest over '<telephone>|<email>|<soundex(lastName)>' where telephone is
++                the normalized E.164 telephone, email is the lower-cased email (empty when the
++                owner has no email) and soundex(lastName) is the American Soundex code of the last
++                name. Hard duplicate detection is keyed solely on this identity key, so a second
++                owner carrying the same key is rejected with 409 Conflict unless it sets
++                sharesHousehold. Two owners sharing a lastName and postcode but with different
++                telephones now have distinct identity keys, so they are not a hard duplicate; the
++                later one is instead flagged as a soft possibleDuplicate.
+               type: string
+-              example: '+61412345678||'
++              example: '3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
