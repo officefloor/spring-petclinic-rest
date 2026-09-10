@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 72d9519dd..5719dac67 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -359,9 +359,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
++        ownerDto.setRiskFlag(riskFlag(owner));
+         return ownerDto;
+     }
+ 
++    /**
++     * Reports whether an owner should be flagged for review. The flag is true when any of three
++     * independent signals hold and false only when none does: the owner is a possible (soft)
++     * duplicate (its {@code possibleDuplicate} flag is set, see
++     * {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)}), the owner's email domain is
++     * disposable-adjacent (see {@link #isDisposableAdjacentEmail(String)}) or the owner's city is
++     * over its soft capacity (see {@link #capacityWarning(String)}). This is the single definition
++     * of an owner's risk flag, shared by every rendered response.
++     *
++     * @param owner the persisted owner to assess
++     * @return {@code true} when any risk signal holds, otherwise {@code false}
++     */
++    private boolean riskFlag(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || isDisposableAdjacentEmail(owner.getEmail())
++            || capacityWarning(owner.getCity());
++    }
++
++    /**
++     * Reports whether an email's domain is disposable-adjacent: its domain (see
++     * {@link #emailDomain(String)}) equals one of the known disposable domains (see
++     * {@link #DISPOSABLE_EMAIL_DOMAINS}) or is a subdomain of one (it ends with {@code '.'} followed
++     * by a disposable domain), compared case-insensitively. An exact disposable domain is already
++     * rejected at intake by {@link #normalizeEmail(String)}, so a persisted owner reaches this rule
++     * only through a subdomain of a disposable domain. An owner without an email has no domain and
++     * is never disposable-adjacent.
++     *
++     * @param email the owner's stored email, or {@code null} when none was supplied
++     * @return {@code true} when the email's domain is a disposable domain or a subdomain of one
++     */
++    private boolean isDisposableAdjacentEmail(String email) {
++        String domain = emailDomain(email);
++        if (domain == null) {
++            return false;
++        }
++        return DISPOSABLE_EMAIL_DOMAINS.stream()
++            .anyMatch(disposable -> domain.equals(disposable) || domain.endsWith("." + disposable));
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5a87ffb32..5788ff7f2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2328,6 +2328,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any of the following hold, otherwise false; the owner is a
++                possible duplicate (possibleDuplicate is true), the owner's email domain is
++                disposable-adjacent (equal to, or a subdomain of, a known disposable email domain
++                compared case-insensitively) or the owner's city is over its soft capacity (the
++                city already contains at least 40 owners, the same threshold capacityWarning uses).
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when this owner has been soft-deleted via DELETE /api/owners/{id};
