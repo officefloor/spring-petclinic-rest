@@ -212,6 +212,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         assignHousehold(owner);
         applyPossibleDuplicate(owner, ownerFieldsDto);
+        owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
         this.clinicService.saveOwner(owner);
         applyHouseholdMemberCount(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
@@ -1036,6 +1037,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void applyHouseholdMemberCount(Owner owner) {
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+    }
+
+    /**
+     * Resolves the household level ceiling a newly created owner is subject to: one above the
+     * current maximum {@code membershipLevel} among the existing, non-deleted owners already
+     * sharing its household (see {@link #householdMembers(String)}). Each existing member is
+     * stamped with its household member count first so its {@link Owner#getMembershipLevel()}
+     * reads a populated count, mirroring how the create and read paths render a member's derived
+     * level. The ceiling is taken before the new owner is persisted, so it reflects only the
+     * members already in the household. When the owner joins an empty household — no household
+     * identifier, or no existing member — no ceiling applies and {@code null} is returned, letting
+     * the owner earn its uncapped level (see {@link Owner#cappedMembershipLevel(int, Integer)}).
+     *
+     * @param householdId the shared household identifier of the owner being created, or {@code null}
+     * @return one above the household's current maximum membership level, or {@code null} when no ceiling applies
+     */
+    private Integer householdMembershipLevelCap(String householdId) {
+        java.util.OptionalInt max = householdMembers(householdId).stream()
+            .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
+            .peek(this::applyHouseholdMemberCount)
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        return max.isPresent() ? max.getAsInt() + 1 : null;
     }
 
     /**

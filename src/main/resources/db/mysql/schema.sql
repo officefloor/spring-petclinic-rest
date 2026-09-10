@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   possible_duplicate BIT,
   possible_duplicate_of INT,
+  membership_level_cap INT,
   deleted BIT,
   birth_date DATE,
   INDEX(last_name)

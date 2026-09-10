@@ -84,6 +84,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted")
     private Boolean deleted = Boolean.FALSE;
 
@@ -254,6 +257,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Boolean getDeleted() {
@@ -568,16 +579,35 @@ public class Owner extends Person {
     }
 
     /**
+     * Applies an owner's household level ceiling to a membership level: the level is returned
+     * unchanged when {@code cap} is {@code null} (no ceiling applies), otherwise it is capped at
+     * {@code cap} so it can never exceed it. This is the single definition of how the household
+     * level ceiling caps a membership level, shared by every rule that reads a capped membership
+     * level (see {@link #getMembershipLevel()}).
+     *
+     * @param level the uncapped membership level derived from the owner's points
+     * @param cap the owner's household level ceiling, or {@code null} when no ceiling applies
+     * @return the membership level after applying the ceiling
+     */
+    public static int cappedMembershipLevel(int level, Integer cap) {
+        return cap == null ? level : Math.min(level, cap);
+    }
+
+    /**
      * Returns this owner's numeric membership level, derived from its membership points (see
      * {@link #getMembershipPoints()}) by the single points-to-level mapping (see
      * {@link #membershipLevelForPoints(int)}): {@code 1} for {@code 0-1} points, {@code 2} for
-     * {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
+     * {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points. The
+     * result is then held to the owner's household level ceiling {@code membershipLevelCap} (see
+     * {@link #cappedMembershipLevel(int, Integer)}): a new owner joining a household may earn a
+     * level at most one above the highest level among its existing household members, and no
+     * ceiling applies when the owner joined an empty household.
      *
-     * @return the owner's membership level
+     * @return the owner's membership level, capped by its household level ceiling
      */
     @Transient
     public Integer getMembershipLevel() {
-        return membershipLevelForPoints(getMembershipPoints());
+        return cappedMembershipLevel(membershipLevelForPoints(getMembershipPoints()), this.membershipLevelCap);
     }
 
     /**
