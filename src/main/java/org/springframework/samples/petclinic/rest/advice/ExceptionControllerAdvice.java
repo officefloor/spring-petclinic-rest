@@ -169,6 +169,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidTelephoneException}, thrown when an owner's telephone number is not exactly ten digits
+     * after every non-digit character has been stripped. Returns a {@code 400 Bad Request} reporting the
+     * {@code telephone} field.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Invalid telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Collects the distinct field names carried by the given {@link BindingResult}, in binding order, so they can be
      * reported in the {@code errors} array of a validation error response.
      *
