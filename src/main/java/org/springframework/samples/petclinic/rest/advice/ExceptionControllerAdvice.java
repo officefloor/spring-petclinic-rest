@@ -191,6 +191,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateTelephoneException}, thrown when a request to create an owner carries a normalized
+     * telephone number that is already used by another owner. Returns a {@code 409 Conflict} reporting the
+     * {@code telephone} field.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Collects the distinct field names carried by the given {@link BindingResult}, in binding order, so they can be
      * reported in the {@code errors} array of a validation error response.
      *
