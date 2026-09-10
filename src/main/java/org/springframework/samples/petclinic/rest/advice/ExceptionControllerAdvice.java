@@ -204,6 +204,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link FutureRegistrationDateException}, thrown when a request to create an owner supplies a
+     * {@code registrationDate} later than the current server date. Returns a {@code 400 Bad Request} reporting the
+     * {@code registrationDate} field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        logger.debug("Future registration date at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("registrationDate"));
+    }
+
+    /**
      * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
      * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
      * single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the {@code telephone},

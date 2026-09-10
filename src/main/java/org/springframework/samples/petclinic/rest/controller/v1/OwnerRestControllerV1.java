@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
@@ -213,15 +214,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Resolves an owner's effective registration date and rolls it onto a business day. The effective date is the value
      * supplied on the payload, or the current server date when none was supplied; when that date is a Saturday or
-     * Sunday it is rolled forward to the following Monday. The returned date is always a business day.
+     * Sunday it is rolled forward to the following Monday. The returned date is always a business day. A supplied date
+     * later than the current server date is rejected.
      *
      * @param ownerFieldsDto the incoming owner payload
      * @return the effective registration date rolled forward onto a business day
+     * @throws FutureRegistrationDateException if a supplied registration date is later than the current server date
      */
     private LocalDate resolveRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
         LocalDate effective = ownerFieldsDto.getRegistrationDate();
         if (effective == null) {
             effective = LocalDate.now();
+        }
+        else if (effective.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(
+                "the registration date must not be later than the current server date");
         }
         while (effective.getDayOfWeek() == DayOfWeek.SATURDAY || effective.getDayOfWeek() == DayOfWeek.SUNDAY) {
             effective = effective.plusDays(1);
