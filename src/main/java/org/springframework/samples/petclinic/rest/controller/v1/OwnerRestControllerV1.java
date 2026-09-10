@@ -116,9 +116,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        Owner owner = createOwner(ownerFieldsDto);
+        return createdOwnerResponse(owner);
+    }
+
+    /**
+     * Runs the full intake pipeline for a newly submitted owner and persists the result, returning
+     * the saved {@link Owner}. The submitted fields are normalized and validated
+     * ({@link #prepareNewOwner(OwnerFieldsDto, LocalDate)}) against the effective business-day
+     * {@code registrationDate} ({@link #effectiveRegistrationDate(OwnerFieldsDto)}); the owner is
+     * then mapped, stamped with that registration date and every derived value (customer code,
+     * namesake count, household), flagged as a possible duplicate where applicable, saved, and
+     * finally stamped with its household member count. A rule that rejects the owner signals it by
+     * throwing, which the exception advice renders as the matching 4xx response, so this method
+     * returns only for an owner that was accepted and persisted. The create is audited once the
+     * owner has its identity.
+     *
+     * <p>The returned owner carries its generated id and every stored field, ready to be rendered by
+     * {@link #createdOwnerResponse(Owner)}.
+     *
+     * @param ownerFieldsDto the submitted owner fields, normalized in place
+     * @return the persisted owner
+     */
+    private Owner createOwner(OwnerFieldsDto ownerFieldsDto) {
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto);
         prepareNewOwner(ownerFieldsDto, registrationDate);
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCodeFor(owner));
@@ -130,8 +152,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
+        return owner;
+    }
+
+    /**
+     * Renders a persisted owner as the {@code 201 Created} response of the create endpoint. The owner
+     * is mapped to an {@link OwnerDto}, its {@code bulkSignupWarning} is derived from the owner's
+     * stored {@code registrationDate} (mirroring {@link #getOwner(Integer)}), and a {@code Location}
+     * header pointing at {@code /api/owners/{id}} is attached. Isolating the response assembly here
+     * keeps {@link #addOwner(OwnerFieldsDto)} a thin orchestration of "create the owner, then render
+     * it" and gives the created representation one place to grow.
+     *
+     * @param owner the persisted owner to render, carrying its generated id and stored fields
+     * @return the {@code 201 Created} response carrying the owner representation and {@code Location} header
+     */
+    private ResponseEntity<OwnerDto> createdOwnerResponse(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(registrationDate));
+        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
