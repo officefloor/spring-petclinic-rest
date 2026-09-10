@@ -1,0 +1,159 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f95383a1c..de5cfbc46 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "deleted")
+     private Boolean deleted = Boolean.FALSE;
+ 
+@@ -256,6 +259,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getDeleted() {
+         return this.deleted;
+     }
+@@ -567,17 +578,36 @@ public class Owner extends Person {
+         return 1;
+     }
+ 
++    /**
++     * Applies an owner's household level ceiling to a membership level: the level is returned
++     * unchanged when {@code cap} is {@code null} (no ceiling applies), otherwise it is capped at
++     * {@code cap} so it can never exceed it. This is the single definition of how the household
++     * level ceiling caps a membership level, shared by every rule that reads a capped membership
++     * level (see {@link #getMembershipLevel()}).
++     *
++     * @param level the uncapped membership level derived from the owner's points
++     * @param cap the owner's household level ceiling, or {@code null} when no ceiling applies
++     * @return the membership level after applying the ceiling
++     */
++    public static int cappedMembershipLevel(int level, Integer cap) {
++        return cap == null ? level : Math.min(level, cap);
++    }
++
+     /**
+      * Returns this owner's numeric membership level, derived from its membership points (see
+      * {@link #getMembershipPoints()}) by the single points-to-level mapping (see
+      * {@link #membershipLevelForPoints(int)}): {@code 1} for {@code 0-1} points, {@code 2} for
+-     * {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
++     * {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points. The
++     * result is then held to the owner's household level ceiling {@code membershipLevelCap} (see
++     * {@link #cappedMembershipLevel(int, Integer)}): a new owner joining a household may earn a
++     * level at most one above the highest level among its existing household members, and no
++     * ceiling applies when the owner joined an empty household.
+      *
+-     * @return the owner's membership level
++     * @return the owner's membership level, capped by its household level ceiling
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+-        return membershipLevelForPoints(getMembershipPoints());
++        return cappedMembershipLevel(membershipLevelForPoints(getMembershipPoints()), this.membershipLevelCap);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ba02429d0..7411e2d9a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -212,6 +212,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         assignHousehold(owner);
+         applyPossibleDuplicate(owner, ownerFieldsDto);
++        owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
+         this.clinicService.saveOwner(owner);
+         applyHouseholdMemberCount(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+@@ -1038,6 +1039,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+     }
+ 
++    /**
++     * Resolves the household level ceiling a newly created owner is subject to: one above the
++     * current maximum {@code membershipLevel} among the existing, non-deleted owners already
++     * sharing its household (see {@link #householdMembers(String)}). Each existing member is
++     * stamped with its household member count first so its {@link Owner#getMembershipLevel()}
++     * reads a populated count, mirroring how the create and read paths render a member's derived
++     * level. The ceiling is taken before the new owner is persisted, so it reflects only the
++     * members already in the household. When the owner joins an empty household — no household
++     * identifier, or no existing member — no ceiling applies and {@code null} is returned, letting
++     * the owner earn its uncapped level (see {@link Owner#cappedMembershipLevel(int, Integer)}).
++     *
++     * @param householdId the shared household identifier of the owner being created, or {@code null}
++     * @return one above the household's current maximum membership level, or {@code null} when no ceiling applies
++     */
++    private Integer householdMembershipLevelCap(String householdId) {
++        java.util.OptionalInt max = householdMembers(householdId).stream()
++            .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
++            .peek(this::applyHouseholdMemberCount)
++            .mapToInt(Owner::getMembershipLevel)
++            .max();
++        return max.isPresent() ? max.getAsInt() + 1 : null;
++    }
++
+     /**
+      * Collapses a field for household comparison: leading and trailing whitespace is trimmed and
+      * every internal run of whitespace is reduced to a single space. A {@code null} value collapses
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0bc9ced06..35c1acbe3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN,
+   birth_date DATE
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 8f6652471..66b433608 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN,
+   birth_date DATE
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 137468bd6..dc49c41f7 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   possible_duplicate BIT,
+   possible_duplicate_of INT,
++  membership_level_cap INT,
+   deleted BIT,
+   birth_date DATE,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e2ee0e8e3..ca7fce65c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      membership_level_cap INTEGER,
+                                       deleted BOOLEAN,
+                                       birth_date DATE
+ );
