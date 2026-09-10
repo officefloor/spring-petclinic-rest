@@ -70,6 +70,14 @@ public class Owner extends Person {
     @Transient
     private Boolean bulkSignupWarning;
 
+    /**
+     * The number of owners sharing this owner's household (the same householdId),
+     * counting this owner. Derived at response time from the persisted householdId,
+     * never persisted. Drives the 'GOLD' membership tier (3 or more members).
+     */
+    @Transient
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -143,6 +151,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     protected Set<Pet> getPetsInternal() {
