@@ -257,18 +257,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Applies an owner's address to the submitted fields, normalizing it in place into the
      * canonical form stored and returned for the owner. This is the single intake step that owns
-     * how a submitted address becomes an owner's stored address: it delegates the transform to
+     * how a submitted address becomes an owner's stored address: it delegates every transform to
      * {@link #normalizeAddress(String)}, the single definition of address normalization, and writes
-     * the result back onto {@code ownerFieldsDto}. It runs ahead of {@link
-     * #validateRequiredFields(OwnerFieldsDto)} so an address that is blank after normalization is
-     * rejected by the required-field check that follows. Isolating the step here keeps {@link
-     * #prepareNewOwner(OwnerFieldsDto, LocalDate)} a list of named intake steps and gives address
-     * handling one place to grow.
+     * the results back onto {@code ownerFieldsDto}.
+     *
+     * <p>The structured fields are preferred when supplied: when a non-blank {@code addressLine1}
+     * is present the two structured lines are normalized in place and the flat {@code address} is
+     * (re)composed from them — the normalized {@code addressLine1}, with a single space and the
+     * normalized {@code addressLine2} appended only when an {@code addressLine2} was supplied — so
+     * every rule that later reads {@code address} sees the structured value. When no structured
+     * {@code addressLine1} is supplied the flat {@code address} is normalized in place, preserving
+     * backward compatibility.
+     *
+     * <p>It runs ahead of {@link #validateRequiredFields(OwnerFieldsDto)} so an address that is
+     * blank after normalization in either form is rejected by the required-field check that
+     * follows. Isolating the step here keeps {@link #prepareNewOwner(OwnerFieldsDto, LocalDate)} a
+     * list of named intake steps and gives address handling one place to grow.
      *
      * @param ownerFieldsDto the submitted owner fields, whose address is normalized in place
      */
     private void applyAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        String line1 = ownerFieldsDto.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine1 = normalizeAddress(line1);
+            ownerFieldsDto.setAddressLine1(normalizedLine1);
+            String line2 = ownerFieldsDto.getAddressLine2();
+            if (line2 != null && !line2.isBlank()) {
+                String normalizedLine2 = normalizeAddress(line2);
+                ownerFieldsDto.setAddressLine2(normalizedLine2);
+                ownerFieldsDto.setAddress(normalizedLine1 + " " + normalizedLine2);
+            } else {
+                ownerFieldsDto.setAddressLine2(null);
+                ownerFieldsDto.setAddress(normalizedLine1);
+            }
+        } else {
+            ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        }
     }
 
     /**
