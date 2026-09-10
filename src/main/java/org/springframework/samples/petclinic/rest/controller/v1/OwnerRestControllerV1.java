@@ -263,13 +263,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the immutable, structured {@code OWNER_CREATED} audit event for a freshly persisted owner,
-     * alongside the human-readable audit line. The event is a JSON object carrying, in order, a
-     * {@code seq} (a monotonically increasing integer across creates, see {@link #OWNER_CREATED_SEQ}),
-     * the owner's {@code ownerId}, the owner's current primary identifier (see
-     * {@link #primaryIdentifier(Owner)}) under the {@code memberId} key, the owner's derived
-     * {@code membershipLevel}, and the {@code event} marker {@code 'OWNER_CREATED'}. Published to the
-     * dedicated {@code AUDIT} logger so downstream consumers can react to owner creation structurally
-     * rather than by parsing the free-form line.
+     * alongside the human-readable audit line. The event is the version-2 schema: a JSON object
+     * carrying, in order, a {@code seq} (a monotonically increasing integer across creates, see
+     * {@link #OWNER_CREATED_SEQ}), a {@code schemaVersion} of {@code 2}, the owner's {@code ownerId},
+     * the owner's current primary identifier (see {@link #primaryIdentifier(Owner)}) under the
+     * {@code memberId} key, the owner's derived {@code membershipLevel}, the owner's
+     * {@code ownerSegment} recomputed from its version-2 identity (see
+     * {@link #ownerSegment(Owner)}), and the {@code event} marker {@code 'OWNER_CREATED'}. Published
+     * to the dedicated {@code AUDIT} logger so downstream consumers can react to owner creation
+     * structurally rather than by parsing the free-form line.
      *
      * @param owner the persisted owner, already carrying its generated id and derived values
      */
@@ -277,11 +279,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         long seq = OWNER_CREATED_SEQ.incrementAndGet();
         Map<String, String> event = new java.util.LinkedHashMap<>();
         event.put("seq", Long.toString(seq));
+        event.put("schemaVersion", "2");
         event.put("ownerId", String.valueOf(owner.getId()));
         event.put("memberId", jsonString(primaryIdentifier(owner)));
         event.put("membershipLevel", String.valueOf(owner.getMembershipLevel()));
+        event.put("ownerSegment", jsonString(ownerSegment(owner)));
         event.put("event", jsonString("OWNER_CREATED"));
         AUDIT.info("{}", jsonObject(event));
+    }
+
+    /**
+     * Recomputes the owner's segment for the version-2 {@code OWNER_CREATED} audit event, rendering
+     * the owner's derived segment (for example {@code 'STANDARD_METRO'}, see
+     * {@link OwnerMapper#ownerSegment(Owner)}) as its bare string. The segment is derived from the
+     * owner's membership level and its plain, user-facing region, so it never carries the identity
+     * version tag. Returns {@code null} when the owner has no derivable segment, which the event
+     * renders as JSON {@code null}.
+     *
+     * @param owner the persisted owner, already carrying its generated id and derived values
+     * @return the owner's segment as a bare string, or {@code null} when none is derivable
+     */
+    private String ownerSegment(Owner owner) {
+        OwnerDto.OwnerSegmentEnum segment = ownerMapper.ownerSegment(owner);
+        return segment == null ? null : segment.getValue();
     }
 
     /**
@@ -1151,20 +1171,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the canonical household key that identifies the household an owner belongs to: the
-     * normalized last name (case-insensitive, with collapsed whitespace) joined to the postcode by
-     * {@code '|'}. This is the single definition of which owner fields make up a household and how
-     * they are normalized; {@link #householdIdFor(Owner)} hashes this key into the stored identifier,
-     * so any two owners in the same household resolve to the same key and therefore the same
-     * identifier. The whole owner is taken (rather than the bare last name and postcode) so the key
-     * derivation can reach the owner's other identity inputs, such as its identity region code (see
-     * {@link Owner#getIdentityRegionCode()}), without changing its callers.
+     * normalized last name (case-insensitive, with collapsed whitespace), the postcode and the fixed
+     * {@code 'V2'} version tag (see {@link Owner#IDENTITY_VERSION_TAG}), joined by {@code '|'}. This
+     * is the single definition of which owner fields make up a household and how they are normalized;
+     * {@link #householdIdFor(Owner)} hashes this key into the stored identifier, so any two owners in
+     * the same household resolve to the same key and therefore the same identifier. Mixing the
+     * version tag in is what moves the {@code householdId} to version 2, so no value produced under
+     * version 1 is produced again, while the household still keys purely on {@code (lastName,
+     * postcode)}. The whole owner is taken (rather than the bare last name and postcode) so the key
+     * derivation can reach the owner's other identity inputs without changing its callers.
      *
      * @param owner the owner whose household key is built, never {@code null}
      * @return the normalized household key
      */
     private String householdKey(Owner owner) {
         return collapseWhitespace(owner.getLastName()).toLowerCase(java.util.Locale.ROOT)
-            + "|" + owner.getPostcode();
+            + "|" + owner.getPostcode()
+            + "|" + Owner.IDENTITY_VERSION_TAG;
     }
 
     /**

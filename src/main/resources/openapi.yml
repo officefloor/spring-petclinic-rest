@@ -2112,6 +2112,52 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: The owner's version-2 derived identifiers, grouped together. Every identifier
+        is rederived under a version-2 algorithm that mixes in a fixed 'V2' version tag, so no
+        value produced under version 1 is produced again.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: The owner's unified member identifier formatted as
+            '<REGION><FY><HASH8><CHK>', concatenated with no separators. REGION is the owner's
+            version-2 identity region code ('V2' followed by the plain region code NSW, VIC or QLD,
+            or 'V2UNKNOWN' when the owner has no known region), FY is the two-digit fiscal year
+            (starting 1 July) that the owner's business-day-adjusted registrationDate falls in,
+            HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the normalized
+            E.164 telephone concatenated with the lastName, and CHK is a single Luhn check digit
+            (0-9) computed over the digits of <REGION><FY><HASH8>. When the base id would collide
+            with an existing owner's, '-<n>' is appended with the smallest n of 2 or more that is free.
+          type: string
+          example: 'V2NSW26A1B2C3D45'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: A stable identifier shared by owners that belong to the same household.
+            The household is keyed on (lastName, postcode) and is the first 12 hex characters of
+            the SHA-256 digest over the normalized lastName (case-insensitive, collapsed
+            whitespace) joined to the postcode and the fixed 'V2' version tag by '|', so any two
+            owners sharing a lastName and postcode automatically receive the same value. Absent for
+            owners without a postcode, which belong to no shared household.
+          type: string
+          example: '3F2A1B0C9D8E'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: The owner's derived identity key, the 64-character lower-case hex
+            SHA-256 digest over '<V2>|<telephone>|<email>|<soundex(lastName)>' where the fixed
+            'V2' version tag leads, telephone is the normalized E.164 telephone, email is the
+            lower-cased email (empty when the owner has no email) and soundex(lastName) is the
+            American Soundex code of the last name. Hard duplicate detection is keyed solely on
+            this identity key, so a second owner carrying the same key is rejected with 409
+            Conflict unless it sets sharesHousehold. Two owners sharing a lastName and postcode
+            but with different telephones now have distinct identity keys, so they are not a hard
+            duplicate; the later one is instead flagged as a soft possibleDuplicate.
+          type: string
+          example: '3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2163,45 +2209,22 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: The owner's unified member identifier formatted as
-                '<REGION><FY><HASH8><CHK>', concatenated with no separators. REGION is the owner's
-                region code (NSW, VIC or QLD, or 'UNKNOWN' when the owner has no known region), FY is
-                the two-digit fiscal year (starting 1 July) that the owner's business-day-adjusted
-                registrationDate falls in, HASH8 is the first 8 upper-case hex characters of the
-                SHA-256 digest over the normalized E.164 telephone concatenated with the lastName, and
-                CHK is a single Luhn check digit (0-9) computed over the digits of <REGION><FY><HASH8>.
-                When the base id would collide with an existing owner's, '-<n>' is appended with the
-                smallest n of 2 or more that is free.
-              type: string
-              example: 'NSW26A1B2C3D45'
+            apiVersion:
+              title: API version
+              description: The version of the owner identity contract this representation follows.
+                Always 2 for the version-2 identity, under which the derived identifiers are
+                grouped in the nested 'identity' object rather than carried at the top level.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: A stable identifier shared by owners that belong to the same household.
-                The household is keyed on (lastName, postcode) and is the first 12 hex characters of
-                the SHA-256 digest over the normalized lastName (case-insensitive, collapsed
-                whitespace) joined to the postcode by '|', so any two owners sharing a lastName and
-                postcode automatically receive the same value. Absent for owners without a postcode,
-                which belong to no shared household.
-              type: string
-              example: '3F2A1B0C9D8E'
+            identity:
+              title: Identity
+              description: The owner's version-2 derived identifiers (memberId, householdId and
+                identityKey), grouped together rather than carried at the top level.
               readOnly: true
-            identityKey:
-              title: Identity key
-              description: The owner's derived identity key, the 64-character lower-case hex
-                SHA-256 digest over '<telephone>|<email>|<soundex(lastName)>' where telephone is
-                the normalized E.164 telephone, email is the lower-cased email (empty when the
-                owner has no email) and soundex(lastName) is the American Soundex code of the last
-                name. Hard duplicate detection is keyed solely on this identity key, so a second
-                owner carrying the same key is rejected with 409 Conflict unless it sets
-                sharesHousehold. Two owners sharing a lastName and postcode but with different
-                telephones now have distinct identity keys, so they are not a hard duplicate; the
-                later one is instead flagged as a soft possibleDuplicate.
-              type: string
-              example: '3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a'
-              readOnly: true
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: The number of existing owners that shared the same firstName and

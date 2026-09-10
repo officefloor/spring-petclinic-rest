@@ -311,11 +311,23 @@ public class Owner extends Person {
      * @return the derived identity key, a 64-character lower-case hex SHA-256 digest
      */
     public static String identityKey(String telephone, String email, String lastName) {
-        String key = (telephone == null ? "" : telephone) + "|"
+        String key = IDENTITY_VERSION_TAG + "|"
+            + (telephone == null ? "" : telephone) + "|"
             + (email == null ? "" : email.toLowerCase(Locale.ROOT)) + "|"
             + soundex(lastName);
         return sha256Hex(key);
     }
+
+    /**
+     * The fixed version tag mixed into the owner's version-2 derived identifiers. Every identifier
+     * built INSIDE an owner's identity — its {@code memberId} (via the identity region code, see
+     * {@link #getIdentityRegionCode()}), its {@code householdId} and its {@code identityKey} — mixes
+     * this tag into its derivation, so no value produced under version 1 is produced again. It is the
+     * single definition of the identity version tag, deliberately confined to the identifiers so it
+     * never leaks into the plain, user-facing region reported as the owner's locality, timezone or
+     * segment.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
 
     /**
      * Returns this owner's derived identity key, see
@@ -600,18 +612,21 @@ public class Owner extends Person {
 
     /**
      * Returns the region code carried INSIDE this owner's derived identifiers — the region the
-     * unified {@code memberId} leads with, and the region any other identifier embeds: the owner's
-     * region code (see {@link #getRegionCode()}, {@code 'UNKNOWN'} when the owner has no known
-     * region). This is the single definition of the region an identifier is built from, kept
-     * deliberately separate from {@link #getRegionCode()} — the plain, user-facing region reported
-     * as the owner's locality, timezone and segment — so the region baked into identifiers can
-     * evolve on its own without disturbing that user-facing region.
+     * unified {@code memberId} leads with, and the region any other identifier embeds: the fixed
+     * {@code 'V2'} version tag (see {@link #IDENTITY_VERSION_TAG}) followed by the owner's plain
+     * region code (see {@link #getRegionCode()}), so a known region yields for example
+     * {@code 'V2NSW'} and an owner with no known region yields {@code 'V2UNKNOWN'}. Mixing the
+     * version tag in is what moves the identifiers to version 2, so no value produced under version
+     * 1 is produced again. This is the single definition of the region an identifier is built from,
+     * kept deliberately separate from {@link #getRegionCode()} — the plain, user-facing region
+     * reported as the owner's locality, timezone and segment — so the version tag baked into
+     * identifiers never disturbs that user-facing region.
      *
-     * @return the region code embedded in the owner's identifiers, or {@code 'UNKNOWN'} when it has no known region
+     * @return the region code embedded in the owner's identifiers, or {@code 'V2UNKNOWN'} when it has no known region
      */
     @Transient
     public String getIdentityRegionCode() {
-        return getRegionCode();
+        return IDENTITY_VERSION_TAG + getRegionCode();
     }
 
     /**

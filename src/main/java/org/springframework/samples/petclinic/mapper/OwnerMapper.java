@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -21,12 +22,41 @@ public interface OwnerMapper {
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The version of the owner identity contract every rendered owner reports as {@code apiVersion}:
+     * always {@code 2}, the version under which the derived identifiers are grouped in the nested
+     * {@code identity} object rather than carried at the top level.
+     */
+    default Integer apiVersion() {
+        return 2;
+    }
+
+    /**
+     * Groups the owner's version-2 derived identifiers into the nested {@code identity} object of the
+     * response: its unified {@code memberId}, its shared {@code householdId} and its derived
+     * {@code identityKey} (see {@link Owner#getIdentityKey()}). These three are carried here rather
+     * than at the top level under the version-2 contract. Returns {@code null} for a {@code null}
+     * owner, leaving {@code identity} absent from the response.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
 
     /**
      * Derives the owner's {@code selfLink}: the canonical URI path of the owner, formed as
