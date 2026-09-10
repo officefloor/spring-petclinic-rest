@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+index c894d815c..cbe8d56aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+@@ -1,11 +1,13 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+ /**
+- * Derives an owner's canonical region ('locality') from its city. The city-to-region
+- * table lives on {@link Region}; this resolver turns the resolved region into the
+- * {@code locality} string an owner is mapped with, using {@link #UNKNOWN} for a city
+- * that belongs to no known region. Kept out of {@link OwnerMapper} so MapStruct does not
+- * mistake it for an implicit {@code String -> String} property mapping method.
++ * Derives an owner's canonical region ('locality'), preferring the postcode over the city.
++ * Both the postcode-range and city-to-region tables live on {@link Region}; this resolver
++ * looks the region up by postcode first and only falls back to the city when the postcode is
++ * absent or in no known range, turning the resolved region into the {@code locality} string an
++ * owner is mapped with, using {@link #UNKNOWN} when neither postcode nor city maps to a known
++ * region. Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit
++ * {@code String -> String} property mapping method.
+  */
+ public final class LocalityResolver {
+ 
+@@ -16,12 +18,17 @@ public final class LocalityResolver {
+     }
+ 
+     /**
+-     * Returns the canonical region for the given city (Sydney-&gt;NSW,
+-     * Melbourne-&gt;VIC, Brisbane-&gt;QLD), or "UNKNOWN" when the city is not in
+-     * the table (including a {@code null} city).
++     * Returns the canonical region for the given owner, preferring the postcode range
++     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) over the city-to-region table
++     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). Falls back to the city only when the
++     * postcode is absent or in no known range, and returns "UNKNOWN" when neither maps to a
++     * known region (including a {@code null} city and postcode).
+      */
+-    public static String deriveLocality(String city) {
+-        Region region = Region.forCity(city);
++    public static String deriveLocality(String city, String postcode) {
++        Region region = Region.forPostcode(postcode);
++        if (region == null) {
++            region = Region.forCity(city);
++        }
+         return region == null ? UNKNOWN : region.name();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c9873ad0c..f25f60aeb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCity()))")
++        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "bulkSignupWarning",
+         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Region.java b/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
+index 5b6277337..4cfd09a71 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
+@@ -39,6 +39,32 @@ public enum Region {
+         return postcode >= this.minPostcode && postcode <= this.maxPostcode;
+     }
+ 
++    /**
++     * Returns the region whose inclusive postcode range contains the given postcode, or
++     * {@code null} when the postcode is absent, not a 4-digit number, or in no known range.
++     *
++     * @param postcode the owner's postcode, may be {@code null}
++     * @return the matching region, or {@code null} when the postcode maps to no known region
++     */
++    public static Region forPostcode(String postcode) {
++        if (postcode == null) {
++            return null;
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return null;
++        }
++        for (Region region : values()) {
++            if (region.acceptsPostcode(value)) {
++                return region;
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Returns the region the given city belongs to, or {@code null} when the city is not in the
+      * table (including a {@code null} city).
