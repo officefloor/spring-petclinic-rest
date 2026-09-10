@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -135,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         requireUniqueTelephone(telephone);
+        requireUniqueHousehold(ownerFieldsDto);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         if (ownerFieldsDto.getRegistrationDate() == null) {
             ownerFieldsDto.setRegistrationDate(LocalDate.now());
@@ -211,6 +213,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateTelephoneException("telephone is already in use by another owner");
         }
+    }
+
+    /**
+     * Rejects creating an owner who shares both a last name and an address with an existing owner, unless the request
+     * opts in by setting {@code sharesHousehold} to {@code true}. Both fields are compared case-insensitively after
+     * collapsing runs of whitespace to a single space and trimming, so incidental formatting differences do not defeat
+     * the rule.
+     *
+     * @param ownerFieldsDto the incoming owner payload
+     * @throws DuplicateOwnerException if another owner already has the same last name and address and the request does
+     *                                 not set {@code sharesHousehold}
+     */
+    private void requireUniqueHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
+        String address = collapseWhitespace(ownerFieldsDto.getAddress());
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+                && collapseWhitespace(existing.getAddress()).equalsIgnoreCase(address));
+        if (duplicate) {
+            throw new DuplicateOwnerException(
+                "an owner with the same last name and address already exists in this household");
+        }
+    }
+
+    /**
+     * Canonicalizes a value for household comparison by trimming it and collapsing every run of whitespace to a single
+     * space. Case is deliberately preserved here; callers compare the result case-insensitively.
+     *
+     * @param value the raw field value, may be {@code null}
+     * @return the whitespace-collapsed value, or an empty string when {@code null}
+     */
+    private String collapseWhitespace(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.strip().replaceAll("\\s+", " ");
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

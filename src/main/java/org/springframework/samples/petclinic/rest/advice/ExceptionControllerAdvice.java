@@ -204,6 +204,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a last name and address
+     * already used by another owner (compared case-insensitively with collapsed whitespace) without opting in via
+     * {@code sharesHousehold}. Returns a {@code 409 Conflict} reporting the {@code lastName} and {@code address} fields.
+     *
+     * @param e The {@link DuplicateOwnerException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(), List.of("lastName", "address"));
+    }
+
+    /**
      * Builds the response body shared by the handlers that report a single business-rule violation: a
      * {@link ProblemDetail} for the given status carrying {@code detail} as its detail message and the offending field
      * names in its {@code errors} property.
