@@ -107,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         requireUniqueTelephone(telephone);
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -160,6 +161,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalizes an optional owner email. A syntactically valid address is already enforced by Bean Validation on the
+     * request payload, so this only canonicalizes the value that gets stored and returned by lower-casing it. A missing
+     * (blank or {@code null}) email is left untouched, since the field is optional.
+     *
+     * @param email the raw email value from the request, may be {@code null}
+     * @return the lower-cased email, or the original value when none was supplied
+     */
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return email;
+        }
+        return email.toLowerCase();
+    }
+
+    /**
      * Rejects creating an owner whose normalized telephone is already used by another owner. Existing owners' stored
      * telephones are normalized the same way before comparison, so the rule holds regardless of how their number was
      * originally formatted.
@@ -188,6 +204,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
