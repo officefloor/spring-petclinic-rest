@@ -1,5 +1,8 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Normalizes an owner telephone number into E.164 form.
  *
@@ -8,6 +11,11 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * {@code +61} is assumed and a single leading {@code '0'} is dropped from the national digits.
  * The result must carry 8 to 15 digits after the {@code '+'}. Anything that cannot form a
  * valid E.164 number raises {@link InvalidOwnerTelephoneException} so the endpoint responds 400.
+ *
+ * <p>For recognised country codes the national number (the digits after the country code) must
+ * also have the exact length that country requires: {@code +61} (Australia) needs 9 national
+ * digits and {@code +1} (NANP) needs 10. A wrong national-number length raises
+ * {@link InvalidOwnerTelephoneException} so the endpoint responds 400.
  *
  * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and {@code "+64 21 123 456"}
  * becomes {@code "+6421123456"}.
@@ -20,6 +28,17 @@ final class OwnerTelephone {
     private static final int MIN_DIGITS = 8;
 
     private static final int MAX_DIGITS = 15;
+
+    /**
+     * National-number length required per country code. Ordered longest code first so the most
+     * specific prefix wins when matching.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTH = new LinkedHashMap<>();
+
+    static {
+        NATIONAL_LENGTH.put("61", 9); // Australia
+        NATIONAL_LENGTH.put("1", 10); // North American Numbering Plan
+    }
 
     private OwnerTelephone() {
     }
@@ -49,6 +68,17 @@ final class OwnerTelephone {
         }
         if (e164Digits.length() < MIN_DIGITS || e164Digits.length() > MAX_DIGITS) {
             throw new InvalidOwnerTelephoneException(raw);
+        }
+        // For a recognised country code, the national number must have the exact required length.
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH.entrySet()) {
+            String countryCode = entry.getKey();
+            if (e164Digits.startsWith(countryCode)) {
+                int national = e164Digits.length() - countryCode.length();
+                if (national != entry.getValue()) {
+                    throw new InvalidOwnerTelephoneException(raw);
+                }
+                break;
+            }
         }
         return "+" + e164Digits;
     }
