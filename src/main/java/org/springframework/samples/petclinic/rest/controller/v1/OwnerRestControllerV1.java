@@ -20,6 +20,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -379,7 +382,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String region = owner.getRegion();
         String regionCode = region != null ? region : "UNKNOWN";
         String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
-        return regionCode + "-" + hash8;
+        return deduplicateCustomerCode(regionCode + "-" + hash8);
+    }
+
+    /**
+     * Ensures the computed {@code customerCode} is unique across existing owners. When the given base
+     * code collides with an existing owner's {@code customerCode}, {@code '-<n>'} is appended with the
+     * smallest {@code n} of 2 or more that yields a code no existing owner already carries.
+     *
+     * @param baseCode the customer code computed for the owner being created
+     * @return the base code when it is already unique, otherwise the de-duplicated code
+     */
+    private String deduplicateCustomerCode(String baseCode) {
+        Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existing.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (existing.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
