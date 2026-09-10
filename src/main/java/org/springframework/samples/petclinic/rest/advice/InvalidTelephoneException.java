@@ -17,8 +17,9 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an owner's telephone number, after every non-digit character has been stripped, is not exactly ten
- * digits. Reported as a {@code 400 Bad Request} by the {@link ExceptionControllerAdvice}.
+ * Thrown when an owner's telephone number cannot be converted into a valid E.164 number, i.e. it does not carry between
+ * 8 and 15 digits after the leading {@code '+'} once the country code has been applied. Reported as a
+ * {@code 400 Bad Request} by the {@link ExceptionControllerAdvice}.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
