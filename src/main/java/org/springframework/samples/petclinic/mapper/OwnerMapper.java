@@ -34,6 +34,8 @@ public interface OwnerMapper {
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand",
+        expression = "java(org.springframework.samples.petclinic.mapper.AgeBandResolver.deriveAgeBand(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "identityKey", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
