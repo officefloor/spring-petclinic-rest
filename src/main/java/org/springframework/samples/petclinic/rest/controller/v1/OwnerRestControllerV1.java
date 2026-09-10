@@ -31,7 +31,6 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
-import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -40,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -66,14 +66,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final TelephoneNormalizer telephoneNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 TelephoneNormalizer telephoneNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.telephoneNormalizer = telephoneNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -105,7 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
-        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         requireUniqueTelephone(telephone);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -148,23 +152,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number by removing every non-digit character, then requires the result to be exactly ten
-     * digits. The normalized 10-digit value is what gets stored and returned as {@code telephone}.
-     *
-     * @param telephone the raw telephone value from the request
-     * @return the normalized 10-digit telephone
-     * @throws InvalidTelephoneException if the value is not exactly ten digits after non-digit characters are stripped
-     */
-    private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException(
-                "telephone must contain exactly 10 digits after removing non-digit characters");
-        }
-        return digits;
-    }
-
-    /**
      * Normalizes an optional owner email. A syntactically valid address is already enforced by Bean Validation on the
      * request payload, so this only canonicalizes the value that gets stored and returned by lower-casing it. A missing
      * (blank or {@code null}) email is left untouched, since the field is optional.
@@ -181,7 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner whose normalized telephone is already used by another owner. Existing owners' stored
-     * telephones are normalized the same way before comparison, so the rule holds regardless of how their number was
+     * telephones are canonicalized the same way before comparison, so the rule holds regardless of how their number was
      * originally formatted.
      *
      * @param telephone the normalized telephone of the owner being created
@@ -189,7 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void requireUniqueTelephone(String telephone) {
         boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(existing -> existing.getTelephone() == null ? "" : existing.getTelephone().replaceAll("\\D", ""))
+            .map(existing -> telephoneNormalizer.canonicalize(existing.getTelephone()))
             .anyMatch(telephone::equals);
         if (inUse) {
             throw new DuplicateTelephoneException("telephone is already in use by another owner");
