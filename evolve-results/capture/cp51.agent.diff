@@ -1,0 +1,197 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f64e50072..07f92eb67 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,7 +33,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints",
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.points(owner))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
++        expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.localityOf(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 59b8d3dc4..973c71d5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -116,6 +116,16 @@ public class Owner extends Person {
+     @Transient
+     private Integer possibleDuplicateOf;
+ 
++    /**
++     * The owner's membership level, capped so it never exceeds one above the current
++     * maximum level among the other members of its household. Derived at response time
++     * from the persisted fields plus the household, never persisted. When null (e.g. for
++     * list responses that skip the assignment step) the level falls back to the uncapped
++     * value computed directly from the owner's fields.
++     */
++    @Transient
++    private Integer membershipLevel;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -263,6 +273,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+index 80910d686..05546fc7f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+@@ -1,6 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.common;
+ 
+ import java.time.LocalDate;
++import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+@@ -81,6 +82,24 @@ public final class MembershipLevels {
+         return 4;
+     }
+ 
++    /**
++     * Compute the membership level for the given owner, capped so it never exceeds one above
++     * the highest level among the other members of its household. The {@code householdMembers}
++     * are the owner's fellow household members (this owner excluded); when there are none the
++     * uncapped level from {@link #of(Owner)} is returned unchanged.
++     */
++    public static int capped(Owner owner, Collection<Owner> householdMembers) {
++        int base = of(owner);
++        int ceiling = Integer.MIN_VALUE;
++        for (Owner member : householdMembers) {
++            ceiling = Math.max(ceiling, of(member));
++        }
++        if (ceiling == Integer.MIN_VALUE) {
++            return base;
++        }
++        return Math.min(base, ceiling + 1);
++    }
++
+     private static boolean hasTenurePoints(Owner owner) {
+         LocalDate registrationDate = owner.getRegistrationDate();
+         if (registrationDate == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+new file mode 100644
+index 000000000..ce2c934c8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+@@ -0,0 +1,47 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.function.common.MembershipLevels;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records the owner's membership level as the transient {@code membershipLevel}, capping it so
++ * it never exceeds one above the current maximum level among the <em>other</em> members of its
++ * household (owners sharing the same {@code householdId}, this owner excluded). With no other
++ * household member no cap applies and the uncapped level stands.
++ *
++ * <p>Runs after {@link AssignOwnerHouseholdSize} — the level depends on the household size — on
++ * both the create pipeline (after Save, so the new owner has an id and is excluded by it) and
++ * the read pipeline, so the capped level is identical whether returned from the create response
++ * or a later GET, mirroring {@link AssignOwnerHouseholdSize} and {@link AssignOwnerPossibleDuplicate}.
++ */
++public class AssignOwnerMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            owner.setMembershipLevel(MembershipLevels.of(owner));
++            return;
++        }
++        Integer householdSize = owner.getHouseholdSize();
++        List<Owner> others = new ArrayList<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getId() == null
++                    || (owner.getId() != null && existing.getId().equals(owner.getId()))) {
++                continue;
++            }
++            if (!householdId.equals(existing.getHouseholdId())) {
++                continue;
++            }
++            // All members of a household share the same size; align it so each member's level
++            // is computed on the same basis a GET would report for that member.
++            existing.setHouseholdSize(householdSize);
++            others.add(existing);
++        }
++        owner.setMembershipLevel(MembershipLevels.capped(owner, others));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 238957fd4..760a7437b 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -21,16 +21,12 @@ respondExisting:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
+   govern: [ transaction ]
+-  next: ensureUniqueIdentity
+-
+-# Reject a create that would be a second member of an existing household (same deterministic
+-# householdId, keyed on lastName + postcode), responding 409 — unless 'sharesHousehold' is set,
+-# which declares the caller intends to join the household and bypasses this block.
+-ensureUniqueIdentity:
+-  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueOwnerIdentity
+-  govern: [ transaction ]
+   next: ensureCityCapacity
+ 
++# Joining an existing household is now permitted (owners sharing a lastName + postcode
++# automatically share a householdId); rather than rejecting a second household member, the
++# new member's membershipLevel is capped later (see the 'membershipLevel' step).
++
+ # Reject creating an owner when the request's city already contains 50 or more owners,
+ # responding 409.
+ ensureCityCapacity:
+@@ -103,6 +99,14 @@ warn:
+ householdSize:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+   govern: [ transaction ]
++  next: membershipLevel
++
++# Cap the owner's membershipLevel at one above the current maximum among the other members of
++# its household. Runs after householdSize (the level depends on it) so the capped value matches
++# what a later GET recomputes.
++membershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipLevel
++  govern: [ transaction ]
+   next: possibleDuplicate
+ 
+ # Flag whether this owner soft-matches an existing owner's lastName + postcode with a
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index bf3330570..dbf2c6a65 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -17,6 +17,13 @@ warn:
+ householdSize:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+   govern: [ readonly-transaction ]
++  next: membershipLevel
++
++# Cap the owner's membershipLevel at one above the current maximum among the other members of
++# its household. Recomputed here to match the create response.
++membershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipLevel
++  govern: [ readonly-transaction ]
+   next: possibleDuplicate
+ 
+ # Flag whether this owner soft-matches an existing owner's lastName + postcode with a
