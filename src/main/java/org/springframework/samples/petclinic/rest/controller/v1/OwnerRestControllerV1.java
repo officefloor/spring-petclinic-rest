@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -30,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.IdentityKeyResolver;
 import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
@@ -97,13 +95,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final IdentityKeyResolver identityKeyResolver;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 EmailNormalizer emailNormalizer) {
+                                 EmailNormalizer emailNormalizer,
+                                 IdentityKeyResolver identityKeyResolver) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -111,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.identityKeyResolver = identityKeyResolver;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -149,7 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
-        assignHousehold(owner, ownerFieldsDto);
+        assignHouseholdId(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -390,40 +392,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *         them; empty when none match
      */
     private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
-        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
+        String lastName = identityKeyResolver.collapseWhitespace(ownerFieldsDto.getLastName());
         String address = addressNormalizer.normalize(ownerFieldsDto.getAddress());
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+            .filter(existing -> identityKeyResolver.collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
                 && addressNormalizer.normalize(existing.getAddress()).equals(address))
             .toList();
-    }
-
-    /**
-     * Canonicalizes a value for household comparison by trimming it and collapsing every run of whitespace to a single
-     * space. Case is deliberately preserved here; callers compare the result case-insensitively.
-     *
-     * @param value the raw field value, may be {@code null}
-     * @return the whitespace-collapsed value, or an empty string when {@code null}
-     */
-    private String collapseWhitespace(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.strip().replaceAll("\\s+", " ");
     }
 
     /**
      * Assigns the shared {@code householdId} for an owner joining an existing household. Only owners created with
      * {@code sharesHousehold} set to {@code true} that actually match an existing household (see
      * {@link #findHouseholdMembers}) are given an identifier; single owners keep a {@code null} household. The
-     * identifier is derived deterministically from the household's last name and address, so every member of the same
-     * household resolves to the same stable value regardless of creation order. Existing members that predate the
-     * feature and still lack the identifier are backfilled so the whole household shares it.
+     * identifier is derived deterministically from the household's last name and address (see
+     * {@link IdentityKeyResolver#deriveHouseholdId}), so every member of the same household resolves to the same stable
+     * value regardless of creation order. Existing members that predate the feature and still lack the identifier are
+     * backfilled (see {@link #backfillHouseholdMembers}) so the whole household shares it.
      *
      * @param owner          the newly mapped owner about to be saved
      * @param ownerFieldsDto the incoming owner payload
      */
-    private void assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+    private void assignHouseholdId(Owner owner, OwnerFieldsDto ownerFieldsDto) {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return;
         }
@@ -431,36 +420,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (members.isEmpty()) {
             return;
         }
-        String householdId = generateHouseholdId(ownerFieldsDto);
+        String householdId =
+            identityKeyResolver.deriveHouseholdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         owner.setHouseholdId(householdId);
+        backfillHouseholdMembers(householdId, members);
+    }
+
+    /**
+     * Stamps the shared {@code householdId} onto the existing members of a household that do not already carry it,
+     * persisting each one that changes. Members that predate the feature (and so still lack the identifier) are brought
+     * into line so the whole household shares the single value; members that already carry it are left untouched.
+     *
+     * @param householdId the shared household identifier
+     * @param members     the existing owners in the household
+     */
+    private void backfillHouseholdMembers(String householdId, List<Owner> members) {
         for (Owner member : members) {
             if (!householdId.equals(member.getHouseholdId())) {
                 member.setHouseholdId(householdId);
                 this.clinicService.saveOwner(member);
             }
-        }
-    }
-
-    /**
-     * Derives a household's stable identifier, formatted {@code HH-<12 hex chars>}, from the case-insensitive,
-     * whitespace-collapsed last name and the normalized address (see {@link AddressNormalizer}). Being a pure function
-     * of those fields, it is identical for every owner in the same household and never changes over time.
-     *
-     * @param ownerFieldsDto the incoming owner payload
-     * @return the household identifier
-     */
-    private String generateHouseholdId(OwnerFieldsDto ownerFieldsDto) {
-        String key = collapseWhitespace(ownerFieldsDto.getLastName()).toLowerCase()
-            + "\n" + addressNormalizer.normalize(ownerFieldsDto.getAddress()).toLowerCase();
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                hex.append(String.format("%02X", digest[i]));
-            }
-            return "HH-" + hex;
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is not available", ex);
         }
     }
 
