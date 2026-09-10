@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -113,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -263,6 +267,58 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.strip().replaceAll("\\s+", " ");
+    }
+
+    /**
+     * Assigns the shared {@code householdId} for an owner joining an existing household. Only owners created with
+     * {@code sharesHousehold} set to {@code true} that actually match an existing household (see
+     * {@link #findHouseholdMembers}) are given an identifier; single owners keep a {@code null} household. The
+     * identifier is derived deterministically from the household's last name and address, so every member of the same
+     * household resolves to the same stable value regardless of creation order. Existing members that predate the
+     * feature and still lack the identifier are backfilled so the whole household shares it.
+     *
+     * @param owner          the newly mapped owner about to be saved
+     * @param ownerFieldsDto the incoming owner payload
+     */
+    private void assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        List<Owner> members = findHouseholdMembers(ownerFieldsDto);
+        if (members.isEmpty()) {
+            return;
+        }
+        String householdId = generateHouseholdId(ownerFieldsDto);
+        owner.setHouseholdId(householdId);
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                this.clinicService.saveOwner(member);
+            }
+        }
+    }
+
+    /**
+     * Derives a household's stable identifier, formatted {@code HH-<12 hex chars>}, from the case-insensitive,
+     * whitespace-collapsed last name and address. Being a pure function of those fields, it is identical for every
+     * owner in the same household and never changes over time.
+     *
+     * @param ownerFieldsDto the incoming owner payload
+     * @return the household identifier
+     */
+    private String generateHouseholdId(OwnerFieldsDto ownerFieldsDto) {
+        String key = collapseWhitespace(ownerFieldsDto.getLastName()).toLowerCase()
+            + "\n" + collapseWhitespace(ownerFieldsDto.getAddress()).toLowerCase();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                hex.append(String.format("%02X", digest[i]));
+            }
+            return "HH-" + hex;
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
