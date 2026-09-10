@@ -546,15 +546,15 @@ public class Owner extends Person {
     }
 
     /**
-     * Returns this owner's numeric membership level, derived from its membership points (see
-     * {@link #getMembershipPoints()}): {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
-     * {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
+     * Resolves the numeric membership level a given number of membership points earns: {@code 1} for
+     * {@code 0-1} points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for
+     * {@code 6} or more points. This is the single definition of the points-to-level mapping, shared
+     * by every rule that derives a membership level from points (see {@link #getMembershipLevel()}).
      *
-     * @return the owner's membership level
+     * @param points the membership points to map
+     * @return the membership level those points earn
      */
-    @Transient
-    public Integer getMembershipLevel() {
-        int points = getMembershipPoints();
+    public static int membershipLevelForPoints(int points) {
         if (points >= 6) {
             return 4;
         }
@@ -565,6 +565,19 @@ public class Owner extends Person {
             return 2;
         }
         return 1;
+    }
+
+    /**
+     * Returns this owner's numeric membership level, derived from its membership points (see
+     * {@link #getMembershipPoints()}) by the single points-to-level mapping (see
+     * {@link #membershipLevelForPoints(int)}): {@code 1} for {@code 0-1} points, {@code 2} for
+     * {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more points.
+     *
+     * @return the owner's membership level
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        return membershipLevelForPoints(getMembershipPoints());
     }
 
     /**

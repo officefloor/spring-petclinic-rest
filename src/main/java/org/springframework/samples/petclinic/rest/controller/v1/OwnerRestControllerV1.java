@@ -128,10 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return okOwnerResponse(owner);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -185,10 +182,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (existing == null) {
             return null;
         }
-        existing.setHouseholdMemberCount(countHouseholdMembers(existing.getHouseholdId()));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(existing);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(existing.getRegistrationDate()));
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return okOwnerResponse(existing);
     }
 
     /**
@@ -219,7 +213,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignHousehold(owner);
         applyPossibleDuplicate(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
-        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+        applyHouseholdMemberCount(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
@@ -238,12 +232,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the {@code 201 Created} response carrying the owner representation and {@code Location} header
      */
     private ResponseEntity<OwnerDto> createdOwnerResponse(Owner owner) {
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        OwnerDto ownerDto = toOwnerDtoWithWarning(owner);
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Renders a persisted owner as the {@code 200 OK} response shared by the read path
+     * ({@link #getOwner(Integer)}) and the idempotent-replay path
+     * ({@link #replayIdempotentCreate(String)}): the owner is stamped with its household member
+     * count and then mapped to an {@link OwnerDto} carrying its {@code bulkSignupWarning} (see
+     * {@link #toOwnerDtoWithWarning(Owner)}). Isolating the assembly here keeps both paths rendering
+     * an existing owner identically rather than each copying the same steps.
+     *
+     * @param owner the persisted owner to render
+     * @return the {@code 200 OK} response carrying the owner representation
+     */
+    private ResponseEntity<OwnerDto> okOwnerResponse(Owner owner) {
+        applyHouseholdMemberCount(owner);
+        return new ResponseEntity<>(toOwnerDtoWithWarning(owner), HttpStatus.OK);
+    }
+
+    /**
+     * Maps a persisted owner to the {@link OwnerDto} returned by every rendered response, stamping
+     * its {@code bulkSignupWarning} from the owner's stored {@code registrationDate} (see
+     * {@link #bulkSignupWarning(LocalDate)}). This is the single definition of how an owner becomes
+     * its response representation, shared by the read, idempotent-replay and create responses, so all
+     * three derive the rendered fields identically rather than each copying the mapping.
+     *
+     * @param owner the persisted owner to map
+     * @return the owner representation with its {@code bulkSignupWarning} set
+     */
+    private OwnerDto toOwnerDtoWithWarning(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning(owner.getRegistrationDate()));
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -824,15 +849,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a new owner that would join a household already occupied by an existing owner. The
-     * household is keyed on {@code (lastName, postcode)} and identified by the deterministic
-     * {@code householdId} the owner would receive (see {@link #householdIdFor(String, String)}), so
-     * two owners sharing a last name and postcode belong to the same household. When any existing
-     * owner already carries that household identifier the new owner is a household duplicate and a
-     * {@link DuplicateIdentityException} is thrown, which the exception advice renders as a 409
-     * Conflict response. Setting {@code sharesHousehold} declares the owner a deliberate member of
-     * that household and bypasses this block, so it is created rather than rejected. An owner without
-     * a postcode belongs to no shared household and is never a household duplicate.
+     * Rejects a new owner that is an exact identity duplicate of an existing owner. An owner's
+     * identity is its derived identity key (see {@link #identityKey(String, String, String)}) — its
+     * normalized {@code telephone}, canonical {@code email} and shared {@code householdId} joined by
+     * {@code '|'} — so a new owner is a hard duplicate only when an existing, non-deleted owner
+     * matches it on all three. Two owners that merely share a household (the same last name and
+     * postcode) but differ in telephone or email are distinct owners and are not rejected here; such a
+     * near-match is instead recorded as a soft {@code possibleDuplicate} (see
+     * {@link #applyPossibleDuplicate(Owner, OwnerFieldsDto)}). When an existing owner shares the new
+     * owner's identity key a {@link DuplicateIdentityException} is thrown, which the exception advice
+     * renders as a 409 Conflict response. Setting {@code sharesHousehold} declares the owner a
+     * deliberate household member and bypasses this block. An owner without a postcode belongs to no
+     * shared household and is never a duplicate here.
      *
      * @param ownerFieldsDto the submitted owner fields, already normalized in place
      */
@@ -844,12 +872,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (householdId == null) {
             return;
         }
-        boolean taken = this.clinicService.findAllOwners().stream()
+        String identityKey = identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
+        boolean taken = householdMembers(householdId).stream()
             .filter(existing -> !Owner.isDeleted(existing.getDeleted()))
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .anyMatch(existing -> identityKey.equals(
+                identityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
         if (taken) {
-            throw new DuplicateIdentityException(householdId);
+            throw new DuplicateIdentityException(identityKey);
         }
+    }
+
+    /**
+     * Builds the identity key that decides whether two owners denote the same identity: their
+     * normalized {@code telephone}, canonical {@code email} (see {@link #canonicalEmail(String)}) and
+     * shared {@code householdId}, joined by {@code '|'}. This is the single definition of owner
+     * identity used by {@link #rejectDuplicateIdentity(OwnerFieldsDto)}; two owners are the same
+     * identity exactly when their keys are equal, so a value stored on an existing owner and the
+     * fields submitted for a new owner can be compared for identity after both pass through here.
+     *
+     * @param telephone the owner's normalized telephone
+     * @param email the owner's email, or {@code null} when none was supplied
+     * @param householdId the owner's shared household identifier
+     * @return the identity key
+     */
+    private String identityKey(String telephone, String email, String householdId) {
+        return telephone + "|" + canonicalEmail(email) + "|" + householdId;
     }
 
     /**
@@ -943,22 +990,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Counts the owners that belong to the household identified by the given {@code householdId},
-     * i.e. every owner carrying that exact identifier. The count is taken against the current set
-     * of owners, so after a create it reflects the household's size including the newly persisted
-     * owner. An owner without a household (a {@code null} identifier) belongs to no shared
-     * household and yields {@code 0}.
+     * Returns the owners that belong to the household identified by the given {@code householdId},
+     * i.e. every owner carrying that exact identifier. Soft-deleted owners are included, so a caller
+     * that must ignore deleted owners (as {@link #rejectDuplicateIdentity(OwnerFieldsDto)} does)
+     * filters them out itself. The owners are taken from the current set, so after a create the
+     * result includes the newly persisted owner. An owner without a household (a {@code null}
+     * identifier) belongs to no shared household, so an empty list is returned. This is the single
+     * definition of a household's members, shared by every rule that reasons about the owners
+     * sharing a household (the household-duplicate block and the household member count).
+     *
+     * @param householdId the shared household identifier, or {@code null} when the owner shares no household
+     * @return the owners in the household, or an empty list when {@code householdId} is {@code null}
+     */
+    private List<Owner> householdMembers(String householdId) {
+        if (householdId == null) {
+            return List.of();
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Counts the owners that belong to the household identified by the given {@code householdId} (see
+     * {@link #householdMembers(String)}), i.e. every owner carrying that exact identifier. The count
+     * is taken against the current set of owners, so after a create it reflects the household's size
+     * including the newly persisted owner. An owner without a household (a {@code null} identifier)
+     * belongs to no shared household and yields {@code 0}.
      *
      * @param householdId the shared household identifier, or {@code null} when the owner shares no household
      * @return the number of owners in the household, or {@code 0} when {@code householdId} is {@code null}
      */
     private int countHouseholdMembers(String householdId) {
-        if (householdId == null) {
-            return 0;
-        }
-        return (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
+        return householdMembers(householdId).size();
+    }
+
+    /**
+     * Stamps an owner with its household member count, the number of owners sharing its household
+     * (see {@link #countHouseholdMembers(String)}), so every value the owner derives from its
+     * household size (its membership factor and level) reads a populated count rather than the
+     * unstamped default. This is the single definition of hydrating an owner with its household
+     * member count, shared by the create and read paths that render an owner's derived values.
+     *
+     * @param owner the owner to stamp, mutated in place with its household member count
+     */
+    private void applyHouseholdMemberCount(Owner owner) {
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
     }
 
     /**
