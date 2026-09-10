@@ -120,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCodeFor(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        applyPossibleDuplicate(owner);
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
@@ -396,6 +397,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Flags a newly created owner as a possible (soft) duplicate. Reaching this point means the
+     * owner already cleared {@link #rejectDuplicateIdentity(OwnerFieldsDto)}, so it is not a hard
+     * duplicate. It is nonetheless a possible duplicate when an existing owner shares its
+     * {@code lastName} (compared case-insensitively) and its {@code postcode} while carrying a
+     * different (normalized) {@code telephone}. When such an owner is found, {@code possibleDuplicate}
+     * is set {@code true} and {@code possibleDuplicateOf} to the matching owner's id; otherwise
+     * {@code possibleDuplicate} is set {@code false} and no matching id is recorded. An owner without
+     * a postcode can share no postcode and is never a possible duplicate.
+     *
+     * @param owner the owner being created, already carrying its normalized telephone and postcode
+     */
+    private void applyPossibleDuplicate(Owner owner) {
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
+        if (owner.getPostcode() == null) {
+            return;
+        }
+        this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !owner.getTelephone().equals(existing.getTelephone()))
+            .findFirst()
+            .ifPresent(existing -> {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(existing.getId());
+            });
     }
 
     /**
