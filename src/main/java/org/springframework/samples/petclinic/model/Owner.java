@@ -105,6 +105,34 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * Returns the stored E.164 {@code telephone} formatted for humans: the recognized country code
+     * (with its leading {@code '+'}), a space, then the national digits grouped in threes from the
+     * left and separated by spaces (for example {@code '+61412345678'} renders as
+     * {@code '+61 412 345 678'}). The split into country code and national number reuses
+     * {@link #countryCodeOf(String)}, the single definition of that split. Returns {@code null} when
+     * the owner has no telephone, and returns the raw E.164 value unchanged when it carries no
+     * recognized country code. This is the single definition of an owner's human-readable telephone.
+     *
+     * @return the human-formatted telephone, or {@code null} when the owner has no telephone
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null) {
+            return null;
+        }
+        String countryCode = countryCodeOf(this.telephone);
+        if (countryCode == null) {
+            return this.telephone;
+        }
+        String national = this.telephone.substring(1 + countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
+    }
+
     public String getEmail() {
         return this.email;
     }
