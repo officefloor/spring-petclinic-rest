@@ -216,28 +216,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner who shares both a last name and an address with an existing owner, unless the request
-     * opts in by setting {@code sharesHousehold} to {@code true}. Both fields are compared case-insensitively after
-     * collapsing runs of whitespace to a single space and trimming, so incidental formatting differences do not defeat
-     * the rule.
+     * Rejects creating an owner who shares a household (see {@link #findHouseholdMembers}) with an existing owner,
+     * unless the request opts in by setting {@code sharesHousehold} to {@code true}.
      *
      * @param ownerFieldsDto the incoming owner payload
-     * @throws DuplicateOwnerException if another owner already has the same last name and address and the request does
-     *                                 not set {@code sharesHousehold}
+     * @throws DuplicateOwnerException if another owner already belongs to the same household and the request does not
+     *                                 set {@code sharesHousehold}
      */
     private void requireUniqueHousehold(OwnerFieldsDto ownerFieldsDto) {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return;
         }
-        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
-        String address = collapseWhitespace(ownerFieldsDto.getAddress());
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
-                && collapseWhitespace(existing.getAddress()).equalsIgnoreCase(address));
-        if (duplicate) {
+        if (!findHouseholdMembers(ownerFieldsDto).isEmpty()) {
             throw new DuplicateOwnerException(
                 "an owner with the same last name and address already exists in this household");
         }
+    }
+
+    /**
+     * Finds the existing owners that belong to the same household as the given payload, i.e. those sharing both its
+     * last name and address. Both fields are compared case-insensitively after collapsing runs of whitespace to a
+     * single space and trimming, so incidental formatting differences do not affect membership.
+     *
+     * @param ownerFieldsDto the incoming owner payload
+     * @return the existing owners in the same household, in the order {@link ClinicService#findAllOwners()} returns
+     *         them; empty when none match
+     */
+    private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
+        String lastName = collapseWhitespace(ownerFieldsDto.getLastName());
+        String address = collapseWhitespace(ownerFieldsDto.getAddress());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+                && collapseWhitespace(existing.getAddress()).equalsIgnoreCase(address))
+            .toList();
     }
 
     /**
