@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +48,19 @@ public class TelephoneNormalizer {
     private static final int MAX_E164_DIGITS = 15;
 
     /**
+     * Exact number of national digits (digits following the country code) required for each known country code.
+     * Ordered longest country code first so the most specific prefix wins when one code is a prefix of another.
+     */
+    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE = buildNationalDigitsByCountryCode();
+
+    private static Map<String, Integer> buildNationalDigitsByCountryCode() {
+        Map<String, Integer> byLongestFirst = new LinkedHashMap<>();
+        byLongestFirst.put("61", 9);
+        byLongestFirst.put("1", 10);
+        return byLongestFirst;
+    }
+
+    /**
      * Normalizes a raw request telephone into its canonical stored E.164 form. A leading {@code '+'} and country code
      * are kept when present; otherwise the default country code {@code +61} is assumed and a single leading {@code '0'}
      * is dropped from the national digits. Spaces, dashes and brackets are stripped. The result must carry 8 to 15
@@ -62,7 +78,33 @@ public class TelephoneNormalizer {
                 "telephone must contain between " + MIN_E164_DIGITS + " and " + MAX_E164_DIGITS
                     + " digits after conversion to E.164 form");
         }
+        validateNationalNumberLength(e164);
         return e164;
+    }
+
+    /**
+     * Rejects a normalized E.164 number whose national number (the digits following the country code) does not carry
+     * the exact length that country requires. For example {@code +61} numbers must have 9 national digits and
+     * {@code +1} numbers must have 10. Country codes with no known rule are left to the generic 8-to-15 digit bounds.
+     *
+     * @param e164 a normalized E.164 telephone that has already passed the generic digit-count bounds
+     * @throws InvalidTelephoneException if the national number length is wrong for the recognized country code
+     */
+    private void validateNationalNumberLength(String e164) {
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> rule : NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet()) {
+            String countryCode = rule.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalDigits = digits.length() - countryCode.length();
+                int requiredDigits = rule.getValue();
+                if (nationalDigits != requiredDigits) {
+                    throw new InvalidTelephoneException(
+                        "telephone with country code +" + countryCode + " must contain exactly " + requiredDigits
+                            + " national digits, but had " + nationalDigits);
+                }
+                return;
+            }
+        }
     }
 
     /**
