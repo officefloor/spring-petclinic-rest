@@ -1,0 +1,208 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyResolver.java
+index 29f2a1e1d..cf08c0b9b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyResolver.java
+@@ -67,13 +67,45 @@ public class IdentityKeyResolver {
+     public String deriveHouseholdId(String lastName, String address) {
+         String key = collapseWhitespace(lastName).toLowerCase()
+             + "\n" + addressNormalizer.normalize(address).toLowerCase();
++        return "HH-" + upperHexDigest(key, 12);
++    }
++
++    /**
++     * Derives an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}. {@code REGION} is the region code
++     * derived from the owner's postcode (see {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN}
++     * when the postcode maps to no known region; {@code HASH8} is the first 8 upper-case hex characters of the SHA-256
++     * digest of the normalized telephone (see {@link TelephoneNormalizer#canonicalize}) concatenated with the owner's
++     * last name (e.g. {@code NSW-1A2B3C4D}). Being a pure function of the postcode, telephone and last name it carries
++     * no sequence number and is stable for a given owner.
++     *
++     * @param owner the newly mapped owner about to be saved, with its telephone already normalized
++     * @return the generated customer code
++     */
++    public String deriveCustomerCode(Owner owner) {
++        Region region = Region.forPostcode(owner.getPostcode());
++        String regionCode = region == null ? LocalityResolver.UNKNOWN : region.name();
++        String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
++        String hash8 = upperHexDigest(telephone + owner.getLastName(), 8);
++        return regionCode + "-" + hash8;
++    }
++
++    /**
++     * Returns the first {@code chars} upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of
++     * {@code value}. Shared by {@link #deriveHouseholdId} and {@link #deriveCustomerCode} so both express the same
++     * hashing in one place.
++     *
++     * @param value the value to hash
++     * @param chars the number of leading hex characters to return
++     * @return the leading upper-case hex characters of the digest
++     */
++    private String upperHexDigest(String value, int chars) {
+         try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+             StringBuilder hex = new StringBuilder();
+-            for (int i = 0; i < 6; i++) {
+-                hex.append(String.format("%02X", digest[i]));
++            for (byte b : digest) {
++                hex.append(String.format("%02X", b));
+             }
+-            return "HH-" + hex;
++            return hex.substring(0, chars);
+         } catch (NoSuchAlgorithmException ex) {
+             throw new IllegalStateException("SHA-256 is not available", ex);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+index cbe8d56aa..75dfce20c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+@@ -1,34 +1,35 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+ /**
+- * Derives an owner's canonical region ('locality'), preferring the postcode over the city.
+- * Both the postcode-range and city-to-region tables live on {@link Region}; this resolver
+- * looks the region up by postcode first and only falls back to the city when the postcode is
+- * absent or in no known range, turning the resolved region into the {@code locality} string an
+- * owner is mapped with, using {@link #UNKNOWN} when neither postcode nor city maps to a known
+- * region. Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit
+- * {@code String -> String} property mapping method.
++ * Derives an owner's canonical region ('locality') from its {@code customerCode}. Since the redesign of owner
++ * identity, the customer code is formatted {@code <REGION>-<HASH8>} (see
++ * {@link IdentityKeyResolver#deriveCustomerCode}), so the locality is simply the {@code REGION} segment — the region
++ * derived from the owner's postcode — rather than being recomputed from the city and postcode. {@link #UNKNOWN} is
++ * returned when the customer code is absent or carries no region segment. Kept out of {@link OwnerMapper} so MapStruct
++ * does not mistake it for an implicit {@code String -> String} property mapping method.
+  */
+ public final class LocalityResolver {
+ 
+-    /** Locality returned for a city that belongs to no known {@link Region}. */
++    /** Locality returned for an owner whose customer code carries no known {@link Region}. */
+     public static final String UNKNOWN = "UNKNOWN";
+ 
+     private LocalityResolver() {
+     }
+ 
+     /**
+-     * Returns the canonical region for the given owner, preferring the postcode range
+-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) over the city-to-region table
+-     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). Falls back to the city only when the
+-     * postcode is absent or in no known range, and returns "UNKNOWN" when neither maps to a
+-     * known region (including a {@code null} city and postcode).
++     * Returns the canonical region ('locality') for the given {@code customerCode}, which is the {@code REGION} segment
++     * of the {@code <REGION>-<HASH8>} customer code (the region derived from the owner's postcode). Returns
++     * {@link #UNKNOWN} when the customer code is {@code null}, blank, or carries no region segment.
++     *
++     * @param customerCode the owner's customer code, may be {@code null}
++     * @return the region segment of the customer code, or {@link #UNKNOWN} when none is present
+      */
+-    public static String deriveLocality(String city, String postcode) {
+-        Region region = Region.forPostcode(postcode);
+-        if (region == null) {
+-            region = Region.forCity(city);
++    public static String deriveLocality(String customerCode) {
++        if (customerCode == null) {
++            return UNKNOWN;
+         }
+-        return region == null ? UNKNOWN : region.name();
++        int dash = customerCode.indexOf('-');
++        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
++        return region.isBlank() ? UNKNOWN : region;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9e243e6f9..6b2290f9e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,7 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
+     @Mapping(target = "bulkSignupWarning",
+         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5eeb0ed40..aa045952f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -164,7 +164,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         normalizeAndValidate(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
++        owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
+         assignHouseholdId(owner, ownerFieldsDto);
+@@ -263,25 +263,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return createdThatDay > BULK_SIGNUP_WARNING_THRESHOLD;
+     }
+ 
+-    /**
+-     * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>}. {@code CITY3} is the upper-cased
+-     * first three letters of the city, {@code LAST3} the upper-cased first three letters of the last name, and
+-     * {@code NNNN} a per-city 4-digit zero-padded sequence equal to one more than the number of owners already in that
+-     * city (e.g. {@code LON-SMI-0007}).
+-     *
+-     * @param city     the owner's city
+-     * @param lastName the owner's last name
+-     * @return the generated customer code
+-     */
+-    private String generateCustomerCode(String city, String lastName) {
+-        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase();
+-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+-            .count() + 1;
+-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+-    }
+-
+     /**
+      * Counts how many existing owners already share the given owner's first and last name, compared
+      * case-insensitively. Invoked before the new owner is saved, so the result reflects only owners that predate this
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8d03049e2..abedf0ea9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2114,11 +2114,13 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                A generated identifier formatted '<LAST3>-<NNNN>', where LAST3
+-                is the upper-cased first three letters of the last name and NNNN
+-                is a global 4-digit zero-padded sequence.
++                A generated identifier formatted '<REGION>-<HASH8>', where REGION
++                is the region code derived from the owner's postcode (UNKNOWN when
++                it maps to no known region) and HASH8 is the first 8 upper-case hex
++                characters of the SHA-256 digest of the normalized telephone
++                concatenated with the last name.
+               type: string
+-              example: 'SMI-0007'
++              example: 'NSW-1A2B3C4D'
+               readOnly: true
+             checkDigit:
+               title: Check digit
+@@ -2137,7 +2139,7 @@ components:
+                 A generated identifier formatted '<customerCode>-M<YY>', where
+                 YY is the last two digits of the registrationDate year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2177,9 +2179,9 @@ components:
+             locality:
+               title: Locality
+               description: >-
+-                The canonical region derived from the owner's city using the
+-                fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
+-                Brisbane->QLD). 'UNKNOWN' when the city is not in the table.
++                The canonical region taken from the REGION segment of the owner's
++                customerCode (the region derived from the owner's postcode).
++                'UNKNOWN' when the customerCode carries no known region.
+               type: string
+               example: 'NSW'
+               readOnly: true
