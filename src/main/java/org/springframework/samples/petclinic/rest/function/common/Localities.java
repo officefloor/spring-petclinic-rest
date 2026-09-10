@@ -3,8 +3,9 @@ package org.springframework.samples.petclinic.rest.function.common;
 import java.util.Map;
 
 /**
- * Fixed city-to-region lookup used to derive an owner's locality. Cities not in the
- * table derive the locality {@link #UNKNOWN}.
+ * Fixed lookups used to derive an owner's locality. The locality prefers the postcode
+ * range and falls back to the city-to-region table; cities not in the table (and with no
+ * postcode-derived region) derive the locality {@link #UNKNOWN}.
  */
 public final class Localities {
 
@@ -32,6 +33,36 @@ public final class Localities {
      */
     public static String region(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * Derive the canonical region, preferring the postcode. When {@code postcode} is a
+     * 4-digit value falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) that region is returned, disambiguating cities that share a name.
+     * Otherwise (postcode absent, non-numeric, or in no known range) the fixed
+     * city-to-region table is used, returning {@link #UNKNOWN} for an unknown city.
+     */
+    public static String locality(String city, String postcode) {
+        String byPostcode = regionForPostcode(postcode);
+        return byPostcode != null ? byPostcode : region(city);
+    }
+
+    /**
+     * The region whose range contains the given 4-digit postcode, or {@code null} when
+     * the postcode is absent, non-numeric, or in no known range.
+     */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
