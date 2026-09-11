@@ -165,10 +165,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeAndValidate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
-        owner.setNamesakeCount(countNamesakes(owner));
-        owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
-        assignHouseholdId(owner, ownerFieldsDto);
+        populateDerivedFields(owner, ownerFieldsDto);
         requireUniqueIdentity(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -179,6 +176,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Stamps onto a newly mapped owner every field derived at creation from the owner itself and from the owners that
+     * already exist, in the order each field depends on. The {@code customerCode} is derived from the owner's own
+     * fields (see {@link IdentityKeyResolver#deriveCustomerCode}); the {@code namesakeCount} (see
+     * {@link #countNamesakes}) and {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) are snapshots of
+     * the existing owners taken before this owner is saved, so neither counts the new owner itself; and the shared
+     * {@code householdId} is assigned last (see {@link #assignHouseholdId}), backfilling any existing household members
+     * that lack it, so it is in place before {@link #requireUniqueIdentity} derives the identity key. The owner is
+     * mutated in place; the caller applies the duplicate guard and saves it.
+     *
+     * @param owner          the newly mapped owner about to be saved
+     * @param ownerFieldsDto the incoming owner payload
+     */
+    private void populateDerivedFields(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
+        owner.setNamesakeCount(countNamesakes(owner));
+        owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
+        assignHouseholdId(owner, ownerFieldsDto);
     }
 
     /**
@@ -245,13 +262,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DailyOwnerLimitExceededException if 100 or more owners have already been created for that day
      */
     private void requireDailyLimitNotReached(LocalDate registrationDate) {
-        long createdThatDay = this.clinicService.findAllOwners().stream()
-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-            .count();
-        if (createdThatDay >= MAX_OWNERS_PER_DAY) {
+        if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(
                 "the maximum number of owners for today has already been reached");
         }
+    }
+
+    /**
+     * Counts how many existing owners already carry the given adjusted business-day {@code registrationDate}. Invoked
+     * before the new owner is saved, so the count reflects only owners that predate this create. Shared by
+     * {@link #requireDailyLimitNotReached} (the hard per-day cap) and {@link #computeBulkSignupWarning} (the soft
+     * warning threshold) so both express the same per-day count in one place.
+     *
+     * @param registrationDate the adjusted business-day registration date to count owners for
+     * @return the number of existing owners registered on that day
+     */
+    private long countOwnersRegisteredOn(LocalDate registrationDate) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
     }
 
     /**
@@ -264,10 +293,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return {@code true} when more than 80 owners already exist for that day, {@code false} otherwise
      */
     private boolean computeBulkSignupWarning(LocalDate registrationDate) {
-        long createdThatDay = this.clinicService.findAllOwners().stream()
-            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-            .count();
-        return createdThatDay > BULK_SIGNUP_WARNING_THRESHOLD;
+        return countOwnersRegisteredOn(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
