@@ -3,19 +3,17 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Computes an owner's {@code identityKey}: a derived, human-readable summary of the fields
- * that identify an owner. The key is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
- *
- * <p>Household membership itself is enforced separately by {@link RequireUniqueIdentity},
- * which rejects a second owner in the same household (same {@code householdId}, derived from
- * lastName + postcode) unless it declares {@code sharesHousehold}.
+ * Computes an owner's {@code identityKey}: the SHA-256 hex digest over
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. It is the single
+ * identity used for duplicate detection by {@link RequireUniqueIdentity} — two owners collide
+ * (409) only when all three components match.
  *
  * <ul>
- * <li>telephone is normalized to E.164 form ({@link Telephones#toE164(String)}),
+ * <li>telephone is normalized to E.164 form ({@link Telephones#toE164(String)}), contributing
+ *     empty when it cannot form a valid number,
  * <li>email is trimmed and lower-cased, contributing empty when absent,
- * <li>householdId is the owner's deterministic household identifier (from lastName +
- *     postcode), empty only when it has not been assigned.
+ * <li>lastName is folded to its {@link Soundex phonetic code}, so households that differ only
+ *     by telephone or email produce different keys and are not hard duplicates.
  * </ul>
  */
 public final class IdentityKeys {
@@ -25,22 +23,23 @@ public final class IdentityKeys {
 
     /** The identity key of an existing owner, from its stored fields. */
     public static String forOwner(Owner owner) {
-        return build(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+        return build(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
-     * The identity key for an incoming create request, from its raw fields and its derived
-     * {@code householdId}. Lets {@link RequireUniqueIdentity} compare a request against
-     * existing owners' {@link #forOwner(Owner) keys} without first building an entity.
+     * The identity key for an incoming create request, from its raw fields. Lets
+     * {@link RequireUniqueIdentity} compare a request against existing owners'
+     * {@link #forOwner(Owner) keys} without first building an entity.
      */
-    public static String forFields(String telephone, String email, String householdId) {
-        return build(telephone, email, householdId);
+    public static String forFields(String telephone, String email, String lastName) {
+        return build(telephone, email, lastName);
     }
 
-    private static String build(String telephone, String email, String householdId) {
+    private static String build(String telephone, String email, String lastName) {
         String tel = Telephones.toE164(telephone);
-        return (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
-                + (householdId == null ? "" : householdId);
+        String raw = (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
+                + Soundex.encode(lastName);
+        return Digests.sha256Hex(raw);
     }
 
     /** Trim and lower-case; null or blank yields empty (no email to contribute). */

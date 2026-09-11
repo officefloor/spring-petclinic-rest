@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * (lastName, postcode), every owner with the same last name and postcode maps to the same
  * value automatically — there is no opt-in and no back-fill of existing rows. {@code
  * sharesHousehold} no longer creates the link; it only bypasses the duplicate block in
- * {@link RequireUniqueIdentity}. {@link IdentityKeys} folds the same value into an owner's
- * identity key, so the stored {@code householdId} always matches its household component.
+ * {@link RequireUniqueIdentity}. The stored {@code householdId} groups household members (and
+ * drives {@link AssignHouseholdSize}); duplicate detection itself is the {@link IdentityKeys
+ * identity key}, which no longer includes it.
  */
 public class AssignHousehold {
 
