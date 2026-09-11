@@ -1,8 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 
 /**
  * Derives the stable {@code householdId} shared by owners with the same last name and
@@ -33,17 +31,6 @@ public final class Households {
 
     /** Stable 12-hex-character (upper-case) prefix of the SHA-256 of the household key. */
     private static String hash(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Digests.sha256Hex(value).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 }

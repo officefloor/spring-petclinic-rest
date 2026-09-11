@@ -1,8 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 
 import org.springframework.samples.petclinic.mapper.Localities;
 import org.springframework.samples.petclinic.model.Owner;
@@ -67,17 +65,6 @@ public final class CustomerCodes {
         String telephone = Telephones.toE164(owner.getTelephone());
         String lastName = owner.getLastName();
         String basis = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(basis.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(8);
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Digests.sha256Hex(basis).substring(0, 8).toUpperCase(Locale.ROOT);
     }
 }
