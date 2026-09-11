@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 408d3343b..4c22d54c4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.IdentityKey.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Locality.java b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+index 33debd953..670f01d00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+@@ -1,18 +1,29 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import java.util.Map;
++import java.util.regex.Pattern;
+ 
+ /**
+- * Derives an owner's locality (region) from their city using a fixed
+- * city-to-region table.
++ * Derives an owner's locality (region), preferring the postcode: the postcode range is
++ * looked up first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the
++ * postcode is absent or in no known range does it fall back to the fixed city-to-region
++ * table. This returns the same region for known cities but disambiguates cities that
++ * share a name.
+  */
+ public final class Locality {
+ 
++    /** A postcode must be exactly four digits to derive a region. */
++    private static final Pattern FOUR_DIGITS = Pattern.compile("^[0-9]{4}$");
++
+     /** City -> canonical region. Anything not listed derives {@link #UNKNOWN}. */
+     private static final Map<String, String> CITY_REGION = Map.of(
+             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+-    /** Returned when the city is null or not in {@link #CITY_REGION}. */
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_RANGE = Map.of(
++            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    /** Returned when the region can be derived from neither postcode nor city. */
+     public static final String UNKNOWN = "UNKNOWN";
+ 
+     private Locality() {
+@@ -28,4 +39,33 @@ public final class Locality {
+         }
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * The canonical region string derived from the postcode range first (NSW 2000-2099,
++     * VIC 3000-3099, QLD 4000-4099), falling back to the city-to-region table when the
++     * postcode is null, malformed, or in no known range. {@link #UNKNOWN} when neither
++     * yields a region.
++     */
++    public static String of(String city, String postcode) {
++        String byPostcode = fromPostcode(postcode);
++        if (!UNKNOWN.equals(byPostcode)) {
++            return byPostcode;
++        }
++        return of(city);
++    }
++
++    /** Region whose range contains the 4-digit postcode, or {@link #UNKNOWN}. */
++    private static String fromPostcode(String postcode) {
++        if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
++            return UNKNOWN;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return UNKNOWN;
++    }
+ }
