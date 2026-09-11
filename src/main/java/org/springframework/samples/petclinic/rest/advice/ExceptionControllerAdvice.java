@@ -243,9 +243,9 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
-     * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
-     * single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the {@code telephone},
-     * {@code email} and {@code householdId} fields the key is composed of.
+     * {@code identityKey} (the SHA-256 of the normalized telephone, email and last-name Soundex) already used by
+     * another owner. This is the single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the
+     * {@code telephone}, {@code email} and {@code lastName} fields the key is composed of.
      *
      * @param e The {@link DuplicateOwnerException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
@@ -259,7 +259,7 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getMessage());
         return errorResponse(e, HttpStatus.CONFLICT, request, e.getMessage(),
-            List.of("telephone", "email", "householdId"));
+            List.of("telephone", "email", "lastName"));
     }
 
     /**

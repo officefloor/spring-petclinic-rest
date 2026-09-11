@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,6 +37,7 @@ import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.Region;
+import org.springframework.samples.petclinic.mapper.SoundexResolver;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
@@ -296,8 +296,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link #countNamesakes}) and {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) are snapshots of
      * the existing owners taken before this owner is saved, so neither counts the new owner itself; and the shared
      * {@code householdId} is assigned last (see {@link #assignHouseholdId}), derived deterministically from the owner's
-     * last name and postcode, so it is in place before {@link #requireUniqueIdentity} derives the identity key. The
-     * owner is mutated in place; the caller applies the duplicate guards and saves it.
+     * last name and postcode, so it is in place before the owner's household membership level is capped (see
+     * {@link #cappedMembershipLevel}). The owner is mutated in place; the caller applies the duplicate guards and saves it.
      *
      * @param owner          the newly mapped owner about to be saved
      * @param ownerFieldsDto the incoming owner payload
@@ -546,14 +546,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects creating an owner whose whole derived {@code identityKey} (see
      * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner, so an owner is an identity
-     * duplicate only when its normalized telephone, email and {@code householdId} all match another owner's. It runs
-     * after the household id has been assigned, so the key reflects the household the owner belongs to. Owners that
-     * share only their household (same last name and postcode, different telephone) are not caught here: an owner may
-     * join an existing household, its membership level being capped instead (see {@link #cappedMembershipLevel}).
-     * Owners that have been soft-deleted (see {@link #deleteOwner}) are ignored, so a matching identity that belongs
-     * only to a deleted owner does not block the create.
+     * duplicate only when its normalized telephone, email and last-name Soundex all match another owner's. This single
+     * identity key is now the sole duplicate rule: because the telephone is part of the key, owners that share only
+     * their last name and postcode but carry different telephones have distinct keys and are not caught here — they are
+     * created and flagged as a soft match instead (see {@link #flagPossibleDuplicate}), their membership level being
+     * capped where they join an existing household (see {@link #cappedMembershipLevel}). Owners that have been
+     * soft-deleted (see {@link #deleteOwner}) are ignored, so a matching identity that belongs only to a deleted owner
+     * does not block the create.
      *
-     * @param owner the newly mapped owner about to be saved, with its household id already assigned
+     * @param owner the newly mapped owner about to be saved, with its normalized fields already in place
      * @throws DuplicateOwnerException if any existing owner already has the same identity key
      */
     private void requireUniqueIdentity(Owner owner) {
@@ -571,8 +572,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * guard (see {@link #requireUniqueIdentity}), so it is still being created; this only records a warning. A declared
      * household member (one created with {@code sharesHousehold} set to {@code true}) is never flagged: it deliberately
      * shares its household's last name and postcode, so it is not a suspected duplicate. Otherwise it is a possible
-     * duplicate when some existing owner shares its last name (compared case-insensitively) and its postcode but
-     * carries a different telephone. When such an owner is found, {@code possibleDuplicate} is set to {@code true} and
+     * duplicate when some existing owner shares its last-name Soundex (see {@link SoundexResolver#soundex}) and its
+     * postcode but has a different {@code identityKey}. When such an owner is found, {@code possibleDuplicate} is set to {@code true} and
      * {@code possibleDuplicateOf} to that existing owner's id (the first match in
      * {@link ClinicService#findAllOwners()} order); otherwise {@code possibleDuplicate} is {@code false} and
      * {@code possibleDuplicateOf} is left null. An owner created without a postcode can never soft-match.
@@ -599,18 +600,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Decides whether {@code existing} makes {@code owner} a possible (soft) duplicate: some other owner that shares its
-     * last name (compared case-insensitively) and its postcode but carries a different telephone. The postcode-present
-     * guard is applied by the caller (see {@link #flagPossibleDuplicate}), so {@code owner}'s postcode is non-blank here.
+     * Decides whether {@code existing} makes {@code owner} a possible (soft) duplicate: some other owner whose last-name
+     * Soundex (see {@link SoundexResolver#soundex}) and postcode both match {@code owner}'s but whose derived
+     * {@code identityKey} (see {@link IdentityKeyResolver#deriveIdentityKey}) differs. An equal identity key would make
+     * the two a hard duplicate, already rejected by {@link #requireUniqueIdentity}; a differing key with a matching
+     * name-sound and postcode — for instance two owners sharing a last name and postcode but carrying different
+     * telephones — is the soft match this flags. The postcode-present guard is applied by the caller (see
+     * {@link #flagPossibleDuplicate}), so {@code owner}'s postcode is non-blank here.
      *
      * @param owner    the newly mapped owner about to be saved, with its normalized fields already in place
      * @param existing an already-persisted owner to test the new owner against
      * @return {@code true} when {@code existing} makes {@code owner} a possible duplicate
      */
     private boolean isPossibleDuplicateOf(Owner owner, Owner existing) {
-        return owner.getLastName().equalsIgnoreCase(existing.getLastName())
+        return SoundexResolver.soundex(owner.getLastName()).equals(SoundexResolver.soundex(existing.getLastName()))
             && owner.getPostcode().equals(existing.getPostcode())
-            && !Objects.equals(owner.getTelephone(), existing.getTelephone());
+            && !identityKeyResolver.deriveIdentityKey(owner).equals(identityKeyResolver.deriveIdentityKey(existing));
     }
 
     /**

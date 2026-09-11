@@ -33,6 +33,22 @@ public final class HexDigest {
     }
 
     /**
+     * Returns the full 64-character lower-case hex rendering of the SHA-256 digest of the UTF-8 bytes of {@code value}.
+     * Used by the owner {@code identityKey} (see {@link IdentityKeyResolver#deriveIdentityKey}), which is expressed as
+     * the whole digest rather than a leading prefix.
+     *
+     * @param value the value to hash
+     * @return the 64-character lower-case hex digest
+     */
+    public static String lowerHex(String value) {
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest(value)) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    /**
      * Computes the raw SHA-256 digest of the UTF-8 bytes of {@code value}. Isolated here so every hex rendering shares
      * one notion of "the digest" (and one place that handles a missing SHA-256 provider) rather than repeating the
      * {@link MessageDigest} plumbing.
