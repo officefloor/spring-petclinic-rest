@@ -17,12 +17,13 @@ package org.springframework.samples.petclinic.rest.advice;
 
 /**
  * Thrown when a supplied telephone value cannot be normalized to a valid E.164 number
- * (for example it has too few or too many digits). Handled by
- * {@link ExceptionControllerAdvice} as a 400 Bad Request.
+ * (for example it has too few or too many digits). One of the field-level
+ * {@link InvalidOwnerFieldException} rules, handled by {@link ExceptionControllerAdvice} as a
+ * 400 Bad Request.
  */
-public class InvalidTelephoneException extends RuntimeException {
+public class InvalidTelephoneException extends InvalidOwnerFieldException {
 
     public InvalidTelephoneException(String message) {
-        super(message);
+        super(message, "The supplied telephone number is not a valid E.164 number");
     }
 }

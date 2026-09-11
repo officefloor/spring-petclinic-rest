@@ -23,22 +23,9 @@ package org.springframework.samples.petclinic.rest.advice;
  * {@link ExceptionControllerAdvice} as a 409 Conflict, so a new conflict rule only needs a new
  * subclass, not a new handler.
  */
-public abstract class OwnerConflictException extends RuntimeException {
-
-    private final String detail;
+public abstract class OwnerConflictException extends OwnerRuleException {
 
     protected OwnerConflictException(String message, String detail) {
-        super(message);
-        this.detail = detail;
-    }
-
-    /**
-     * The fixed, client-facing description of the conflict, used as the {@code detail} of the
-     * 409 Conflict {@code ProblemDetail} response.
-     *
-     * @return the client-facing conflict detail
-     */
-    public String getDetail() {
-        return detail;
+        super(message, detail);
     }
 }

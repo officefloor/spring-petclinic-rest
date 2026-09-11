@@ -17,12 +17,12 @@ package org.springframework.samples.petclinic.rest.advice;
 
 /**
  * Thrown when a supplied address value is blank after normalization (trimming and collapsing
- * whitespace), so it carries no address. Handled by {@link ExceptionControllerAdvice} as a
- * 400 Bad Request.
+ * whitespace), so it carries no address. One of the field-level {@link InvalidOwnerFieldException}
+ * rules, handled by {@link ExceptionControllerAdvice} as a 400 Bad Request.
  */
-public class InvalidAddressException extends RuntimeException {
+public class InvalidAddressException extends InvalidOwnerFieldException {
 
     public InvalidAddressException(String message) {
-        super(message);
+        super(message, "The supplied address is blank after normalization");
     }
 }

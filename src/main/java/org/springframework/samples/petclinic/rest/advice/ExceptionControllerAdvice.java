@@ -54,8 +54,6 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DAILY_LIMIT_EXCEEDED = "The maximum number of owners that may be created today has been reached";
-    private static final String ERROR_INVALID_TELEPHONE = "The supplied telephone number is not a valid E.164 number";
-    private static final String ERROR_INVALID_ADDRESS = "The supplied address is blank after normalization";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -140,14 +138,7 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(OwnerConflictException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleOwnerConflictException(OwnerConflictException e, HttpServletRequest request) {
-        logger.warn("Owner conflict ({}) at {} {}: {}",
-            e.getClass().getSimpleName(),
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getDetail());
-        return ResponseEntity.status(status).body(detail);
+        return handleOwnerRuleException(e, "Owner conflict", HttpStatus.CONFLICT, request);
     }
 
     /**
@@ -172,42 +163,41 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link InvalidTelephoneException}, raised when a supplied telephone value cannot be
-     * normalized to a valid E.164 number, returning a 400 Bad Request status.
+     * Handles {@link InvalidOwnerFieldException}, the base type for every field-level validation
+     * rule that rejects a supplied owner field with a 400 Bad Request (e.g. a telephone that is not
+     * valid E.164 or an address blank after normalization), returning a 400 Bad Request status. The
+     * client-facing detail is taken from the exception's {@link InvalidOwnerFieldException#getDetail()}
+     * so each rule keeps its own wording while sharing this single handler.
      *
-     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param e The {@link InvalidOwnerFieldException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
      */
-    @ExceptionHandler(InvalidTelephoneException.class)
+    @ExceptionHandler(InvalidOwnerFieldException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
-        logger.warn("Invalid telephone at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_TELEPHONE);
-        return ResponseEntity.status(status).body(detail);
+    public ResponseEntity<ProblemDetail> handleInvalidOwnerFieldException(InvalidOwnerFieldException e, HttpServletRequest request) {
+        return handleOwnerRuleException(e, "Invalid owner field", HttpStatus.BAD_REQUEST, request);
     }
 
     /**
-     * Handles {@link InvalidAddressException}, raised when a supplied address value is blank after
-     * normalization (and so carries no address), returning a 400 Bad Request status.
+     * Shared handling for the {@link OwnerRuleException} hierarchy: logs the offending rule and
+     * builds a {@link ProblemDetail} response at the status the rule maps to, using the exception's
+     * own {@link OwnerRuleException#getDetail()} as the client-facing detail.
      *
-     * @param e The {@link InvalidAddressException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     * @param e        the rule violation to report
+     * @param logLabel the human-readable category prefix for the warning log line
+     * @param status   the HTTP status this rule maps to
+     * @param request  {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and the given status
      */
-    @ExceptionHandler(InvalidAddressException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleInvalidAddressException(InvalidAddressException e, HttpServletRequest request) {
-        logger.warn("Invalid address at {} {}: {}",
+    private ResponseEntity<ProblemDetail> handleOwnerRuleException(OwnerRuleException e, String logLabel, HttpStatus status, HttpServletRequest request) {
+        logger.warn("{} ({}) at {} {}: {}",
+            logLabel,
+            e.getClass().getSimpleName(),
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_ADDRESS);
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getDetail());
         return ResponseEntity.status(status).body(detail);
     }
 
