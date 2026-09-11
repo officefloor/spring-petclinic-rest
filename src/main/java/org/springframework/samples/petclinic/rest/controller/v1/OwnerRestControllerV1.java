@@ -655,12 +655,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws OwnerCityFullException if the city already contains 50 or more owners
      */
     private void requireCityHasCapacity(String city) {
-        long cityOwners = this.clinicService.findAllOwners().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count();
-        if (cityOwners >= MAX_OWNERS_PER_CITY) {
+        if (countOwnersInCity(city) >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityFullException("the owner's city already contains the maximum number of owners");
         }
+    }
+
+    /**
+     * Counts how many existing owners already belong to the given {@code city}, compared case-insensitively. Invoked
+     * before the new owner is saved, so the count reflects only owners that predate this create; it never counts the
+     * new owner itself. Factored out of {@link #requireCityHasCapacity} so the per-city owner count is expressed in one
+     * place, mirroring how {@link #countOwnersRegisteredOn} backs the per-day rules.
+     *
+     * @param city the city to count owners for
+     * @return the number of existing owners in that city
+     */
+    private long countOwnersInCity(String city) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
     }
 
     /**
