@@ -35,14 +35,28 @@ public class RequireOwnerFields {
         List<String> errors = new ArrayList<>();
         checkField("firstName", request.getFirstName(), errors);
         checkField("lastName", request.getLastName(), errors);
-        // Normalize the address before the required-field check, so an address that is
-        // blank after normalization is rejected and the stored/returned value is canonical.
-        String address = AddressNormalizer.normalize(request.getAddress());
-        if (address.isEmpty()) {
+        // Address: the structured fields are preferred when present; the flat 'address'
+        // input stays accepted for backward compatibility. An owner is valid when it
+        // supplies an address in EITHER form — a non-blank 'addressLine1' or the flat
+        // 'address'. Normalization applies to whichever fields are supplied, before the
+        // required check, so a blank-after-normalization address is rejected and the
+        // stored/returned values are canonical.
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flat = AddressNormalizer.normalize(request.getAddress());
+        boolean structured = !line1.isEmpty();
+        String effectiveLine1 = structured ? line1 : flat;
+        if (effectiveLine1.isEmpty()) {
             errors.add("address");
         }
         else {
-            request.setAddress(address);
+            // The composed 'address' is the normalized addressLine1, with a single space
+            // and the normalized addressLine2 appended when addressLine2 is present.
+            String composed = (structured && !line2.isEmpty())
+                    ? effectiveLine1 + " " + line2 : effectiveLine1;
+            request.setAddress(composed);
+            request.setAddressLine1(structured ? line1 : null);
+            request.setAddressLine2(structured && !line2.isEmpty() ? line2 : null);
         }
         checkField("city", request.getCity(), errors);
         checkField("telephone", request.getTelephone(), errors);
