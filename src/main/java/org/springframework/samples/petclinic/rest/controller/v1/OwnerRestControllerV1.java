@@ -286,8 +286,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // A value that is blank after normalization is rejected with 400.
         owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
         // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
-        // A value that cannot form a valid E.164 number is rejected with 400.
-        owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
+        // A value that cannot form a valid E.164 number, or whose national-number length is wrong
+        // for its country code (+61 => 9 national digits, +1 => 10), is rejected with 400.
+        owner.setTelephone(telephoneNormalizer.normalizeAndValidate(owner.getTelephone()));
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
         owner.setEmail(normalizeEmail(owner.getEmail()));

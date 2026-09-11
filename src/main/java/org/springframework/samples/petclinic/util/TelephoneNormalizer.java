@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.util.Map;
+
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.stereotype.Component;
 
@@ -33,11 +35,27 @@ import org.springframework.stereotype.Component;
  * cannot form valid E.164 is rejected with {@link InvalidTelephoneException} (a 400).
  * Because a value already in E.164 form re-normalizes to itself, comparing normalized
  * values reliably detects duplicate telephones.
+ * <p>
+ * {@link #normalizeAndValidate(String)} additionally enforces the national-number length
+ * expected for the country code ({@code '+61'} requires 9 national digits, {@code '+1'}
+ * requires 10) and is used to validate a client-supplied value on create; plain
+ * {@link #normalize(String)} keeps tolerating legacy stored numbers so it can still be used
+ * to canonicalise existing values for duplicate comparison.
  */
 @Component
 public class TelephoneNormalizer {
 
     private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /**
+     * Required national-number length (the digits after the {@code '+'} and country code) for each
+     * country code we know how to size. E.164 country codes form a prefix-free set, so at most one
+     * of these is a prefix of any given number. Country codes not listed here are only subject to
+     * the generic 8-to-15 total-length rule.
+     */
+    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE = Map.of(
+        "1", 10,
+        DEFAULT_COUNTRY_CODE, 9);
 
     /**
      * Normalizes the supplied telephone value to its canonical E.164 stored form.
@@ -70,5 +88,50 @@ public class TelephoneNormalizer {
                 "Telephone '" + telephone + "' cannot be normalized to a valid E.164 number");
         }
         return "+" + nationalOrFull;
+    }
+
+    /**
+     * Normalizes the supplied telephone to canonical E.164 form (see {@link #normalize(String)})
+     * and additionally validates that its national-number length matches its country code:
+     * {@code '+61'} requires 9 national digits and {@code '+1'} requires 10. This is the method to
+     * use for a value supplied by a client on create/update; comparison of values already stored
+     * should use {@link #normalize(String)}, which tolerates legacy numbers whose national length
+     * predates this rule.
+     *
+     * @param telephone the raw telephone value (may be {@code null})
+     * @return the normalized E.164 telephone, or {@code null} if the input was {@code null}
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number, or its
+     *                                   national-number length is wrong for its country code
+     */
+    public String normalizeAndValidate(String telephone) {
+        String e164 = normalize(telephone);
+        if (e164 != null) {
+            validateNationalNumberLength(telephone, e164.substring(1));
+        }
+        return e164;
+    }
+
+    /**
+     * Rejects a normalized number whose national-number length does not match the requirement for
+     * its country code. Numbers whose country code is not in {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE}
+     * are left to the generic total-length rule enforced by {@link #normalize(String)}.
+     *
+     * @param telephone  the original raw value, for the error message
+     * @param fullDigits the normalized digits (country code followed by the national number, no {@code '+'})
+     */
+    private void validateNationalNumberLength(String telephone, String fullDigits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet()) {
+            String countryCode = entry.getKey();
+            if (fullDigits.startsWith(countryCode)) {
+                int nationalDigits = fullDigits.length() - countryCode.length();
+                if (nationalDigits != entry.getValue()) {
+                    throw new InvalidTelephoneException(
+                        "Telephone '" + telephone + "' has " + nationalDigits
+                            + " national digits, but country code '+" + countryCode + "' requires "
+                            + entry.getValue());
+                }
+                return;
+            }
+        }
     }
 }
