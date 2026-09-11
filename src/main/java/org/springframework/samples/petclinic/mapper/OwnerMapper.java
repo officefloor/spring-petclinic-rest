@@ -32,6 +32,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplayResolver.deriveTelephoneDisplay(owner.getTelephone()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
