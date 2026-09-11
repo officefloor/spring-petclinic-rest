@@ -36,6 +36,8 @@ public interface OwnerMapper {
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKeys.forOwner(owner))")
+    @Mapping(target = "ageBand",
+        expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.forOwner(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
