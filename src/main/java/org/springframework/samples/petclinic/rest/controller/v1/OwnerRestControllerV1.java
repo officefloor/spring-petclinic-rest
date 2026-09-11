@@ -483,19 +483,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rolls a registration date forward to a business day: a Saturday or Sunday advances to the
-     * following Monday, while a weekday is returned unchanged. Applied to the effective
-     * registration date (whether supplied in the request or defaulted to the server date) so the
-     * persisted registration date, every value derived from it and the per-day create-limit all
-     * use the adjusted business day.
+     * The fixed list of public holidays. A registration date that lands on one of these dates is
+     * rolled forward to the next non-holiday business day, in addition to the weekend rule.
+     */
+    private static final java.util.Set<java.time.LocalDate> PUBLIC_HOLIDAYS = java.util.Set.of(
+        java.time.LocalDate.of(2026, 1, 1),
+        java.time.LocalDate.of(2026, 1, 26),
+        java.time.LocalDate.of(2026, 4, 25),
+        java.time.LocalDate.of(2026, 12, 25),
+        java.time.LocalDate.of(2026, 12, 28));
+
+    /**
+     * Rolls a registration date forward to a business day: a Saturday, Sunday or listed public
+     * holiday advances to the next non-holiday weekday, while an ordinary weekday is returned
+     * unchanged. Applied to the effective registration date (whether supplied in the request or
+     * defaulted to the server date) so the persisted registration date, every value derived from it
+     * and the per-day create-limit all use the adjusted business day.
      *
      * @param date the effective registration date
-     * @return the same date if it is a weekday, otherwise the following Monday
+     * @return the same date if it is a non-holiday weekday, otherwise the next non-holiday business day
      */
     private java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
         java.time.LocalDate adjusted = date;
         while (adjusted.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
-            || adjusted.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            || adjusted.getDayOfWeek() == java.time.DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(adjusted)) {
             adjusted = adjusted.plusDays(1);
         }
         return adjusted;
