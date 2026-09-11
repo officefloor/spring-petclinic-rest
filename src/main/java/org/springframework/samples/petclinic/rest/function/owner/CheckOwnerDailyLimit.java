@@ -21,10 +21,17 @@ public class CheckOwnerDailyLimit {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerDailyLimitExceededException {
-        LocalDate today = LocalDate.now();
+        LocalDate effective = request.getRegistrationDate();
+        if (effective == null) {
+            effective = LocalDate.now();
+        }
+        // Count against the adjusted business day this create will land on, so the
+        // limit matches the registrationDate BuildOwner will store (weekend rolled
+        // forward to Monday) rather than the raw supplied or server date.
+        LocalDate businessDay = BusinessDay.adjust(effective);
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            if (businessDay.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }

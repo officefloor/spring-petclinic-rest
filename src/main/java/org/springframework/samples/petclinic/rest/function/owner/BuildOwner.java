@@ -12,9 +12,13 @@ public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
+        LocalDate effective = owner.getRegistrationDate();
+        if (effective == null) {
+            effective = LocalDate.now();
         }
+        // Roll the effective date (supplied or defaulted) onto a business day, so every
+        // value derived from it — e.g. the membership number's year segment — matches.
+        owner.setRegistrationDate(BusinessDay.adjust(effective));
         built.set(owner);
     }
 }
