@@ -80,6 +80,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; a successful create emits a single line here with the new owner's key details. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; a successful create enqueues a welcome notification here carrying the new owner's id and member id. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /**
      * Source of the {@link OwnerCreatedEvent}'s {@code seq}: a process-wide, monotonically increasing counter across
      * every owner create, so the structured audit events carry a strictly ordered sequence regardless of which
@@ -263,7 +266,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         populateHouseholdMemberCount(owner);
         auditOwnerCreated(owner);
+        enqueueWelcomeNotification(owner);
         return owner;
+    }
+
+    /**
+     * Enqueues a welcome notification for a newly created owner by emitting a single line to the dedicated
+     * {@link #NOTIFY} logger, carrying the owner's id and its {@code memberId} so the notification can be addressed to
+     * the new member.
+     *
+     * @param owner the newly created, persisted owner, with all its derived fields already in place
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("welcome notification enqueued: id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 
     /**
