@@ -10,7 +10,6 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * same id (back-filled by {@link AssignHousehold}) plus this owner. Runs after
  * {@link AssignHousehold} but before the owner is saved, so the new owner is counted with
  * a {@code +1}. Owners not in a shared household (null {@code householdId}) count as one.
- * The mapper promotes a household of three or more members to the {@code GOLD} tier.
  */
 public class AssignHouseholdSize {
 
