@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 307860bb4..6aedc60fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,8 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$",
++            message = "Phone number must be E.164: a '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerTelephoneUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerTelephoneUnique.java
+index b31cdc7fc..c4e4372ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerTelephoneUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerTelephoneUnique.java
+@@ -7,30 +7,23 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneInUseException;
+ 
+ /**
+- * Rejects a create request whose normalized telephone is already used by any other owner.
+- * Runs after {@link ValidateOwnerFields} has normalized the telephone to digits, and
+- * before {@link BuildOwner}, so a duplicate is a 409 rather than a persisted record.
++ * Rejects a create request whose telephone is already used by any other owner. Runs
++ * after {@link ValidateOwnerFields} has normalized the telephone to E.164, and before
++ * {@link BuildOwner}, so a duplicate is a 409 rather than a persisted record. Duplicates
++ * are detected by comparing E.164 values.
+  */
+ public class CheckOwnerTelephoneUnique {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws OwnerTelephoneInUseException {
+-        String telephone = normalize(request.getTelephone());
++        String telephone = TelephoneE164.toE164(request.getTelephone());
+         if (telephone == null) {
+             return;
+         }
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (telephone.equals(normalize(existing.getTelephone()))) {
++            if (telephone.equals(TelephoneE164.toE164(existing.getTelephone()))) {
+                 throw new OwnerTelephoneInUseException(request.getTelephone());
+             }
+         }
+     }
+-
+-    private static String normalize(String telephone) {
+-        if (telephone == null) {
+-            return null;
+-        }
+-        String digits = telephone.replaceAll("\\D", "");
+-        return digits.isEmpty() ? null : digits;
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java
+new file mode 100644
+index 000000000..bbe2a5d70
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Normalizes a telephone number to E.164 form.
++ *
++ * <p>Spaces, dashes and brackets are stripped. A value that already carries a leading
++ * {@code '+'} keeps its country code as given; otherwise country code {@code +61} is
++ * assumed and a single leading {@code '0'} is dropped from the national digits. The
++ * result must contain 8 to 15 digits after the {@code '+'}; anything else is not a
++ * valid E.164 number.
++ *
++ * <p>For example {@code "0412 345 678"} becomes {@code "+61412345678"} and
++ * {@code "+64 21 123 456"} becomes {@code "+6421123456"}.
++ */
++final class TelephoneE164 {
++
++    private TelephoneE164() {
++    }
++
++    /**
++     * Returns the E.164 form of {@code raw}, or {@code null} when it cannot form a valid
++     * E.164 number (including a {@code null} input).
++     */
++    static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String cleaned = raw.replaceAll("[\\s()\\-]", "");
++        if (cleaned.isEmpty()) {
++            return null;
++        }
++        String digits;
++        if (cleaned.charAt(0) == '+') {
++            digits = cleaned.substring(1);
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        if (digits.isEmpty() || !digits.chars().allMatch(c -> c >= '0' && c <= '9')) {
++            return null;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
++            return null;
++        }
++        return "+" + digits;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 20ff2bc8c..8bf665e11 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -41,18 +41,18 @@ public class ValidateOwnerFields {
+     }
+ 
+     /**
+-     * Strips every non-digit character from the telephone and requires exactly 10 digits,
+-     * storing the normalized value back on the request so later steps persist and return it.
+-     * Anything other than 10 digits after stripping is a 400 (adds a "telephone" error).
++     * Normalizes the telephone to E.164 form (see {@link TelephoneE164}), storing the
++     * result back on the request so later steps persist and return it. A value that
++     * cannot form a valid E.164 number is a 400 (adds a "telephone" error).
+      */
+     private static void normalizeTelephone(OwnerFieldsDto request, List<String> errors) {
+         String telephone = request.getTelephone();
+         if (telephone == null) {
+             return;
+         }
+-        String digits = telephone.replaceAll("\\D", "");
+-        if (digits.length() == 10) {
+-            request.setTelephone(digits);
++        String e164 = TelephoneE164.toE164(telephone);
++        if (e164 != null) {
++            request.setTelephone(e164);
+         }
+         else if (!errors.contains("telephone")) {
+             errors.add("telephone");
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d7e1d0487..164228d46 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,12 +2025,17 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. Accepted in national or
++            international form (spaces, dashes and brackets are ignored) and stored
++            and returned in E.164 form: a '+' followed by 8 to 15 digits. A national
++            number with no country code is assumed to be '+61' with a single leading
++            '0' dropped, so '0412 345 678' is stored as '+61412345678'.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+-          example: '6085551023'
++          pattern: '^[+0-9 ()-]+$'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Optional; stored and returned lower-cased.
