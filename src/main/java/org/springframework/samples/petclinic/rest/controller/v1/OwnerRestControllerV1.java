@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -258,7 +259,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void rejectWhenIdentityInUse(Owner owner) {
         String identityKey = owner.getIdentityKey();
-        boolean inUse = this.clinicService.findAllOwners().stream()
+        boolean inUse = existingOwners()
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (inUse) {
             throw new DuplicateIdentityException(
@@ -401,6 +402,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Streams the existing owners that the create-time rules match a new owner against. Every
+     * duplicate, quota and derived-field rule scans this same set of owners and differs only in the
+     * predicate it applies, so fetching them is centralized here to keep each rule focused on its
+     * own matching criterion rather than on how the existing owners are retrieved.
+     *
+     * @return a stream over all existing owners
+     */
+    private Stream<Owner> existingOwners() {
+        return this.clinicService.findAllOwners().stream();
+    }
+
+    /**
      * Counts the existing owners located in the given city, compared case-insensitively. Used to
      * fix the per-city sequence of an owner's customer code at creation time.
      *
@@ -408,7 +421,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners in a matching city
      */
     private int countOwnersInCity(String city) {
-        return (int) this.clinicService.findAllOwners().stream()
+        return (int) existingOwners()
             .filter(existing -> existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(city))
             .count();
@@ -423,7 +436,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners registered on that date
      */
     private int countOwnersRegisteredOn(java.time.LocalDate date) {
-        return (int) this.clinicService.findAllOwners().stream()
+        return (int) existingOwners()
             .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
@@ -451,7 +464,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private List<Owner> sameHouseholdOwners(String lastName, String address) {
         String householdKey = householdNormalizer.householdKey(lastName, address);
-        return this.clinicService.findAllOwners().stream()
+        return existingOwners()
             .filter(existing -> householdNormalizer
                 .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey))
             .toList();
@@ -466,7 +479,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the number of existing owners with a matching first and last name
      */
     private int countNamesakes(String firstName, String lastName) {
-        return (int) this.clinicService.findAllOwners().stream()
+        return (int) existingOwners()
             .filter(existing -> existing.getFirstName() != null
                 && existing.getFirstName().equalsIgnoreCase(firstName)
                 && existing.getLastName() != null
