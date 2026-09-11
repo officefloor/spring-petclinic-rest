@@ -27,7 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
     @Mapping(target = "bulkSignupWarning",
