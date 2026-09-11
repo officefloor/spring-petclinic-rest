@@ -1,0 +1,179 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 973488f60..b6dacdf2e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,12 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -185,6 +191,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The derived key that duplicate detection compares owners by, formed as the normalized
+      * telephone, the (lower-cased) email or an empty string when absent, and the household id or an
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a0d338e9c..bff35f509 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -153,6 +153,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // email and household id) already matches an existing owner. This single rule subsumes the
+         // former separate telephone, email and household duplicate checks.
+         rejectWhenIdentityInUse(owner);
++        // Flag the owner as a possible (soft) duplicate when, although not a hard duplicate, it
++        // shares an existing owner's last name and postcode with a different telephone.
++        assignPossibleDuplicate(owner);
+         // Assign the remaining create-time derived fields (namesake count, customer code,
+         // membership number and bulk-signup warning), each fixed at creation time.
+         assignDerivedFields(owner);
+@@ -267,6 +270,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Assigns the soft-duplicate flags for a newly normalized owner that has already passed the hard
++     * duplicate (identity-key) check. When an existing owner shares this owner's last name (compared
++     * case-insensitively) and postcode but carries a different (normalized) telephone, the new owner
++     * is still created but flagged as a possible duplicate: {@code possibleDuplicate} is set true and
++     * {@code possibleDuplicateOf} to the matching owner's id (the lowest such id when several match).
++     * Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
++     * A postcode is required on both sides for a match, so an owner without a postcode is never a
++     * possible duplicate. Both values are fixed at creation time.
++     *
++     * @param owner the owner being created, already normalized and confirmed not a hard duplicate
++     */
++    private void assignPossibleDuplicate(Owner owner) {
++        Integer matchId = owner.getPostcode() == null ? null : existingOwners()
++            .filter(existing -> existing.getPostcode() != null
++                && existing.getPostcode().equals(owner.getPostcode())
++                && existing.getLastName() != null
++                && existing.getLastName().equalsIgnoreCase(owner.getLastName())
++                && existing.getTelephone() != null
++                && !existing.getTelephone().equals(owner.getTelephone()))
++            .map(Owner::getId)
++            .min(Integer::compareTo)
++            .orElse(null);
++        owner.setPossibleDuplicate(matchId != null);
++        owner.setPossibleDuplicateOf(matchId);
++    }
++
+     /**
+      * Rejects creating an owner once {@link #MAX_OWNERS_PER_DAY} or more owners already carry this
+      * owner's adjusted business-day registration date, with 429 Too Many Requests.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 7b2d3bab4..906abf9bf 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   membership_number VARCHAR(20),
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 1438f7ec0..e054033d6 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,9 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   membership_number VARCHAR(20),
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2647b7755..4552df874 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INT,
+   membership_number VARCHAR(20),
+   bulk_signup_warning BIT(1),
++  possible_duplicate BIT(1),
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 951e4ddb8..bccf1fcf7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+                                       membership_number TEXT,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a7783d6e4..55f81c8c9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2226,6 +2226,28 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Whether this owner, though not a hard duplicate, shares an
++                existing owner's last name and postcode while carrying a
++                different telephone. Assigned once at creation and returned
++                unchanged.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner is a possible duplicate
++                of (shared last name and postcode, different telephone), or
++                absent when 'possibleDuplicate' is false. Assigned once at
++                creation and returned unchanged.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
