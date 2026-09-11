@@ -130,13 +130,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(
                 "An owner with telephone " + normalizedTelephone + " already exists");
         }
-        // Reject creating an owner who shares a household (same last name and address, compared
-        // case-insensitively with collapsed whitespace) with an existing owner, unless the request
-        // explicitly opts in with 'sharesHousehold' true.
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
+        // Identify any existing owners who share a household (same last name and address,
+        // compared case-insensitively with collapsed whitespace) with the owner being created.
+        List<Owner> householdMembers = sameHouseholdOwners(owner.getLastName(), owner.getAddress());
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        // Reject creating an owner who shares a household with an existing owner, unless the
+        // request explicitly opts in with 'sharesHousehold' true.
+        if (!sharesHousehold && !householdMembers.isEmpty()) {
             throw new DuplicateHouseholdException(
                 "An owner with the same last name and address already exists");
+        }
+        // When opting in and joining an existing household, assign the new owner and every
+        // existing member the same stable household identifier derived from the last name and
+        // address, so all owners of the household share one 'householdId'.
+        if (sharesHousehold && !householdMembers.isEmpty()) {
+            String householdId = householdNormalizer.householdId(owner.getLastName(), owner.getAddress());
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (!householdId.equals(member.getHouseholdId())) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
+            }
         }
         // Assign the customer code '<LAST3>-<NNNN>' from the last name and a global sequence
         // equal to one more than the current number of owners, fixed at creation time.
@@ -195,20 +210,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether another owner already shares the given household, i.e. has the same last
-     * name and the same address. The comparison delegates to {@link HouseholdNormalizer} so that
-     * values differing only in letter case or in incidental whitespace are treated as the same
-     * household.
+     * Returns the existing owners who share the given household, i.e. have the same last name and
+     * the same address. The comparison delegates to {@link HouseholdNormalizer} so that values
+     * differing only in letter case or in incidental whitespace are treated as the same household.
      *
      * @param lastName the last name of the owner being created
      * @param address  the address of the owner being created
-     * @return {@code true} if an existing owner has a matching last name and address
+     * @return the existing owners with a matching last name and address (possibly empty)
      */
-    private boolean isHouseholdInUse(String lastName, String address) {
+    private List<Owner> sameHouseholdOwners(String lastName, String address) {
         String householdKey = householdNormalizer.householdKey(lastName, address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> householdNormalizer
-                .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey));
+            .filter(existing -> householdNormalizer
+                .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey))
+            .toList();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
