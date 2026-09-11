@@ -2,22 +2,30 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
- * Rolls a registration date forward onto a business day. A Saturday or Sunday is
- * rolled forward to the next Monday; a weekday is returned unchanged. Shared by
- * {@link BuildOwner} (which stores the adjusted date, so every value derived from it
- * — such as the membership number's year segment — uses the business day) and
- * {@link CheckOwnerDailyLimit} (which counts owners per adjusted business day).
+ * Rolls a registration date forward onto a business day. A Saturday, Sunday or listed
+ * public holiday is rolled forward to the next non-holiday weekday; a plain weekday is
+ * returned unchanged. Shared by {@link BuildOwner} (which stores the adjusted date, so
+ * every value derived from it — such as the membership number's year segment — uses the
+ * business day) and {@link CheckOwnerDailyLimit} (which counts owners per adjusted
+ * business day).
  */
 final class BusinessDay {
+
+    /** Fixed public holidays the business-day roll skips. */
+    private static final Set<LocalDate> HOLIDAYS = Set.of(
+            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
+            LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"), LocalDate.parse("2026-12-28"));
 
     private BusinessDay() {
     }
 
-    /** Returns {@code date} if it is a weekday, else the next Monday. */
+    /** Returns {@code date} if it is a non-holiday weekday, else the next business day. */
     static LocalDate adjust(LocalDate date) {
-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY
+                || HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
