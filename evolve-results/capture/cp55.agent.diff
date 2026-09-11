@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8a66b24e4..538d81fa5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,6 +35,8 @@ public interface OwnerMapper {
+         expression = "java(locality(owner))")
+     @Mapping(target = "timezone",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.timezone(locality(owner)))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(ownerSegment(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
+             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+@@ -72,6 +74,20 @@ public interface OwnerMapper {
+             : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+     }
+ 
++    /**
++     * Returns the owner's marketing segment formatted {@code "<TIER>_<AREA>"}. TIER is
++     * {@code "PREMIUM"} when the membership level is 3 or more, otherwise {@code "STANDARD"}. AREA is
++     * {@code "METRO"} when the locality is a known region (NSW, VIC or QLD), otherwise
++     * {@code "REGIONAL"}.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String locality = locality(owner);
++        String area = ("NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality))
++            ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
++    }
++
+     /**
+      * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
+      * plus 1 when the namesake count is 0, plus 2 for a household of 3 or more, and plus 3 for
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d6591bd96..806de262e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2333,6 +2333,21 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when the membership level is 3 or more, otherwise
++                'STANDARD'. AREA is 'METRO' when the locality is a known region
++                (NSW, VIC or QLD), otherwise 'REGIONAL'. Derived on read.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
