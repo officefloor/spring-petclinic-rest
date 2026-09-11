@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -14,6 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  */
 public class ValidateOwnerFields {
 
+    /** A syntactically valid address: local-part@domain with a dotted domain, no spaces. */
+    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsInvalidException {
         List<String> errors = new ArrayList<>();
@@ -23,6 +27,7 @@ public class ValidateOwnerFields {
         checkRequired("city", request.getCity(), errors);
         checkRequired("telephone", request.getTelephone(), errors);
         normalizeTelephone(request, errors);
+        normalizeEmail(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
@@ -51,6 +56,25 @@ public class ValidateOwnerFields {
         }
         else if (!errors.contains("telephone")) {
             errors.add("telephone");
+        }
+    }
+
+    /**
+     * Email is optional. When present (non-blank) it must be a syntactically valid address;
+     * an invalid value is a 400 (adds an "email" error). A valid value is stored lower-cased
+     * back on the request so later steps persist and return it lower-cased.
+     */
+    private static void normalizeEmail(OwnerFieldsDto request, List<String> errors) {
+        String email = request.getEmail();
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        String trimmed = email.trim();
+        if (EMAIL.matcher(trimmed).matches()) {
+            request.setEmail(trimmed.toLowerCase());
+        }
+        else if (!errors.contains("email")) {
+            errors.add("email");
         }
     }
 }
