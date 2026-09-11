@@ -3,76 +3,48 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * When a create request opts in via {@code sharesHousehold}, links the new owner into
- * the household of the existing same-lastName owner(s) at the same address by assigning
- * them all a shared {@code householdId}. Runs after {@link BuildOwner} (so the entity
- * exists) and before {@link SaveOwner} (so the new owner is persisted with the id).
+ * Assigns the owner's {@code householdId} deterministically: the first 12 hexadecimal
+ * characters of the SHA-256 digest over {@code normalizedLastName + '|' + postcode}. Two
+ * owners with the same last name and postcode therefore always derive the <em>same</em>
+ * {@code householdId} — they are automatically the same household, with no opt-in and no
+ * back-fill. Runs after {@link BuildOwner} (so the entity carries its stored last name and
+ * postcode) and before {@link CheckOwnerIdentityUnique} (so the household id is available
+ * to the duplicate block) and {@link AssignHouseholdSize}.
  *
- * <p>The household is keyed on the normalized last name and address. If an existing housemate already
- * carries a {@code householdId} it is reused; otherwise a stable id is derived from the
- * household key and back-filled onto the existing housemates, so every member — the new
- * owner and each prior one — shares one identifier. A request that does not opt in is
- * left with a null {@code householdId}.
+ * <p>The request flag {@code sharesHousehold} no longer creates the link; it only lets a
+ * second owner in an existing household bypass the duplicate block (see
+ * {@link CheckOwnerIdentityUnique}).
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
-            OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
-
-        List<Owner> housemates = new ArrayList<>();
-        String existingId = null;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
-                housemates.add(existing);
-                if (existingId == null && existing.getHouseholdId() != null) {
-                    existingId = existing.getHouseholdId();
-                }
-            }
-        }
-
-        String householdId = existingId != null ? existingId : deriveHouseholdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner mate : housemates) {
-            if (!householdId.equals(mate.getHouseholdId())) {
-                mate.setHouseholdId(householdId);
-                ownerRepository.save(mate);
-            }
-        }
+    public void service(@Val Owner owner) {
+        String key = normalize(owner.getLastName()) + "|" + nullToEmpty(owner.getPostcode());
+        owner.setHouseholdId(hash12(key));
     }
 
-    /**
-     * A stable identifier for a household, derived deterministically from its normalized
-     * last name and address so the same household always yields the same id.
-     */
-    private static String deriveHouseholdId(String lastName, String address) {
-        String key = lastName + "|" + address;
+    /** The first 12 lower-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String hash12(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("HH-");
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */

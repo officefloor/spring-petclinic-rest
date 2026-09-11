@@ -1,17 +1,16 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * Derives an owner's {@code identityKey}: the single value all duplicate detection is
- * expressed through.
+ * Derives an owner's {@code identityKey}, a descriptive value exposed on the owner
+ * response.
  *
  * <p>The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
  * By the time an owner is built its telephone has been normalized to E.164 and its email
  * lower-cased, so those stored values are the normalized forms. A null email or a null
  * {@code householdId} contributes an empty segment.
  *
- * <p>Two owners are duplicates only when their <em>whole</em> keys are equal. Because the
- * telephone is part of the key, two members of the same household (same
- * {@code householdId}) with different telephones have different keys and are both allowed.
+ * <p>Duplicate detection itself is now keyed on the {@code householdId} alone (see the
+ * create pipeline's household duplicate block), not on this whole key.
  */
 public final class IdentityKey {
 
