@@ -25,12 +25,10 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.formatForDisplay(owner.getTelephone()))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(3, 1 "
-            + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
-            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)) "
-            + "+ ((owner.getRegistrationDate() != null "
-            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) ? 1 : 0))")
+        expression = "java(membershipLevel(membershipPoints(owner)))")
     @Mapping(target = "locality",
         expression = "java(owner.getCustomerCode() != null "
             + "? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) "
@@ -58,6 +56,46 @@ public interface OwnerMapper {
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+
+    /**
+     * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
+     * plus 1 when the namesake count is 0, plus 2 for a household of 3 or more, and plus 3 for
+     * tenure over 365 days.
+     */
+    default int membershipPoints(Owner owner) {
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            points += 2;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
+        if (owner.getRegistrationDate() != null
+            && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Maps membership points to a membership level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4
+     * for 6 or more.
+     */
+    default int membershipLevel(int membershipPoints) {
+        if (membershipPoints <= 1) {
+            return 1;
+        }
+        if (membershipPoints <= 3) {
+            return 2;
+        }
+        if (membershipPoints <= 5) {
+            return 3;
+        }
+        return 4;
+    }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
         OwnerPageDto ownerPageDto = new OwnerPageDto();
