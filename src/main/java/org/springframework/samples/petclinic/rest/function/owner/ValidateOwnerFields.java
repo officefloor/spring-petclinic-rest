@@ -41,18 +41,18 @@ public class ValidateOwnerFields {
     }
 
     /**
-     * Strips every non-digit character from the telephone and requires exactly 10 digits,
-     * storing the normalized value back on the request so later steps persist and return it.
-     * Anything other than 10 digits after stripping is a 400 (adds a "telephone" error).
+     * Normalizes the telephone to E.164 form (see {@link TelephoneE164}), storing the
+     * result back on the request so later steps persist and return it. A value that
+     * cannot form a valid E.164 number is a 400 (adds a "telephone" error).
      */
     private static void normalizeTelephone(OwnerFieldsDto request, List<String> errors) {
         String telephone = request.getTelephone();
         if (telephone == null) {
             return;
         }
-        String digits = telephone.replaceAll("\\D", "");
-        if (digits.length() == 10) {
-            request.setTelephone(digits);
+        String e164 = TelephoneE164.toE164(telephone);
+        if (e164 != null) {
+            request.setTelephone(e164);
         }
         else if (!errors.contains("telephone")) {
             errors.add("telephone");
