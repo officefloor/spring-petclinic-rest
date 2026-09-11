@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fc205ee33..f395d32b1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.localityOf(owner))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegments.forOwner(owner))")
+     @Mapping(target = "timezone",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
+     @Mapping(target = "bulkSignupWarning",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegments.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegments.java
+new file mode 100644
+index 000000000..f07e059b2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegments.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.function.owner.CustomerCodes;
++
++/**
++ * Derives an owner's {@code ownerSegment}, formatted {@code <TIER>_<AREA>}.
++ *
++ * <p>{@code TIER} is {@code PREMIUM} when the owner's {@link MembershipLevels#forOwner(Owner)
++ * membershipLevel} is 3 or more, otherwise {@code STANDARD}. {@code AREA} is {@code METRO}
++ * when the owner's {@link CustomerCodes#localityOf(Owner) locality} is a known region
++ * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegments {
++
++    /** Membership level at or above which an owner is in the PREMIUM tier. */
++    private static final int PREMIUM_MIN_LEVEL = 3;
++
++    /** Localities that count as METRO; anything else is REGIONAL. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegments() {
++    }
++
++    /** The {@code <TIER>_<AREA>} segment for the given owner. */
++    public static String forOwner(Owner owner) {
++        String tier = MembershipLevels.forOwner(owner) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(CustomerCodes.localityOf(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d66e036d9..a8f7e2133 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2270,6 +2270,17 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment derived on read, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise
++                'REGIONAL'. One of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
++                'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             timezone:
+               title: Timezone
+               description: >-
