@@ -71,6 +71,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *  429 Too Many Requests. */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /** When more than this many owners already carry today's registration date at creation time, the
+     *  new owner's 'bulkSignupWarning' flag is set true; otherwise it is false. */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     /** Dedicated audit logger; a line is emitted here for each successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -170,6 +174,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
         // of the registration date's year (e.g. 'LON-SMI-0007-M26'), fixed at creation time.
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        // Flag the create when more than 80 owners have already been created on this owner's
+        // (adjusted business-day) registration date, fixed at creation time.
+        owner.setBulkSignupWarning(
+            countOwnersRegisteredOn(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         // Emit an audit line for the successful create, carrying the owner id, customer code and
         // registration date so the create can be traced from the dedicated AUDIT log.
