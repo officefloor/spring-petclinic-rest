@@ -39,12 +39,27 @@ public final class Sha256Hex {
      * @return the first {@code length} upper-case hex characters of SHA-256({@code input})
      */
     public static String upperHexPrefix(String input, int length) {
-        byte[] digest = digest(input);
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            sb.append(String.format("%02X", b));
+        return hex(digest(input), "%02X").substring(0, length);
+    }
+
+    /**
+     * Returns the full 64-character lower-case hexadecimal SHA-256 digest of the UTF-8 bytes of
+     * {@code input}. Used where a hash-derived value must be a complete, fixed-width digest rather
+     * than the leading prefix that {@link #upperHexPrefix(String, int)} returns.
+     *
+     * @param input the source string to hash (must not be {@code null})
+     * @return the 64-character lower-case hex SHA-256 of {@code input}
+     */
+    public static String lowerHex(String input) {
+        return hex(digest(input), "%02x");
+    }
+
+    private static String hex(byte[] bytes, String byteFormat) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format(byteFormat, b));
         }
-        return sb.substring(0, length);
+        return sb.toString();
     }
 
     private static byte[] digest(String input) {
