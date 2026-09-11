@@ -540,7 +540,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return a stream over all existing owners
      */
     private Stream<Owner> existingOwners() {
-        return this.clinicService.findAllOwners().stream();
+        // Exclude soft-deleted owners: a deleted owner is retained for reads but must not block a
+        // new create, so the duplicate, identity and household checks (and the other create-time
+        // scans built on this helper) ignore it.
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()));
     }
 
     /**
@@ -645,7 +649,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft-delete: flag the owner as deleted and retain the row rather than removing it, so the
+        // owner is still returned by GET (with 'deleted' true) and only excluded from the create-time
+        // duplicate and identity checks (see existingOwners()).
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
