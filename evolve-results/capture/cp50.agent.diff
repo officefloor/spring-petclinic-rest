@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ccc523220..71b83e17f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -21,7 +21,9 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -62,6 +64,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -85,6 +88,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Once more than this many owners already exist for a day, a further create for that day is flagged as a bulk signup. */
+     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+ 
++    /** Request header carrying the client-supplied idempotency key for a create; see {@link #addOwner}. */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Remembers, per idempotency key, the id of the owner the first create with that key produced, so a repeated
++     * create with an already-seen key returns the original owner instead of creating a duplicate.
++     */
++    private final Map<String, Integer> idempotentOwnerIds = new ConcurrentHashMap<>();
++
+     /** Fixed public holidays the business-day roll skips: the adjusted registration date never lands on one of these. */
+     private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+         LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"), LocalDate.parse("2026-04-25"),
+@@ -108,6 +120,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final HouseholdResolver householdResolver;
+ 
++    /** The current request, used to read the optional {@code Idempotency-Key} header on a create. */
++    private final HttpServletRequest request;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -116,7 +131,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  AddressNormalizer addressNormalizer,
+                                  EmailNormalizer emailNormalizer,
+                                  IdentityKeyResolver identityKeyResolver,
+-                                 HouseholdResolver householdResolver) {
++                                 HouseholdResolver householdResolver,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -126,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.emailNormalizer = emailNormalizer;
+         this.identityKeyResolver = identityKeyResolver;
+         this.householdResolver = householdResolver;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -174,10 +191,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Transactional
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = request.getHeader(IDEMPOTENCY_KEY_HEADER);
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            ResponseEntity<OwnerDto> replay = replayIdempotentCreate(idempotencyKey);
++            if (replay != null) {
++                return replay;
++            }
++        }
+         Owner owner = createOwner(ownerFieldsDto);
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            idempotentOwnerIds.put(idempotencyKey, owner.getId());
++        }
+         return createdOwnerResponse(owner);
+     }
+ 
++    /**
++     * Replays the create that a previously-seen {@code Idempotency-Key} produced. When the key has already created an
++     * owner that still exists, the original owner is returned with {@code 200 OK} instead of a duplicate being created;
++     * otherwise (key unseen, or its owner has since been removed) {@code null} is returned and the create proceeds
++     * normally.
++     *
++     * @param idempotencyKey the client-supplied idempotency key from the request header
++     * @return a {@code 200 OK} response carrying the original owner, or {@code null} when there is nothing to replay
++     */
++    private ResponseEntity<OwnerDto> replayIdempotentCreate(String idempotencyKey) {
++        Integer existingId = idempotentOwnerIds.get(idempotencyKey);
++        if (existingId == null) {
++            return null;
++        }
++        Owner owner = this.clinicService.findOwnerById(existingId);
++        if (owner == null) {
++            return null;
++        }
++        populateHouseholdMemberCount(owner);
++        return new ResponseEntity<>(toOwnerDto(owner), HttpStatus.OK);
++    }
++
+     /**
+      * Creates and persists a new owner from an incoming payload, applying every creation rule in order. The payload is
+      * normalized and validated (see {@link #normalizeAndValidate}), mapped to an owner and stamped with its fields
