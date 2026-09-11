@@ -155,6 +155,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        return createOwner(ownerFieldsDto);
+    }
+
+    /**
+     * Runs the full owner-creation pipeline for a create request and returns the 201 Created
+     * response for the newly persisted owner: the request fields are mapped and normalized, every
+     * create-time policy (per-day and per-city quota, household membership, identity duplicate and
+     * soft-duplicate) is applied in order, the create-time derived fields are assigned, the owner is
+     * saved and audited, and a {@code Location} header for the new owner is set. Keeping the pipeline
+     * in its own method leaves {@link #addOwner} as the thin request entry point, so request-level
+     * concerns that merely surround a create (rather than being one of its steps) can be layered in
+     * {@code addOwner} without disturbing the creation steps gathered here.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @return a 201 Created response carrying the persisted owner and its {@code Location} header
+     */
+    private ResponseEntity<OwnerDto> createOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         normalizeOwnerFields(owner);
