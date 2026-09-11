@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +83,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Once more than this many owners already exist for a day, a further create for that day is flagged as a bulk signup. */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /** Fixed public holidays the business-day roll skips: the adjusted registration date never lands on one of these. */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"), LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"), LocalDate.parse("2026-12-28"));
 
     private final ClinicService clinicService;
 
@@ -304,9 +310,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Resolves an owner's effective registration date and rolls it onto a business day. The effective date is the value
-     * supplied on the payload, or the current server date when none was supplied; when that date is a Saturday or
-     * Sunday it is rolled forward to the following Monday. The returned date is always a business day. A supplied date
-     * later than the current server date is rejected.
+     * supplied on the payload, or the current server date when none was supplied; when that date is a Saturday, a Sunday
+     * or a listed public holiday (see {@link #PUBLIC_HOLIDAYS}) it is rolled forward one day at a time until it lands on
+     * a non-holiday weekday. The returned date is always a business day. A supplied date later than the current server
+     * date is rejected.
      *
      * @param ownerFieldsDto the incoming owner payload
      * @return the effective registration date rolled forward onto a business day
@@ -321,7 +328,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new FutureRegistrationDateException(
                 "the registration date must not be later than the current server date");
         }
-        while (effective.getDayOfWeek() == DayOfWeek.SATURDAY || effective.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (effective.getDayOfWeek() == DayOfWeek.SATURDAY || effective.getDayOfWeek() == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(effective)) {
             effective = effective.plusDays(1);
         }
         return effective;
