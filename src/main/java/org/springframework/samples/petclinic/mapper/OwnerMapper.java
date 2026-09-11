@@ -37,6 +37,12 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit",
         expression = "java(owner.getCustomerCode() == null ? null "
             + ": org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
+    @Mapping(target = "ageBand",
+        expression = "java(owner.getBirthDate() == null || owner.getRegistrationDate() == null ? null "
+            + ": (java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears() < 18 "
+            + "? OwnerDto.AgeBandEnum.MINOR "
+            + ": java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears() < 65 "
+            + "? OwnerDto.AgeBandEnum.ADULT : OwnerDto.AgeBandEnum.SENIOR))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
