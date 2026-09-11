@@ -16,12 +16,14 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an attempt is made to create an owner whose lower-cased email is already
- * in use by another owner. Handled by {@link ExceptionControllerAdvice} as a 409 Conflict.
+ * Thrown when an attempt is made to create an owner whose whole derived identity key (normalized
+ * telephone, email and household id joined with {@code '|'}) already matches another owner. This
+ * single rule replaces the former separate telephone, email and household duplicate checks. Handled
+ * by {@link ExceptionControllerAdvice} as a 409 Conflict.
  */
-public class DuplicateEmailException extends OwnerConflictException {
+public class DuplicateIdentityException extends OwnerConflictException {
 
-    public DuplicateEmailException(String message) {
-        super(message, "An owner with the same email already exists");
+    public DuplicateIdentityException(String message) {
+        super(message, "An owner with the same identity key already exists");
     }
 }

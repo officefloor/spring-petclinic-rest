@@ -32,9 +32,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -142,9 +140,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeOwnerFields(owner);
         // Enforce the pre-persistence policies that can reject the new owner outright.
         rejectDisallowedOwnerCreation(owner);
-        // Resolve the owner's household membership: reject an un-opted-in duplicate household,
-        // assign the shared 'householdId' when the request opts in, and record the household size.
+        // Resolve the owner's household membership: assign the shared 'householdId' when the
+        // request opts in and joins an existing household, and record the household size. This runs
+        // before the identity-key check so that check sees the owner's final household id.
         applyHouseholdMembership(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+        // Reject the create when the owner's whole derived identity key (normalized telephone,
+        // email and household id) already matches an existing owner. This single rule subsumes the
+        // former separate telephone, email and household duplicate checks.
+        rejectWhenIdentityInUse(owner);
         // Assign the remaining create-time derived fields (namesake count, customer code,
         // membership number and bulk-signup warning), each fixed at creation time.
         assignDerivedFields(owner);
@@ -165,28 +168,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * independent rule lives in its own {@code rejectWhen...} guard and is applied here in order, so
      * the sequence of create-time rejections stays readable and a new rule is added as one more
      * guard. Grouping the rules here keeps {@link #addOwner} focused on the household, derived-field
-     * and persistence steps. The household rule lives in {@link #applyHouseholdMembership} rather
-     * than here because it shares the matched-member lookup with the shared household-id assignment.
+     * and persistence steps. The single duplicate rule that rejects an owner whose whole identity
+     * key matches an existing one is applied separately in {@link #rejectWhenIdentityInUse}, after
+     * the household id has been resolved, because that key includes the household id.
      *
      * @param owner the newly mapped and normalized owner being created
      */
     private void rejectDisallowedOwnerCreation(Owner owner) {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
-        rejectWhenTelephoneInUse(owner);
-        rejectWhenEmailInUse(owner);
     }
 
     /**
      * Applies the household-membership rules for a newly normalized owner being created. It finds
      * the existing owners who share the owner's household (same last name and address, compared
-     * case-insensitively with collapsed whitespace), then, using that single lookup: rejects the
-     * create with a 409 Conflict when the owner would join an existing household without opting in
-     * via {@code sharesHousehold}; otherwise, when opting in and joining an existing household,
-     * assigns the new owner and every existing member the same stable {@code householdId}; and
-     * finally records the owner's {@code householdSize}. These steps live together here, out of the
-     * {@link #rejectDisallowedOwnerCreation} pipeline, precisely because they share that one
-     * matched-member lookup.
+     * case-insensitively with collapsed whitespace), then, using that single lookup: when the
+     * request opts in via {@code sharesHousehold} and the owner joins an existing household, assigns
+     * the new owner and every existing member the same stable {@code householdId}; and records the
+     * owner's {@code householdSize}. Sharing a household is no longer a rejection on its own: a new
+     * owner is rejected only when its whole identity key matches an existing owner (see
+     * {@link #rejectWhenIdentityInUse}), and the household id resolved here is part of that key.
      *
      * @param owner           the newly mapped and normalized owner being created
      * @param sharesHousehold whether the request opted in to joining an existing household
@@ -195,12 +196,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Identify any existing owners who share a household (same last name and address,
         // compared case-insensitively with collapsed whitespace) with the owner being created.
         List<Owner> householdMembers = sameHouseholdOwners(owner.getLastName(), owner.getAddress());
-        // Reject creating an owner who shares a household with an existing owner, unless the
-        // request explicitly opts in with 'sharesHousehold' true.
-        if (!sharesHousehold && !householdMembers.isEmpty()) {
-            throw new DuplicateHouseholdException(
-                "An owner with the same last name and address already exists");
-        }
         // When opting in and joining an existing household, assign the new owner and every
         // existing member the same stable household identifier derived from the last name and
         // address, so all owners of the household share one 'householdId'.
@@ -248,16 +243,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose lower-cased email is already used by another owner, with
-     * 409 Conflict.
+     * Rejects creating an owner whose whole derived identity key already matches an existing owner,
+     * with 409 Conflict. The identity key ({@link Owner#getIdentityKey()}) joins the normalized
+     * telephone, the email (or empty) and the household id (or empty), so this single rule replaces
+     * the former separate telephone, email and household duplicate checks: two owners collide only
+     * when their whole keys are equal, and members of one household with different telephones have
+     * different keys and are both allowed.
      *
-     * @param owner the owner being created
+     * @param owner the owner being created, already normalized and with its household resolved
      */
-    private void rejectWhenEmailInUse(Owner owner) {
-        String normalizedEmail = owner.getEmail();
-        if (isValueInUseByExistingOwner(Owner::getEmail, this::normalizeEmail, normalizedEmail)) {
-            throw new DuplicateEmailException(
-                "An owner with email " + normalizedEmail + " already exists");
+    private void rejectWhenIdentityInUse(Owner owner) {
+        String identityKey = owner.getIdentityKey();
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+        if (inUse) {
+            throw new DuplicateIdentityException(
+                "An owner with identity key " + identityKey + " already exists");
         }
     }
 
@@ -284,20 +285,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(
                 "The city " + owner.getCity() + " already contains the maximum number of owners");
-        }
-    }
-
-    /**
-     * Rejects creating an owner whose normalized telephone is already used by another owner, with
-     * 409 Conflict.
-     *
-     * @param owner the owner being created
-     */
-    private void rejectWhenTelephoneInUse(Owner owner) {
-        String normalizedTelephone = owner.getTelephone();
-        if (isTelephoneInUse(normalizedTelephone)) {
-            throw new DuplicateTelephoneException(
-                "An owner with telephone " + normalizedTelephone + " already exists");
         }
     }
 
@@ -425,44 +412,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String membershipNumber(String customerCode, java.time.LocalDate registrationDate) {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
-    }
-
-    /**
-     * Determines whether the given normalized telephone is already used by an existing owner.
-     * Stored telephones are normalized to E.164 before comparison so values that differ only in
-     * formatting (spaces, dashes, brackets) or in national vs. international notation are treated
-     * as the same number.
-     *
-     * @param normalizedTelephone the normalized (E.164) telephone to look for
-     * @return {@code true} if another owner already uses this telephone
-     */
-    private boolean isTelephoneInUse(String normalizedTelephone) {
-        return isValueInUseByExistingOwner(Owner::getTelephone, telephoneNormalizer::normalize,
-            normalizedTelephone);
-    }
-
-    /**
-     * Determines whether the given already-normalized value is used by an existing owner for the
-     * field read by {@code accessor}, comparing each existing owner's value in the same normalized
-     * form produced by {@code normalizer}. Shared by the create-time uniqueness rules so each rule
-     * only supplies the field to read and how to normalize it.
-     *
-     * @param accessor        reads the field to compare from an existing owner
-     * @param normalizer      canonicalizes an existing owner's value into the same form as
-     *                        {@code normalizedValue}
-     * @param normalizedValue the already-normalized value to look for
-     * @return {@code true} if an existing owner already uses this value
-     */
-    private boolean isValueInUseByExistingOwner(java.util.function.Function<Owner, String> accessor,
-                                                java.util.function.UnaryOperator<String> normalizer,
-                                                String normalizedValue) {
-        if (normalizedValue == null) {
-            return false;
-        }
-        return this.clinicService.findAllOwners().stream()
-            .map(accessor)
-            .map(normalizer)
-            .anyMatch(normalizedValue::equals);
     }
 
     /**

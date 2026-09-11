@@ -163,6 +163,21 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * The derived key that duplicate detection compares owners by, formed as the normalized
+     * telephone, the (lower-cased) email or an empty string when absent, and the household id or an
+     * empty string when absent, joined with {@code '|'}. Two owners are duplicates only when their
+     * whole identity keys are equal, so members of one household with different telephones (and hence
+     * different keys) are not duplicates. Derived on read from the stored, already-normalized fields.
+     *
+     * @return the derived identity key
+     */
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone) + '|'
+            + (this.email == null ? "" : this.email) + '|'
+            + (this.householdId == null ? "" : this.householdId);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

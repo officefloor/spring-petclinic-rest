@@ -128,8 +128,8 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link OwnerConflictException}, the base type for every create-time rule that rejects
-     * a new owner with a 409 Conflict (e.g. a duplicate telephone, a duplicate household or a city
-     * at capacity), returning a 409 Conflict status. The client-facing detail is taken from the
+     * a new owner with a 409 Conflict (e.g. a duplicate identity key or a city at capacity),
+     * returning a 409 Conflict status. The client-facing detail is taken from the
      * exception's {@link OwnerConflictException#getDetail()} so each rule keeps its own wording
      * while sharing this single handler.
      *
