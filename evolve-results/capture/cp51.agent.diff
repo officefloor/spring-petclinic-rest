@@ -1,0 +1,264 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b770f33c3..8a66b24e4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -98,13 +98,17 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Returns the owner's membership level: the level mapped from the owner's membership points.
+-     * The level is derived here, per owner, so any owner-scoped adjustment to the level (as opposed
+-     * to the pure points-to-level mapping) has a single home, leaving {@link #membershipLevel(int)}
+-     * as the plain points-to-level table.
++     * Returns the owner's membership level. When a level was assigned and stored at creation time
++     * (the already-capped level: a new owner's level cannot exceed one above the current maximum
++     * membership level among their existing household members) it is returned as-is; otherwise the
++     * level is derived from the owner's membership points. Deriving the level here, per owner, keeps
++     * any owner-scoped adjustment to the level (the household cap, or the fallback points mapping) in
++     * a single home, leaving {@link #membershipLevel(int)} as the plain points-to-level table.
+      */
+     default int membershipLevel(Owner owner) {
+-        return membershipLevel(membershipPoints(owner));
++        return owner.getMembershipLevel() != null
++            ? owner.getMembershipLevel()
++            : membershipLevel(membershipPoints(owner));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b25777d9e..0d864957c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -232,6 +235,23 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    /**
++     * The membership level assigned to this owner at creation time. When present it is the
++     * already-capped level (a new owner's level cannot exceed one above the current maximum
++     * membership level among their existing household members) and is returned as-is; when absent
++     * (e.g. for owners created before the level was persisted) the level is derived from the
++     * membership points on read.
++     *
++     * @return the stored membership level, or {@code null} when none was assigned
++     */
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f660fccdf..a9daa6597 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -38,7 +38,6 @@ import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededExc
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+-import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -235,6 +234,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Assign the remaining create-time derived fields (namesake count, customer code,
+         // membership number and bulk-signup warning), each fixed at creation time.
+         assignDerivedFields(owner);
++        // Assign the (household-capped) membership level, fixed at creation time. This runs after the
++        // derived fields above because the level is computed from the membership points, which depend
++        // on the namesake count assigned in assignDerivedFields.
++        assignMembershipLevel(owner);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         // Emit an audit line for the successful create, carrying the owner id, customer code,
+@@ -270,12 +273,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * household id is a deterministic function of the owner's last name and postcode, so owners
+      * with the same last name and postcode share it automatically; it is assigned to the new owner
+      * here. Because the household is keyed on (last name, postcode), any existing owner with the
+-     * same last name and postcode is a member of the same household: a second such owner is rejected
+-     * as a household duplicate (409) unless the request declares it shares the household via
+-     * {@code sharesHousehold}, in which case it is created as a declared household member. The
+-     * owner's {@code householdSize} (the number of owners sharing the household after this create)
+-     * is recorded either way. The assigned household id is part of the owner's identity key, so it
+-     * is resolved here before {@link #rejectWhenIdentityInUse}.
++     * same last name and postcode is a member of the same household. A new owner may join an
++     * existing household: rather than the create being rejected, the newcomer's membership level is
++     * capped at one above the household's current maximum (see {@link #assignMembershipLevel}). When
++     * the request declares it shares the household via {@code sharesHousehold} the owner is a known,
++     * declared member and is never flagged as a possible duplicate. The owner's
++     * {@code householdSize} (the number of owners sharing the household after this create) is
++     * recorded either way. The assigned household id is part of the owner's identity key, so it is
++     * resolved here before {@link #rejectWhenIdentityInUse}.
+      *
+      * @param owner           the newly mapped and normalized owner being created
+      * @param sharesHousehold whether the request declared that the owner shares an existing household
+@@ -285,18 +290,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Assign the deterministic household id (a pure function of last name and postcode) so every
+         // owner with the same last name and postcode shares it automatically.
+         owner.setHouseholdId(householdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
+-        // Identify any existing owners in the same household (same computed household id).
++        // Identify any existing owners in the same household (same computed household id). A new owner
++        // may join an existing household: its membership level is capped at one above the household's
++        // current maximum (see assignMembershipLevel) rather than the create being rejected outright.
+         List<Owner> householdMembers = sameHouseholdOwners(owner);
+-        // A second owner in an existing household is a household duplicate: reject it with 409 unless
+-        // the request declares it shares the household, in which case create it as a declared member.
+-        boolean declaredHouseholdMember = false;
+-        if (!householdMembers.isEmpty()) {
+-            if (!sharesHousehold) {
+-                throw new HouseholdDuplicateException(
+-                    "An owner in the household " + owner.getHouseholdId() + " already exists");
+-            }
+-            declaredHouseholdMember = true;
+-        }
++        // An owner that joins an existing household while the request declares it shares that
++        // household is a known, declared member and so is never flagged as a possible duplicate.
++        boolean declaredHouseholdMember = !householdMembers.isEmpty() && sharesHousehold;
+         // Record the size of this owner's household after this create, fixed at creation time.
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         return declaredHouseholdMember;
+@@ -329,6 +329,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             countOwnersRegisteredOn(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
+     }
+ 
++    /**
++     * Assigns the new owner's membership level, capped by their household, and fixes it at creation
++     * time. The level a newly created owner would earn from their membership points cannot exceed
++     * one above the current maximum membership level among their existing household members (the
++     * owners already sharing this owner's household id); the capped value is stored so it is returned
++     * unchanged on later reads. When the owner has no existing household member no cap applies and
++     * the plain points-derived level is used.
++     *
++     * @param owner the owner being created, already normalized and with its derived fields assigned
++     */
++    private void assignMembershipLevel(Owner owner) {
++        int level = ownerMapper.membershipLevel(ownerMapper.membershipPoints(owner));
++        List<Owner> householdMembers = sameHouseholdOwners(owner);
++        if (!householdMembers.isEmpty()) {
++            int maxMemberLevel = householdMembers.stream()
++                .mapToInt(this::memberLevel)
++                .max()
++                .getAsInt();
++            level = Math.min(level, maxMemberLevel + 1);
++        }
++        owner.setMembershipLevel(level);
++    }
++
++    /**
++     * Returns an existing household member's membership level for the purpose of capping a new
++     * member's level: the level stored on the member when present (the already-capped value fixed at
++     * its own creation), otherwise the level derived from its membership points (for members created
++     * before the level was persisted).
++     *
++     * @param member an existing owner in the same household
++     * @return the member's membership level
++     */
++    private int memberLevel(Owner member) {
++        return member.getMembershipLevel() != null
++            ? member.getMembershipLevel()
++            : ownerMapper.membershipLevel(ownerMapper.membershipPoints(member));
++    }
++
+     /**
+      * Rejects creating an owner whose whole derived identity key already matches an existing owner,
+      * with 409 Conflict. The identity key ({@link Owner#getIdentityKey()}) joins the normalized
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index fea11deb3..c24479c76 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   membership_number VARCHAR(20),
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 87c3683c7..938d5e00e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,6 +54,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   membership_number VARCHAR(20),
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 393862d39..aa387547e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   household_size INT,
+   membership_number VARCHAR(20),
++  membership_level INTEGER,
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0e8e08886..aa4b53d83 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+                                       membership_number TEXT,
++                                      membership_level INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a806d4ca5..1c97b10c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2129,12 +2129,12 @@ components:
+         sharesHousehold:
+           title: Shares household
+           description: >-
+-            When true, allows creating this owner even if another owner already
+-            belongs to the same household (same last name and postcode, and
+-            therefore the same household id); it only bypasses the household
+-            duplicate block and the owner is created as a declared household
+-            member (never flagged as a possible duplicate). Write-only; it is
+-            not persisted or returned.
++            When true, marks this owner as a declared member of an existing
++            household (same last name and postcode, and therefore the same
++            household id) so it is never flagged as a possible duplicate. Owners
++            may join an existing household either way; a declared member is
++            simply treated as a known member rather than a suspected duplicate.
++            Write-only; it is not persisted or returned.
+           type: boolean
+           writeOnly: true
+           example: false
+@@ -2301,7 +2301,12 @@ components:
+               description: >-
+                 The pet owner's numeric membership level from 1 to 4, mapped from
+                 the membership points: level 1 for 0-1 points, level 2 for 2-3,
+-                level 3 for 4-5, and level 4 for 6 or more.
++                level 3 for 4-5, and level 4 for 6 or more. Capped at creation
++                time so a new owner's level cannot exceed one above the current
++                maximum membership level among their existing household members
++                (owners sharing the same household id); with no existing
++                household member no cap applies. Assigned once at creation and
++                returned unchanged.
+               type: integer
+               format: int32
+               minimum: 1
