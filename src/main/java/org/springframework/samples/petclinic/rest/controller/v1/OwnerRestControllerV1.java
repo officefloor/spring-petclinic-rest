@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -209,6 +210,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
         rejectWhenTelephoneInUse(owner);
+        rejectWhenEmailInUse(owner);
+    }
+
+    /**
+     * Rejects creating an owner whose lower-cased email is already used by another owner, with
+     * 409 Conflict.
+     *
+     * @param owner the owner being created
+     */
+    private void rejectWhenEmailInUse(Owner owner) {
+        String normalizedEmail = owner.getEmail();
+        if (isValueInUseByExistingOwner(Owner::getEmail, this::normalizeEmail, normalizedEmail)) {
+            throw new DuplicateEmailException(
+                "An owner with email " + normalizedEmail + " already exists");
+        }
     }
 
     /**
