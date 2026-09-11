@@ -263,16 +263,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes an owner's address to its canonical stored form and writes it back onto the payload. The canonical
-     * form (see {@link AddressNormalizer#normalize}) is what gets stored and returned as {@code address} and what every
-     * address comparison uses; a {@code null} input yields an empty string, so a blank result is uniformly treated as a
-     * missing address by the required-field check that follows. The payload is mutated in place so the caller can map
-     * and save it directly.
+     * Normalizes an owner's address to its canonical stored form and writes it back onto the payload. The structured
+     * form is preferred over the flat one: when a non-blank {@code addressLine1} is supplied it (and the optional
+     * {@code addressLine2}) are normalized (see {@link AddressNormalizer#normalize}) and the flat {@code address} is
+     * recomposed as the normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended when {@code addressLine2} is present. Otherwise the flat {@code address} is normalized on its own and the
+     * structured fields are cleared. Either way the canonical {@code address} is what gets stored and returned and what
+     * every downstream reader uses; a blank result is uniformly treated as a missing address by the required-field
+     * check that follows (an owner is valid when it supplies either a non-blank {@code addressLine1} or a non-blank flat
+     * {@code address}). The payload is mutated in place so the caller can map and save it directly.
      *
      * @param ownerFieldsDto the incoming owner payload, mutated in place
      */
     private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        String line1 = addressNormalizer.normalize(ownerFieldsDto.getAddressLine1());
+        String line2 = addressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+        if (!line1.isEmpty()) {
+            ownerFieldsDto.setAddressLine1(line1);
+            ownerFieldsDto.setAddressLine2(line2.isEmpty() ? null : line2);
+            ownerFieldsDto.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+        }
+        else {
+            ownerFieldsDto.setAddressLine1(null);
+            ownerFieldsDto.setAddressLine2(null);
+            ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
     }
 
     /**
@@ -376,6 +391,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Rejects an owner payload that omits or leaves blank any required field. Bean Validation already rejects missing
      * ({@code null}) required fields, but permits values that are blank (empty or whitespace-only) for fields without a
      * stricter pattern, so this check enforces the "missing or blank" rule uniformly across every required field.
+     *
+     * <p>The address is checked after normalization has composed the canonical {@code address} from whichever form was
+     * supplied, so a blank {@code address} here means the owner supplied neither a non-blank {@code addressLine1} nor a
+     * flat {@code address}.
      *
      * @param ownerFieldsDto the owner payload to validate
      * @throws MissingOwnerFieldsException if any of firstName, lastName, address, city or telephone is missing or blank
@@ -567,6 +586,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         validatePostcode(ownerFieldsDto);
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
