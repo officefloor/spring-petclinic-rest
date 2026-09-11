@@ -42,6 +42,8 @@ public interface OwnerMapper {
         expression = "java(owner.getCapacityWarning() != null && owner.getCapacityWarning())")
     @Mapping(target = "possibleDuplicate",
         expression = "java(owner.getPossibleDuplicate() != null && owner.getPossibleDuplicate())")
+    @Mapping(target = "riskFlag",
+        expression = "java((owner.getPossibleDuplicate() != null && owner.getPossibleDuplicate()) || (owner.getCapacityWarning() != null && owner.getCapacityWarning()) || org.springframework.samples.petclinic.rest.function.owner.DisposableDomains.emailIsDisposableAdjacent(owner.getEmail()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",
