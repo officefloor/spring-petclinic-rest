@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.HouseholdResolver;
 import org.springframework.samples.petclinic.mapper.IdentityKeyResolver;
 import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -98,6 +99,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final IdentityKeyResolver identityKeyResolver;
 
+    private final HouseholdResolver householdResolver;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -105,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 IdentityKeyResolver identityKeyResolver) {
+                                 IdentityKeyResolver identityKeyResolver,
+                                 HouseholdResolver householdResolver) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -114,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.identityKeyResolver = identityKeyResolver;
+        this.householdResolver = householdResolver;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -438,10 +443,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *         them; empty when none match
      */
     private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
-        String lastName = identityKeyResolver.collapseWhitespace(ownerFieldsDto.getLastName());
+        String lastName = householdResolver.collapseWhitespace(ownerFieldsDto.getLastName());
         String address = addressNormalizer.normalize(ownerFieldsDto.getAddress());
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> identityKeyResolver.collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+            .filter(existing -> householdResolver.collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
                 && addressNormalizer.normalize(existing.getAddress()).equals(address))
             .toList();
     }
@@ -450,10 +455,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Assigns the shared {@code householdId} for an owner joining an existing household. Only owners created with
      * {@code sharesHousehold} set to {@code true} that actually match an existing household (see
      * {@link #findHouseholdMembers}) are given an identifier; single owners keep a {@code null} household. The
-     * identifier is derived deterministically from the household's last name and address (see
-     * {@link IdentityKeyResolver#deriveHouseholdId}), so every member of the same household resolves to the same stable
-     * value regardless of creation order. Existing members that predate the feature and still lack the identifier are
-     * backfilled (see {@link #backfillHouseholdMembers}) so the whole household shares it.
+     * identifier itself is computed by {@link #computeHouseholdId}, so every member of the same household resolves to
+     * the same stable value regardless of creation order. Existing members that predate the feature and still lack the
+     * identifier are backfilled (see {@link #backfillHouseholdMembers}) so the whole household shares it.
      *
      * @param owner          the newly mapped owner about to be saved
      * @param ownerFieldsDto the incoming owner payload
@@ -466,10 +470,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (members.isEmpty()) {
             return;
         }
-        String householdId =
-            identityKeyResolver.deriveHouseholdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        String householdId = computeHouseholdId(ownerFieldsDto);
         owner.setHouseholdId(householdId);
         backfillHouseholdMembers(householdId, members);
+    }
+
+    /**
+     * Computes the shared {@code householdId} for an owner payload. The identifier is derived deterministically (see
+     * {@link HouseholdResolver#deriveHouseholdId}), so it is a pure function of the payload's household-identifying
+     * fields and every member of the same household resolves to the same stable value regardless of creation order.
+     * Computing it is kept separate from deciding whether to assign it (see {@link #assignHouseholdId}).
+     *
+     * @param ownerFieldsDto the incoming owner payload
+     * @return the shared household identifier for the payload
+     */
+    private String computeHouseholdId(OwnerFieldsDto ownerFieldsDto) {
+        return householdResolver.deriveHouseholdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
     }
 
     /**
