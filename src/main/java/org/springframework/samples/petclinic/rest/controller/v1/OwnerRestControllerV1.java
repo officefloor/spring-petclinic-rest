@@ -148,6 +148,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        // Record how many existing owners already share this owner's first and last name
+        // (compared case-insensitively) before this create, fixed at creation time.
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         // Assign the customer code '<LAST3>-<NNNN>' from the last name and a global sequence
         // equal to one more than the current number of owners, fixed at creation time.
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
@@ -250,6 +253,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> householdNormalizer
                 .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey))
             .toList();
+    }
+
+    /**
+     * Counts the existing owners who share the given first and last name, compared
+     * case-insensitively. Used to fix an owner's namesake count at creation time.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName  the last name of the owner being created
+     * @return the number of existing owners with a matching first and last name
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getFirstName() != null
+                && existing.getFirstName().equalsIgnoreCase(firstName)
+                && existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
