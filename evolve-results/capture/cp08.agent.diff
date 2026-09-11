@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 899b1bec1..d3fbccf89 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+@@ -47,8 +46,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index d120cf637..76f31eea9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -36,9 +36,9 @@ public class RequireOwnerFields {
+         if (!errors.isEmpty()) {
+             throw new RequiredFieldsException(errors);
+         }
+-        // Normalize the telephone: strip every non-digit, then require exactly 10 digits.
+-        String telephone = request.getTelephone().replaceAll("\\D", "");
+-        if (telephone.length() != 10) {
++        // Normalize the telephone to E.164 form; reject when it cannot form a valid one.
++        String telephone = Telephones.toE164(request.getTelephone());
++        if (telephone == null) {
+             throw new RequiredFieldsException(List.of("telephone"));
+         }
+         request.setTelephone(telephone);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
+index 1fbb4a913..b3ba6b50a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
+@@ -7,24 +7,20 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+ 
+ /**
+- * Rejects a create request whose normalized telephone is already used by an existing
+- * owner. Runs after {@link RequireOwnerFields} has normalized the telephone to its
+- * digits, so the comparison is between normalized forms. A conflict is reported as a
+- * 409 by {@link org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler}.
++ * Rejects a create request whose telephone is already used by an existing owner. Runs
++ * after {@link RequireOwnerFields} has normalized the telephone to E.164 form, so the
++ * comparison is between E.164 values. A conflict is reported as a 409 by
++ * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler}.
+  */
+ public class RequireUniqueTelephone {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateTelephoneException {
+-        String telephone = normalize(request.getTelephone());
++        String telephone = Telephones.toE164(request.getTelephone());
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (telephone.equals(normalize(existing.getTelephone()))) {
++            if (telephone != null && telephone.equals(Telephones.toE164(existing.getTelephone()))) {
+                 throw new DuplicateTelephoneException(telephone);
+             }
+         }
+     }
+-
+-    private static String normalize(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+new file mode 100644
+index 000000000..e068d431b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+@@ -0,0 +1,39 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Normalizes telephone numbers to E.164 form.
++ *
++ * <p>Spaces, dashes and brackets are stripped. When a leading {@code '+'} (an explicit
++ * country code) is present it is kept as-is; otherwise country code {@code '+61'} is
++ * assumed and a single leading {@code '0'} is dropped from the national digits. The
++ * result must be {@code '+'} followed by 8 to 15 digits, else it cannot form a valid
++ * E.164 number.
++ *
++ * <p>E.g. {@code "0412 345 678"} -> {@code "+61412345678"} and
++ * {@code "+64 21 123 456"} -> {@code "+6421123456"}.
++ */
++public final class Telephones {
++
++    private Telephones() {
++    }
++
++    /**
++     * Converts a telephone number to its E.164 form, or returns {@code null} when the
++     * input cannot form a valid E.164 number.
++     */
++    public static String toE164(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        String cleaned = telephone.replaceAll("[\\s\\-()]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        return digits.matches("\\d{8,15}") ? "+" + digits : null;
++    }
++}
