@@ -35,6 +35,8 @@ public interface OwnerMapper {
         expression = "java(locality(owner))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.timezone(locality(owner)))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
@@ -70,6 +72,20 @@ public interface OwnerMapper {
         return owner.getCustomerCode() != null
             ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))
             : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Returns the owner's marketing segment formatted {@code "<TIER>_<AREA>"}. TIER is
+     * {@code "PREMIUM"} when the membership level is 3 or more, otherwise {@code "STANDARD"}. AREA is
+     * {@code "METRO"} when the locality is a known region (NSW, VIC or QLD), otherwise
+     * {@code "REGIONAL"}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String locality = locality(owner);
+        String area = ("NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality))
+            ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
     }
 
     /**
