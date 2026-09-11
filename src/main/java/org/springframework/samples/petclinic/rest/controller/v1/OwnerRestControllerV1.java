@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -321,6 +322,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // rejected with 400. A city with no known region accepts any 4-digit postcode. The stored
         // value is left unchanged.
         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
+        // Reject a supplied registration date that is later than the server's current date with
+        // 400, before any defaulting or business-day adjustment, so a future date is never
+        // persisted regardless of how the roll-forward would move it.
+        rejectFutureRegistrationDate(owner.getRegistrationDate());
         // Default the registration date to the server's current date when the client did not
         // supply one, then roll the effective date forward to a business day so a Saturday or
         // Sunday (whether supplied or defaulted) becomes the following Monday. The adjusted date
@@ -330,6 +335,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() == null
             ? java.time.LocalDate.now() : owner.getRegistrationDate();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
+    }
+
+    /**
+     * Rejects a supplied registration date that is later than the server's current date with a
+     * 400 Bad Request. A missing registration date (defaulted to the server date later) is
+     * accepted, and a date on or before today is left for the normal defaulting and business-day
+     * adjustment.
+     *
+     * @param registrationDate the client-supplied registration date, or {@code null} when absent
+     */
+    private void rejectFutureRegistrationDate(java.time.LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(java.time.LocalDate.now())) {
+            throw new InvalidRegistrationDateException(
+                "The supplied registration date " + registrationDate + " is later than the current date");
+        }
     }
 
     /**
