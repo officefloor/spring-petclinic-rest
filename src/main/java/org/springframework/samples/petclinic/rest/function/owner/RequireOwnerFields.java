@@ -30,6 +30,12 @@ public class RequireOwnerFields {
         if (!errors.isEmpty()) {
             throw new RequiredFieldsException(errors);
         }
+        // Normalize the telephone: strip every non-digit, then require exactly 10 digits.
+        String telephone = request.getTelephone().replaceAll("\\D", "");
+        if (telephone.length() != 10) {
+            throw new RequiredFieldsException(List.of("telephone"));
+        }
+        request.setTelephone(telephone);
         validated.set(request);
     }
 
