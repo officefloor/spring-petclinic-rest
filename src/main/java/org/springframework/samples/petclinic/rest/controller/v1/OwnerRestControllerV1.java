@@ -178,11 +178,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // membership number and bulk-signup warning), each fixed at creation time.
         assignDerivedFields(owner);
         this.clinicService.saveOwner(owner);
-        // Emit an audit line for the successful create, carrying the owner id, customer code and
-        // registration date so the create can be traced from the dedicated AUDIT log.
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        // Emit an audit line for the successful create, carrying the owner id, customer code,
+        // registration date, membership level and membership number so the create can be traced
+        // from the dedicated AUDIT log.
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
