@@ -720,7 +720,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the formatted, de-duplicated member id
      */
     private String memberId(Owner owner) {
-        String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String region = LocalityResolver.identityRegion(owner.getCity(), owner.getPostcode());
         String fy = String.format("%02d",
             org.springframework.samples.petclinic.util.FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = Sha256Hex.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);

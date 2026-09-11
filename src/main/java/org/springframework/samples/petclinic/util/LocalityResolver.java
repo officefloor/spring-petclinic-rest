@@ -61,6 +61,23 @@ public final class LocalityResolver {
     }
 
     /**
+     * Returns the region code embedded inside an owner's identifiers (such as the REGION segment of
+     * the member id), as opposed to the plain region shown to users as their locality. It is
+     * resolved from the same city and postcode, preferring the postcode, via {@link #resolve(String,
+     * String)}; the two coincide today. Deriving the identifier region through its own accessor keeps
+     * it separate from the user-facing {@link #resolve display region}, so the region baked into
+     * identifiers can later be derived differently without disturbing the plain region returned as
+     * the owner's locality and timezone.
+     *
+     * @param city     the owner's city (may be {@code null})
+     * @param postcode the owner's postcode (may be {@code null})
+     * @return the region code to embed in the owner's identifiers
+     */
+    public static String identityRegion(String city, String postcode) {
+        return resolve(city, postcode);
+    }
+
+    /**
      * Returns the canonical region for the given city, or {@code "UNKNOWN"} when the city is
      * {@code null} or not present in the fixed city-to-region table.
      *

@@ -295,11 +295,8 @@ public class Owner extends Person {
      * @return the derived identity key
      */
     public String getIdentityKey() {
-        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
-        String lowerEmail = this.email == null ? "" : this.email;
-        return org.springframework.samples.petclinic.util.Sha256Hex.lowerHex(
-            normalizedTelephone + '|' + lowerEmail + '|'
-                + org.springframework.samples.petclinic.util.Soundex.encode(this.getLastName()));
+        return org.springframework.samples.petclinic.util.IdentityKey.of(
+            this.telephone, this.email, this.getLastName());
     }
 
     protected Set<Pet> getPetsInternal() {
