@@ -174,16 +174,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Maps an owner to its DTO and stamps on the derived {@code identityKey} (see
-     * {@link IdentityKeyResolver#deriveIdentityKey}), which is not a stored field of the owner and so cannot be produced
-     * by the mapper alone.
+     * Maps an owner to its DTO and stamps on the two derived values the mapper cannot produce on its own, each because
+     * it depends on more than the single owner: the {@code identityKey} (see
+     * {@link IdentityKeyResolver#deriveIdentityKey}), which is not a stored field of the owner, and the household-capped
+     * {@code membershipLevel} (see {@link #cappedMembershipLevel}), which the mapper derives from the owner alone but
+     * which the ceiling rule then caps against the owner's fellow household members. The capped level replaces the
+     * mapper's uncapped one on the returned DTO.
      *
      * @param owner the owner to map
-     * @return the owner DTO carrying its identity key
+     * @return the owner DTO carrying its identity key and household-capped membership level
      */
     private OwnerDto toOwnerDto(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
+        ownerDto.setMembershipLevel(cappedMembershipLevel(owner));
         return ownerDto;
     }
 
@@ -230,8 +234,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Creates and persists a new owner from an incoming payload, applying every creation rule in order. The payload is
      * normalized and validated (see {@link #normalizeAndValidate}), mapped to an owner and stamped with its fields
-     * derived at creation (see {@link #populateDerivedFields}); the duplicate guards then run against those derived
-     * fields (see {@link #requireUniqueIdentity} and {@link #requireHouseholdNotDuplicate}) before the soft-duplicate
+     * derived at creation (see {@link #populateDerivedFields}); the duplicate guard then runs against those derived
+     * fields (see {@link #requireUniqueIdentity}) before the soft-duplicate
      * flag is recorded (see {@link #flagPossibleDuplicate}); the owner is saved, its transient household member count
      * is resolved (see {@link #populateHouseholdMemberCount}) and the creation is audited (see
      * {@link #auditOwnerCreated}). The returned owner carries its generated id and every field a response needs.
@@ -244,7 +248,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         populateDerivedFields(owner, ownerFieldsDto);
         requireUniqueIdentity(owner);
-        requireHouseholdNotDuplicate(owner, ownerFieldsDto);
         flagPossibleDuplicate(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         populateHouseholdMemberCount(owner);
@@ -544,10 +547,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner, so an owner is an identity
      * duplicate only when its normalized telephone, email and {@code householdId} all match another owner's. It runs
      * after the household id has been assigned, so the key reflects the household the owner belongs to. Owners that
-     * share only their household (same last name and postcode, different telephone) are not caught here but by the
-     * separate household-duplicate guard (see {@link #requireHouseholdNotDuplicate}). Owners that have been
-     * soft-deleted (see {@link #deleteOwner}) are ignored, so a matching identity that belongs only to a deleted
-     * owner does not block the create.
+     * share only their household (same last name and postcode, different telephone) are not caught here: an owner may
+     * join an existing household, its membership level being capped instead (see {@link #cappedMembershipLevel}).
+     * Owners that have been soft-deleted (see {@link #deleteOwner}) are ignored, so a matching identity that belongs
+     * only to a deleted owner does not block the create.
      *
      * @param owner the newly mapped owner about to be saved, with its household id already assigned
      * @throws DuplicateOwnerException if any existing owner already has the same identity key
@@ -563,9 +566,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Flags a newly created owner as a possible (soft) duplicate. The owner has already cleared both the hard-duplicate
-     * guard (see {@link #requireUniqueIdentity}) and the household-duplicate guard (see
-     * {@link #requireHouseholdNotDuplicate}), so it is still being created; this only records a warning. A declared
+     * Flags a newly created owner as a possible (soft) duplicate. The owner has already cleared the hard-duplicate
+     * guard (see {@link #requireUniqueIdentity}), so it is still being created; this only records a warning. A declared
      * household member (one created with {@code sharesHousehold} set to {@code true}) is never flagged: it deliberately
      * shares its household's last name and postcode, so it is not a suspected duplicate. Otherwise it is a possible
      * duplicate when some existing owner shares its last name (compared case-insensitively) and its postcode but
@@ -634,33 +636,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that would join an existing household it has not declared. Because the household is
-     * keyed on the last name and postcode (see {@link #assignHouseholdId}), any existing owner carrying the same
-     * derived {@code householdId} is a member of the same household. A second such owner is a household duplicate and is
-     * rejected, unless the payload sets {@code sharesHousehold} to {@code true}, which declares the owner a genuine
-     * household member and lets the create proceed. An owner with no household ({@code null} householdId, i.e. created
-     * without a postcode) can never be a household duplicate. Owners that have been soft-deleted (see
-     * {@link #deleteOwner}) are ignored, so a household whose only member has been deleted does not block the create.
+     * Returns an owner's household-capped membership level: the level the {@link MembershipLevelResolver} derives from
+     * the owner (see {@link MembershipLevelResolver#deriveMembershipLevel(Owner)}), lowered where necessary so it never
+     * exceeds one above the highest capped level among the owner's <em>existing</em> household members — the members
+     * that predate the owner, identified as those sharing its non-null {@code householdId} with a smaller id. When the
+     * owner has no such existing household member (it is the first in its household, or has no household at all) no cap
+     * applies and the derived level is returned unchanged. The owner's transient household member count is populated
+     * first (see {@link #populateHouseholdMemberCount}) so the derived level reflects the current household size.
      *
-     * @param owner          the newly mapped owner about to be saved, with its household id already assigned
-     * @param ownerFieldsDto the incoming owner payload
-     * @throws DuplicateOwnerException if an existing owner already belongs to this household and the create did not
-     *                                 declare {@code sharesHousehold}
+     * @param owner the owner whose capped membership level should be computed
+     * @return the membership level, capped at one above the existing household maximum
      */
-    private void requireHouseholdNotDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return;
-        }
+    private int cappedMembershipLevel(Owner owner) {
+        populateHouseholdMemberCount(owner);
+        int level = MembershipLevelResolver.deriveMembershipLevel(owner);
+        Integer cap = householdMembershipLevelCap(owner);
+        return cap == null ? level : Math.min(level, cap);
+    }
+
+    /**
+     * Computes the ceiling the {@link #cappedMembershipLevel level-ceiling rule} imposes on a new owner: one above the
+     * highest capped membership level among the owner's existing household members, or {@code null} when there is none.
+     * An existing household member is an owner sharing this owner's non-null {@code householdId} whose id is smaller (so
+     * it predates this owner); their levels are read with {@link #cappedMembershipLevel}, so each member's own ceiling
+     * is respected in turn. An owner with no household ({@code null} householdId), no id yet, or no existing household
+     * member has no cap.
+     *
+     * @param owner the owner whose household level cap should be computed
+     * @return one above the existing household maximum level, or {@code null} when no cap applies
+     */
+    private Integer householdMembershipLevelCap(Owner owner) {
         String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return;
+        Integer id = owner.getId();
+        if (householdId == null || id == null) {
+            return null;
         }
-        boolean sharedByExisting = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (sharedByExisting) {
-            throw new DuplicateOwnerException("an owner in the same household already exists");
+        Integer maxLevel = null;
+        for (Owner member : this.clinicService.findAllOwners()) {
+            Integer memberId = member.getId();
+            if (memberId != null && memberId < id && householdId.equals(member.getHouseholdId())) {
+                int memberLevel = cappedMembershipLevel(member);
+                maxLevel = (maxLevel == null) ? memberLevel : Math.max(maxLevel, memberLevel);
+            }
         }
+        return maxLevel == null ? null : maxLevel + 1;
     }
 
     /**
