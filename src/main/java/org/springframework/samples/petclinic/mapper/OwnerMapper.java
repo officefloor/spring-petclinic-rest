@@ -18,6 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.model.Salutation.of(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.model.TelephoneDisplay.of(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
