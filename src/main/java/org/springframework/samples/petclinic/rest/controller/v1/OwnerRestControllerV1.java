@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.Collection;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +70,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *  an owner once this many owners already carry today's registration date is rejected with
      *  429 Too Many Requests. */
     private static final int MAX_OWNERS_PER_DAY = 100;
+
+    /** Dedicated audit logger; a line is emitted here for each successful owner create. */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -166,6 +171,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // of the registration date's year (e.g. 'LON-SMI-0007-M26'), fixed at creation time.
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
+        // Emit an audit line for the successful create, carrying the owner id, customer code and
+        // registration date so the create can be traced from the dedicated AUDIT log.
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
