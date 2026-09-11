@@ -1,24 +1,24 @@
 package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.FiscalYears;
 
 /**
  * Derives an owner's membership {@code points} and numeric {@code level}.
  *
  * <p>Points start at 0 and accumulate: add 2 when an email is present, add 1 when
  * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3
- * for tenure over 365 days.
+ * for tenure over one fiscal year.
  *
  * <p>Points map to the level (1-4): 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for
  * 6 or more.
  */
 public final class MembershipLevels {
 
-    /** Tenure, in days, above which an owner earns the tenure points. */
-    private static final long TENURE_DAYS_FOR_BONUS = 365;
+    /** Elapsed fiscal years above which an owner earns the tenure points. */
+    private static final long TENURE_FISCAL_YEARS_FOR_BONUS = 1;
 
     /** Household size at or above which an owner earns the household points. */
     private static final int HOUSEHOLD_SIZE_FOR_BONUS = 3;
@@ -38,7 +38,7 @@ public final class MembershipLevels {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE_FOR_BONUS) {
             points += 2;
         }
-        if (tenureInDays(owner) > TENURE_DAYS_FOR_BONUS) {
+        if (tenureInFiscalYears(owner) > TENURE_FISCAL_YEARS_FOR_BONUS) {
             points += 3;
         }
         return points;
@@ -59,12 +59,16 @@ public final class MembershipLevels {
         return 4;
     }
 
-    /** Days since registration, or 0 when the registration date is unknown. */
-    private static long tenureInDays(Owner owner) {
+    /**
+     * Elapsed fiscal years since registration (the number of 1-July fiscal-year
+     * boundaries crossed between the business-day-adjusted registration date and today),
+     * or 0 when the registration date is unknown.
+     */
+    private static long tenureInFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return FiscalYears.fiscalYear(LocalDate.now()) - FiscalYears.fiscalYear(registrationDate);
     }
 }

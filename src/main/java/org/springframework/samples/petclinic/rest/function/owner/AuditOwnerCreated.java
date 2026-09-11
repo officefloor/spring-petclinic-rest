@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.mapper.MembershipLevels;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.FiscalYears;
 
 /**
  * Emits an audit record for a freshly created owner via the dedicated {@code AUDIT}
@@ -19,7 +20,7 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner) {
         String membershipNumber = owner.getCustomerCode() == null || owner.getRegistrationDate() == null
                 ? null
-                : owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                : owner.getCustomerCode() + "-M" + String.format("%02d", FiscalYears.yearSegment(owner.getRegistrationDate()));
         audit.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
                 MembershipLevels.forOwner(owner), membershipNumber);
