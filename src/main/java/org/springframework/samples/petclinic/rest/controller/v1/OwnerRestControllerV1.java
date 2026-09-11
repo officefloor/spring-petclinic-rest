@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -104,7 +105,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Normalize the telephone on create: strip every non-digit character so it is stored and
         // returned as the bare 10-digit value. Bean validation on OwnerFieldsDto has already
         // guaranteed exactly 10 digits are present (rejecting anything else with 400).
-        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+        owner.setTelephone(normalizedTelephone);
+        // Reject creating an owner whose normalized telephone is already used by another owner.
+        if (isTelephoneInUse(normalizedTelephone)) {
+            throw new DuplicateTelephoneException(
+                "An owner with telephone " + normalizedTelephone + " already exists");
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -120,6 +127,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String normalizeTelephone(String telephone) {
         return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Determines whether the given normalized telephone is already used by an existing owner.
+     * Stored telephones are normalized before comparison so values that differ only in
+     * formatting (spaces, dashes, parentheses) are treated as the same number.
+     *
+     * @param normalizedTelephone the normalized (digits-only) telephone to look for
+     * @return {@code true} if another owner already uses this telephone
+     */
+    private boolean isTelephoneInUse(String normalizedTelephone) {
+        if (normalizedTelephone == null) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .map(this::normalizeTelephone)
+            .anyMatch(normalizedTelephone::equals);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
