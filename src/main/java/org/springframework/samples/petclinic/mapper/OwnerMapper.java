@@ -30,7 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints",
         expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(membershipLevel(membershipPoints(owner)))")
+        expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(locality(owner))")
     @Mapping(target = "timezone",
@@ -95,6 +95,16 @@ public interface OwnerMapper {
             points += 3;
         }
         return points;
+    }
+
+    /**
+     * Returns the owner's membership level: the level mapped from the owner's membership points.
+     * The level is derived here, per owner, so any owner-scoped adjustment to the level (as opposed
+     * to the pure points-to-level mapping) has a single home, leaving {@link #membershipLevel(int)}
+     * as the plain points-to-level table.
+     */
+    default int membershipLevel(Owner owner) {
+        return membershipLevel(membershipPoints(owner));
     }
 
     /**
