@@ -49,18 +49,17 @@ public class ValidateOwnerFields {
     }
 
     /**
-     * Normalizes the address (see {@link AddressNormalizer}) and stores the result back on
-     * the request so later steps persist, compare and return the canonical form. The
-     * address is required: a value that is blank after normalization is a 400 (adds an
-     * "address" error) and is not stored back.
+     * Normalizes the supplied address, preferring the structured
+     * {@code addressLine1}/{@code addressLine2} pair over the flat {@code address} (see
+     * {@link AddressFields}), and stores the normalized parts and composed canonical
+     * address back on the request so later steps persist, compare and return them. An
+     * address is required in one form or the other: a request that supplies neither a
+     * non-blank {@code addressLine1} nor a non-blank flat {@code address} is a 400 (adds an
+     * "address" error) and nothing is stored back.
      */
     private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
-        String normalized = AddressNormalizer.normalize(request.getAddress());
-        if (normalized.isEmpty()) {
+        if (!AddressFields.normalizeInto(request)) {
             errors.add("address");
-        }
-        else {
-            request.setAddress(normalized);
         }
     }
 
