@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
+import org.springframework.samples.petclinic.util.PostcodeValidator;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -313,6 +314,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        // Validate the optional postcode against the fixed range for the city's region. A postcode
+        // is checked only when present (it is optional); one out of range for the city's region is
+        // rejected with 400. A city with no known region accepts any 4-digit postcode. The stored
+        // value is left unchanged.
+        PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
         // Default the registration date to the server's current date when the client did not
         // supply one, then roll the effective date forward to a business day so a Saturday or
         // Sunday (whether supplied or defaulted) becomes the following Monday. The adjusted date
