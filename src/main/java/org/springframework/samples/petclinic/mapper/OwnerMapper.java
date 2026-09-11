@@ -38,6 +38,8 @@ public interface OwnerMapper {
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "capacityWarning",
         expression = "java(Boolean.TRUE.equals(owner.getCapacityWarning()))")
+    @Mapping(target = "riskFlag",
+        expression = "java(org.springframework.samples.petclinic.mapper.RiskFlagResolver.deriveRiskFlag(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplayResolver.deriveTelephoneDisplay(owner.getTelephone()))")
     @Mapping(target = "contactPreference",

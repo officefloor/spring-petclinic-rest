@@ -16,8 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Set;
-
 import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
 import org.springframework.stereotype.Component;
 
@@ -39,10 +37,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class EmailNormalizer {
-
-    /** Domains of throwaway email providers that an owner's email may not use. */
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-        "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Normalizes an owner email into its canonical stored form by lower-casing it. A missing (blank or {@code null})
@@ -76,7 +70,7 @@ public class EmailNormalizer {
             return;
         }
         String domain = normalized.substring(at + 1);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        if (DisposableEmailPolicy.isBlocked(domain)) {
             throw new DisposableEmailException(
                 "email domain " + domain + " is on the disposable-domain blocklist");
         }
