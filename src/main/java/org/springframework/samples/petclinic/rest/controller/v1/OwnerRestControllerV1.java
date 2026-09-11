@@ -107,6 +107,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // guaranteed exactly 10 digits are present (rejecting anything else with 400).
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
+        // Store the (already syntactically validated) email lower-cased so it is persisted and
+        // returned in canonical form. A missing email is left untouched.
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         // Reject creating an owner whose normalized telephone is already used by another owner.
         if (isTelephoneInUse(normalizedTelephone)) {
             throw new DuplicateTelephoneException(
@@ -127,6 +130,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String normalizeTelephone(String telephone) {
         return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Lower-cases the supplied email address so it is stored and returned in canonical form.
+     * Bean validation on the request DTO has already guaranteed that any non-null value is a
+     * syntactically valid address (rejecting anything else with 400).
+     *
+     * @param email the email value (may be {@code null})
+     * @return the lower-cased email, or {@code null} if the input was {@code null}
+     */
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -159,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
