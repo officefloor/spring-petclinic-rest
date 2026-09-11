@@ -243,15 +243,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignMembershipLevel(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        // Emit an audit line for the successful create, carrying the owner id, customer code,
-        // registration date, membership level and membership number so the create can be traced
-        // from the dedicated AUDIT log.
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        // Record the successful create on the dedicated AUDIT log.
+        auditOwnerCreated(owner, ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the audit line recording a successful owner create on the dedicated {@code AUDIT} log,
+     * carrying the owner id, its current primary identifier (see {@link #primaryIdentifier}), the
+     * registration date, membership level and membership number so the create can be traced. Keeping
+     * the audit emission in its own helper leaves {@link #createOwner} a thin pipeline and gives the
+     * create's audit side-effects a single home, so a further audit side-effect of a create is added
+     * here (or as a sibling helper) rather than inline in the pipeline.
+     *
+     * @param owner    the persisted owner
+     * @param ownerDto the mapped view of the persisted owner, source of the membership fields
+     */
+    private void auditOwnerCreated(Owner owner, OwnerDto ownerDto) {
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+    }
+
+    /**
+     * Returns the owner's current primary identifier: the single value that identifies the owner in
+     * the audit trail and in any audit side-effect of a create. This is the customer code today;
+     * resolving it through one accessor means that if the primary identifier is later changed (for
+     * example, the customer code being unified into a member id) every audit consumer follows the new
+     * identifier by changing only this method.
+     *
+     * @param owner the owner whose primary identifier is required
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
