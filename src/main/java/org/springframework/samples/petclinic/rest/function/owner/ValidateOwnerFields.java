@@ -23,9 +23,9 @@ public class ValidateOwnerFields {
         List<String> errors = new ArrayList<>();
         checkRequired("firstName", request.getFirstName(), errors);
         checkRequired("lastName", request.getLastName(), errors);
-        checkRequired("address", request.getAddress(), errors);
         checkRequired("city", request.getCity(), errors);
         checkRequired("telephone", request.getTelephone(), errors);
+        normalizeAddress(request, errors);
         normalizeTelephone(request, errors);
         normalizeEmail(request, errors);
         if (!errors.isEmpty()) {
@@ -37,6 +37,22 @@ public class ValidateOwnerFields {
     private static void checkRequired(String field, String value, List<String> errors) {
         if (value == null || value.isBlank()) {
             errors.add(field);
+        }
+    }
+
+    /**
+     * Normalizes the address (see {@link AddressNormalizer}) and stores the result back on
+     * the request so later steps persist, compare and return the canonical form. The
+     * address is required: a value that is blank after normalization is a 400 (adds an
+     * "address" error) and is not stored back.
+     */
+    private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
+        String normalized = AddressNormalizer.normalize(request.getAddress());
+        if (normalized.isEmpty()) {
+            errors.add("address");
+        }
+        else {
+            request.setAddress(normalized);
         }
     }
 
