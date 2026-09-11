@@ -1,0 +1,577 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 83990ad09..496365ca7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "identityKey",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKeys.forOwner(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailException.java
+deleted file mode 100644
+index 8846382f0..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailException.java
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-/**
+- * Thrown when a create request supplies an email whose lower-cased form is already
+- * used by an existing owner. Handled by {@link DuplicateEmailExceptionHandler},
+- * which responds 409 Conflict.
+- */
+-public class DuplicateEmailException extends Exception {
+-
+-    public DuplicateEmailException(String email) {
+-        super("An owner with email '" + email + "' already exists");
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
+deleted file mode 100644
+index 6c356a13e..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
++++ /dev/null
+@@ -1,15 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-/**
+- * Thrown when a create request supplies a last name and address whose normalized
+- * (case-insensitive, whitespace-collapsed) form is already shared by an existing owner,
+- * and the request did not opt in with {@code sharesHousehold}. Handled by
+- * {@link DuplicateHouseholdExceptionHandler}, which responds 409 Conflict.
+- */
+-public class DuplicateHouseholdException extends Exception {
+-
+-    public DuplicateHouseholdException(String lastName, String address) {
+-        super("An owner with last name '" + lastName + "' at address '" + address
+-                + "' already exists");
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
+deleted file mode 100644
+index abe2a5d4e..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
++++ /dev/null
+@@ -1,16 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-import net.officefloor.plugin.section.clazz.Parameter;
+-import net.officefloor.web.ObjectResponse;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.http.ProblemDetail;
+-import org.springframework.http.ResponseEntity;
+-
+-public class DuplicateHouseholdExceptionHandler {
+-
+-    public void handle(@Parameter DuplicateHouseholdException ex,
+-            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
+-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+new file mode 100644
+index 000000000..660fff344
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create request's derived {@code identityKey}
++ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) exactly
++ * matches an existing owner's. Handled by {@link DuplicateIdentityExceptionHandler},
++ * which responds 409 Conflict.
++ */
++public class DuplicateIdentityException extends Exception {
++
++    public DuplicateIdentityException(String identityKey) {
++        super("An owner with identity key '" + identityKey + "' already exists");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityExceptionHandler.java
+similarity index 82%
+rename from src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailExceptionHandler.java
+rename to src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityExceptionHandler.java
+index cdade1b19..f61a344fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateEmailExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityExceptionHandler.java
+@@ -6,9 +6,9 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ 
+-public class DuplicateEmailExceptionHandler {
++public class DuplicateIdentityExceptionHandler {
+ 
+-    public void handle(@Parameter DuplicateEmailException ex,
++    public void handle(@Parameter DuplicateIdentityException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
+         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+deleted file mode 100644
+index 4fd5b0d63..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-/**
+- * Thrown when a create request supplies a telephone whose normalized form is already
+- * used by an existing owner. Handled by {@link DuplicateTelephoneExceptionHandler},
+- * which responds 409 Conflict.
+- */
+-public class DuplicateTelephoneException extends Exception {
+-
+-    public DuplicateTelephoneException(String telephone) {
+-        super("An owner with telephone '" + telephone + "' already exists");
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+deleted file mode 100644
+index f68ae6ec3..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
++++ /dev/null
+@@ -1,16 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-import net.officefloor.plugin.section.clazz.Parameter;
+-import net.officefloor.web.ObjectResponse;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.http.ProblemDetail;
+-import org.springframework.http.ResponseEntity;
+-
+-public class DuplicateTelephoneExceptionHandler {
+-
+-    public void handle(@Parameter DuplicateTelephoneException ex,
+-            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
+-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index 8cc90902a..5710ad5da 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -1,9 +1,5 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+-
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -14,8 +10,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+  * stable {@code householdId} derived from the normalized last name and address, so every
+  * owner living together at the same address shares one identifier. Existing owners of the
+  * same household that do not yet carry an id are back-filled with the same value, so both
+- * the joining owner and the owner already at that address end up sharing it. Normalization
+- * matches {@link RequireUniqueHousehold} (lower-cased, trimmed, whitespace collapsed).
++ * the joining owner and the owner already at that address end up sharing it. Derivation and
++ * normalization are centralised in {@link Households}, which {@link IdentityKeys} also uses
++ * so an owner's stored {@code householdId} matches the household component of its identity key.
+  */
+ public class AssignHousehold {
+ 
+@@ -24,42 +21,18 @@ public class AssignHousehold {
+         if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+             return;
+         }
+-        String lastName = normalize(owner.getLastName());
++        String lastName = Households.normalize(owner.getLastName());
+         String address = AddressNormalizer.normalize(owner.getAddress());
+-        String householdId = hash(lastName + "|" + address);
++        String householdId = Households.idFor(owner.getLastName(), owner.getAddress());
+         owner.setHouseholdId(householdId);
+         // Back-fill existing household members so both sides share the identifier.
+         for (Owner existing : ownerRepository.findAll()) {
+             if (existing.getHouseholdId() == null
+-                    && lastName.equals(normalize(existing.getLastName()))
++                    && lastName.equals(Households.normalize(existing.getLastName()))
+                     && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 existing.setHouseholdId(householdId);
+                 ownerRepository.save(existing);
+             }
+         }
+     }
+-
+-    /** Lower-case, trim, and collapse runs of whitespace to a single space. */
+-    private static String normalize(String value) {
+-        if (value == null) {
+-            return "";
+-        }
+-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+-    }
+-
+-    /** Stable 16-hex-character (upper-case) prefix of the SHA-256 of the household key. */
+-    private static String hash(String value) {
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256")
+-                    .digest(value.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder();
+-            for (int i = 0; i < 8; i++) {
+-                sb.append(String.format("%02X", digest[i]));
+-            }
+-            return sb.toString();
+-        }
+-        catch (NoSuchAlgorithmException e) {
+-            throw new IllegalStateException("SHA-256 not available", e);
+-        }
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+new file mode 100644
+index 000000000..8b6b07786
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+@@ -0,0 +1,49 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Derives the stable {@code householdId} shared by owners who live together at the same
++ * address. The id is the {@link #hash(String) SHA-256 prefix} of the normalized last name
++ * and address, so every owner sharing a household (same normalized last name + address)
++ * maps to the same value.
++ *
++ * <p>Centralising the derivation here keeps {@link AssignHousehold} (which assigns the id)
++ * and {@link IdentityKeys} (which folds it into an owner's identity key) in exact agreement.
++ */
++public final class Households {
++
++    private Households() {
++    }
++
++    /** The stable {@code householdId} for the given last name and address. */
++    public static String idFor(String lastName, String address) {
++        return hash(normalize(lastName) + "|" + AddressNormalizer.normalize(address));
++    }
++
++    /** Lower-case, trim, and collapse runs of whitespace to a single space. */
++    public static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
++    /** Stable 16-hex-character (upper-case) prefix of the SHA-256 of the household key. */
++    private static String hash(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (int i = 0; i < 8; i++) {
++                sb.append(String.format("%02X", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java
+new file mode 100644
+index 000000000..c34341a16
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java
+@@ -0,0 +1,54 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Computes an owner's {@code identityKey}: the single derived value all duplicate detection
++ * is expressed through. The key is
++ * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
++ *
++ * <p>Two owners are duplicates only when their WHOLE keys are equal (see
++ * {@link RequireUniqueIdentity}). Because the telephone is part of the key, two members of
++ * the same household (same {@code householdId}) with different telephones have different
++ * keys and are both allowed; only an exact full-key match is a conflict.
++ *
++ * <ul>
++ * <li>telephone is normalized to E.164 form ({@link Telephones#toE164(String)}),
++ * <li>email is trimmed and lower-cased, contributing empty when absent,
++ * <li>householdId is the owner's shared-household identifier, empty when the owner is not
++ *     part of a shared household.
++ * </ul>
++ */
++public final class IdentityKeys {
++
++    private IdentityKeys() {
++    }
++
++    /** The identity key of an existing owner, from its stored fields. */
++    public static String forOwner(Owner owner) {
++        return build(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
++    }
++
++    /** The prospective identity key of an incoming create request. */
++    public static String forRequest(OwnerFieldsDto request) {
++        String householdId = Boolean.TRUE.equals(request.getSharesHousehold())
++                ? Households.idFor(request.getLastName(), request.getAddress())
++                : null;
++        return build(request.getTelephone(), request.getEmail(), householdId);
++    }
++
++    private static String build(String telephone, String email, String householdId) {
++        String tel = Telephones.toE164(telephone);
++        return (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
++                + (householdId == null ? "" : householdId);
++    }
++
++    /** Trim and lower-case; null or blank yields empty (no email to contribute). */
++    private static String normalizeEmail(String email) {
++        if (email == null || email.isBlank()) {
++            return "";
++        }
++        return email.trim().toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueEmail.java
+deleted file mode 100644
+index a6319a224..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueEmail.java
++++ /dev/null
+@@ -1,38 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.rest.escalation.DuplicateEmailException;
+-
+-/**
+- * Rejects a create request whose lower-cased email is already used by an existing owner.
+- * Email is optional; a request without one is never a conflict. The comparison is between
+- * lower-cased values (existing owner emails are stored lower-cased). A conflict is reported
+- * as a 409 by
+- * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateEmailExceptionHandler}.
+- */
+-public class RequireUniqueEmail {
+-
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateEmailException {
+-        String email = normalize(request.getEmail());
+-        if (email == null) {
+-            return;
+-        }
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (email.equals(normalize(existing.getEmail()))) {
+-                throw new DuplicateEmailException(email);
+-            }
+-        }
+-    }
+-
+-    /** Trim and lower-case; null or blank yields null (no email to compare). */
+-    private static String normalize(String value) {
+-        if (value == null || value.isBlank()) {
+-            return null;
+-        }
+-        return value.trim().toLowerCase();
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+deleted file mode 100644
+index e419341db..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
++++ /dev/null
+@@ -1,40 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
+-
+-/**
+- * Rejects a create request whose last name and address are already shared by an existing
+- * owner, comparing case-insensitively with runs of whitespace collapsed to a single space.
+- * The request may opt out of this rule by setting {@code sharesHousehold} true (e.g. a
+- * spouse or family member living at the same address). A conflict is reported as a 409 by
+- * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdExceptionHandler}.
+- */
+-public class RequireUniqueHousehold {
+-
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateHouseholdException {
+-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+-            return;
+-        }
+-        String lastName = normalize(request.getLastName());
+-        String address = AddressNormalizer.normalize(request.getAddress());
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+-                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+-            }
+-        }
+-    }
+-
+-    /** Lower-case, trim, and collapse runs of whitespace to a single space. */
+-    private static String normalize(String value) {
+-        if (value == null) {
+-            return "";
+-        }
+-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+new file mode 100644
+index 000000000..c77cc5e72
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
++
++/**
++ * Rejects a create request whose derived {@code identityKey} exactly equals an existing
++ * owner's. This single check consolidates the former separate telephone, email and
++ * household duplicate checks: all three are now expressed through one key
++ * ({@link IdentityKeys}). Because the telephone is part of the key, two owners that differ
++ * in any of telephone, email or household have different keys and are both allowed — only a
++ * WHOLE-key match is a conflict, reported as a 409 by
++ * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityExceptionHandler}.
++ */
++public class RequireUniqueIdentity {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateIdentityException {
++        String identityKey = IdentityKeys.forRequest(request);
++        for (Owner existing : ownerRepository.findAll()) {
++            if (identityKey.equals(IdentityKeys.forOwner(existing))) {
++                throw new DuplicateIdentityException(identityKey);
++            }
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
+deleted file mode 100644
+index b3ba6b50a..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueTelephone.java
++++ /dev/null
+@@ -1,26 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+-
+-/**
+- * Rejects a create request whose telephone is already used by an existing owner. Runs
+- * after {@link RequireOwnerFields} has normalized the telephone to E.164 form, so the
+- * comparison is between E.164 values. A conflict is reported as a 409 by
+- * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler}.
+- */
+-public class RequireUniqueTelephone {
+-
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateTelephoneException {
+-        String telephone = Telephones.toE164(request.getTelephone());
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (telephone != null && telephone.equals(Telephones.toE164(existing.getTelephone()))) {
+-                throw new DuplicateTelephoneException(telephone);
+-            }
+-        }
+-    }
+-}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
+deleted file mode 100644
+index 0e5367031..000000000
+--- a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
++++ /dev/null
+@@ -1,2 +0,0 @@
+-handle:
+-  class: org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdExceptionHandler
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml
+similarity index 68%
+rename from src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateEmailException.yml
+rename to src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml
+index 5f45b42d2..4acee292f 100644
+--- a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateEmailException.yml
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml
+@@ -1,2 +1,2 @@
+ handle:
+-  class: org.springframework.samples.petclinic.rest.escalation.DuplicateEmailExceptionHandler
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityExceptionHandler
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+deleted file mode 100644
+index 08d58bf2d..000000000
+--- a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
++++ /dev/null
+@@ -1,2 +0,0 @@
+-handle:
+-  class: org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a4a8de36e..90b644df0 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,20 +4,10 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireOwnerFields
+   govern: [ transaction ]
+-  next: unique
++  next: identity
+ 
+-unique:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueTelephone
+-  govern: [ transaction ]
+-  next: uniqueEmail
+-
+-uniqueEmail:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueEmail
+-  govern: [ transaction ]
+-  next: household
+-
+-household:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueHousehold
++identity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueIdentity
+   govern: [ transaction ]
+   next: capacity
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d16aead09..18635d154 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2167,6 +2167,18 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The single derived value all duplicate detection is expressed through,
++                formatted 'normalizedTelephone|email|householdId' where the telephone is in
++                E.164 form, the email is lower-cased (empty when absent), and householdId is
++                the owner's shared-household identifier (empty when not in a shared
++                household). A create is rejected with 409 only when a new owner's whole
++                identityKey equals an existing owner's.
++              type: string
++              example: '+61412345678||A1B2C3D4E5F6A7B8'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
