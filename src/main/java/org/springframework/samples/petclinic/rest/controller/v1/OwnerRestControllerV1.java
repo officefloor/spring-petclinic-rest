@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -62,6 +63,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may contain; creating an owner in a city that
      *  already has this many owners is rejected with 409 Conflict. */
     private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /** Maximum number of owners that may be created on a single day (by registration date); creating
+     *  an owner once this many owners already carry today's registration date is rejected with
+     *  429 Too Many Requests. */
+    private static final int MAX_OWNERS_PER_DAY = 100;
 
     private final ClinicService clinicService;
 
@@ -179,6 +185,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the newly mapped and normalized owner being created
      */
     private void rejectDisallowedOwnerCreation(Owner owner) {
+        // Reject creating an owner once 100 or more owners already carry today's registration date.
+        if (countOwnersRegisteredToday() >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(
+                "The maximum number of owners that may be created today has already been reached");
+        }
         // Reject creating an owner when the owner's city already contains 50 or more owners.
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(
@@ -265,6 +276,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(city))
+            .count();
+    }
+
+    /**
+     * Counts the existing owners whose registration date is today (the server's current date). Used
+     * to enforce the per-day cap that rejects creating an owner once {@link #MAX_OWNERS_PER_DAY}
+     * owners already carry today's registration date.
+     *
+     * @return the number of existing owners registered today
+     */
+    private int countOwnersRegisteredToday() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
     }
 
