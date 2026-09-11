@@ -1,0 +1,192 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 444e6f660..2d65df6db 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -39,6 +39,9 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit",
+         expression = "java(owner.getCustomerCode() == null ? null "
+             + ": org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
++    @Mapping(target = "fiscalYear",
++        expression = "java(owner.getRegistrationDate() == null ? null "
++            + ": org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "ageBand",
+         expression = "java(owner.getBirthDate() == null || owner.getRegistrationDate() == null ? null "
+             + ": (java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears() < 18 "
+@@ -70,7 +73,8 @@ public interface OwnerMapper {
+     /**
+      * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
+      * plus 1 when the namesake count is 0, plus 2 for a household of 3 or more, and plus 3 for
+-     * tenure over 365 days.
++     * tenure of at least one elapsed fiscal year (the fiscal year of today is later than the fiscal
++     * year of the registration date).
+      */
+     default int membershipPoints(Owner owner) {
+         int points = 0;
+@@ -84,7 +88,8 @@ public interface OwnerMapper {
+             points += 2;
+         }
+         if (owner.getRegistrationDate() != null
+-            && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
++            && org.springframework.samples.petclinic.util.FiscalYear.elapsed(
++                owner.getRegistrationDate(), java.time.LocalDate.now()) >= 1) {
+             points += 3;
+         }
+         return points;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a8890862f..acb247088 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -247,7 +247,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Assigns the create-time derived fields of a newly normalized owner whose household membership
+      * has already been resolved: the namesake count, the per-city customer code, the membership
+-     * number derived from that customer code and the registration year, and the bulk-signup warning
++     * number derived from that customer code and the registration fiscal year, and the bulk-signup warning
+      * flag. Each value is fixed at creation time and is independent of the others. Grouping them
+      * here keeps {@link #addOwner} focused on the high-level create sequence.
+      *
+@@ -262,7 +262,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // time.
+         owner.setCustomerCode(customerCode(owner));
+         // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
+-        // of the registration date's year (e.g. 'NSW-A1B2C3D4-M26'), fixed at creation time.
++        // of the fiscal year of the registration date (e.g. 'NSW-A1B2C3D4-M26'), fixed at
++        // creation time.
+         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         // Flag the create when more than 80 owners have already been created on this owner's
+         // (adjusted business-day) registration date, fixed at creation time.
+@@ -589,14 +590,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Builds the membership number '<customerCode>-M<YY>' for a newly created owner, where YY is
+-     * the last two digits of the registration date's year (e.g. 'NSW-A1B2C3D4-M26').
++     * the last two digits of the fiscal year of the (business-day-adjusted) registration date
++     * (e.g. 'NSW-A1B2C3D4-M26'). The fiscal year starts on 1 July, so a registration date on or
++     * after 1 July carries the following calendar year's fiscal year.
+      *
+      * @param customerCode     the owner's customer code
+      * @param registrationDate the owner's registration date
+      * @return the formatted membership number
+      */
+     private String membershipNumber(String customerCode, java.time.LocalDate registrationDate) {
+-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++        return String.format("%s-M%02d",
++            customerCode, org.springframework.samples.petclinic.util.FiscalYear.of(registrationDate) % 100);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+new file mode 100644
+index 000000000..2ffd14d3f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+@@ -0,0 +1,66 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++
++/**
++ * Derives fiscal-year values from calendar dates. The fiscal year starts on 1 July and is
++ * identified by the calendar year in which it ends, so 1 July 2025 to 30 June 2026 is fiscal
++ * year 2026. A date on or after 1 July therefore belongs to the fiscal year of the next calendar
++ * year, while a date before 1 July belongs to the fiscal year of its own calendar year.
++ */
++public final class FiscalYear {
++
++    private FiscalYear() {
++    }
++
++    /**
++     * Returns the fiscal year (the ending calendar year) that the given date falls in. A date in
++     * July or later belongs to the following calendar year's fiscal year; an earlier date belongs
++     * to its own calendar year's fiscal year.
++     *
++     * @param date the date to classify (must not be {@code null})
++     * @return the four-digit fiscal year the date falls in
++     */
++    public static int of(LocalDate date) {
++        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
++    }
++
++    /**
++     * Returns the fiscal year of the given date formatted {@code 'FY<YY>'}, where YY is the last
++     * two digits of the fiscal year (e.g. {@code 'FY26'}).
++     *
++     * @param date the date to classify (must not be {@code null})
++     * @return the formatted fiscal-year label
++     */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", of(date) % 100);
++    }
++
++    /**
++     * Returns the number of whole fiscal years that have elapsed between the two dates, i.e. the
++     * difference between the fiscal year of {@code to} and the fiscal year of {@code from}.
++     *
++     * @param from the earlier date (must not be {@code null})
++     * @param to   the later date (must not be {@code null})
++     * @return the count of elapsed fiscal years (may be zero or negative)
++     */
++    public static int elapsed(LocalDate from, LocalDate to) {
++        return of(to) - of(from);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 467fe1bd6..8f594a341 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2254,19 +2254,34 @@ components:
+               title: Membership number
+               description: >-
+                 The pet owner's membership number formatted '<customerCode>-M<YY>',
+-                where YY is the last two digits of the registration date's year
+-                (e.g. 'NSW-A1B2C3D4-M26'). Assigned once at creation and returned
+-                unchanged.
++                where YY is the last two digits of the fiscal year of the
++                (business-day-adjusted) registration date (e.g. 'NSW-A1B2C3D4-M26').
++                The fiscal year starts on 1 July, so a registration date on or after
++                1 July carries the following calendar year's fiscal year. Assigned
++                once at creation and returned unchanged.
+               type: string
+               example: 'NSW-A1B2C3D4-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the owner's (business-day-adjusted) registration
++                date, formatted 'FY<YY>' where YY is the last two digits of the
++                fiscal year (e.g. 'FY26'). The fiscal year starts on 1 July, so a
++                registration date on or after 1 July belongs to the following
++                calendar year's fiscal year. Derived on read from the stored
++                registration date.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             membershipPoints:
+               title: Membership points
+               description: >-
+                 The pet owner's membership points, derived from: 0 to start,
+                 plus 2 when an email address is present, plus 1 when the namesake
+                 count is 0, plus 2 for a household of 3 or more, and plus 3 for
+-                tenure over 365 days.
++                tenure of at least one elapsed fiscal year (today's fiscal year is
++                later than the registration date's fiscal year).
+               type: integer
+               format: int32
+               minimum: 0
