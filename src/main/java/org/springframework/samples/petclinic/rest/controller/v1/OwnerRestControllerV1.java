@@ -107,9 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Normalize the telephone on create so it is stored and returned in canonical form.
-        // Bean validation on OwnerFieldsDto has already guaranteed a well-formed value
-        // (rejecting anything else with 400).
+        // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
+        // A value that cannot form a valid E.164 number is rejected with 400.
         String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         // Store the (already syntactically validated) email lower-cased so it is persisted and
@@ -146,10 +145,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether the given normalized telephone is already used by an existing owner.
-     * Stored telephones are normalized before comparison so values that differ only in
-     * formatting (spaces, dashes, parentheses) are treated as the same number.
+     * Stored telephones are normalized to E.164 before comparison so values that differ only in
+     * formatting (spaces, dashes, brackets) or in national vs. international notation are treated
+     * as the same number.
      *
-     * @param normalizedTelephone the normalized (digits-only) telephone to look for
+     * @param normalizedTelephone the normalized (E.164) telephone to look for
      * @return {@code true} if another owner already uses this telephone
      */
     private boolean isTelephoneInUse(String normalizedTelephone) {
@@ -173,7 +173,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        // Normalize the telephone to canonical E.164 form so it is stored and returned
+        // consistently with create; an unformattable value is rejected with 400.
+        currentOwner.setTelephone(telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);

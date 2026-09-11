@@ -16,32 +16,59 @@
 
 package org.springframework.samples.petclinic.util;
 
+import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.stereotype.Component;
 
 /**
- * Produces the canonical stored form of an owner's telephone number.
+ * Produces the canonical stored form of an owner's telephone number in E.164.
  * <p>
  * Centralising this here keeps the REST controllers thin: they simply delegate to
  * {@link #normalize(String)} both when canonicalising an incoming value before it is
  * persisted and when comparing values to detect duplicates, so the two always agree.
  * <p>
- * The current canonical form is the bare digits of the supplied value (every non-digit
- * character is removed). Bean Validation on the request DTO has already guaranteed that a
- * non-null value carries exactly the expected number of digits (rejecting anything else
- * with a 400).
+ * The canonical form is E.164: a leading {@code '+'} and country code are kept when
+ * present, otherwise country code {@code '+61'} is assumed and a single leading
+ * {@code '0'} is dropped from the national digits. Spaces, dashes and brackets are
+ * stripped. The result must carry 8 to 15 digits after the {@code '+'}; anything that
+ * cannot form valid E.164 is rejected with {@link InvalidTelephoneException} (a 400).
+ * Because a value already in E.164 form re-normalizes to itself, comparing normalized
+ * values reliably detects duplicate telephones.
  */
 @Component
 public class TelephoneNormalizer {
 
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
     /**
-     * Normalizes the supplied telephone value to its canonical stored form by removing
-     * every non-digit character. Values that differ only in formatting (spaces, dashes,
-     * parentheses) therefore normalize to the same result.
+     * Normalizes the supplied telephone value to its canonical E.164 stored form.
+     * Spaces, dashes and brackets are stripped; a leading {@code '+'} and country code
+     * are preserved when present, otherwise {@code '+61'} is assumed and a single leading
+     * {@code '0'} is dropped from the national digits. Values that differ only in
+     * formatting therefore normalize to the same result.
      *
      * @param telephone the raw telephone value (may be {@code null})
-     * @return the normalized telephone, or {@code null} if the input was {@code null}
+     * @return the normalized E.164 telephone, or {@code null} if the input was {@code null}
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public String normalize(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        if (telephone == null) {
+            return null;
+        }
+        boolean hasCountryCode = telephone.trim().startsWith("+");
+        String digits = telephone.replaceAll("\\D", "");
+        String nationalOrFull;
+        if (hasCountryCode) {
+            nationalOrFull = digits;
+        } else {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            nationalOrFull = DEFAULT_COUNTRY_CODE + digits;
+        }
+        if (!nationalOrFull.matches("\\d{8,15}")) {
+            throw new InvalidTelephoneException(
+                "Telephone '" + telephone + "' cannot be normalized to a valid E.164 number");
+        }
+        return "+" + nationalOrFull;
     }
 }
