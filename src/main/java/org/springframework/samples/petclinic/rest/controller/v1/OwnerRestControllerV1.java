@@ -231,8 +231,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = resolveRegistrationDate(ownerFieldsDto);
         ownerFieldsDto.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
-        String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
-        ownerFieldsDto.setEmail(email);
+        normalizeEmail(ownerFieldsDto);
+    }
+
+    /**
+     * Normalizes an owner's optional email to its canonical stored form and writes it back onto the payload. The
+     * canonical form (see {@link EmailNormalizer#normalize}) is what gets stored and returned as {@code email} and what
+     * every email comparison uses; a missing (blank or {@code null}) email is left untouched. The payload is mutated in
+     * place so the caller can map and save it directly.
+     *
+     * @param ownerFieldsDto the incoming owner payload, mutated in place
+     */
+    private void normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
     }
 
     /**
