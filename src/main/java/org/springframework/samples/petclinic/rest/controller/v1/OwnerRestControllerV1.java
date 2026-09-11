@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -66,16 +67,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final HouseholdNormalizer householdNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 HouseholdNormalizer householdNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.householdNormalizer = householdNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -191,35 +196,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether another owner already shares the given household, i.e. has the same last
-     * name and the same address. Both fields are compared case-insensitively after collapsing runs
-     * of whitespace to a single space and trimming, so values that differ only in letter case or in
-     * incidental spacing are treated as the same household.
+     * name and the same address. The comparison delegates to {@link HouseholdNormalizer} so that
+     * values differing only in letter case or in incidental whitespace are treated as the same
+     * household.
      *
      * @param lastName the last name of the owner being created
      * @param address  the address of the owner being created
      * @return {@code true} if an existing owner has a matching last name and address
      */
     private boolean isHouseholdInUse(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeForHousehold(address);
+        String householdKey = householdNormalizer.householdKey(lastName, address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
-    }
-
-    /**
-     * Normalizes a value for household comparison by trimming, collapsing internal runs of
-     * whitespace to a single space and lower-casing, so comparisons ignore case and incidental
-     * whitespace differences.
-     *
-     * @param value the value to normalize (may be {@code null})
-     * @return the normalized value, or the empty string if the input was {@code null}
-     */
-    private String normalizeForHousehold(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+            .anyMatch(existing -> householdNormalizer
+                .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
