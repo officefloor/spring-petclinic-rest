@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRegistrationDateException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -145,17 +146,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeOwnerFields(owner);
         // Enforce the pre-persistence policies that can reject the new owner outright.
         rejectDisallowedOwnerCreation(owner);
-        // Resolve the owner's household membership: assign the shared 'householdId' when the
-        // request opts in and joins an existing household, and record the household size. This runs
-        // before the identity-key check so that check sees the owner's final household id.
-        applyHouseholdMembership(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+        // Resolve the owner's household membership: assign the deterministic 'householdId' (a pure
+        // function of last name and postcode), reject a household duplicate unless the request
+        // declares it shares the household, and record the household size. This runs before the
+        // identity-key check so that check sees the owner's household id.
+        boolean declaredHouseholdMember =
+            applyHouseholdMembership(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         // Reject the create when the owner's whole derived identity key (normalized telephone,
         // email and household id) already matches an existing owner. This single rule subsumes the
         // former separate telephone, email and household duplicate checks.
         rejectWhenIdentityInUse(owner);
         // Flag the owner as a possible (soft) duplicate when, although not a hard duplicate, it
-        // shares an existing owner's last name and postcode with a different telephone.
-        assignPossibleDuplicate(owner);
+        // shares an existing owner's last name and postcode with a different telephone. A declared
+        // household member is never flagged: it is a known member, not a suspected duplicate.
+        assignPossibleDuplicate(owner, declaredHouseholdMember);
         // Assign the remaining create-time derived fields (namesake count, customer code,
         // membership number and bulk-signup warning), each fixed at creation time.
         assignDerivedFields(owner);
@@ -188,65 +192,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Applies the household-membership rules for a newly normalized owner being created. It finds
-     * the existing owners who share the owner's household (same last name and address, compared
-     * case-insensitively with collapsed whitespace), then, using that single lookup: when the
-     * request opts in via {@code sharesHousehold} and the owner joins an existing household, assigns
-     * the new owner and every existing member the same stable {@code householdId}; and records the
-     * owner's {@code householdSize}. Sharing a household is no longer a rejection on its own: a new
-     * owner is rejected only when its whole identity key matches an existing owner (see
-     * {@link #rejectWhenIdentityInUse}), and the household id resolved here is part of that key.
+     * Applies the household-membership rules for a newly normalized owner being created. The
+     * household id is a deterministic function of the owner's last name and postcode, so owners
+     * with the same last name and postcode share it automatically; it is assigned to the new owner
+     * here. Because the household is keyed on (last name, postcode), any existing owner with the
+     * same last name and postcode is a member of the same household: a second such owner is rejected
+     * as a household duplicate (409) unless the request declares it shares the household via
+     * {@code sharesHousehold}, in which case it is created as a declared household member. The
+     * owner's {@code householdSize} (the number of owners sharing the household after this create)
+     * is recorded either way. The assigned household id is part of the owner's identity key, so it
+     * is resolved here before {@link #rejectWhenIdentityInUse}.
      *
      * @param owner           the newly mapped and normalized owner being created
-     * @param sharesHousehold whether the request opted in to joining an existing household
+     * @param sharesHousehold whether the request declared that the owner shares an existing household
+     * @return {@code true} if the owner joined an existing household as a declared member
      */
-    private void applyHouseholdMembership(Owner owner, boolean sharesHousehold) {
-        // Identify any existing owners who share a household (same last name and address,
-        // compared case-insensitively with collapsed whitespace) with the owner being created.
+    private boolean applyHouseholdMembership(Owner owner, boolean sharesHousehold) {
+        // Assign the deterministic household id (a pure function of last name and postcode) so every
+        // owner with the same last name and postcode shares it automatically.
+        owner.setHouseholdId(householdNormalizer.householdId(owner.getLastName(), owner.getPostcode()));
+        // Identify any existing owners in the same household (same computed household id).
         List<Owner> householdMembers = sameHouseholdOwners(owner);
-        // When opting in and joining an existing household, link the new owner to it so all
-        // owners of the household share one stable 'householdId'.
-        if (sharesHousehold && !householdMembers.isEmpty()) {
-            linkToHousehold(owner, householdMembers);
+        // A second owner in an existing household is a household duplicate: reject it with 409 unless
+        // the request declares it shares the household, in which case create it as a declared member.
+        boolean declaredHouseholdMember = false;
+        if (!householdMembers.isEmpty()) {
+            if (!sharesHousehold) {
+                throw new HouseholdDuplicateException(
+                    "An owner in the household " + owner.getHouseholdId() + " already exists");
+            }
+            declaredHouseholdMember = true;
         }
         // Record the size of this owner's household after this create, fixed at creation time.
-        owner.setHouseholdSize(householdSize(owner, householdMembers));
-    }
-
-    /**
-     * Links a newly created owner that opts into an existing household to it, by sharing one stable
-     * {@code householdId} across the new owner and every existing member. The identifier is derived
-     * from the owner's last name and address (the same value every member of the household derives),
-     * assigned to the new owner, and assigned to every existing member that does not already carry
-     * it, persisting each member it updates. Called only when the request opts in via
-     * {@code sharesHousehold} and at least one existing member was found.
-     *
-     * @param owner            the newly created owner joining the household
-     * @param householdMembers the existing owners that share the owner's household
-     */
-    private void linkToHousehold(Owner owner, List<Owner> householdMembers) {
-        String householdId = householdNormalizer.householdId(owner.getLastName(), owner.getAddress());
-        owner.setHouseholdId(householdId);
-        for (Owner member : householdMembers) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                this.clinicService.saveOwner(member);
-            }
-        }
-    }
-
-    /**
-     * Computes the size of a newly created owner's household after this create, i.e. the number of
-     * owners sharing this owner's {@code householdId} once it is persisted. An owner that shares an
-     * existing household counts the matched members plus itself; an owner without a shared household
-     * is a household of one. Fixed at creation time.
-     *
-     * @param owner            the owner being created, with its household already resolved
-     * @param householdMembers the existing owners that share the owner's household
-     * @return the household size to record on the owner
-     */
-    private int householdSize(Owner owner, List<Owner> householdMembers) {
-        return owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1;
+        owner.setHouseholdSize(householdMembers.size() + 1);
+        return declaredHouseholdMember;
     }
 
     /**
@@ -303,12 +282,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code possibleDuplicateOf} to the matching owner's id (the lowest such id when several match).
      * Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
      * A postcode is required on both sides for a match, so an owner without a postcode is never a
-     * possible duplicate. Both values are fixed at creation time.
+     * possible duplicate. A declared household member is never flagged: it is a known member of the
+     * household, not a suspected duplicate. Both values are fixed at creation time.
      *
-     * @param owner the owner being created, already normalized and confirmed not a hard duplicate
+     * @param owner                   the owner being created, already normalized and confirmed not a
+     *                                hard duplicate
+     * @param declaredHouseholdMember whether the owner joined an existing household as a declared
+     *                                member
      */
-    private void assignPossibleDuplicate(Owner owner) {
-        Integer matchId = owner.getPostcode() == null ? null : existingOwners()
+    private void assignPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
+        Integer matchId = declaredHouseholdMember || owner.getPostcode() == null ? null : existingOwners()
             .filter(existing -> isPossibleDuplicateOf(existing, owner))
             .map(Owner::getId)
             .min(Integer::compareTo)
@@ -523,20 +506,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Returns the existing owners who share the given owner's household, i.e. have the same last
-     * name and the same address. The comparison delegates to {@link HouseholdNormalizer} so that
-     * values differing only in letter case or in incidental whitespace are treated as the same
-     * household. Centralising how "the same household" is matched here keeps that definition in one
-     * place for every caller.
+     * Returns the existing owners in the given owner's household, i.e. those sharing its
+     * deterministic household id (the same last name and postcode). The id is computed via
+     * {@link HouseholdNormalizer} so that last names differing only in letter case or in incidental
+     * whitespace are treated as the same household. Centralising how "the same household" is matched
+     * here keeps that definition in one place for every caller.
      *
-     * @param owner the owner being created
+     * @param owner the owner being created, with its household id already assigned
      * @return the existing owners in the owner's household (possibly empty)
      */
     private List<Owner> sameHouseholdOwners(Owner owner) {
-        String householdKey = householdNormalizer.householdKey(owner.getLastName(), owner.getAddress());
+        String householdId = owner.getHouseholdId();
         return existingOwners()
-            .filter(existing -> householdNormalizer
-                .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey))
+            .filter(existing -> householdId.equals(
+                householdNormalizer.householdId(existing.getLastName(), existing.getPostcode())))
             .toList();
     }
 
