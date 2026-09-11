@@ -39,6 +39,9 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit",
         expression = "java(owner.getCustomerCode() == null ? null "
             + ": org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(owner.getRegistrationDate() == null ? null "
+            + ": org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "ageBand",
         expression = "java(owner.getBirthDate() == null || owner.getRegistrationDate() == null ? null "
             + ": (java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears() < 18 "
@@ -70,7 +73,8 @@ public interface OwnerMapper {
     /**
      * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
      * plus 1 when the namesake count is 0, plus 2 for a household of 3 or more, and plus 3 for
-     * tenure over 365 days.
+     * tenure of at least one elapsed fiscal year (the fiscal year of today is later than the fiscal
+     * year of the registration date).
      */
     default int membershipPoints(Owner owner) {
         int points = 0;
@@ -84,7 +88,8 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-            && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+            && org.springframework.samples.petclinic.util.FiscalYear.elapsed(
+                owner.getRegistrationDate(), java.time.LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;

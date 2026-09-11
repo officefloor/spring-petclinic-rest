@@ -247,7 +247,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assigns the create-time derived fields of a newly normalized owner whose household membership
      * has already been resolved: the namesake count, the per-city customer code, the membership
-     * number derived from that customer code and the registration year, and the bulk-signup warning
+     * number derived from that customer code and the registration fiscal year, and the bulk-signup warning
      * flag. Each value is fixed at creation time and is independent of the others. Grouping them
      * here keeps {@link #addOwner} focused on the high-level create sequence.
      *
@@ -262,7 +262,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // time.
         owner.setCustomerCode(customerCode(owner));
         // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
-        // of the registration date's year (e.g. 'NSW-A1B2C3D4-M26'), fixed at creation time.
+        // of the fiscal year of the registration date (e.g. 'NSW-A1B2C3D4-M26'), fixed at
+        // creation time.
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         // Flag the create when more than 80 owners have already been created on this owner's
         // (adjusted business-day) registration date, fixed at creation time.
@@ -589,14 +590,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the membership number '<customerCode>-M<YY>' for a newly created owner, where YY is
-     * the last two digits of the registration date's year (e.g. 'NSW-A1B2C3D4-M26').
+     * the last two digits of the fiscal year of the (business-day-adjusted) registration date
+     * (e.g. 'NSW-A1B2C3D4-M26'). The fiscal year starts on 1 July, so a registration date on or
+     * after 1 July carries the following calendar year's fiscal year.
      *
      * @param customerCode     the owner's customer code
      * @param registrationDate the owner's registration date
      * @return the formatted membership number
      */
     private String membershipNumber(String customerCode, java.time.LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d",
+            customerCode, org.springframework.samples.petclinic.util.FiscalYear.of(registrationDate) % 100);
     }
 
     /**
