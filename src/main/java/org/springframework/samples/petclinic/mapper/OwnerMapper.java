@@ -48,6 +48,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.forOwner(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
+    @Mapping(target = "deleted",
+        expression = "java(owner.getDeleted() != null && owner.getDeleted())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
