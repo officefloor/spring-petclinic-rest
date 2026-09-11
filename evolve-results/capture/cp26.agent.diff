@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 30f84d504..137197956 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -286,8 +286,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // A value that is blank after normalization is rejected with 400.
+         owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+         // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
+-        // A value that cannot form a valid E.164 number is rejected with 400.
+-        owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
++        // A value that cannot form a valid E.164 number, or whose national-number length is wrong
++        // for its country code (+61 => 9 national digits, +1 => 10), is rejected with 400.
++        owner.setTelephone(telephoneNormalizer.normalizeAndValidate(owner.getTelephone()));
+         // Store the (already syntactically validated) email lower-cased so it is persisted and
+         // returned in canonical form. A missing email is left untouched.
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+index 845a1fb16..3eca5a616 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -16,6 +16,8 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
++import java.util.Map;
++
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+ import org.springframework.stereotype.Component;
+ 
+@@ -33,12 +35,28 @@ import org.springframework.stereotype.Component;
+  * cannot form valid E.164 is rejected with {@link InvalidTelephoneException} (a 400).
+  * Because a value already in E.164 form re-normalizes to itself, comparing normalized
+  * values reliably detects duplicate telephones.
++ * <p>
++ * {@link #normalizeAndValidate(String)} additionally enforces the national-number length
++ * expected for the country code ({@code '+61'} requires 9 national digits, {@code '+1'}
++ * requires 10) and is used to validate a client-supplied value on create; plain
++ * {@link #normalize(String)} keeps tolerating legacy stored numbers so it can still be used
++ * to canonicalise existing values for duplicate comparison.
+  */
+ @Component
+ public class TelephoneNormalizer {
+ 
+     private static final String DEFAULT_COUNTRY_CODE = "61";
+ 
++    /**
++     * Required national-number length (the digits after the {@code '+'} and country code) for each
++     * country code we know how to size. E.164 country codes form a prefix-free set, so at most one
++     * of these is a prefix of any given number. Country codes not listed here are only subject to
++     * the generic 8-to-15 total-length rule.
++     */
++    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE = Map.of(
++        "1", 10,
++        DEFAULT_COUNTRY_CODE, 9);
++
+     /**
+      * Normalizes the supplied telephone value to its canonical E.164 stored form.
+      * Spaces, dashes and brackets are stripped; a leading {@code '+'} and country code
+@@ -71,4 +89,49 @@ public class TelephoneNormalizer {
+         }
+         return "+" + nationalOrFull;
+     }
++
++    /**
++     * Normalizes the supplied telephone to canonical E.164 form (see {@link #normalize(String)})
++     * and additionally validates that its national-number length matches its country code:
++     * {@code '+61'} requires 9 national digits and {@code '+1'} requires 10. This is the method to
++     * use for a value supplied by a client on create/update; comparison of values already stored
++     * should use {@link #normalize(String)}, which tolerates legacy numbers whose national length
++     * predates this rule.
++     *
++     * @param telephone the raw telephone value (may be {@code null})
++     * @return the normalized E.164 telephone, or {@code null} if the input was {@code null}
++     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number, or its
++     *                                   national-number length is wrong for its country code
++     */
++    public String normalizeAndValidate(String telephone) {
++        String e164 = normalize(telephone);
++        if (e164 != null) {
++            validateNationalNumberLength(telephone, e164.substring(1));
++        }
++        return e164;
++    }
++
++    /**
++     * Rejects a normalized number whose national-number length does not match the requirement for
++     * its country code. Numbers whose country code is not in {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE}
++     * are left to the generic total-length rule enforced by {@link #normalize(String)}.
++     *
++     * @param telephone  the original raw value, for the error message
++     * @param fullDigits the normalized digits (country code followed by the national number, no {@code '+'})
++     */
++    private void validateNationalNumberLength(String telephone, String fullDigits) {
++        for (Map.Entry<String, Integer> entry : NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet()) {
++            String countryCode = entry.getKey();
++            if (fullDigits.startsWith(countryCode)) {
++                int nationalDigits = fullDigits.length() - countryCode.length();
++                if (nationalDigits != entry.getValue()) {
++                    throw new InvalidTelephoneException(
++                        "Telephone '" + telephone + "' has " + nationalDigits
++                            + " national digits, but country code '+" + countryCode + "' requires "
++                            + entry.getValue());
++                }
++                return;
++            }
++        }
++    }
+ }
