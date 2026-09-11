@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -33,6 +35,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRegistrationDateException;
@@ -80,6 +83,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** When more than this many owners already carry today's registration date at creation time, the
      *  new owner's 'bulkSignupWarning' flag is set true; otherwise it is false. */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /** Disposable email domains that are not accepted for an owner; a create whose email domain is on
+     *  this blocklist is rejected with 400 Bad Request. Compared case-insensitively (lower-cased). */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /** Dedicated audit logger; a line is emitted here for each successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
@@ -375,6 +383,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+        // Reject an email whose domain is on the disposable-domain blocklist with 400, after
+        // canonicalization so the comparison sees the lower-cased value.
+        rejectDisposableEmailDomain(owner.getEmail());
         // Validate the optional postcode against the fixed range for the city's region. A postcode
         // is checked only when present (it is optional); one out of range for the city's region is
         // rejected with 400. A city with no known region accepts any 4-digit postcode. The stored
@@ -393,6 +404,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() == null
             ? java.time.LocalDate.now() : owner.getRegistrationDate();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
+    }
+
+    /**
+     * Rejects a supplied email whose domain is on the disposable-domain blocklist
+     * ({@link #DISPOSABLE_EMAIL_DOMAINS}) with a 400 Bad Request. The email is already canonicalized
+     * (lower-cased) here, so the domain — the part after the final {@code '@'} — is compared directly
+     * against the lower-cased blocklist. A {@code null} email (email is optional) or one without a
+     * domain part is left untouched.
+     *
+     * @param email the owner's canonicalized email, or {@code null} when absent
+     */
+    private void rejectDisposableEmailDomain(String email) {
+        if (email == null) {
+            return;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailException(
+                "The supplied email domain " + domain + " is on the disposable-domain blocklist");
+        }
     }
 
     /**
