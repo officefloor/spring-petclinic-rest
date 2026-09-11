@@ -91,6 +91,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
     private static final int MAX_OWNERS_PER_CITY = 50;
 
+    /** Once a city already holds at least this many owners (but is not yet full), a further create there is flagged with a capacity warning. */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be created in a single day; creating an owner past this cap is rejected. */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
@@ -322,8 +325,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Stamps onto a newly mapped owner every field derived at creation from the owner itself and from the owners that
      * already exist, in the order each field depends on. The {@code customerCode} is derived from the owner's own
      * fields (see {@link IdentityKeyResolver#deriveCustomerCode}); the {@code namesakeCount} (see
-     * {@link #countNamesakes}) and {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) are snapshots of
-     * the existing owners taken before this owner is saved, so neither counts the new owner itself; and the shared
+     * {@link #countNamesakes}), {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) and
+     * {@code capacityWarning} (see {@link #computeCapacityWarning}) are snapshots of the existing owners taken before
+     * this owner is saved, so none counts the new owner itself; and the shared
      * {@code householdId} is assigned last (see {@link #assignHouseholdId}), derived deterministically from the owner's
      * last name and postcode, so it is in place before the owner's household membership level is capped (see
      * {@link #cappedMembershipLevel}). The owner is mutated in place; the caller applies the duplicate guards and saves it.
@@ -335,6 +339,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(deriveUniqueCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
+        owner.setCapacityWarning(computeCapacityWarning(owner.getCity()));
         assignHouseholdId(owner);
     }
 
@@ -673,6 +678,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
+    }
+
+    /**
+     * Determines whether creating an owner in the given city should carry a capacity warning. The warning is raised
+     * when the city (compared case-insensitively) already holds between {@value #CAPACITY_WARNING_THRESHOLD} and
+     * {@code MAX_OWNERS_PER_CITY - 1} owners, i.e. it is approaching but has not yet reached the hard per-city limit of
+     * {@value #MAX_OWNERS_PER_CITY}. Evaluated before the new owner is saved, so the count reflects only owners that
+     * predate this create; the hard rejection at the limit (see {@link #requireCityHasCapacity}) still runs.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} when the city already holds 40 to 49 owners, {@code false} otherwise
+     */
+    private boolean computeCapacityWarning(String city) {
+        long count = countOwnersInCity(city);
+        return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
 
     /**

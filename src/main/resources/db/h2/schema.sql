@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(36),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
+  capacity_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL

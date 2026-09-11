@@ -40,6 +40,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.TimezoneResolver.deriveTimezone(owner.getCustomerCode()))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+    @Mapping(target = "capacityWarning",
+        expression = "java(Boolean.TRUE.equals(owner.getCapacityWarning()))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplayResolver.deriveTelephoneDisplay(owner.getTelephone()))")
     @Mapping(target = "contactPreference",
