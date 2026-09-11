@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2589e8697..b25777d9e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -93,6 +93,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted = false;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -253,6 +256,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * The derived key that duplicate detection compares owners by, formed as the normalized
+      * telephone, the (lower-cased) email or an empty string when absent, and the household id or an
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2ce246e76..b1e4e2d10 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -540,7 +540,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return a stream over all existing owners
+      */
+     private Stream<Owner> existingOwners() {
+-        return this.clinicService.findAllOwners().stream();
++        // Exclude soft-deleted owners: a deleted owner is retained for reads but must not block a
++        // new create, so the duplicate, identity and household checks (and the other create-time
++        // scans built on this helper) ignore it.
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> !Boolean.TRUE.equals(existing.getDeleted()));
+     }
+ 
+     /**
+@@ -645,7 +649,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        this.clinicService.deleteOwner(owner);
++        // Soft-delete: flag the owner as deleted and retain the row rather than removing it, so the
++        // owner is still returned by GET (with 'deleted' true) and only excluded from the create-time
++        // duplicate and identity checks (see existingOwners()).
++        owner.setDeleted(true);
++        this.clinicService.saveOwner(owner);
+         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+     }
+ 
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 71c73354e..fea11deb3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(20),
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 9645d7f06..87c3683c7 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,7 +56,8 @@ CREATE TABLE owners (
+   membership_number VARCHAR(20),
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index bbf04947f..393862d39 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
++  deleted BIT(1) DEFAULT 0,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 02abe3259..0e8e08886 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2f06d2c8e..467fe1bd6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2362,6 +2362,16 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether this owner has been soft-deleted. A newly created owner
++                is false. DELETE /api/owners/{id} marks the owner deleted
++                (true) and retains the record; a deleted owner is ignored by the
++                create endpoint's duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
