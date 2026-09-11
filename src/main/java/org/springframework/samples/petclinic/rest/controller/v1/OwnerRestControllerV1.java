@@ -375,10 +375,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the newly mapped owner to canonicalize
      */
     private void normalizeOwnerFields(Owner owner) {
-        // Normalize the address on create so it is stored and returned in canonical form and every
-        // later comparison (household duplicate detection and the shared household id) uses it.
-        // A value that is blank after normalization is rejected with 400.
-        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        // Canonicalize the owner's address fields on create so the address is stored and returned in
+        // canonical form and every later comparison (household duplicate detection and the shared
+        // household id) uses it. A value that is blank after normalization is rejected with 400.
+        normalizeAddressFields(owner);
         // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
         // A value that cannot form a valid E.164 number, or whose national-number length is wrong
         // for its country code (+61 => 9 national digits, +1 => 10), is rejected with 400.
@@ -407,6 +407,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() == null
             ? java.time.LocalDate.now() : owner.getRegistrationDate();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
+    }
+
+    /**
+     * Canonicalizes a newly mapped owner's address on create, in place, so it is persisted and
+     * returned in canonical form. The address is normalized (trimmed, whitespace collapsed,
+     * upper-cased and common street-type abbreviations expanded) via {@link AddressNormalizer}, and a
+     * value blank after normalization is rejected with 400. Canonicalising the address here, before
+     * the household checks read it, ensures duplicate detection and the shared household id both
+     * compare the normalized form. Isolating the address concern in its own helper keeps
+     * {@link #normalizeOwnerFields} focused on sequencing the per-field canonicalizations.
+     *
+     * @param owner the newly mapped owner whose address is canonicalized
+     */
+    private void normalizeAddressFields(Owner owner) {
+        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
     }
 
     /**
