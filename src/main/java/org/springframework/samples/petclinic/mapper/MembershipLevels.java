@@ -6,33 +6,57 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's numeric {@code membershipLevel} (1-4) from its attributes:
- * start at 1, add 1 when an email is present, add 1 when {@code namesakeCount} is
- * 0, capped at 3 for these create-time factors. Level 4 requires tenure of more
- * than 365 days, so a brand-new owner (zero tenure) never exceeds level 3.
+ * Derives an owner's membership {@code points} and numeric {@code level}.
+ *
+ * <p>Points start at 0 and accumulate: add 2 when an email is present, add 1 when
+ * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3
+ * for tenure over 365 days.
+ *
+ * <p>Points map to the level (1-4): 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for
+ * 6 or more.
  */
 public final class MembershipLevels {
 
-    /** Tenure, in days, above which an owner reaches level 4. */
-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+    /** Tenure, in days, above which an owner earns the tenure points. */
+    private static final long TENURE_DAYS_FOR_BONUS = 365;
+
+    /** Household size at or above which an owner earns the household points. */
+    private static final int HOUSEHOLD_SIZE_FOR_BONUS = 3;
 
     private MembershipLevels() {
     }
 
-    /** The membership level (1-4) for the given owner. */
-    public static int forOwner(Owner owner) {
-        int level = 1;
+    /** The membership points for the given owner. */
+    public static int pointsForOwner(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
-        if (tenureInDays(owner) > TENURE_DAYS_FOR_LEVEL_4) {
-            level++;
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE_FOR_BONUS) {
+            points += 2;
         }
-        return level;
+        if (tenureInDays(owner) > TENURE_DAYS_FOR_BONUS) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /** The membership level (1-4) for the given owner, derived from its points. */
+    public static int forOwner(Owner owner) {
+        int points = pointsForOwner(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /** Days since registration, or 0 when the registration date is unknown. */
