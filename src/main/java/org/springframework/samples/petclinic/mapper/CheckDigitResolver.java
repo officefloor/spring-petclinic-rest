@@ -1,10 +1,10 @@
 package org.springframework.samples.petclinic.mapper;
 
 /**
- * Derives an owner's {@code checkDigit}, the Luhn check digit computed over the
- * digits contained in the owner's {@code customerCode}. Kept out of
- * {@link OwnerMapper} so MapStruct does not mistake it for an implicit property
- * mapping method.
+ * Derives the Luhn check digit for an owner identifier, computed over the digits
+ * contained in the identifier's value (today the owner's {@code customerCode}).
+ * Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit
+ * property mapping method.
  */
 public final class CheckDigitResolver {
 
@@ -13,17 +13,18 @@ public final class CheckDigitResolver {
 
     /**
      * Returns the Luhn check digit (0-9) computed over the digits contained in the
-     * given customer code. Non-digit characters are ignored.
+     * given identifier value. Non-digit characters are ignored, so the value may be
+     * any identifier (or identifier segment) the check digit is appended to.
      *
-     * @param customerCode the owner's customer code, may be {@code null}
+     * @param value the identifier value to check, may be {@code null}
      * @return the Luhn check digit, between 0 and 9 inclusive
      */
-    public static int deriveCheckDigit(String customerCode) {
+    public static int deriveCheckDigit(String value) {
         int sum = 0;
         boolean dbl = true;
-        if (customerCode != null) {
-            for (int i = customerCode.length() - 1; i >= 0; i--) {
-                char c = customerCode.charAt(i);
+        if (value != null) {
+            for (int i = value.length() - 1; i >= 0; i--) {
+                char c = value.charAt(i);
                 if (c < '0' || c > '9') {
                     continue;
                 }

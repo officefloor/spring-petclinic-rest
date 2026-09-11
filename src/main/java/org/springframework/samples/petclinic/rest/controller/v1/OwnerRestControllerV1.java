@@ -288,7 +288,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * its id, customer code and registration date alongside the two values derived purely for the audit trail: the
      * membership level (see {@link MembershipLevelResolver#deriveMembershipLevel}) and the membership number, the
      * customer code suffixed with {@code -M} and the two-digit fiscal year of the registration date (see
-     * {@link FiscalYearResolver#fiscalYear}).
+     * {@link FiscalYearResolver#fiscalYearSuffix}).
      *
      * <p>In addition to the human-readable line, a single immutable structured event is emitted as JSON (see
      * {@link OwnerCreatedEvent}), carrying a monotonically increasing {@code seq} (see
@@ -299,10 +299,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void auditOwnerCreated(Owner owner) {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
             MembershipLevelResolver.deriveMembershipLevel(owner),
-            owner.getCustomerCode() + "-M" + String.format("%02d",
-                FiscalYearResolver.fiscalYear(owner.getRegistrationDate()) % 100));
+            owner.getCustomerCode() + "-M" + FiscalYearResolver.fiscalYearSuffix(owner.getRegistrationDate()));
         OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), cappedMembershipLevel(owner));
         AUDIT.info(event.toJson());

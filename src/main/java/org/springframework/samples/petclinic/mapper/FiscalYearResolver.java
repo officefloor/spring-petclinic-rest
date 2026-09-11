@@ -32,17 +32,32 @@ public final class FiscalYearResolver {
     }
 
     /**
-     * Returns the fiscal year label {@code FY<YY>}, where {@code YY} is the last
-     * two digits of the {@link #fiscalYear(LocalDate) fiscal year}.
+     * Returns the two-digit fiscal-year segment {@code <YY>}, the last two digits
+     * of the {@link #fiscalYear(LocalDate) fiscal year}, zero-padded. This is the
+     * shared building block of every value the fiscal year prefixes: the
+     * {@link #deriveFiscalYear(LocalDate) FY<YY> label} renders it behind an
+     * {@code FY} prefix.
+     *
+     * @param date the date to evaluate, may be {@code null}
+     * @return the two-digit fiscal-year segment, or {@code null} when no date was supplied
+     */
+    public static String fiscalYearSuffix(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return String.format("%02d", fiscalYear(date) % 100);
+    }
+
+    /**
+     * Returns the fiscal year label {@code FY<YY>}, where {@code YY} is the
+     * {@link #fiscalYearSuffix(LocalDate) two-digit fiscal-year segment}.
      *
      * @param date the date to evaluate, may be {@code null}
      * @return the fiscal-year label, or {@code null} when no date was supplied
      */
     public static String deriveFiscalYear(LocalDate date) {
-        if (date == null) {
-            return null;
-        }
-        return String.format("FY%02d", fiscalYear(date) % 100);
+        String suffix = fiscalYearSuffix(date);
+        return suffix == null ? null : "FY" + suffix;
     }
 
     /**
