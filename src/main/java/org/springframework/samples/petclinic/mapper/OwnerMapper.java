@@ -48,6 +48,8 @@ public interface OwnerMapper {
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBandResolver.deriveAgeBand(owner.getBirthDate(), owner.getRegistrationDate()))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegmentResolver.deriveOwnerSegment(owner))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "sharesHousehold", ignore = true)
