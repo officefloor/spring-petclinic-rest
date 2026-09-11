@@ -5,10 +5,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Derives the stable {@code householdId} shared by owners who live together at the same
- * address. The id is the {@link #hash(String) SHA-256 prefix} of the normalized last name
- * and address, so every owner sharing a household (same normalized last name + address)
- * maps to the same value.
+ * Derives the stable {@code householdId} shared by owners with the same last name and
+ * postcode. The id is the {@link #hash(String) SHA-256 prefix} of the normalized last name
+ * and the postcode, so every owner in the same household (same normalized last name +
+ * postcode) maps to the same value automatically — no opt-in is required.
  *
  * <p>Centralising the derivation here keeps {@link AssignHousehold} (which assigns the id)
  * and {@link IdentityKeys} (which folds it into an owner's identity key) in exact agreement.
@@ -18,9 +18,9 @@ public final class Households {
     private Households() {
     }
 
-    /** The stable {@code householdId} for the given last name and address. */
-    public static String idFor(String lastName, String address) {
-        return hash(normalize(lastName) + "|" + AddressNormalizer.normalize(address));
+    /** The stable {@code householdId} for the given last name and postcode. */
+    public static String idFor(String lastName, String postcode) {
+        return hash(normalize(lastName) + "|" + (postcode == null ? "" : postcode));
     }
 
     /** Lower-case, trim, and collapse runs of whitespace to a single space. */
@@ -31,13 +31,13 @@ public final class Households {
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
-    /** Stable 16-hex-character (upper-case) prefix of the SHA-256 of the household key. */
+    /** Stable 12-hex-character (upper-case) prefix of the SHA-256 of the household key. */
     private static String hash(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();
