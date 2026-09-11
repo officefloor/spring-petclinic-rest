@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
+
     /**
      * Number of owners belonging to this owner's household (owners sharing the same
      * {@code householdId}), including this owner. Derived at request time rather than stored, and
@@ -227,6 +230,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public Integer getHouseholdMemberCount() {

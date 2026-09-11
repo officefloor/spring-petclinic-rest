@@ -445,7 +445,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * duplicate only when its normalized telephone, email and {@code householdId} all match another owner's. It runs
      * after the household id has been assigned, so the key reflects the household the owner belongs to. Owners that
      * share only their household (same last name and postcode, different telephone) are not caught here but by the
-     * separate household-duplicate guard (see {@link #requireHouseholdNotDuplicate}).
+     * separate household-duplicate guard (see {@link #requireHouseholdNotDuplicate}). Owners that have been
+     * soft-deleted (see {@link #deleteOwner}) are ignored, so a matching identity that belongs only to a deleted
+     * owner does not block the create.
      *
      * @param owner the newly mapped owner about to be saved, with its household id already assigned
      * @throws DuplicateOwnerException if any existing owner already has the same identity key
@@ -453,6 +455,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void requireUniqueIdentity(Owner owner) {
         String identityKey = identityKeyResolver.deriveIdentityKey(owner);
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(identityKeyResolver.deriveIdentityKey(existing)));
         if (inUse) {
             throw new DuplicateOwnerException("an owner with the same identity key already exists");
@@ -536,7 +539,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * derived {@code householdId} is a member of the same household. A second such owner is a household duplicate and is
      * rejected, unless the payload sets {@code sharesHousehold} to {@code true}, which declares the owner a genuine
      * household member and lets the create proceed. An owner with no household ({@code null} householdId, i.e. created
-     * without a postcode) can never be a household duplicate.
+     * without a postcode) can never be a household duplicate. Owners that have been soft-deleted (see
+     * {@link #deleteOwner}) are ignored, so a household whose only member has been deleted does not block the create.
      *
      * @param owner          the newly mapped owner about to be saved, with its household id already assigned
      * @param ownerFieldsDto the incoming owner payload
@@ -552,6 +556,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         boolean sharedByExisting = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (sharedByExisting) {
             throw new DuplicateOwnerException("an owner in the same household already exists");
@@ -606,7 +611,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
