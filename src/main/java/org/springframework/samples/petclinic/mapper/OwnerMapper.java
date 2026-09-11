@@ -40,6 +40,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+    @Mapping(target = "capacityWarning",
+        expression = "java(owner.getCapacityWarning() != null && owner.getCapacityWarning())")
     @Mapping(target = "possibleDuplicate",
         expression = "java(owner.getPossibleDuplicate() != null && owner.getPossibleDuplicate())")
     @Mapping(target = "contactPreference",
