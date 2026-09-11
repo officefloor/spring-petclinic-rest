@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Derives an owner's 'membershipPoints' and numeric 'membershipLevel', assigned
  * on create. Kept out of {@link OwnerMapper} so MapStruct does not mistake it for
@@ -62,6 +64,20 @@ public final class MembershipLevelResolver {
     }
 
     /**
+     * Returns the membership points for an owner, reading straight off it the same fields the
+     * {@link #deriveMembershipPoints(String, Integer, Integer, LocalDate) primitive form} takes: its email, namesake
+     * count, household member count and registration date. This is the form callers that already hold an {@link Owner}
+     * should prefer, so the field unpacking lives in one place.
+     *
+     * @param owner the owner whose membership points should be derived
+     * @return the membership points, zero or more
+     */
+    public static int deriveMembershipPoints(Owner owner) {
+        return deriveMembershipPoints(owner.getEmail(), owner.getNamesakeCount(),
+            owner.getHouseholdMemberCount(), owner.getRegistrationDate());
+    }
+
+    /**
      * Returns the membership level for an owner, mapped from its
      * {@link #deriveMembershipPoints membership points}: level 1 (0-1 points),
      * level 2 (2-3 points), level 3 (4-5 points) and level 4 (6 or more points).
@@ -76,6 +92,20 @@ public final class MembershipLevelResolver {
             Integer householdMemberCount, LocalDate registrationDate) {
         int points = deriveMembershipPoints(email, namesakeCount, householdMemberCount, registrationDate);
         return levelForPoints(points);
+    }
+
+    /**
+     * Returns the membership level for an owner, reading straight off it the same fields the
+     * {@link #deriveMembershipLevel(String, Integer, Integer, LocalDate) primitive form} takes: its email, namesake
+     * count, household member count and registration date. This is the form callers that already hold an {@link Owner}
+     * should prefer, so the field unpacking lives in one place.
+     *
+     * @param owner the owner whose membership level should be derived
+     * @return the membership level, between 1 and 4 inclusive
+     */
+    public static int deriveMembershipLevel(Owner owner) {
+        return deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(),
+            owner.getHouseholdMemberCount(), owner.getRegistrationDate());
     }
 
     /**

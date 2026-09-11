@@ -280,8 +280,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void auditOwnerCreated(Owner owner) {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(),
-                owner.getHouseholdMemberCount(), owner.getRegistrationDate()),
+            MembershipLevelResolver.deriveMembershipLevel(owner),
             owner.getCustomerCode() + "-M" + String.format("%02d",
                 FiscalYearResolver.fiscalYear(owner.getRegistrationDate()) % 100));
     }
@@ -665,22 +664,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Returns the owners that belong to the given owner's household: those sharing the same non-null
+     * {@code householdId}. An owner with no household ({@code null} householdId) is a household of one and is returned on
+     * its own. The lookup runs against {@link ClinicService#findAllOwners()} and, like the household member count it
+     * backs (see {@link #populateHouseholdMemberCount}), does not exclude soft-deleted owners. When the owner has
+     * already been saved it is itself among the members returned.
+     *
+     * @param owner the owner whose household members should be resolved
+     * @return the members of the owner's household, never empty
+     */
+    private List<Owner> householdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return List.of(owner);
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    /**
      * Populates the owner's transient {@code householdMemberCount} with the number of owners that belong to its
-     * household, i.e. those sharing the same non-null {@code householdId} (including the owner itself). An owner with no
-     * household is counted as a household of one.
+     * household (see {@link #householdMembers}), i.e. those sharing the same non-null {@code householdId} (including the
+     * owner itself). An owner with no household is counted as a household of one.
      *
      * @param owner the owner whose household size should be resolved
      */
     private void populateHouseholdMemberCount(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            owner.setHouseholdMemberCount(1);
-            return;
-        }
-        long members = this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
-        owner.setHouseholdMemberCount((int) members);
+        owner.setHouseholdMemberCount(householdMembers(owner).size());
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

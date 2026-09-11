@@ -31,9 +31,9 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.mapper.FiscalYearResolver.deriveFiscalYear(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints",
-        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipPoints(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
     @Mapping(target = "timezone",
