@@ -19,9 +19,11 @@ package org.springframework.samples.petclinic.util;
 import java.util.Map;
 
 /**
- * Derives an owner's 'locality' (canonical region) from their city using a fixed
- * city-to-region table. Any city not listed in the table derives the region
- * {@code "UNKNOWN"}.
+ * Derives an owner's 'locality' (canonical region). The postcode is preferred: the region is
+ * looked up by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when
+ * the postcode is absent or in no known range does it fall back to a fixed city-to-region table.
+ * This returns the same region for known cities but disambiguates cities that share a name. Any
+ * input that resolves to neither derives the region {@code "UNKNOWN"}.
  */
 public final class LocalityResolver {
 
@@ -29,7 +31,27 @@ public final class LocalityResolver {
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private LocalityResolver() {
+    }
+
+    /**
+     * Returns the canonical region for the given owner, preferring the postcode. The postcode is
+     * matched against the known region ranges first; when it is {@code null} or in no known range,
+     * the region is derived from the city via {@link #resolve(String)}.
+     *
+     * @param city     the owner's city (may be {@code null})
+     * @param postcode the owner's postcode (may be {@code null})
+     * @return the canonical region string, or {@code "UNKNOWN"}
+     */
+    public static String resolve(String city, String postcode) {
+        String byPostcode = fromPostcode(postcode);
+        return byPostcode != null ? byPostcode : resolve(city);
     }
 
     /**
@@ -41,5 +63,29 @@ public final class LocalityResolver {
      */
     public static String resolve(String city) {
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Returns the region whose range contains the postcode, or {@code null} when the postcode is
+     * {@code null}, not a parseable integer, or in no known range.
+     */
+    private static String fromPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException e) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 }
