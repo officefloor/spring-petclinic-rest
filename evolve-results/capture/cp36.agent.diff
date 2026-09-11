@@ -1,0 +1,299 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdResolver.java
+index 51e4a2bf3..e14dd1a51 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdResolver.java
+@@ -1,43 +1,36 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Derives the shared {@code householdId} that every owner in the same household resolves to, and the name
+- * normalization household matching is expressed through. Kept here (rather than in {@link OwnerMapper} or the REST
+- * controller) mirrors {@link IdentityKeyResolver}, {@link LocalityResolver} and {@link MembershipLevelResolver} and
+- * gives household derivation a single home. Like {@link IdentityKeyResolver} it collaborates with a field normalizer,
+- * so it is a Spring component rather than a static utility.
++ * Derives the shared {@code householdId} that every owner in the same household resolves to. The household is keyed on
++ * the owner's last name and postcode, so the identifier is a pure, deterministic function of those two fields and every
++ * owner sharing them resolves to the same value automatically, regardless of creation order. Kept here (rather than in
++ * {@link OwnerMapper} or the REST controller) mirrors {@link IdentityKeyResolver}, {@link LocalityResolver} and
++ * {@link MembershipLevelResolver} and gives household derivation a single home.
+  */
+ @Component
+ public class HouseholdResolver {
+ 
+-    private final AddressNormalizer addressNormalizer;
+-
+-    public HouseholdResolver(AddressNormalizer addressNormalizer) {
+-        this.addressNormalizer = addressNormalizer;
+-    }
+-
+     /**
+-     * Derives a household's stable identifier, formatted {@code HH-<12 hex chars>}, from the case-insensitive,
+-     * whitespace-collapsed last name and the normalized address (see {@link AddressNormalizer}). Being a pure function
+-     * of those fields, it is identical for every owner in the same household and never changes over time.
++     * Derives a household's stable identifier: the first 12 hex characters of the SHA-256 digest of the normalized
++     * last name, a {@code '|'} separator and the postcode. The last name is normalized by trimming it, collapsing every
++     * run of whitespace to a single space and lower-casing it; the postcode is used as given (an empty string when
++     * none). Being a pure function of the last name and postcode, it is identical for every owner in the same household
++     * and never changes over time.
+      *
+      * @param lastName the household's last name
+-     * @param address  the household's address
++     * @param postcode the household's postcode, may be {@code null}
+      * @return the household identifier
+      */
+-    public String deriveHouseholdId(String lastName, String address) {
+-        String key = collapseWhitespace(lastName).toLowerCase()
+-            + "\n" + addressNormalizer.normalize(address).toLowerCase();
+-        return "HH-" + HexDigest.upperHexPrefix(key, 12);
++    public String deriveHouseholdId(String lastName, String postcode) {
++        String key = collapseWhitespace(lastName).toLowerCase() + "|" + (postcode == null ? "" : postcode);
++        return HexDigest.upperHexPrefix(key, 12);
+     }
+ 
+     /**
+      * Canonicalizes a value for household comparison by trimming it and collapsing every run of whitespace to a single
+-     * space. Case is deliberately preserved here; callers apply their own case handling ({@link #deriveHouseholdId}
+-     * lower-cases the result, while household matching compares it case-insensitively).
++     * space. Case is deliberately preserved here; {@link #deriveHouseholdId} lower-cases the result itself.
+      *
+      * @param value the raw field value, may be {@code null}
+      * @return the whitespace-collapsed value, or an empty string when {@code null}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a886890b8..756c27f6c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -172,7 +172,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         populateDerivedFields(owner, ownerFieldsDto);
+         requireUniqueIdentity(owner);
+-        flagPossibleDuplicate(owner);
++        requireHouseholdNotDuplicate(owner, ownerFieldsDto);
++        flagPossibleDuplicate(owner, ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+@@ -190,9 +191,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * fields (see {@link IdentityKeyResolver#deriveCustomerCode}); the {@code namesakeCount} (see
+      * {@link #countNamesakes}) and {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) are snapshots of
+      * the existing owners taken before this owner is saved, so neither counts the new owner itself; and the shared
+-     * {@code householdId} is assigned last (see {@link #assignHouseholdId}), backfilling any existing household members
+-     * that lack it, so it is in place before {@link #requireUniqueIdentity} derives the identity key. The owner is
+-     * mutated in place; the caller applies the duplicate guard and saves it.
++     * {@code householdId} is assigned last (see {@link #assignHouseholdId}), derived deterministically from the owner's
++     * last name and postcode, so it is in place before {@link #requireUniqueIdentity} derives the identity key. The
++     * owner is mutated in place; the caller applies the duplicate guards and saves it.
+      *
+      * @param owner          the newly mapped owner about to be saved
+      * @param ownerFieldsDto the incoming owner payload
+@@ -201,7 +202,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
+-        assignHouseholdId(owner, ownerFieldsDto);
++        assignHouseholdId(owner);
+     }
+ 
+     /**
+@@ -369,10 +370,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Rejects creating an owner whose whole derived {@code identityKey} (see
+-     * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner. This is the single, consolidated
+-     * duplicate check: the former separate telephone, email and household rules are all expressed through this one key,
+-     * so an owner is a duplicate only when its normalized telephone, email and {@code householdId} all match another
+-     * owner's. It runs after the household id has been assigned, so the key reflects the household the owner belongs to.
++     * {@link IdentityKeyResolver#deriveIdentityKey}) equals that of an existing owner, so an owner is an identity
++     * duplicate only when its normalized telephone, email and {@code householdId} all match another owner's. It runs
++     * after the household id has been assigned, so the key reflects the household the owner belongs to. Owners that
++     * share only their household (same last name and postcode, different telephone) are not caught here but by the
++     * separate household-duplicate guard (see {@link #requireHouseholdNotDuplicate}).
+      *
+      * @param owner the newly mapped owner about to be saved, with its household id already assigned
+      * @throws DuplicateOwnerException if any existing owner already has the same identity key
+@@ -387,18 +389,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Flags a newly created owner as a possible (soft) duplicate. The owner has already cleared the hard-duplicate
+-     * guard (see {@link #requireUniqueIdentity}), so it is still being created; this only records a warning. It is a
+-     * possible duplicate when some existing owner shares its last name (compared case-insensitively) and its postcode
+-     * but carries a different telephone. When such an owner is found, {@code possibleDuplicate} is set to {@code true}
+-     * and {@code possibleDuplicateOf} to that existing owner's id (the first match in
++     * Flags a newly created owner as a possible (soft) duplicate. The owner has already cleared both the hard-duplicate
++     * guard (see {@link #requireUniqueIdentity}) and the household-duplicate guard (see
++     * {@link #requireHouseholdNotDuplicate}), so it is still being created; this only records a warning. A declared
++     * household member (one created with {@code sharesHousehold} set to {@code true}) is never flagged: it deliberately
++     * shares its household's last name and postcode, so it is not a suspected duplicate. Otherwise it is a possible
++     * duplicate when some existing owner shares its last name (compared case-insensitively) and its postcode but
++     * carries a different telephone. When such an owner is found, {@code possibleDuplicate} is set to {@code true} and
++     * {@code possibleDuplicateOf} to that existing owner's id (the first match in
+      * {@link ClinicService#findAllOwners()} order); otherwise {@code possibleDuplicate} is {@code false} and
+      * {@code possibleDuplicateOf} is left null. An owner created without a postcode can never soft-match.
+      *
+-     * @param owner the newly mapped owner about to be saved, with its normalized fields already in place
++     * @param owner          the newly mapped owner about to be saved, with its normalized fields already in place
++     * @param ownerFieldsDto the incoming owner payload
+      */
+-    private void flagPossibleDuplicate(Owner owner) {
++    private void flagPossibleDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+         owner.setPossibleDuplicate(false);
++        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++            return;
++        }
+         String postcode = owner.getPostcode();
+         if (postcode == null || postcode.isBlank()) {
+             return;
+@@ -433,75 +442,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Finds the existing owners that belong to the same household as the given payload, i.e. those sharing both its
+-     * last name and address. The last name is compared case-insensitively after collapsing runs of whitespace to a
+-     * single space and trimming; the address is compared in its normalized form (see {@link AddressNormalizer}), so
+-     * incidental formatting differences and abbreviation variants do not affect membership.
++     * Assigns the shared {@code householdId} for a newly mapped owner. The identifier is derived deterministically from
++     * the owner's last name and postcode (see {@link HouseholdResolver#deriveHouseholdId}), so every owner sharing
++     * those two fields resolves to the same stable value automatically, regardless of creation order and without any
++     * explicit linking. An owner created without a postcode has no household and keeps a {@code null} identifier, so
++     * such owners never match one another as a household.
+      *
+-     * @param ownerFieldsDto the incoming owner payload
+-     * @return the existing owners in the same household, in the order {@link ClinicService#findAllOwners()} returns
+-     *         them; empty when none match
++     * @param owner the newly mapped owner about to be saved
+      */
+-    private List<Owner> findHouseholdMembers(OwnerFieldsDto ownerFieldsDto) {
+-        String lastName = householdResolver.collapseWhitespace(ownerFieldsDto.getLastName());
+-        String address = addressNormalizer.normalize(ownerFieldsDto.getAddress());
+-        return this.clinicService.findAllOwners().stream()
+-            .filter(existing -> householdResolver.collapseWhitespace(existing.getLastName()).equalsIgnoreCase(lastName)
+-                && addressNormalizer.normalize(existing.getAddress()).equals(address))
+-            .toList();
++    private void assignHouseholdId(Owner owner) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            owner.setHouseholdId(null);
++            return;
++        }
++        owner.setHouseholdId(householdResolver.deriveHouseholdId(owner.getLastName(), postcode));
+     }
+ 
+     /**
+-     * Assigns the shared {@code householdId} for an owner joining an existing household. Only owners created with
+-     * {@code sharesHousehold} set to {@code true} that actually match an existing household (see
+-     * {@link #findHouseholdMembers}) are given an identifier; single owners keep a {@code null} household. The
+-     * identifier itself is computed by {@link #computeHouseholdId}, so every member of the same household resolves to
+-     * the same stable value regardless of creation order. Existing members that predate the feature and still lack the
+-     * identifier are backfilled (see {@link #backfillHouseholdMembers}) so the whole household shares it.
++     * Rejects creating an owner that would join an existing household it has not declared. Because the household is
++     * keyed on the last name and postcode (see {@link #assignHouseholdId}), any existing owner carrying the same
++     * derived {@code householdId} is a member of the same household. A second such owner is a household duplicate and is
++     * rejected, unless the payload sets {@code sharesHousehold} to {@code true}, which declares the owner a genuine
++     * household member and lets the create proceed. An owner with no household ({@code null} householdId, i.e. created
++     * without a postcode) can never be a household duplicate.
+      *
+-     * @param owner          the newly mapped owner about to be saved
++     * @param owner          the newly mapped owner about to be saved, with its household id already assigned
+      * @param ownerFieldsDto the incoming owner payload
++     * @throws DuplicateOwnerException if an existing owner already belongs to this household and the create did not
++     *                                 declare {@code sharesHousehold}
+      */
+-    private void assignHouseholdId(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++    private void requireHouseholdNotDuplicate(Owner owner, OwnerFieldsDto ownerFieldsDto) {
++        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             return;
+         }
+-        List<Owner> members = findHouseholdMembers(ownerFieldsDto);
+-        if (members.isEmpty()) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
+             return;
+         }
+-        String householdId = computeHouseholdId(ownerFieldsDto);
+-        owner.setHouseholdId(householdId);
+-        backfillHouseholdMembers(householdId, members);
+-    }
+-
+-    /**
+-     * Computes the shared {@code householdId} for an owner payload. The identifier is derived deterministically (see
+-     * {@link HouseholdResolver#deriveHouseholdId}), so it is a pure function of the payload's household-identifying
+-     * fields and every member of the same household resolves to the same stable value regardless of creation order.
+-     * Computing it is kept separate from deciding whether to assign it (see {@link #assignHouseholdId}).
+-     *
+-     * @param ownerFieldsDto the incoming owner payload
+-     * @return the shared household identifier for the payload
+-     */
+-    private String computeHouseholdId(OwnerFieldsDto ownerFieldsDto) {
+-        return householdResolver.deriveHouseholdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+-    }
+-
+-    /**
+-     * Stamps the shared {@code householdId} onto the existing members of a household that do not already carry it,
+-     * persisting each one that changes. Members that predate the feature (and so still lack the identifier) are brought
+-     * into line so the whole household shares the single value; members that already carry it are left untouched.
+-     *
+-     * @param householdId the shared household identifier
+-     * @param members     the existing owners in the household
+-     */
+-    private void backfillHouseholdMembers(String householdId, List<Owner> members) {
+-        for (Owner member : members) {
+-            if (!householdId.equals(member.getHouseholdId())) {
+-                member.setHouseholdId(householdId);
+-                this.clinicService.saveOwner(member);
+-            }
++        boolean sharedByExisting = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
++        if (sharedByExisting) {
++            throw new DuplicateOwnerException("an owner in the same household already exists");
+         }
+     }
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d57e11826..24eae5862 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2080,8 +2080,9 @@ components:
+           description: >-
+             Write-only flag supplied on create. When true, the owner is allowed
+             to be registered even though another owner already has the same last
+-            name and address (i.e. they share a household). When absent or false,
+-            such a duplicate is rejected with a 409 Conflict.
++            name and postcode (i.e. they share a household), and the owner is not
++            flagged as a possible duplicate. When absent or false, such a
++            household duplicate is rejected with a 409 Conflict.
+           type: boolean
+           writeOnly: true
+           example: true
+@@ -2154,11 +2155,13 @@ components:
+               title: Household ID
+               description: >-
+                 A stable identifier shared by all owners that belong to the same
+-                household (same last name and address). Assigned when an owner is
+-                created with 'sharesHousehold' set to true and another owner
+-                already shares their last name and address; null otherwise.
++                household. Derived deterministically as the first 12 hex
++                characters of the SHA-256 digest of the owner's normalized last
++                name, a '|' separator and the postcode, so every owner sharing a
++                last name and postcode resolves to the same value automatically.
++                Null when the owner was created without a postcode.
+               type: string
+-              example: 'HH-1A2B3C4D5E6F'
++              example: '1A2B3C4D5E6F'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
+@@ -2239,7 +2242,9 @@ components:
+               description: >-
+                 True when, at the moment this owner was created, it was not a hard
+                 duplicate but shared an existing owner's last name and postcode with
+-                a different telephone; false otherwise.
++                a different telephone; false otherwise. Always false for a declared
++                household member (one created with 'sharesHousehold' set to true),
++                which is not treated as a suspected duplicate.
+               type: boolean
+               example: false
+               readOnly: true
