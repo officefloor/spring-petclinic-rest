@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 000000000..be4a4544e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,47 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * Normalizes a street address to a canonical form.
++ *
++ * <p>Leading and trailing whitespace is trimmed and internal whitespace runs are
++ * collapsed to a single space; the result is upper-cased; and common street-type
++ * abbreviations are expanded token-wise ({@code ST -> STREET}, {@code RD -> ROAD},
++ * {@code AVE -> AVENUE}).
++ *
++ * <p>For example {@code "  12  main  st "} becomes {@code "12 MAIN STREET"} and
++ * {@code "7 elm ave"} becomes {@code "7 ELM AVENUE"}. An address that is empty or all
++ * whitespace (or {@code null}) normalizes to the empty string.
++ */
++final class AddressNormalizer {
++
++    /** Abbreviation (upper-cased) -> expanded street type. */
++    private static final Map<String, String> ABBREVIATIONS =
++            Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Returns the normalized form of {@code raw}, or the empty string when it is
++     * {@code null} or blank after trimming.
++     */
++    static String normalize(String raw) {
++        if (raw == null) {
++            return "";
++        }
++        String collapsed = raw.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        for (int i = 0; i < tokens.length; i++) {
++            String expanded = ABBREVIATIONS.get(tokens[i]);
++            if (expanded != null) {
++                tokens[i] = expanded;
++            }
++        }
++        return String.join(" ", tokens);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 8bf665e11..5766d20df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -23,9 +23,9 @@ public class ValidateOwnerFields {
+         List<String> errors = new ArrayList<>();
+         checkRequired("firstName", request.getFirstName(), errors);
+         checkRequired("lastName", request.getLastName(), errors);
+-        checkRequired("address", request.getAddress(), errors);
+         checkRequired("city", request.getCity(), errors);
+         checkRequired("telephone", request.getTelephone(), errors);
++        normalizeAddress(request, errors);
+         normalizeTelephone(request, errors);
+         normalizeEmail(request, errors);
+         if (!errors.isEmpty()) {
+@@ -40,6 +40,22 @@ public class ValidateOwnerFields {
+         }
+     }
+ 
++    /**
++     * Normalizes the address (see {@link AddressNormalizer}) and stores the result back on
++     * the request so later steps persist, compare and return the canonical form. The
++     * address is required: a value that is blank after normalization is a 400 (adds an
++     * "address" error) and is not stored back.
++     */
++    private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
++        String normalized = AddressNormalizer.normalize(request.getAddress());
++        if (normalized.isEmpty()) {
++            errors.add("address");
++        }
++        else {
++            request.setAddress(normalized);
++        }
++    }
++
+     /**
+      * Normalizes the telephone to E.164 form (see {@link TelephoneE164}), storing the
+      * result back on the request so later steps persist and return it. A value that
