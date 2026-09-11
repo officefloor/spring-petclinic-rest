@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityKeys;
 
 import java.util.Collection;
 import java.util.List;
@@ -46,8 +48,9 @@ public interface OwnerMapper {
         expression = "java((owner.getPossibleDuplicate() != null && owner.getPossibleDuplicate()) || (owner.getCapacityWarning() != null && owner.getCapacityWarning()) || org.springframework.samples.petclinic.rest.function.owner.DisposableDomains.emailIsDisposableAdjacent(owner.getEmail()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKeys.forOwner(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity",
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.toOwnerIdentityDto(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.forOwner(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -67,6 +70,19 @@ public interface OwnerMapper {
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+
+    /**
+     * Groups the owner's three derived identifiers under the response's nested
+     * {@code identity} object. The stored memberId and householdId are already version-2
+     * (assigned on create); the identityKey is derived on read, also version-2.
+     */
+    static OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(IdentityKeys.forOwner(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
         OwnerPageDto ownerPageDto = new OwnerPageDto();

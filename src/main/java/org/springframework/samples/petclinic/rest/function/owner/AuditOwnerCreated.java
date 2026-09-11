@@ -6,6 +6,7 @@ import net.officefloor.plugin.variable.Val;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.mapper.MembershipLevels;
+import org.springframework.samples.petclinic.mapper.OwnerSegments;
 import org.springframework.samples.petclinic.model.Owner;
 
 import tools.jackson.databind.ObjectMapper;
@@ -18,10 +19,12 @@ import tools.jackson.databind.node.ObjectNode;
  * membershipLevel.
  *
  * <p>Besides that human-readable line, it emits an immutable structured event as a
- * JSON object {@code {seq, ownerId, memberId, membershipLevel, event}} with
- * {@code event = "OWNER_CREATED"}, where {@code seq} is a process-wide monotonically
- * increasing integer across creates. The event carries the owner's <em>current
- * primary identifier</em> ({@link #primaryIdentifier(Owner)}): the unified memberId.
+ * schema-version-2 JSON object
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment, event}}
+ * with {@code schemaVersion = 2} and {@code event = "OWNER_CREATED"}, where {@code seq} is
+ * a process-wide monotonically increasing integer across creates. The event carries the
+ * owner's <em>current primary identifier</em> ({@link #primaryIdentifier(Owner)}): the
+ * version-2 memberId; the {@code ownerSegment} is recomputed from the version-2 owner.
  */
 public class AuditOwnerCreated {
 
@@ -38,10 +41,12 @@ public class AuditOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
 
         ObjectNode event = JSON.createObjectNode();
+        event.put("schemaVersion", 2);
         event.put("seq", SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", membershipLevel);
+        event.put("ownerSegment", OwnerSegments.forOwner(owner));
         event.put("event", "OWNER_CREATED");
         audit.info(JSON.writeValueAsString(event));
     }

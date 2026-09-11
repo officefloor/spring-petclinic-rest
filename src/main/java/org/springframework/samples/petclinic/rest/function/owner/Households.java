@@ -4,9 +4,10 @@ import java.util.Locale;
 
 /**
  * Derives the stable {@code householdId} shared by owners with the same last name and
- * postcode. The id is the {@link #hash(String) SHA-256 prefix} of the normalized last name
- * and the postcode, so every owner in the same household (same normalized last name +
- * postcode) maps to the same value automatically — no opt-in is required.
+ * postcode. The id is the {@link #hash(String) SHA-256 prefix} of the fixed
+ * {@link IdentityVersion#TAG version-2 tag}, the normalized last name and the postcode, so
+ * every owner in the same household (same normalized last name + postcode) maps to the same
+ * value automatically — no opt-in is required.
  *
  * <p>Centralising the derivation here keeps {@link AssignHousehold} (which assigns the id)
  * and {@link IdentityKeys} (which folds it into an owner's identity key) in exact agreement.
@@ -18,7 +19,8 @@ public final class Households {
 
     /** The stable {@code householdId} for the given last name and postcode. */
     public static String idFor(String lastName, String postcode) {
-        return hash(normalize(lastName) + "|" + (postcode == null ? "" : postcode));
+        return hash(IdentityVersion.TAG + "|" + normalize(lastName) + "|"
+                + (postcode == null ? "" : postcode));
     }
 
     /** Lower-case, trim, and collapse runs of whitespace to a single space. */

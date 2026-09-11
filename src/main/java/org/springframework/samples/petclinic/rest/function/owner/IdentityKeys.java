@@ -4,7 +4,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Computes an owner's {@code identityKey}: the SHA-256 hex digest over
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. It is the single
+ * {@code "V2" + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, the
+ * fixed {@link IdentityVersion#TAG version-2 tag} folded in first. It is the single
  * identity used for duplicate detection by {@link RequireUniqueIdentity} — two owners collide
  * (409) only when all three components match.
  *
@@ -37,8 +38,8 @@ public final class IdentityKeys {
 
     private static String build(String telephone, String email, String lastName) {
         String tel = Telephones.toE164(telephone);
-        String raw = (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
-                + Soundex.encode(lastName);
+        String raw = IdentityVersion.TAG + "|" + (tel == null ? "" : tel) + "|"
+                + normalizeEmail(email) + "|" + Soundex.encode(lastName);
         return Digests.sha256Hex(raw);
     }
 
