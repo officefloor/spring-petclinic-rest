@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
+index 7f81e81de..846136e94 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
+@@ -6,33 +6,57 @@ import java.time.temporal.ChronoUnit;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's numeric {@code membershipLevel} (1-4) from its attributes:
+- * start at 1, add 1 when an email is present, add 1 when {@code namesakeCount} is
+- * 0, capped at 3 for these create-time factors. Level 4 requires tenure of more
+- * than 365 days, so a brand-new owner (zero tenure) never exceeds level 3.
++ * Derives an owner's membership {@code points} and numeric {@code level}.
++ *
++ * <p>Points start at 0 and accumulate: add 2 when an email is present, add 1 when
++ * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3
++ * for tenure over 365 days.
++ *
++ * <p>Points map to the level (1-4): 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for
++ * 6 or more.
+  */
+ public final class MembershipLevels {
+ 
+-    /** Tenure, in days, above which an owner reaches level 4. */
+-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
++    /** Tenure, in days, above which an owner earns the tenure points. */
++    private static final long TENURE_DAYS_FOR_BONUS = 365;
++
++    /** Household size at or above which an owner earns the household points. */
++    private static final int HOUSEHOLD_SIZE_FOR_BONUS = 3;
+ 
+     private MembershipLevels() {
+     }
+ 
+-    /** The membership level (1-4) for the given owner. */
+-    public static int forOwner(Owner owner) {
+-        int level = 1;
++    /** The membership points for the given owner. */
++    public static int pointsForOwner(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE_FOR_BONUS) {
++            points += 2;
++        }
++        if (tenureInDays(owner) > TENURE_DAYS_FOR_BONUS) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** The membership level (1-4) for the given owner, derived from its points. */
++    public static int forOwner(Owner owner) {
++        int points = pointsForOwner(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
+         }
+-        level = Math.min(level, 3);
+-        if (tenureInDays(owner) > TENURE_DAYS_FOR_LEVEL_4) {
+-            level++;
++        if (points <= 5) {
++            return 3;
+         }
+-        return level;
++        return 4;
+     }
+ 
+     /** Days since registration, or 0 when the registration date is unknown. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8dcf2213c..80b19b3fe 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,8 @@ public interface OwnerMapper {
+         expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "checkDigit",
+         expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.forOwner(owner))")
++    @Mapping(target = "membershipPoints",
++        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.pointsForOwner(owner))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 36ed808e6..35fc1ae6a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2166,17 +2166,27 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points: start at 0, add 2 when an email is present,
++                add 1 when namesakeCount is 0, add 2 for a household of 3 or more, add 3 for
++                tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level (1-3), assigned on create: starts at 1,
+-                add 1 when an email is present, add 1 when namesakeCount is 0, capped at 3
+-                (level 4 is reserved for tenure).
++                The owner's numeric membership level (1-4), derived from membershipPoints:
++                1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
