@@ -1,0 +1,137 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 658383979..f6932f9ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3dab16422..9040104ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -154,6 +154,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Assign the customer code '<LAST3>-<NNNN>' from the last name and a global sequence
+         // equal to one more than the current number of owners, fixed at creation time.
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
++        // of the registration date's year (e.g. 'SMI-0007-M26'), fixed at creation time.
++        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -219,6 +222,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", prefix, sequence);
+     }
+ 
++    /**
++     * Builds the membership number '<customerCode>-M<YY>' for a newly created owner, where YY is
++     * the last two digits of the registration date's year (e.g. 'SMI-0007-M26').
++     *
++     * @param customerCode     the owner's customer code
++     * @param registrationDate the owner's registration date
++     * @return the formatted membership number
++     */
++    private String membershipNumber(String customerCode, java.time.LocalDate registrationDate) {
++        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++    }
++
+     /**
+      * Determines whether the given normalized telephone is already used by an existing owner.
+      * Stored telephones are normalized to E.164 before comparison so values that differ only in
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d39225a6c..3304c6352 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6d1879fb3..9435860ac 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 867095f69..35504bd4b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+   namesake_count INT,
++  membership_number VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..2eac545a1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_number TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c12886d8e..9dd02d0fd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2138,6 +2138,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The pet owner's membership number formatted '<customerCode>-M<YY>',
++                where YY is the last two digits of the registration date's year
++                (e.g. 'SMI-0007-M26'). Assigned once at creation and returned
++                unchanged.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
