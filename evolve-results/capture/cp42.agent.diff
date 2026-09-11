@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 925d3c5da..3d54a21fa 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getCustomerCode()))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.mapper.TimezoneResolver.deriveTimezone(owner.getCustomerCode()))")
+     @Mapping(target = "bulkSignupWarning",
+         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
+     @Mapping(target = "telephoneDisplay",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Region.java b/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
+index 4cfd09a71..92869553d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Region.java
+@@ -12,9 +12,9 @@ package org.springframework.samples.petclinic.mapper;
+  */
+ public enum Region {
+ 
+-    NSW("Sydney", 2000, 2099),
+-    VIC("Melbourne", 3000, 3099),
+-    QLD("Brisbane", 4000, 4099);
++    NSW("Sydney", 2000, 2099, "Australia/Sydney"),
++    VIC("Melbourne", 3000, 3099, "Australia/Melbourne"),
++    QLD("Brisbane", 4000, 4099, "Australia/Brisbane");
+ 
+     private final String city;
+ 
+@@ -22,10 +22,23 @@ public enum Region {
+ 
+     private final int maxPostcode;
+ 
+-    Region(String city, int minPostcode, int maxPostcode) {
++    private final String timezone;
++
++    Region(String city, int minPostcode, int maxPostcode, String timezone) {
+         this.city = city;
+         this.minPostcode = minPostcode;
+         this.maxPostcode = maxPostcode;
++        this.timezone = timezone;
++    }
++
++    /**
++     * Returns this region's IANA timezone name (NSW {@code Australia/Sydney}, VIC
++     * {@code Australia/Melbourne}, QLD {@code Australia/Brisbane}).
++     *
++     * @return the region's IANA timezone name
++     */
++    public String getTimezone() {
++        return this.timezone;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/TimezoneResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/TimezoneResolver.java
+new file mode 100644
+index 000000000..70f482519
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/TimezoneResolver.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Derives an owner's IANA {@code timezone} from its locality/region via the fixed region-to-timezone table
++ * (NSW -> {@code Australia/Sydney}, VIC -> {@code Australia/Melbourne}, QLD -> {@code Australia/Brisbane}). The
++ * locality is the region name resolved by {@link LocalityResolver#deriveLocality} from the owner's customer code, so
++ * this resolver simply looks that region up in {@link Region} and returns its timezone. {@code null} is returned when
++ * the locality carries no known region (including {@link LocalityResolver#UNKNOWN}), which leaves the field absent.
++ * Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit {@code String -> String} property
++ * mapping method.
++ */
++public final class TimezoneResolver {
++
++    private TimezoneResolver() {
++    }
++
++    /**
++     * Returns the IANA timezone name for the given {@code customerCode}, derived from the owner's locality/region.
++     * Returns {@code null} when the customer code carries no known region.
++     *
++     * @param customerCode the owner's customer code, may be {@code null}
++     * @return the region's IANA timezone name, or {@code null} when the locality maps to no known region
++     */
++    public static String deriveTimezone(String customerCode) {
++        String locality = LocalityResolver.deriveLocality(customerCode);
++        for (Region region : Region.values()) {
++            if (region.name().equals(locality)) {
++                return region.getTimezone();
++            }
++        }
++        return null;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8eb64e1ed..5046b3c83 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2219,6 +2219,17 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived from the owner's
++                locality/region via the fixed region-to-timezone table
++                (NSW -> Australia/Sydney, VIC -> Australia/Melbourne,
++                QLD -> Australia/Brisbane). Absent when the locality carries
++                no known region.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
