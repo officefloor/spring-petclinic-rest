@@ -12,9 +12,9 @@ package org.springframework.samples.petclinic.mapper;
  */
 public enum Region {
 
-    NSW("Sydney", 2000, 2099),
-    VIC("Melbourne", 3000, 3099),
-    QLD("Brisbane", 4000, 4099);
+    NSW("Sydney", 2000, 2099, "Australia/Sydney"),
+    VIC("Melbourne", 3000, 3099, "Australia/Melbourne"),
+    QLD("Brisbane", 4000, 4099, "Australia/Brisbane");
 
     private final String city;
 
@@ -22,10 +22,23 @@ public enum Region {
 
     private final int maxPostcode;
 
-    Region(String city, int minPostcode, int maxPostcode) {
+    private final String timezone;
+
+    Region(String city, int minPostcode, int maxPostcode, String timezone) {
         this.city = city;
         this.minPostcode = minPostcode;
         this.maxPostcode = maxPostcode;
+        this.timezone = timezone;
+    }
+
+    /**
+     * Returns this region's IANA timezone name (NSW {@code Australia/Sydney}, VIC
+     * {@code Australia/Melbourne}, QLD {@code Australia/Brisbane}).
+     *
+     * @return the region's IANA timezone name
+     */
+    public String getTimezone() {
+        return this.timezone;
     }
 
     /**
