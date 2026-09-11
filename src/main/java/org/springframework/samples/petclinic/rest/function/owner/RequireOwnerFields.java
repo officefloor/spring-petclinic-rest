@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -18,6 +19,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  * instead of the generic schema-validation problem detail.
  */
 public class RequireOwnerFields {
+
+    /** A pragmatic syntactic email check: a local part, an '@', and a dotted domain,
+     *  none containing whitespace or a second '@'. */
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws RequiredFieldsException {
@@ -36,6 +42,15 @@ public class RequireOwnerFields {
             throw new RequiredFieldsException(List.of("telephone"));
         }
         request.setTelephone(telephone);
+        // Email is optional; when present it must be syntactically valid and is
+        // stored and returned lower-cased.
+        String email = request.getEmail();
+        if (email != null && !email.isBlank()) {
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new RequiredFieldsException(List.of("email"));
+            }
+            request.setEmail(email.toLowerCase());
+        }
         validated.set(request);
     }
 
