@@ -101,11 +101,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // Normalize the telephone on create: strip every non-digit character so it is stored and
+        // returned as the bare 10-digit value. Bean validation on OwnerFieldsDto has already
+        // guaranteed exactly 10 digits are present (rejecting anything else with 400).
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Removes every non-digit character from the supplied telephone value.
+     *
+     * @param telephone the raw telephone value (may be {@code null})
+     * @return the telephone stripped down to its digits, or {@code null} if the input was {@code null}
+     */
+    private String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
