@@ -7,7 +7,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * The one place that turns a string into its SHA-256 hex digest. Several owner
  * derivations are built on the same hash — {@link Households} (the {@code householdId}
- * prefix) and {@link CustomerCodes} (the {@code HASH8} segment) both fold their key
+ * prefix) and {@link MemberIds} (the {@code HASH8} segment) both fold their key
  * through it — so keeping the encoding here means every one of them agrees on the exact
  * bytes and hex form instead of each hand-rolling {@link MessageDigest}.
  *

@@ -24,22 +24,18 @@ public interface OwnerMapper {
         expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYears.yearSegment(owner.getRegistrationDate())))")
     @Mapping(target = "fiscalYear",
         expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.util.FiscalYears.label(owner.getRegistrationDate()))")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.forOwner(owner))")
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.pointsForOwner(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.localityOf(owner))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.MemberIds.localityOf(owner))")
     @Mapping(target = "ownerSegment",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegments.forOwner(owner))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.MemberIds.timezoneOf(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     @Mapping(target = "capacityWarning",

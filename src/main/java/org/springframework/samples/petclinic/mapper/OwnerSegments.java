@@ -3,14 +3,14 @@ package org.springframework.samples.petclinic.mapper;
 import java.util.Set;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.rest.function.owner.CustomerCodes;
+import org.springframework.samples.petclinic.rest.function.owner.MemberIds;
 
 /**
  * Derives an owner's {@code ownerSegment}, formatted {@code <TIER>_<AREA>}.
  *
  * <p>{@code TIER} is {@code PREMIUM} when the owner's {@link MembershipLevels#forOwner(Owner)
  * membershipLevel} is 3 or more, otherwise {@code STANDARD}. {@code AREA} is {@code METRO}
- * when the owner's {@link CustomerCodes#localityOf(Owner) locality} is a known region
+ * when the owner's {@link MemberIds#localityOf(Owner) locality} is a known region
  * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
  */
 public final class OwnerSegments {
@@ -27,7 +27,7 @@ public final class OwnerSegments {
     /** The {@code <TIER>_<AREA>} segment for the given owner. */
     public static String forOwner(Owner owner) {
         String tier = MembershipLevels.forOwner(owner) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(CustomerCodes.localityOf(owner)) ? "METRO" : "REGIONAL";
+        String area = METRO_REGIONS.contains(MemberIds.localityOf(owner)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
 }

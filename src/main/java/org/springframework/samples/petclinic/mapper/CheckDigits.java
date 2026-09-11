@@ -1,20 +1,13 @@
 package org.springframework.samples.petclinic.mapper;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over
- * the digits contained in the owner's {@code customerCode}. Non-digit characters are
- * ignored; the rightmost digit is doubled and doubling alternates leftward.
+ * Computes a single Luhn check digit (0-9) over the digits contained in a value.
+ * Non-digit characters are ignored; the rightmost digit is doubled and doubling
+ * alternates leftward. Used to derive the {@code CHK} segment of an owner's memberId.
  */
 public final class CheckDigits {
 
     private CheckDigits() {
-    }
-
-    /** The Luhn check digit (0-9) over the digits of the owner's customerCode. */
-    public static int forOwner(Owner owner) {
-        return luhn(owner.getCustomerCode());
     }
 
     /** The Luhn check digit (0-9) over the digits contained in {@code value}. */
