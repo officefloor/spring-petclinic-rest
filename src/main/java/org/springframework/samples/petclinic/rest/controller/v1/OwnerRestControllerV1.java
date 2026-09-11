@@ -196,29 +196,54 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Enforces the pre-persistence policies that reject a newly mapped and normalized owner
-     * outright, in order, before any derived fields are assigned or the owner is saved. An owner
-     * in a city that already contains {@link #MAX_OWNERS_PER_CITY} owners is rejected with 409
-     * ({@link CityCapacityExceededException}), and an owner whose normalized telephone is already
-     * used by another owner is rejected with 409 ({@link DuplicateTelephoneException}). Grouping the
-     * independent create-time rejection rules here keeps {@link #addOwner} focused on the household,
-     * derived-field and persistence steps. The household rule stays in {@link #addOwner} itself
-     * because it shares the matched-member lookup with the shared household-id assignment.
+     * outright, in order, before any derived fields are assigned or the owner is saved. Each
+     * independent rule lives in its own {@code rejectWhen...} guard and is applied here in order, so
+     * the sequence of create-time rejections stays readable and a new rule is added as one more
+     * guard. Grouping the rules here keeps {@link #addOwner} focused on the household, derived-field
+     * and persistence steps. The household rule stays in {@link #addOwner} itself because it shares
+     * the matched-member lookup with the shared household-id assignment.
      *
      * @param owner the newly mapped and normalized owner being created
      */
     private void rejectDisallowedOwnerCreation(Owner owner) {
-        // Reject creating an owner once 100 or more owners already carry this owner's adjusted
-        // business-day registration date.
+        rejectWhenDailyLimitReached(owner);
+        rejectWhenCityAtCapacity(owner);
+        rejectWhenTelephoneInUse(owner);
+    }
+
+    /**
+     * Rejects creating an owner once {@link #MAX_OWNERS_PER_DAY} or more owners already carry this
+     * owner's adjusted business-day registration date, with 429 Too Many Requests.
+     *
+     * @param owner the owner being created
+     */
+    private void rejectWhenDailyLimitReached(Owner owner) {
         if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(
                 "The maximum number of owners that may be created today has already been reached");
         }
-        // Reject creating an owner when the owner's city already contains 50 or more owners.
+    }
+
+    /**
+     * Rejects creating an owner when the owner's city already contains {@link #MAX_OWNERS_PER_CITY}
+     * or more owners, with 409 Conflict.
+     *
+     * @param owner the owner being created
+     */
+    private void rejectWhenCityAtCapacity(Owner owner) {
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(
                 "The city " + owner.getCity() + " already contains the maximum number of owners");
         }
-        // Reject creating an owner whose normalized telephone is already used by another owner.
+    }
+
+    /**
+     * Rejects creating an owner whose normalized telephone is already used by another owner, with
+     * 409 Conflict.
+     *
+     * @param owner the owner being created
+     */
+    private void rejectWhenTelephoneInUse(Owner owner) {
         String normalizedTelephone = owner.getTelephone();
         if (isTelephoneInUse(normalizedTelephone)) {
             throw new DuplicateTelephoneException(
@@ -361,13 +386,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return {@code true} if another owner already uses this telephone
      */
     private boolean isTelephoneInUse(String normalizedTelephone) {
-        if (normalizedTelephone == null) {
+        return isValueInUseByExistingOwner(Owner::getTelephone, telephoneNormalizer::normalize,
+            normalizedTelephone);
+    }
+
+    /**
+     * Determines whether the given already-normalized value is used by an existing owner for the
+     * field read by {@code accessor}, comparing each existing owner's value in the same normalized
+     * form produced by {@code normalizer}. Shared by the create-time uniqueness rules so each rule
+     * only supplies the field to read and how to normalize it.
+     *
+     * @param accessor        reads the field to compare from an existing owner
+     * @param normalizer      canonicalizes an existing owner's value into the same form as
+     *                        {@code normalizedValue}
+     * @param normalizedValue the already-normalized value to look for
+     * @return {@code true} if an existing owner already uses this value
+     */
+    private boolean isValueInUseByExistingOwner(java.util.function.Function<Owner, String> accessor,
+                                                java.util.function.UnaryOperator<String> normalizer,
+                                                String normalizedValue) {
+        if (normalizedValue == null) {
             return false;
         }
         return this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .map(telephoneNormalizer::normalize)
-            .anyMatch(normalizedTelephone::equals);
+            .map(accessor)
+            .map(normalizer)
+            .anyMatch(normalizedValue::equals);
     }
 
     /**

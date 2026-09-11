@@ -21,9 +21,9 @@ package org.springframework.samples.petclinic.rest.advice;
  * request opts in with {@code sharesHousehold=true}. Handled by
  * {@link ExceptionControllerAdvice} as a 409 Conflict.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateHouseholdException extends OwnerConflictException {
 
     public DuplicateHouseholdException(String message) {
-        super(message);
+        super(message, "An owner with the same last name and address already exists");
     }
 }

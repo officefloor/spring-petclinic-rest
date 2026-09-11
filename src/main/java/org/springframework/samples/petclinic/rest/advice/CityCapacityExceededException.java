@@ -20,9 +20,9 @@ package org.springframework.samples.petclinic.rest.advice;
  * owners (compared case-insensitively). Handled by {@link ExceptionControllerAdvice} as a
  * 409 Conflict.
  */
-public class CityCapacityExceededException extends RuntimeException {
+public class CityCapacityExceededException extends OwnerConflictException {
 
     public CityCapacityExceededException(String message) {
-        super(message);
+        super(message, "The owner's city already contains the maximum number of owners");
     }
 }

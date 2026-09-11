@@ -19,9 +19,9 @@ package org.springframework.samples.petclinic.rest.advice;
  * Thrown when an attempt is made to create an owner whose normalized telephone is already
  * in use by another owner. Handled by {@link ExceptionControllerAdvice} as a 409 Conflict.
  */
-public class DuplicateTelephoneException extends RuntimeException {
+public class DuplicateTelephoneException extends OwnerConflictException {
 
     public DuplicateTelephoneException(String message) {
-        super(message);
+        super(message, "An owner with the same telephone already exists");
     }
 }

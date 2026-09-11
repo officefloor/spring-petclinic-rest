@@ -53,9 +53,6 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
-    private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
-    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
-    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_EXCEEDED = "The maximum number of owners that may be created today has been reached";
     private static final String ERROR_INVALID_TELEPHONE = "The supplied telephone number is not a valid E.164 number";
     private static final String ERROR_INVALID_ADDRESS = "The supplied address is blank after normalization";
@@ -130,63 +127,26 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException}, raised when an owner is created with a normalized
-     * telephone that is already used by another owner, returning a 409 Conflict status.
+     * Handles {@link OwnerConflictException}, the base type for every create-time rule that rejects
+     * a new owner with a 409 Conflict (e.g. a duplicate telephone, a duplicate household or a city
+     * at capacity), returning a 409 Conflict status. The client-facing detail is taken from the
+     * exception's {@link OwnerConflictException#getDetail()} so each rule keeps its own wording
+     * while sharing this single handler.
      *
-     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param e The {@link OwnerConflictException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
      */
-    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ExceptionHandler(OwnerConflictException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
-        logger.warn("Duplicate telephone at {} {}: {}",
+    public ResponseEntity<ProblemDetail> handleOwnerConflictException(OwnerConflictException e, HttpServletRequest request) {
+        logger.warn("Owner conflict ({}) at {} {}: {}",
+            e.getClass().getSimpleName(),
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateHouseholdException}, raised when an owner is created whose last name
-     * and address already match another owner (and the request did not opt in with
-     * {@code sharesHousehold=true}), returning a 409 Conflict status.
-     *
-     * @param e The {@link DuplicateHouseholdException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
-     */
-    @ExceptionHandler(DuplicateHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
-        logger.warn("Duplicate household at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link CityCapacityExceededException}, raised when an owner is created in a city that
-     * already contains 50 or more owners, returning a 409 Conflict status.
-     *
-     * @param e The {@link CityCapacityExceededException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
-     */
-    @ExceptionHandler(CityCapacityExceededException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
-        logger.warn("City at capacity at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getDetail());
         return ResponseEntity.status(status).body(detail);
     }
 
