@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_INVALID_TELEPHONE = "The supplied telephone number is not a valid E.164 number";
     private static final String ERROR_INVALID_ADDRESS = "The supplied address is blank after normalization";
 
@@ -165,6 +166,26 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityCapacityExceededException}, raised when an owner is created in a city that
+     * already contains 50 or more owners, returning a 409 Conflict status.
+     *
+     * @param e The {@link CityCapacityExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+     */
+    @ExceptionHandler(CityCapacityExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
+        logger.warn("City at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
         return ResponseEntity.status(status).body(detail);
     }
 

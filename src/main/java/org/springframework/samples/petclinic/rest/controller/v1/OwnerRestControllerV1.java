@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -57,6 +58,10 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Maximum number of owners a single city may contain; creating an owner in a city that
+     *  already has this many owners is rejected with 409 Conflict. */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -119,6 +124,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         normalizeOwnerFields(owner);
+        // Reject creating an owner when the owner's city already contains 50 or more owners.
+        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new CityCapacityExceededException(
+                "The city " + owner.getCity() + " already contains the maximum number of owners");
+        }
         // Reject creating an owner whose normalized telephone is already used by another owner.
         String normalizedTelephone = owner.getTelephone();
         if (isTelephoneInUse(normalizedTelephone)) {
