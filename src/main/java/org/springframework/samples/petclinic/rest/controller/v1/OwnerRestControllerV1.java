@@ -200,10 +200,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param ownerFieldsDto the incoming owner payload
      */
     private void populateDerivedFields(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        owner.setCustomerCode(identityKeyResolver.deriveCustomerCode(owner));
+        owner.setCustomerCode(deriveUniqueCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         assignHouseholdId(owner);
+    }
+
+    /**
+     * Derives an owner's {@code customerCode} and de-duplicates it against the owners that already exist. The base code
+     * is the pure derivation (see {@link IdentityKeyResolver#deriveCustomerCode}); when it collides with an existing
+     * owner's {@code customerCode} it is suffixed with {@code -<n>}, taking the smallest {@code n} of 2 or more that
+     * makes the whole code unique. Evaluated before the new owner is saved, so the collision check reflects only owners
+     * that predate this create; distinct owners therefore always receive distinct customer codes.
+     *
+     * @param owner the newly mapped owner about to be saved, with its telephone already normalized
+     * @return the de-duplicated customer code, unique across all existing owners
+     */
+    private String deriveUniqueCustomerCode(Owner owner) {
+        String base = identityKeyResolver.deriveCustomerCode(owner);
+        Collection<Owner> existing = this.clinicService.findAllOwners();
+        String candidate = base;
+        int n = 2;
+        while (isCustomerCodeInUse(candidate, existing)) {
+            candidate = base + "-" + n;
+            n++;
+        }
+        return candidate;
+    }
+
+    private boolean isCustomerCodeInUse(String customerCode, Collection<Owner> existing) {
+        return existing.stream().anyMatch(other -> customerCode.equals(other.getCustomerCode()));
     }
 
     /**
