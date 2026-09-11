@@ -1,49 +1,31 @@
 package org.springframework.samples.petclinic.model;
 
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-
 /**
- * Derives an owner's numeric membership level.
+ * Derives an owner's numeric membership level from their {@link MembershipPoints}.
  *
- * <p>Starts at 1; add 1 when an email is present; add 1 when {@code namesakeCount}
- * is 0; these pre-tenure factors are capped at 3. Level 4 is reserved for tenure:
- * it requires a {@code registrationDate} more than 365 days in the past. Because a
- * newly created owner has zero tenure, a new owner never exceeds level 3.
+ * <p>Maps points to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
  */
 public final class MembershipLevel {
-
-    /** The maximum level from pre-tenure factors; level 4 is reserved for tenure. */
-    public static final int MAX = 3;
-
-    /** Tenure, in days, that must be exceeded to reach level 4. */
-    public static final long TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
 
     /** The membership level for the given owner. */
     public static int of(Owner owner) {
-        int level = 1;
-        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
-        }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
-        }
-        level = Math.min(level, MAX);
-        if (hasTenure(owner)) {
-            level++;
-        }
-        return level;
+        return fromPoints(MembershipPoints.of(owner));
     }
 
-    /** Whether the owner's tenure exceeds {@link #TENURE_DAYS} days. */
-    private static boolean hasTenure(Owner owner) {
-        LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate == null) {
-            return false;
+    /** Maps membership points to a membership level. */
+    public static int fromPoints(int points) {
+        if (points <= 1) {
+            return 1;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 }
