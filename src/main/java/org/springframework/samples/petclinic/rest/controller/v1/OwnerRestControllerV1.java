@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +80,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; a successful create emits a single line here with the new owner's key details. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Source of the {@link OwnerCreatedEvent}'s {@code seq}: a process-wide, monotonically increasing counter across
+     * every owner create, so the structured audit events carry a strictly ordered sequence regardless of which
+     * controller instance handled the request.
+     */
+    private static final AtomicLong OWNER_CREATED_SEQUENCE = new AtomicLong();
 
     /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
     private static final int MAX_OWNERS_PER_CITY = 50;
@@ -279,6 +287,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * customer code suffixed with {@code -M} and the two-digit fiscal year of the registration date (see
      * {@link FiscalYearResolver#fiscalYear}).
      *
+     * <p>In addition to the human-readable line, a single immutable structured event is emitted as JSON (see
+     * {@link OwnerCreatedEvent}), carrying a monotonically increasing {@code seq} (see
+     * {@link #OWNER_CREATED_SEQUENCE}), the owner's id, its current primary identifier (see
+     * {@link #primaryIdentifier(Owner)}) and its membership level under the {@code OWNER_CREATED} event type.
+     *
      * @param owner the newly created, persisted owner, with all its derived fields already in place
      */
     private void auditOwnerCreated(Owner owner) {
@@ -287,6 +300,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             MembershipLevelResolver.deriveMembershipLevel(owner),
             owner.getCustomerCode() + "-M" + String.format("%02d",
                 FiscalYearResolver.fiscalYear(owner.getRegistrationDate()) % 100));
+        OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), cappedMembershipLevel(owner));
+        AUDIT.info(event.toJson());
+    }
+
+    /**
+     * Returns the owner's current primary identifier — the value the structured {@link OwnerCreatedEvent} carries as the
+     * owner's identity. Today that is the {@code customerCode}; when the customer code is later unified into a
+     * {@code memberId}, this single method changes to return the member id and the event carries it instead, with no
+     * other change to the emission.
+     *
+     * @param owner the newly created, persisted owner
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
