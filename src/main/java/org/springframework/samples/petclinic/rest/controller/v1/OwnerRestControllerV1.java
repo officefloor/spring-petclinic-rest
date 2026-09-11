@@ -110,6 +110,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        // Default the registration date to the server's current date when the client did not
+        // supply one, so it is persisted and returned in ISO 'YYYY-MM-DD' form.
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
         // Reject creating an owner whose normalized telephone is already used by another owner.
         if (isTelephoneInUse(normalizedTelephone)) {
             throw new DuplicateTelephoneException(
