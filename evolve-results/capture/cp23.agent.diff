@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1bf3856a6..52a90fe79 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,9 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier",
+-        expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\")")
++        expression = "java((owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) ? \"GOLD\" "
++            + ": ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
++            + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 77f245369..65974e67b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
+@@ -136,6 +139,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public String getMembershipNumber() {
+         return this.membershipNumber;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bd53f77e8..5980e4525 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -164,6 +164,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 }
+             }
+         }
++        // Record the size of this owner's household after this create, i.e. the number of owners
++        // sharing this owner's 'householdId' once it is persisted. An owner that shares an existing
++        // household counts the matched members plus itself; an owner without a shared household is a
++        // household of one. Fixed at creation time and used to derive the 'GOLD' membership tier.
++        owner.setHouseholdSize(owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1);
+         // Record how many existing owners already share this owner's first and last name
+         // (compared case-insensitively) before this create, fixed at creation time.
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a99268805..b8431029a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   membership_number VARCHAR(20),
+   bulk_signup_warning BOOLEAN
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 54f7ee0e3..a91ad44f0 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   membership_number VARCHAR(20),
+   bulk_signup_warning BOOLEAN
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 99c1e5dbb..8283265d3 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(32),
+   namesake_count INT,
++  household_size INT,
+   membership_number VARCHAR(20),
+   bulk_signup_warning BIT(1),
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 3f92876b9..bd078ff4b 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
++                                      household_size INTEGER,
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN
+ );
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ee3dccae2..d2f128c16 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2152,6 +2152,8 @@ components:
+               title: Membership tier
+               description: >-
+                 The pet owner's membership tier derived from their details:
++                'GOLD' when the owner's household (owners sharing the same
++                householdId) has 3 or more members after this create; otherwise
+                 'SILVER' when the namesake count is 0 and an email address is
+                 present, otherwise 'BRONZE'.
+               type: string
