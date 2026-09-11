@@ -106,6 +106,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; a line is emitted here for each successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; a welcome notification is enqueued here for each successful
+     *  owner create, carrying the owner id and member id. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Serializes the immutable structured audit event emitted alongside the audit line. */
     private static final ObjectMapper AUDIT_EVENT_MAPPER = JsonMapper.builder().build();
 
@@ -262,9 +266,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         // Record the successful create on the dedicated AUDIT log.
         auditOwnerCreated(owner, ownerDto);
+        // Enqueue the welcome notification for the newly created owner.
+        enqueueWelcomeNotification(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Enqueues the welcome notification for a newly created owner by emitting a line on the
+     * dedicated {@code NOTIFY} log carrying the owner id and its member id, so the welcome side-effect
+     * of a create has a single home separate from the audit trail. The member id is resolved through
+     * {@link #primaryIdentifier} so the notification follows the owner's primary identifier.
+     *
+     * @param owner the persisted owner to welcome
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("Welcome notification: ownerId={} memberId={}",
+            owner.getId(), primaryIdentifier(owner));
     }
 
     /**
