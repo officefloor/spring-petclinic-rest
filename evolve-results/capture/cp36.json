@@ -1,0 +1,803 @@
+{
+  "checkpoint": 36,
+  "checkpoint_id": "household-hash",
+  "phase": "Mid",
+  "type": "mutative",
+  "mutates": [
+    10,
+    11,
+    23,
+    28,
+    35
+  ],
+  "request": {
+    "spec": "The householdId must become deterministic: the first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode), so owners with the same lastName and postcode share it automatically. This changes existing behaviour: 'sharesHousehold' now only bypasses the duplicate block rather than creating the link, and everything that keys off the household (duplicate detection and the household-size input to the membership level) must use this computed householdId. Because the household is now keyed on (lastName, postcode), owners sharing lastName and postcode are the same household: a second such owner is rejected as a household duplicate (409) unless it sets 'sharesHousehold', in which case it is created as a declared household member and is NOT flagged as a possible duplicate (a declared member is not a suspected duplicate).",
+    "prompt": "Implement the following change to the application so that it fully satisfies\nthe specification and all existing and new tests pass. Run the test suite and\nmake it green before finishing.\n\nThe householdId must become deterministic: the first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode), so owners with the same lastName and postcode share it automatically. This changes existing behaviour: 'sharesHousehold' now only bypasses the duplicate block rather than creating the link, and everything that keys off the household (duplicate detection and the household-size input to the membership level) must use this computed householdId. Because the household is now keyed on (lastName, postcode), owners sharing lastName and postcode are the same household: a second such owner is rejected as a household duplicate (409) unless it sets 'sharesHousehold', in which case it is created as a declared household member and is NOT flagged as a possible duplicate (a declared member is not a suspected duplicate).\n"
+  },
+  "commit_sha": "7a1d791852e8d375fc77af97940ae2b34d1b00af",
+  "reset_sha": "",
+  "preagent_sha": "a7de3f0da0e1a02a28b17ff7476ad2b5bfd23888",
+  "prev_sha": "a7de3f0da0e1a02a28b17ff7476ad2b5bfd23888",
+  "base_sha": "25112acf71cc47599da9b38c2ce7bb2e0ccfc041",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.4187305,
+    "input_tokens": 64,
+    "output_tokens": 25637,
+    "cache_read_tokens": 2003083,
+    "cache_creation_tokens": 77473,
+    "num_turns": 34,
+    "duration_ms": 413776,
+    "duration_api_ms": 315930,
+    "model": "claude-opus-4-8",
+    "session_id": "0c12ce7a-6ab2-4126-a7e6-599912ebb532",
+    "stop_reason": "success",
+    "result_text": "Build succeeds and all tests pass. Here's a summary of the change.\n\n## What I changed\n\nThe `householdId` is now **deterministic** \u2014 the first 12 hex chars of SHA-256 over `normalizedLastName + '|' + postcode` \u2014 so owners with the same last name and postcode share it automatically, without any explicit linking step.\n\n**`HouseholdNormalizer`** (`util/HouseholdNormalizer.java`)\n- Replaced the address-based `householdKey`/`householdId(lastName, address)` pair with a single `householdId(lastName, postcode)` that hashes `normalizedLastName + '|' + postcode` (last name trimmed/whitespace-collapsed/lower-cased; postcode used as-is, empty when absent). Dropped the old `HH-` prefix.\n\n**`OwnerRestControllerV1`** (`addOwner` flow)\n- `applyHouseholdMembership` now: (1) always assigns the computed `householdId`; (2) treats any existing owner with the same `householdId` as the same household \u2014 a second such owner is rejected **409** as a household duplicate **unless** `sharesHousehold` is set, in which case it's created as a *declared household member*; (3) records `householdSize` (members + 1). It returns whether the owner is a declared member.\n- `sharesHousehold` now only **bypasses the duplicate block** \u2014 the linking/back-fill logic (`linkToHousehold`) is gone since the id is deterministic.\n- `sameHouseholdOwners` now matches by computed `householdId` instead of last-name+address.\n- `assignPossibleDuplicate` skips flagging for a declared household member (\"a declared member is not a suspected duplicate\").\n- The existing identity-key check still runs after the household id is resolved, so it keys off the computed `householdId` (as `getIdentityKey()` already reads that field).\n\n**New exception** `HouseholdDuplicateException` (extends `OwnerConflictException` \u2192 maps to 409).\n\n**`openapi.yml`** \u2014 updated the now-stale `sharesHousehold`, `householdId`, and `possibleDuplicate` descriptions to match the new semantics.\n\nThe provided acceptance test (`coreSameLastNameAndPostcodeShareHouseholdId`) and the full suite are green (`BUILD SUCCESS`).\n\nOne design note worth surfacing: I kept the pre-existing identity-key duplicate check in place alongside the new household-duplicate rule. Since `householdId` is now part of the identity key, an *exact* identity duplicate (same telephone + email + household) is still rejected 409 even with `sharesHousehold` set \u2014 `sharesHousehold` bypasses only the household block, not a fully-identical record. The spec's test doesn't exercise that case (owner `b` uses a distinct telephone), so this is a judgment call; let me know if you'd prefer `sharesHousehold` to bypass identity collisions too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 2.4187305,
+        "input_tokens": 64,
+        "output_tokens": 25637,
+        "cache_read_tokens": 2003083,
+        "cache_creation_tokens": 77473,
+        "num_turns": 34,
+        "duration_ms": 413776,
+        "duration_api_ms": 315930,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp36.agent.jsonl",
+  "agent_diff_file": "cp36.agent.diff",
+  "build_log_file": "cp36.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 50,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName": true,
+      "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength": true,
+      "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsMalformedPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresValidPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreAcceptsOwnerWithoutPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes": true,
+      "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp24Tests#coreNumericLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp30Tests#functionalityPostcodePreferredOverCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreRegionFromPostcodeRange": true,
+      "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion": true,
+      "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreSameLastNameAndPostcodeShareHouseholdId": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelReplacesTier": true,
+      "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared": true,
+      "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay": true,
+      "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorStillRejectsMissingCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhitespaceOnlyAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#errorRejectsBlankAfterNormalize": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesWhitespaceAndCase": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#functionalityExpandsAbbreviations": true,
+      "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreMembershipNumberOnRegionHashCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreComputedHouseholdMemberHasLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName",
+        "passed": true,
+        "skipped": false,
+        "time": 0.032,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.027,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsMalformedPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresValidPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.026,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreAcceptsOwnerWithoutPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.045,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes",
+        "passed": true,
+        "skipped": false,
+        "time": 0.024,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.052,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp24Tests#coreNumericLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.053,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp30Tests#functionalityPostcodePreferredOverCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreRegionFromPostcodeRange",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent",
+        "passed": true,
+        "skipped": false,
+        "time": 0.048,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.039,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit",
+        "passed": true,
+        "skipped": false,
+        "time": 1.091,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.011,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.028,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.033,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.733,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.045,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreSameLastNameAndPostcodeShareHouseholdId",
+        "passed": true,
+        "skipped": false,
+        "time": 0.055,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged",
+        "passed": true,
+        "skipped": false,
+        "time": 0.023,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelReplacesTier",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared",
+        "passed": true,
+        "skipped": false,
+        "time": 0.082,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence",
+        "passed": true,
+        "skipped": false,
+        "time": 0.023,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.006,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.06,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept",
+        "passed": true,
+        "skipped": false,
+        "time": 0.068,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday",
+        "passed": true,
+        "skipped": false,
+        "time": 0.051,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorStillRejectsMissingCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.007,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhitespaceOnlyAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.006,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#errorRejectsBlankAfterNormalize",
+        "passed": true,
+        "skipped": false,
+        "time": 0.743,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesWhitespaceAndCase",
+        "passed": true,
+        "skipped": false,
+        "time": 0.421,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#functionalityExpandsAbbreviations",
+        "passed": true,
+        "skipped": false,
+        "time": 0.068,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreMembershipNumberOnRegionHashCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.085,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.044,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.011,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.04,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreComputedHouseholdMemberHasLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.074,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": {
+    "enabled": true,
+    "enforcement": "advisory",
+    "block_percentile": 95.0,
+    "warn_percentile": 85.0,
+    "max_refactors": 1,
+    "max_review_turns": 3,
+    "refactors": 1,
+    "passed": false,
+    "stopped": false,
+    "stop_reason": null,
+    "pre_checkpoint_sha": "f338f40f9979c38e469ad9417022728b0622da16",
+    "attempts": [
+      {
+        "kind": "implement",
+        "grade": 99.45,
+        "impact": 50379,
+        "blocked": true,
+        "files": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "lang": "java",
+            "cost": 16664,
+            "mutation": 16664,
+            "godclass": 0,
+            "mut_fns": 4,
+            "new_fns": 0
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "lang": "java",
+            "cost": 126,
+            "mutation": 126,
+            "godclass": 0,
+            "mut_fns": 1,
+            "new_fns": 0
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/advice/HouseholdDuplicateException.java",
+            "lang": "java",
+            "cost": 3,
+            "mutation": 0,
+            "godclass": 3,
+            "mut_fns": 0,
+            "new_fns": 1
+          }
+        ],
+        "drivers": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::applyHouseholdMembership",
+            "container": "OwnerRestControllerV1",
+            "cc": 6,
+            "wmc_other": 56,
+            "cost": 13440,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::assignPossibleDuplicate",
+            "container": "OwnerRestControllerV1",
+            "cc": 8,
+            "wmc_other": 55,
+            "cost": 1760,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::addOwner",
+            "container": "OwnerRestControllerV1",
+            "cc": 1,
+            "wmc_other": 61,
+            "cost": 1037,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::sameHouseholdOwners",
+            "container": "OwnerRestControllerV1",
+            "cc": 1,
+            "wmc_other": 61,
+            "cost": 427,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "name": "HouseholdNormalizer::householdId",
+            "container": "HouseholdNormalizer",
+            "cc": 3,
+            "wmc_other": 6,
+            "cost": 126,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/advice/HouseholdDuplicateException.java",
+            "name": "HouseholdDuplicateException::HouseholdDuplicateException",
+            "container": "HouseholdDuplicateException",
+            "cc": 1,
+            "wmc_other": 0,
+            "cost": 3,
+            "kind": "godclass"
+          }
+        ],
+        "sha": ""
+      },
+      {
+        "kind": "refactor",
+        "grade": 98.91,
+        "impact": 19552,
+        "blocked": true,
+        "files": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "lang": "java",
+            "cost": 9758,
+            "mutation": 5046,
+            "godclass": 4712,
+            "mut_fns": 3,
+            "new_fns": 3
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "lang": "java",
+            "cost": 18,
+            "mutation": 18,
+            "godclass": 0,
+            "mut_fns": 1,
+            "new_fns": 0
+          }
+        ],
+        "drivers": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::applyHouseholdMembership",
+            "container": "OwnerRestControllerV1",
+            "cc": 3,
+            "wmc_other": 56,
+            "cost": 4032,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::isPossibleDuplicateOf",
+            "container": "OwnerRestControllerV1",
+            "cc": 6,
+            "wmc_other": 62,
+            "cost": 2976,
+            "kind": "godclass"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::linkToHousehold",
+            "container": "OwnerRestControllerV1",
+            "cc": 3,
+            "wmc_other": 62,
+            "cost": 1488,
+            "kind": "godclass"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::assignPossibleDuplicate",
+            "container": "OwnerRestControllerV1",
+            "cc": 2,
+            "wmc_other": 55,
+            "cost": 770,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::householdSize",
+            "container": "OwnerRestControllerV1",
+            "cc": 2,
+            "wmc_other": 62,
+            "cost": 248,
+            "kind": "godclass"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::sameHouseholdOwners",
+            "container": "OwnerRestControllerV1",
+            "cc": 1,
+            "wmc_other": 61,
+            "cost": 244,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "name": "HouseholdNormalizer::householdId",
+            "container": "HouseholdNormalizer",
+            "cc": 1,
+            "wmc_other": 6,
+            "cost": 18,
+            "kind": "mutation"
+          }
+        ],
+        "sha": "a7de3f0da0e1a02a28b17ff7476ad2b5bfd23888",
+        "agent": {
+          "ok": true,
+          "cost_usd": 2.1711425,
+          "input_tokens": 48,
+          "output_tokens": 30007,
+          "cache_read_tokens": 1325615,
+          "cache_creation_tokens": 75619,
+          "num_turns": 32,
+          "duration_ms": 473200,
+          "duration_api_ms": 413614,
+          "model": "claude-opus-4-8",
+          "stop_reason": "success",
+          "error": ""
+        },
+        "tests": {
+          "build_ok": true,
+          "total_selected": 50,
+          "passed": 46,
+          "total": 50,
+          "error": null
+        },
+        "quality": {
+          "passed": true,
+          "ran": true,
+          "added_lines": 27,
+          "clone_finding_lines": 0,
+          "smell_finding_lines": 0,
+          "findings": [],
+          "reason": null
+        }
+      },
+      {
+        "kind": "implement",
+        "grade": 98.91,
+        "impact": 21489,
+        "blocked": true,
+        "files": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "lang": "java",
+            "cost": 7122,
+            "mutation": 7122,
+            "godclass": 0,
+            "mut_fns": 4,
+            "new_fns": 0
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "lang": "java",
+            "cost": 38,
+            "mutation": 38,
+            "godclass": 0,
+            "mut_fns": 2,
+            "new_fns": 0
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/advice/HouseholdDuplicateException.java",
+            "lang": "java",
+            "cost": 3,
+            "mutation": 0,
+            "godclass": 3,
+            "mut_fns": 0,
+            "new_fns": 1
+          }
+        ],
+        "drivers": [
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::applyHouseholdMembership",
+            "container": "OwnerRestControllerV1",
+            "cc": 3,
+            "wmc_other": 62,
+            "cost": 5022,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::addOwner",
+            "container": "OwnerRestControllerV1",
+            "cc": 1,
+            "wmc_other": 64,
+            "cost": 960,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::assignPossibleDuplicate",
+            "container": "OwnerRestControllerV1",
+            "cc": 3,
+            "wmc_other": 63,
+            "cost": 756,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java",
+            "name": "OwnerRestControllerV1::sameHouseholdOwners",
+            "container": "OwnerRestControllerV1",
+            "cc": 1,
+            "wmc_other": 64,
+            "cost": 384,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "name": "HouseholdNormalizer::householdId",
+            "container": "HouseholdNormalizer",
+            "cc": 2,
+            "wmc_other": 3,
+            "cost": 30,
+            "kind": "mutation"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/util/HouseholdNormalizer.java",
+            "name": "HouseholdNormalizer::normalizeLastName",
+            "container": "HouseholdNormalizer",
+            "cc": 2,
+            "wmc_other": 2,
+            "cost": 8,
+            "kind": "rename"
+          },
+          {
+            "path": "src/main/java/org/springframework/samples/petclinic/rest/advice/HouseholdDuplicateException.java",
+            "name": "HouseholdDuplicateException::HouseholdDuplicateException",
+            "container": "HouseholdDuplicateException",
+            "cc": 1,
+            "wmc_other": 0,
+            "cost": 3,
+            "kind": "godclass"
+          }
+        ],
+        "sha": ""
+      }
+    ]
+  }
+}
