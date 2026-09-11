@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java
+new file mode 100644
+index 000000000..c283ff86c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java
+@@ -0,0 +1,29 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when an owner's email address uses a domain on the disposable-domain blocklist
++ * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Reported as a
++ * {@code 400 Bad Request} by the {@link ExceptionControllerAdvice}.
++ */
++public class DisposableEmailException extends RuntimeException {
++
++    public DisposableEmailException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 54ab23319..7bf0e693c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -222,6 +222,25 @@ public class ExceptionControllerAdvice {
+         return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("registrationDate"));
+     }
+ 
++    /**
++     * Handles {@link DisposableEmailException}, thrown when an owner's email uses a domain on the disposable-domain
++     * blocklist ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Returns a
++     * {@code 400 Bad Request} reporting the {@code email} field.
++     *
++     * @param e The {@link DisposableEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(DisposableEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
++        logger.debug("Disposable email domain at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("email"));
++    }
++
+     /**
+      * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
+      * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+index bd855a5cc..1ad02bdbb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+@@ -16,6 +16,9 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
++import java.util.Set;
++
++import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -25,6 +28,10 @@ import org.springframework.stereotype.Component;
+  * <p>A syntactically valid address is already enforced by Bean Validation on the request payload, so normalization only
+  * canonicalizes the value by lower-casing it. So {@code "Owner@Example.TEST"} becomes {@code "owner@example.test"}.
+  *
++ * <p>Normalization also rejects any address whose domain is on the disposable-domain blocklist
++ * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}), since such throwaway addresses are not
++ * acceptable owner contacts. The comparison is case-insensitive because the value is canonicalized (lower-cased) first.
++ *
+  * <p>Unlike the address and telephone, an email is optional: a missing (blank or {@code null}) value is left untouched,
+  * so callers can uniformly treat a blank result as a missing email. The same canonical form is used both for the value
+  * that is stored and returned and for every email comparison (such as duplicate detection across existing owners), so
+@@ -33,18 +40,45 @@ import org.springframework.stereotype.Component;
+ @Component
+ public class EmailNormalizer {
+ 
++    /** Domains of throwaway email providers that an owner's email may not use. */
++    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     /**
+      * Normalizes an owner email into its canonical stored form by lower-casing it. A missing (blank or {@code null})
+      * email is returned untouched, since the field is optional. The normalized value is what gets stored and returned as
+-     * {@code email}, and the same form is used when comparing an owner's email against those of existing owners.
++     * {@code email}, and the same form is used when comparing an owner's email against those of existing owners. An
++     * email whose domain is on the disposable-domain blocklist is rejected.
+      *
+      * @param email the raw email value from the request, may be {@code null}
+      * @return the lower-cased email, or the original value when none was supplied
++     * @throws DisposableEmailException if the email's domain is on the disposable-domain blocklist
+      */
+     public String normalize(String email) {
+         if (email == null || email.isBlank()) {
+             return email;
+         }
+-        return email.toLowerCase();
++        String normalized = email.toLowerCase();
++        rejectDisposableDomain(normalized);
++        return normalized;
++    }
++
++    /**
++     * Rejects a normalized email whose domain (the part after the final {@code '@'}) is on the disposable-domain
++     * blocklist. An address without a domain part is left to Bean Validation's syntactic check and passes here.
++     *
++     * @param normalized the lower-cased email
++     * @throws DisposableEmailException if the domain is on the disposable-domain blocklist
++     */
++    private void rejectDisposableDomain(String normalized) {
++        int at = normalized.lastIndexOf('@');
++        if (at < 0) {
++            return;
++        }
++        String domain = normalized.substring(at + 1);
++        if (DISPOSABLE_DOMAINS.contains(domain)) {
++            throw new DisposableEmailException(
++                "email domain " + domain + " is on the disposable-domain blocklist");
++        }
+     }
+ }
