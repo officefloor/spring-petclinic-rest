@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -24,6 +25,10 @@ public class RequireOwnerFields {
      *  none containing whitespace or a second '@'. */
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /** Disposable email domains that are never accepted, matched case-insensitively. */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws RequiredFieldsException {
@@ -57,7 +62,14 @@ public class RequireOwnerFields {
             if (!EMAIL_PATTERN.matcher(email).matches()) {
                 throw new RequiredFieldsException(List.of("email"));
             }
-            request.setEmail(email.toLowerCase());
+            String lowerEmail = email.toLowerCase();
+            // Reject disposable-domain addresses: the domain (text after the last '@')
+            // must not be on the blocklist.
+            String domain = lowerEmail.substring(lowerEmail.lastIndexOf('@') + 1);
+            if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+                throw new RequiredFieldsException(List.of("email"));
+            }
+            request.setEmail(lowerEmail);
         }
         // Postcode is optional; when present it must be a 4-digit code that is valid for
         // the owner's city per the fixed region ranges (a city with no known region accepts
