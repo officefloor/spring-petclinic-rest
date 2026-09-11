@@ -70,7 +70,7 @@ public interface OwnerMapper {
      */
     default String locality(Owner owner) {
         return owner.getCustomerCode() != null
-            ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))
+            ? org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())
             : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
     }
 

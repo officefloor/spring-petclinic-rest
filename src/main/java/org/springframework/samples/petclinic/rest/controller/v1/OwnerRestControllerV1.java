@@ -49,6 +49,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.LocalityResolver;
@@ -706,11 +707,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String customerCode(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
         String hash8 = Sha256Hex.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
-        String base = region + "-" + hash8;
-        Set<String> taken = existingOwners()
+        String base = CustomerCode.format(region, hash8);
+        return deduplicateCode(base, existingCustomerCodes());
+    }
+
+    /**
+     * Collects the customer codes already assigned to existing owners, the set a newly built code is
+     * de-duplicated against. Gathering them here keeps {@link #customerCode} focused on building the
+     * code and lets the uniqueness step (see {@link #deduplicateCode}) work against the codes alone.
+     *
+     * @return the customer codes currently in use
+     */
+    private Set<String> existingCustomerCodes() {
+        return existingOwners()
             .map(Owner::getCustomerCode)
             .filter(code -> code != null)
             .collect(Collectors.toSet());
+    }
+
+    /**
+     * Returns a unique code for a newly built base identifier: the base itself when it is not already
+     * taken, otherwise the base with {@code "-<n>"} appended, using the smallest {@code n} of 2 or
+     * more that makes it unique. Keeping the collision rule in its own helper leaves the identifier's
+     * construction to its builder and gives the "make it unique" step a single home independent of
+     * which identifier is being assigned.
+     *
+     * @param base  the freshly built identifier, before any uniqueness suffix
+     * @param taken the identifiers already in use
+     * @return {@code base} when unused, otherwise the smallest {@code base + "-" + n} not in {@code taken}
+     */
+    private String deduplicateCode(String base, Set<String> taken) {
         if (!taken.contains(base)) {
             return base;
         }
