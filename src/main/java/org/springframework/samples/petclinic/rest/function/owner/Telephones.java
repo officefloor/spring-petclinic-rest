@@ -57,4 +57,40 @@ public final class Telephones {
         }
         return "+" + digits;
     }
+
+    /**
+     * Formats a stored telephone number for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code "+61412345678"} ->
+     * {@code "+61 412 345 678"}). The input is first normalized via {@link #toE164};
+     * when it cannot form a valid E.164 number {@code null} is returned.
+     *
+     * <p>For a recognised country code the code is split off first so it stays intact;
+     * otherwise the digits after the {@code '+'} are grouped in threes as a whole.
+     */
+    public static String toDisplay(String telephone) {
+        String e164 = toE164(telephone);
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> country : NATIONAL_LENGTHS.entrySet()) {
+            String code = country.getKey();
+            if (digits.startsWith(code) && digits.length() - code.length() == country.getValue()) {
+                return "+" + code + " " + groupInThrees(digits.substring(code.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /** Groups digits into space-separated runs of three, from the left. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
 }
