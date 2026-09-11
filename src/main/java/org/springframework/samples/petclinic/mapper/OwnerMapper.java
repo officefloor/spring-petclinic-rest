@@ -28,7 +28,9 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(Math.min(3, 1 "
             + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
-            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)) "
+            + "+ ((owner.getRegistrationDate() != null "
+            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) ? 1 : 0))")
     @Mapping(target = "locality",
         expression = "java(owner.getCustomerCode() != null "
             + "? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) "
