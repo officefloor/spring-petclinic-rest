@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.util;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.stereotype.Component;
@@ -58,35 +55,16 @@ public class HouseholdNormalizer {
      * address. The identifier is a pure function of the canonical {@link #householdKey key},
      * so every owner in the same household derives the identical value and it never changes
      * between calls (a "stable shared identifier"). It is formatted 'HH-' followed by the
-     * first 12 upper-case hex characters of the SHA-256 of the household key.
+     * first 12 upper-case hex characters of the SHA-256 of the household key, hashed via the
+     * shared {@link Sha256Hex} helper so every hash-derived identifier in the app is computed
+     * one way.
      *
      * @param lastName the owner's last name (may be {@code null})
      * @param address  the owner's address (may be {@code null})
      * @return the stable household identifier
      */
     public String householdId(String lastName, String address) {
-        return "HH-" + sha256Hex(householdKey(lastName, address)).substring(0, 12).toUpperCase(Locale.ROOT);
-    }
-
-    /**
-     * Computes the lower-case hex SHA-256 digest of the UTF-8 bytes of the given value.
-     *
-     * @param value the value to hash
-     * @return the hex-encoded digest
-     */
-    private String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return "HH-" + Sha256Hex.upperHexPrefix(householdKey(lastName, address), 12);
     }
 
     /**

@@ -203,25 +203,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void applyHouseholdMembership(Owner owner, boolean sharesHousehold) {
         // Identify any existing owners who share a household (same last name and address,
         // compared case-insensitively with collapsed whitespace) with the owner being created.
-        List<Owner> householdMembers = sameHouseholdOwners(owner.getLastName(), owner.getAddress());
-        // When opting in and joining an existing household, assign the new owner and every
-        // existing member the same stable household identifier derived from the last name and
-        // address, so all owners of the household share one 'householdId'.
+        List<Owner> householdMembers = sameHouseholdOwners(owner);
+        // When opting in and joining an existing household, link the new owner to it so all
+        // owners of the household share one stable 'householdId'.
         if (sharesHousehold && !householdMembers.isEmpty()) {
-            String householdId = householdNormalizer.householdId(owner.getLastName(), owner.getAddress());
-            owner.setHouseholdId(householdId);
-            for (Owner member : householdMembers) {
-                if (!householdId.equals(member.getHouseholdId())) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
-                }
+            linkToHousehold(owner, householdMembers);
+        }
+        // Record the size of this owner's household after this create, fixed at creation time.
+        owner.setHouseholdSize(householdSize(owner, householdMembers));
+    }
+
+    /**
+     * Links a newly created owner that opts into an existing household to it, by sharing one stable
+     * {@code householdId} across the new owner and every existing member. The identifier is derived
+     * from the owner's last name and address (the same value every member of the household derives),
+     * assigned to the new owner, and assigned to every existing member that does not already carry
+     * it, persisting each member it updates. Called only when the request opts in via
+     * {@code sharesHousehold} and at least one existing member was found.
+     *
+     * @param owner            the newly created owner joining the household
+     * @param householdMembers the existing owners that share the owner's household
+     */
+    private void linkToHousehold(Owner owner, List<Owner> householdMembers) {
+        String householdId = householdNormalizer.householdId(owner.getLastName(), owner.getAddress());
+        owner.setHouseholdId(householdId);
+        for (Owner member : householdMembers) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                this.clinicService.saveOwner(member);
             }
         }
-        // Record the size of this owner's household after this create, i.e. the number of owners
-        // sharing this owner's 'householdId' once it is persisted. An owner that shares an existing
-        // household counts the matched members plus itself; an owner without a shared household is a
-        // household of one. Fixed at creation time.
-        owner.setHouseholdSize(owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1);
+    }
+
+    /**
+     * Computes the size of a newly created owner's household after this create, i.e. the number of
+     * owners sharing this owner's {@code householdId} once it is persisted. An owner that shares an
+     * existing household counts the matched members plus itself; an owner without a shared household
+     * is a household of one. Fixed at creation time.
+     *
+     * @param owner            the owner being created, with its household already resolved
+     * @param householdMembers the existing owners that share the owner's household
+     * @return the household size to record on the owner
+     */
+    private int householdSize(Owner owner, List<Owner> householdMembers) {
+        return owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1;
     }
 
     /**
@@ -284,17 +309,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private void assignPossibleDuplicate(Owner owner) {
         Integer matchId = owner.getPostcode() == null ? null : existingOwners()
-            .filter(existing -> existing.getPostcode() != null
-                && existing.getPostcode().equals(owner.getPostcode())
-                && existing.getLastName() != null
-                && existing.getLastName().equalsIgnoreCase(owner.getLastName())
-                && existing.getTelephone() != null
-                && !existing.getTelephone().equals(owner.getTelephone()))
+            .filter(existing -> isPossibleDuplicateOf(existing, owner))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);
         owner.setPossibleDuplicate(matchId != null);
         owner.setPossibleDuplicateOf(matchId);
+    }
+
+    /**
+     * Tests whether an existing owner makes the owner being created a possible (soft) duplicate: the
+     * two share a postcode (required on both sides, so an owner without a postcode never matches) and
+     * a last name (compared case-insensitively) but carry different (normalized) telephones. A match
+     * flags the new owner as a possible duplicate of the existing one without rejecting the create.
+     *
+     * @param existing an existing owner to compare against
+     * @param owner    the owner being created
+     * @return {@code true} if the existing owner makes the new owner a possible duplicate
+     */
+    private boolean isPossibleDuplicateOf(Owner existing, Owner owner) {
+        return existing.getPostcode() != null
+            && existing.getPostcode().equals(owner.getPostcode())
+            && existing.getLastName() != null
+            && existing.getLastName().equalsIgnoreCase(owner.getLastName())
+            && existing.getTelephone() != null
+            && !existing.getTelephone().equals(owner.getTelephone());
     }
 
     /**
@@ -484,16 +523,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Returns the existing owners who share the given household, i.e. have the same last name and
-     * the same address. The comparison delegates to {@link HouseholdNormalizer} so that values
-     * differing only in letter case or in incidental whitespace are treated as the same household.
+     * Returns the existing owners who share the given owner's household, i.e. have the same last
+     * name and the same address. The comparison delegates to {@link HouseholdNormalizer} so that
+     * values differing only in letter case or in incidental whitespace are treated as the same
+     * household. Centralising how "the same household" is matched here keeps that definition in one
+     * place for every caller.
      *
-     * @param lastName the last name of the owner being created
-     * @param address  the address of the owner being created
-     * @return the existing owners with a matching last name and address (possibly empty)
+     * @param owner the owner being created
+     * @return the existing owners in the owner's household (possibly empty)
      */
-    private List<Owner> sameHouseholdOwners(String lastName, String address) {
-        String householdKey = householdNormalizer.householdKey(lastName, address);
+    private List<Owner> sameHouseholdOwners(Owner owner) {
+        String householdKey = householdNormalizer.householdKey(owner.getLastName(), owner.getAddress());
         return existingOwners()
             .filter(existing -> householdNormalizer
                 .householdKey(existing.getLastName(), existing.getAddress()).equals(householdKey))
