@@ -27,6 +27,9 @@ public class CheckOwnerIdentityUnique {
         }
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a duplicate
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new OwnerIdentityConflictException(householdId);
             }
