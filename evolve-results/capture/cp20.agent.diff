@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f15d55a69..8901e04d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -185,8 +185,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param owner the newly mapped and normalized owner being created
+      */
+     private void rejectDisallowedOwnerCreation(Owner owner) {
+-        // Reject creating an owner once 100 or more owners already carry today's registration date.
+-        if (countOwnersRegisteredToday() >= MAX_OWNERS_PER_DAY) {
++        // Reject creating an owner once 100 or more owners already carry this owner's adjusted
++        // business-day registration date.
++        if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+             throw new DailyOwnerLimitExceededException(
+                 "The maximum number of owners that may be created today has already been reached");
+         }
+@@ -228,10 +229,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // returned in canonical form. A missing email is left untouched.
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+         // Default the registration date to the server's current date when the client did not
+-        // supply one, so it is persisted and returned in ISO 'YYYY-MM-DD' form.
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(java.time.LocalDate.now());
++        // supply one, then roll the effective date forward to a business day so a Saturday or
++        // Sunday (whether supplied or defaulted) becomes the following Monday. The adjusted date
++        // is persisted and returned in ISO 'YYYY-MM-DD' form and is the value every registration-
++        // date-derived field (such as the membership number's year segment) and the per-day
++        // create-limit are computed from.
++        java.time.LocalDate effectiveDate = owner.getRegistrationDate() == null
++            ? java.time.LocalDate.now() : owner.getRegistrationDate();
++        owner.setRegistrationDate(toBusinessDay(effectiveDate));
++    }
++
++    /**
++     * Rolls a registration date forward to a business day: a Saturday or Sunday advances to the
++     * following Monday, while a weekday is returned unchanged. Applied to the effective
++     * registration date (whether supplied in the request or defaulted to the server date) so the
++     * persisted registration date, every value derived from it and the per-day create-limit all
++     * use the adjusted business day.
++     *
++     * @param date the effective registration date
++     * @return the same date if it is a weekday, otherwise the following Monday
++     */
++    private java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
++        java.time.LocalDate adjusted = date;
++        while (adjusted.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
++            || adjusted.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
++            adjusted = adjusted.plusDays(1);
+         }
++        return adjusted;
+     }
+ 
+     /**
+@@ -280,16 +304,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Counts the existing owners whose registration date is today (the server's current date). Used
++     * Counts the existing owners whose registration date is the given adjusted business day. Used
+      * to enforce the per-day cap that rejects creating an owner once {@link #MAX_OWNERS_PER_DAY}
+-     * owners already carry today's registration date.
++     * owners already carry that business day as their registration date.
+      *
+-     * @return the number of existing owners registered today
++     * @param date the adjusted business-day registration date to match
++     * @return the number of existing owners registered on that date
+      */
+-    private int countOwnersRegisteredToday() {
+-        java.time.LocalDate today = java.time.LocalDate.now();
++    private int countOwnersRegisteredOn(java.time.LocalDate date) {
+         return (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .filter(existing -> date.equals(existing.getRegistrationDate()))
+             .count();
+     }
+ 
