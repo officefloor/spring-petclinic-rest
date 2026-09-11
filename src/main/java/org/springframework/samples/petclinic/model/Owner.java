@@ -84,6 +84,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -230,6 +233,23 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    /**
+     * The membership level assigned to this owner at creation time. When present it is the
+     * already-capped level (a new owner's level cannot exceed one above the current maximum
+     * membership level among their existing household members) and is returned as-is; when absent
+     * (e.g. for owners created before the level was persisted) the level is derived from the
+     * membership points on read.
+     *
+     * @return the stored membership level, or {@code null} when none was assigned
+     */
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {

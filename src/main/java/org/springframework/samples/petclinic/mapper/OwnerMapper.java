@@ -98,13 +98,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership level: the level mapped from the owner's membership points.
-     * The level is derived here, per owner, so any owner-scoped adjustment to the level (as opposed
-     * to the pure points-to-level mapping) has a single home, leaving {@link #membershipLevel(int)}
-     * as the plain points-to-level table.
+     * Returns the owner's membership level. When a level was assigned and stored at creation time
+     * (the already-capped level: a new owner's level cannot exceed one above the current maximum
+     * membership level among their existing household members) it is returned as-is; otherwise the
+     * level is derived from the owner's membership points. Deriving the level here, per owner, keeps
+     * any owner-scoped adjustment to the level (the household cap, or the fallback points mapping) in
+     * a single home, leaving {@link #membershipLevel(int)} as the plain points-to-level table.
      */
     default int membershipLevel(Owner owner) {
-        return membershipLevel(membershipPoints(owner));
+        return owner.getMembershipLevel() != null
+            ? owner.getMembershipLevel()
+            : membershipLevel(membershipPoints(owner));
     }
 
     /**
