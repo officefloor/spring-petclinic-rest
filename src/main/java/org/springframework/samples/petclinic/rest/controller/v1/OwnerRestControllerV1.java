@@ -124,17 +124,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         normalizeOwnerFields(owner);
-        // Reject creating an owner when the owner's city already contains 50 or more owners.
-        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
-            throw new CityCapacityExceededException(
-                "The city " + owner.getCity() + " already contains the maximum number of owners");
-        }
-        // Reject creating an owner whose normalized telephone is already used by another owner.
-        String normalizedTelephone = owner.getTelephone();
-        if (isTelephoneInUse(normalizedTelephone)) {
-            throw new DuplicateTelephoneException(
-                "An owner with telephone " + normalizedTelephone + " already exists");
-        }
+        // Enforce the pre-persistence policies that can reject the new owner outright.
+        rejectDisallowedOwnerCreation(owner);
         // Identify any existing owners who share a household (same last name and address,
         // compared case-insensitively with collapsed whitespace) with the owner being created.
         List<Owner> householdMembers = sameHouseholdOwners(owner.getLastName(), owner.getAddress());
@@ -173,6 +164,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Enforces the pre-persistence policies that reject a newly mapped and normalized owner
+     * outright, in order, before any derived fields are assigned or the owner is saved. An owner
+     * in a city that already contains {@link #MAX_OWNERS_PER_CITY} owners is rejected with 409
+     * ({@link CityCapacityExceededException}), and an owner whose normalized telephone is already
+     * used by another owner is rejected with 409 ({@link DuplicateTelephoneException}). Grouping the
+     * independent create-time rejection rules here keeps {@link #addOwner} focused on the household,
+     * derived-field and persistence steps. The household rule stays in {@link #addOwner} itself
+     * because it shares the matched-member lookup with the shared household-id assignment.
+     *
+     * @param owner the newly mapped and normalized owner being created
+     */
+    private void rejectDisallowedOwnerCreation(Owner owner) {
+        // Reject creating an owner when the owner's city already contains 50 or more owners.
+        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new CityCapacityExceededException(
+                "The city " + owner.getCity() + " already contains the maximum number of owners");
+        }
+        // Reject creating an owner whose normalized telephone is already used by another owner.
+        String normalizedTelephone = owner.getTelephone();
+        if (isTelephoneInUse(normalizedTelephone)) {
+            throw new DuplicateTelephoneException(
+                "An owner with telephone " + normalizedTelephone + " already exists");
+        }
     }
 
     /**
