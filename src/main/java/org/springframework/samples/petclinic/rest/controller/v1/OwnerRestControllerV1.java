@@ -167,6 +167,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         populateDerivedFields(owner, ownerFieldsDto);
         requireUniqueIdentity(owner);
+        flagPossibleDuplicate(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -377,6 +378,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> identityKey.equals(identityKeyResolver.deriveIdentityKey(existing)));
         if (inUse) {
             throw new DuplicateOwnerException("an owner with the same identity key already exists");
+        }
+    }
+
+    /**
+     * Flags a newly created owner as a possible (soft) duplicate. The owner has already cleared the hard-duplicate
+     * guard (see {@link #requireUniqueIdentity}), so it is still being created; this only records a warning. It is a
+     * possible duplicate when some existing owner shares its last name (compared case-insensitively) and its postcode
+     * but carries a different telephone. When such an owner is found, {@code possibleDuplicate} is set to {@code true}
+     * and {@code possibleDuplicateOf} to that existing owner's id (the first match in
+     * {@link ClinicService#findAllOwners()} order); otherwise {@code possibleDuplicate} is {@code false} and
+     * {@code possibleDuplicateOf} is left null. An owner created without a postcode can never soft-match.
+     *
+     * @param owner the newly mapped owner about to be saved, with its normalized fields already in place
+     */
+    private void flagPossibleDuplicate(Owner owner) {
+        owner.setPossibleDuplicate(false);
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String lastName = owner.getLastName();
+        String telephone = owner.getTelephone();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName.equalsIgnoreCase(existing.getLastName())
+                && postcode.equals(existing.getPostcode())
+                && !java.util.Objects.equals(telephone, existing.getTelephone())) {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(existing.getId());
+                return;
+            }
         }
     }
 
