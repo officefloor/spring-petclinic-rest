@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -62,14 +63,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final TelephoneNormalizer telephoneNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 TelephoneNormalizer telephoneNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.telephoneNormalizer = telephoneNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -102,10 +107,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Normalize the telephone on create: strip every non-digit character so it is stored and
-        // returned as the bare 10-digit value. Bean validation on OwnerFieldsDto has already
-        // guaranteed exactly 10 digits are present (rejecting anything else with 400).
-        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+        // Normalize the telephone on create so it is stored and returned in canonical form.
+        // Bean validation on OwnerFieldsDto has already guaranteed a well-formed value
+        // (rejecting anything else with 400).
+        String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
@@ -125,16 +130,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
-    }
-
-    /**
-     * Removes every non-digit character from the supplied telephone value.
-     *
-     * @param telephone the raw telephone value (may be {@code null})
-     * @return the telephone stripped down to its digits, or {@code null} if the input was {@code null}
-     */
-    private String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
     }
 
     /**
@@ -163,7 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         return this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
-            .map(this::normalizeTelephone)
+            .map(telephoneNormalizer::normalize)
             .anyMatch(normalizedTelephone::equals);
     }
 
