@@ -24,7 +24,18 @@ public final class Localities {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private Localities() {
+    }
+
+    /** The IANA timezone for the given region, or {@code null} when the region is unknown. */
+    public static String timezoneForRegion(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /** The canonical region for the given city, or {@code UNKNOWN} when unlisted. */

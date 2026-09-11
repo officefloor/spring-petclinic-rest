@@ -32,6 +32,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.localityOf(owner))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     @Mapping(target = "possibleDuplicate",

@@ -48,6 +48,14 @@ public final class CustomerCodes {
         return region(owner.getPostcode());
     }
 
+    /**
+     * The owner's IANA timezone, derived from its {@link #localityOf(Owner) locality}
+     * via the fixed region-to-timezone table, or {@code null} when the region is unknown.
+     */
+    public static String timezoneOf(Owner owner) {
+        return Localities.timezoneForRegion(localityOf(owner));
+    }
+
     /** The region code derived from a postcode, or {@code UNKNOWN} when unresolved. */
     public static String region(String postcode) {
         String region = Localities.forPostcode(postcode);
