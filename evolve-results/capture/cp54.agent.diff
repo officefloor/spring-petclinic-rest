@@ -1,0 +1,166 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5aa74bad3..0a4ea02e5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,6 +40,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.TimezoneResolver.deriveTimezone(owner.getCustomerCode()))")
+     @Mapping(target = "bulkSignupWarning",
+         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
++    @Mapping(target = "capacityWarning",
++        expression = "java(Boolean.TRUE.equals(owner.getCapacityWarning()))")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplayResolver.deriveTelephoneDisplay(owner.getTelephone()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 767898c8f..202b137a0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -216,6 +219,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bfa491cd0..d5493ad87 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -91,6 +91,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners a single city may contain; creating an owner in a full city is rejected. */
+     private static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /** Once a city already holds at least this many owners (but is not yet full), a further create there is flagged with a capacity warning. */
++    private static final int CAPACITY_WARNING_THRESHOLD = 40;
++
+     /** Maximum number of owners that may be created in a single day; creating an owner past this cap is rejected. */
+     private static final int MAX_OWNERS_PER_DAY = 100;
+ 
+@@ -322,8 +325,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Stamps onto a newly mapped owner every field derived at creation from the owner itself and from the owners that
+      * already exist, in the order each field depends on. The {@code customerCode} is derived from the owner's own
+      * fields (see {@link IdentityKeyResolver#deriveCustomerCode}); the {@code namesakeCount} (see
+-     * {@link #countNamesakes}) and {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) are snapshots of
+-     * the existing owners taken before this owner is saved, so neither counts the new owner itself; and the shared
++     * {@link #countNamesakes}), {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) and
++     * {@code capacityWarning} (see {@link #computeCapacityWarning}) are snapshots of the existing owners taken before
++     * this owner is saved, so none counts the new owner itself; and the shared
+      * {@code householdId} is assigned last (see {@link #assignHouseholdId}), derived deterministically from the owner's
+      * last name and postcode, so it is in place before the owner's household membership level is capped (see
+      * {@link #cappedMembershipLevel}). The owner is mutated in place; the caller applies the duplicate guards and saves it.
+@@ -335,6 +339,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(deriveUniqueCustomerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
++        owner.setCapacityWarning(computeCapacityWarning(owner.getCity()));
+         assignHouseholdId(owner);
+     }
+ 
+@@ -675,6 +680,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether creating an owner in the given city should carry a capacity warning. The warning is raised
++     * when the city (compared case-insensitively) already holds between {@value #CAPACITY_WARNING_THRESHOLD} and
++     * {@code MAX_OWNERS_PER_CITY - 1} owners, i.e. it is approaching but has not yet reached the hard per-city limit of
++     * {@value #MAX_OWNERS_PER_CITY}. Evaluated before the new owner is saved, so the count reflects only owners that
++     * predate this create; the hard rejection at the limit (see {@link #requireCityHasCapacity}) still runs.
++     *
++     * @param city the city of the owner being created
++     * @return {@code true} when the city already holds 40 to 49 owners, {@code false} otherwise
++     */
++    private boolean computeCapacityWarning(String city) {
++        long count = countOwnersInCity(city);
++        return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
++    }
++
+     /**
+      * Assigns the shared {@code householdId} for a newly mapped owner. The identifier is derived deterministically from
+      * the owner's last name and postcode (see {@link HouseholdResolver#deriveHouseholdId}), so every owner sharing
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 639591be1..fde61ecc9 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 38311d842..2ae21d3b5 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c25e34f2b..08d839cab 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN NOT NULL DEFAULT FALSE,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8a26ff933..a1ddabb45 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       deleted BOOLEAN NOT NULL DEFAULT FALSE
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2f14c663a..41f933df3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2303,6 +2303,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when, at the moment this owner was created, its city already
++                held between 40 and 49 owners (compared case-insensitively),
++                approaching the per-city capacity limit of 50; false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
