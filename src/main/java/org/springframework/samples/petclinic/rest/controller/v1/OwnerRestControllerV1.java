@@ -200,9 +200,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private OwnerDto toOwnerDto(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
+        stampIdentity(ownerDto, owner);
         ownerDto.setMembershipLevel(cappedMembershipLevel(owner));
         return ownerDto;
+    }
+
+    /**
+     * Stamps onto a mapped owner DTO the identity values the mapper cannot produce on its own. The {@code identityKey}
+     * (see {@link IdentityKeyResolver#deriveIdentityKey}) is not a stored field of the owner, so it is derived and set
+     * here; the owner's {@code memberId} and {@code householdId} are already mapped straight off the owner. Kept as the
+     * single home for assembling the owner's response identity so the shape of that identity is changed in one place.
+     *
+     * @param ownerDto the mapped owner DTO to stamp
+     * @param owner    the owner the DTO was mapped from
+     */
+    private void stampIdentity(OwnerDto ownerDto, Owner owner) {
+        ownerDto.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -310,9 +323,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the newly created, persisted owner, with all its derived fields already in place
      */
     private void auditOwnerCreated(Owner owner) {
+        logOwnerCreated(owner);
+        publishOwnerCreatedEvent(owner);
+    }
+
+    /**
+     * Emits the human-readable audit line for a successfully created owner to the dedicated {@link #AUDIT} logger,
+     * recording its id, member id and registration date alongside the membership level (see
+     * {@link MembershipLevelResolver#deriveMembershipLevel}) derived purely for the audit trail.
+     *
+     * @param owner the newly created, persisted owner, with all its derived fields already in place
+     */
+    private void logOwnerCreated(Owner owner) {
         AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
             MembershipLevelResolver.deriveMembershipLevel(owner));
+    }
+
+    /**
+     * Emits the single immutable structured {@link OwnerCreatedEvent} for a successfully created owner as JSON to the
+     * dedicated {@link #AUDIT} logger, carrying a monotonically increasing {@code seq} (see
+     * {@link #OWNER_CREATED_SEQUENCE}), the owner's id, its primary identifier (see {@link #primaryIdentifier(Owner)})
+     * and its membership level under the {@code OWNER_CREATED} event type. Kept as the single home for building the
+     * structured event so its schema is changed in one place.
+     *
+     * @param owner the newly created, persisted owner, with all its derived fields already in place
+     */
+    private void publishOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), cappedMembershipLevel(owner));
         AUDIT.info(event.toJson());

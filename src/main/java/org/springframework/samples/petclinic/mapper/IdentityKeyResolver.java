@@ -68,17 +68,17 @@ public class IdentityKeyResolver {
     }
 
     /**
-     * Returns the {@code REGION} segment of the owner's identifier: the region code derived from the owner's postcode
-     * (see {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN} when the postcode maps to no
-     * known region. Factored out of {@link #deriveMemberId} so the region segment has a single home, shared by every
-     * identifier the owner's region prefixes.
+     * Returns the {@code REGION} segment of the owner's identifier: the owner's plain region code (see
+     * {@link LocalityResolver#regionCode}, derived from the owner's postcode, {@link LocalityResolver#UNKNOWN} when it
+     * maps to no known region). Factored out of {@link #deriveMemberId} so the region segment has a single home, shared
+     * by every identifier the owner's region prefixes, and expressed against the one shared plain region code so the
+     * identifier's region and the owner's locality stay in step.
      *
      * @param owner the owner whose region segment should be derived
      * @return the region code, or {@link LocalityResolver#UNKNOWN} when the postcode maps to no known region
      */
     private String regionCode(Owner owner) {
-        Region region = Region.forPostcode(owner.getPostcode());
-        return region == null ? LocalityResolver.UNKNOWN : region.name();
+        return LocalityResolver.regionCode(owner.getPostcode());
     }
 
     /**

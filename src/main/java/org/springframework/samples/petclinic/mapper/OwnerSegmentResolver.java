@@ -6,7 +6,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * Derives an owner's marketing 'ownerSegment', formatted {@code <TIER>_<AREA>}. TIER is
  * {@code PREMIUM} when the owner's {@link MembershipLevelResolver#deriveMembershipLevel(Owner)
  * membershipLevel} is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's
- * {@link LocalityResolver#deriveLocality(String) locality} is a known {@link Region} (NSW, VIC or
+ * {@link LocalityResolver#deriveLocality(Owner) locality} is a known {@link Region} (NSW, VIC or
  * QLD), otherwise {@code REGIONAL}. The result is one of {@code PREMIUM_METRO},
  * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}. Kept out of
  * {@link OwnerMapper} so MapStruct does not mistake it for an implicit property mapping method.
@@ -30,7 +30,7 @@ public final class OwnerSegmentResolver {
     public static String deriveOwnerSegment(Owner owner) {
         String tier = MembershipLevelResolver.deriveMembershipLevel(owner) >= PREMIUM_MIN_LEVEL
             ? "PREMIUM" : "STANDARD";
-        String locality = LocalityResolver.deriveLocality(owner.getMemberId());
+        String locality = LocalityResolver.deriveLocality(owner);
         String area = isKnownRegion(locality) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }

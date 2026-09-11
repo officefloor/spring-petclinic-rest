@@ -31,9 +31,9 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner.getMemberId()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.LocalityResolver.deriveLocality(owner))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.mapper.TimezoneResolver.deriveTimezone(owner.getMemberId()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.TimezoneResolver.deriveTimezone(owner))")
     @Mapping(target = "bulkSignupWarning",
         expression = "java(Boolean.TRUE.equals(owner.getBulkSignupWarning()))")
     @Mapping(target = "capacityWarning",
