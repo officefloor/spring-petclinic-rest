@@ -411,17 +411,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Canonicalizes a newly mapped owner's address on create, in place, so it is persisted and
-     * returned in canonical form. The address is normalized (trimmed, whitespace collapsed,
-     * upper-cased and common street-type abbreviations expanded) via {@link AddressNormalizer}, and a
-     * value blank after normalization is rejected with 400. Canonicalising the address here, before
-     * the household checks read it, ensures duplicate detection and the shared household id both
-     * compare the normalized form. Isolating the address concern in its own helper keeps
+     * returned in canonical form. The owner may supply its address in either of two forms and the
+     * structured form is preferred when present: when a non-blank {@code addressLine1} is supplied it
+     * (and the optional {@code addressLine2}) is normalized (trimmed, whitespace collapsed, upper-cased
+     * and common street-type abbreviations expanded) via {@link AddressNormalizer}, otherwise the flat
+     * {@code address} input is normalized for backward compatibility. Whichever form is supplied, the
+     * stored {@code address} is composed from the normalized structured lines when present — the
+     * normalized {@code addressLine1} with a single space and the normalized {@code addressLine2}
+     * appended when an {@code addressLine2} is present — or the normalized flat address otherwise. An
+     * owner that supplies no address in either form is rejected with 400. Canonicalising the address
+     * here, before the household checks read it, ensures duplicate detection and the shared household
+     * id both compare the normalized form. Isolating the address concern in its own helper keeps
      * {@link #normalizeOwnerFields} focused on sequencing the per-field canonicalizations.
      *
      * @param owner the newly mapped owner whose address is canonicalized
      */
     private void normalizeAddressFields(Owner owner) {
-        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        if (owner.getAddressLine1() != null && !owner.getAddressLine1().isBlank()) {
+            String line1 = addressNormalizer.normalize(owner.getAddressLine1());
+            owner.setAddressLine1(line1);
+            String composed = line1;
+            if (owner.getAddressLine2() != null && !owner.getAddressLine2().isBlank()) {
+                String line2 = addressNormalizer.normalize(owner.getAddressLine2());
+                owner.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            }
+            owner.setAddress(composed);
+        }
+        else {
+            owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        }
     }
 
     /**
