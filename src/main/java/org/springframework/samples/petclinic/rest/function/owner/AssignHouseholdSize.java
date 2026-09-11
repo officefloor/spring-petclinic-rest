@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the existing housemates) and before {@link SaveOwner}, so the value counts the existing
  * housemates plus the one being created. An owner not linked into a household (null
  * {@code householdId}) is a household of one. The value is fixed at creation time and
- * persisted with the owner; {@code membershipTier} is GOLD when it is 3 or more.
+ * persisted with the owner.
  */
 public class AssignHouseholdSize {
 
