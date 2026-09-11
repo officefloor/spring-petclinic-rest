@@ -44,8 +44,20 @@ public final class MembershipLevels {
         return points;
     }
 
-    /** The membership level (1-4) for the given owner, derived from its points. */
+    /**
+     * The membership level (1-4) for the given owner, derived from its points and then
+     * capped: when a {@code membershipLevelCap} is set (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap}),
+     * the level cannot exceed it. A {@code null} cap means no ceiling applies.
+     */
     public static int forOwner(Owner owner) {
+        int level = rawLevelForOwner(owner);
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
+    }
+
+    /** The uncapped membership level (1-4) for the given owner, derived from its points. */
+    private static int rawLevelForOwner(Owner owner) {
         int points = pointsForOwner(owner);
         if (points <= 1) {
             return 1;

@@ -28,6 +28,15 @@ public final class IdentityKeys {
         return build(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
     }
 
+    /**
+     * The identity key for an incoming create request, from its raw fields and its derived
+     * {@code householdId}. Lets {@link RequireUniqueIdentity} compare a request against
+     * existing owners' {@link #forOwner(Owner) keys} without first building an entity.
+     */
+    public static String forFields(String telephone, String email, String householdId) {
+        return build(telephone, email, householdId);
+    }
+
     private static String build(String telephone, String email, String householdId) {
         String tel = Telephones.toE164(telephone);
         return (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
