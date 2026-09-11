@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 6c545760b..027b37969 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import net.officefloor.plugin.variable.Out;
+@@ -19,6 +20,10 @@ public class ValidateOwnerFields {
+     /** A syntactically valid address: local-part@domain with a dotted domain, no spaces. */
+     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
++    /** Disposable email domains rejected outright: an email in one of these is a 400. */
++    private static final Set<String> DISPOSABLE_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws OwnerFieldsInvalidException {
+         List<String> errors = new ArrayList<>();
+@@ -79,9 +84,10 @@ public class ValidateOwnerFields {
+     }
+ 
+     /**
+-     * Email is optional. When present (non-blank) it must be a syntactically valid address;
+-     * an invalid value is a 400 (adds an "email" error). A valid value is stored lower-cased
+-     * back on the request so later steps persist and return it lower-cased.
++     * Email is optional. When present (non-blank) it must be a syntactically valid address
++     * whose domain is not on the disposable-domain blocklist; an invalid or disposable value
++     * is a 400 (adds an "email" error). A valid value is stored lower-cased back on the request
++     * so later steps persist and return it lower-cased.
+      */
+     private static void normalizeEmail(OwnerFieldsDto request, List<String> errors) {
+         String email = request.getEmail();
+@@ -89,7 +95,7 @@ public class ValidateOwnerFields {
+             return;
+         }
+         String trimmed = email.trim();
+-        if (EMAIL.matcher(trimmed).matches()) {
++        if (EMAIL.matcher(trimmed).matches() && !isDisposableDomain(trimmed)) {
+             request.setEmail(trimmed.toLowerCase());
+         }
+         else if (!errors.contains("email")) {
+@@ -97,6 +103,15 @@ public class ValidateOwnerFields {
+         }
+     }
+ 
++    /** True when the email's domain (case-insensitive) is on the disposable-domain blocklist. */
++    private static boolean isDisposableDomain(String email) {
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        return DISPOSABLE_DOMAINS.contains(email.substring(at + 1).toLowerCase());
++    }
++
+     /**
+      * Postcode is optional. When present (non-blank) it must be a 4-digit value that is valid
+      * for the owner's city per the fixed region ranges (see
