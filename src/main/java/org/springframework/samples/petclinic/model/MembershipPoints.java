@@ -1,21 +1,21 @@
 package org.springframework.samples.petclinic.model;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's numeric membership points.
  *
  * <p>Starts at 0; add 2 when an email is present; add 1 when {@code namesakeCount}
- * is 0; add 2 for a household of 3 or more; add 3 for tenure over 365 days.
+ * is 0; add 2 for a household of 3 or more; add 3 for tenure of at least one elapsed
+ * fiscal year.
  */
 public final class MembershipPoints {
 
     /** Household size, at or above which the household bonus applies. */
     public static final int HOUSEHOLD_SIZE = 3;
 
-    /** Tenure, in days, that must be exceeded to earn the tenure bonus. */
-    public static final long TENURE_DAYS = 365;
+    /** Elapsed fiscal years the tenure must reach to earn the tenure bonus. */
+    public static final int TENURE_FISCAL_YEARS = 1;
 
     private MembershipPoints() {
     }
@@ -38,12 +38,13 @@ public final class MembershipPoints {
         return points;
     }
 
-    /** Whether the owner's tenure exceeds {@link #TENURE_DAYS} days. */
+    /** Whether at least {@link #TENURE_FISCAL_YEARS} fiscal years have elapsed since registration. */
     private static boolean hasTenure(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+        int elapsedFiscalYears = FiscalYear.yearOf(LocalDate.now()) - FiscalYear.yearOf(registrationDate);
+        return elapsedFiscalYears >= TENURE_FISCAL_YEARS;
     }
 }

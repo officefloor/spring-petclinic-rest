@@ -17,7 +17,8 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         String membershipNumber = (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null
-                : owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                : owner.getCustomerCode() + "-M" + String.format("%02d",
+                        org.springframework.samples.petclinic.model.FiscalYear.yearOf(owner.getRegistrationDate()) % 100);
         audit.info(
                 "Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
