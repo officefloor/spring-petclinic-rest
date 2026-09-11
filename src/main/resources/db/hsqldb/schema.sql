@@ -47,6 +47,7 @@ CREATE TABLE owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(32),
   namesake_count INTEGER,
+  household_size INTEGER,
   membership_number VARCHAR(20),
   bulk_signup_warning BOOLEAN
 );

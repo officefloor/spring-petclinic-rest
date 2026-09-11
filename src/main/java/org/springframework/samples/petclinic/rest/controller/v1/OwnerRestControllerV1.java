@@ -164,6 +164,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        // Record the size of this owner's household after this create, i.e. the number of owners
+        // sharing this owner's 'householdId' once it is persisted. An owner that shares an existing
+        // household counts the matched members plus itself; an owner without a shared household is a
+        // household of one. Fixed at creation time and used to derive the 'GOLD' membership tier.
+        owner.setHouseholdSize(owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1);
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) before this create, fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));

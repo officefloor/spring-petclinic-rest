@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       customer_code TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
+                                      household_size INTEGER,
                                       membership_number TEXT,
                                       bulk_signup_warning BOOLEAN
 );
