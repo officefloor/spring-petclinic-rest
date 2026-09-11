@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(20),
   membership_level INTEGER,
   bulk_signup_warning BIT(1),
+  capacity_warning BIT(1),
   possible_duplicate BIT(1),
   possible_duplicate_of INT,
   deleted BIT(1) DEFAULT 0,

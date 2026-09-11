@@ -82,6 +82,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *  already has this many owners is rejected with 409 Conflict. */
     private static final int MAX_OWNERS_PER_CITY = 50;
 
+    /** When the owner's city already contains at least this many owners (but fewer than
+     *  {@link #MAX_OWNERS_PER_CITY}, so the create is still allowed), the new owner's
+     *  'capacityWarning' flag is set true to signal the city is approaching its capacity limit;
+     *  otherwise it is false. */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be created on a single day (by registration date); creating
      *  an owner once this many owners already carry today's registration date is rejected with
      *  429 Too Many Requests. */
@@ -372,8 +378,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assigns the create-time derived fields of a newly normalized owner whose household membership
      * has already been resolved: the namesake count, the per-city customer code, the membership
-     * number derived from that customer code and the registration fiscal year, and the bulk-signup warning
-     * flag. Each value is fixed at creation time and is independent of the others. Grouping them
+     * number derived from that customer code and the registration fiscal year, the bulk-signup warning
+     * flag and the city capacity warning flag. Each value is fixed at creation time and is
+     * independent of the others. Grouping them
      * here keeps {@link #addOwner} focused on the high-level create sequence.
      *
      * @param owner the owner being created, already normalized and with its household resolved
@@ -394,6 +401,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (adjusted business-day) registration date, fixed at creation time.
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
+        // Flag the create when the owner's city is approaching its capacity limit: it already holds
+        // between CAPACITY_WARNING_THRESHOLD and MAX_OWNERS_PER_CITY - 1 owners (40-49). A city at or
+        // over the limit is rejected earlier (see rejectWhenCityAtCapacity), so this is never reached
+        // for a full city. Fixed at creation time.
+        int cityOwners = countOwnersInCity(owner.getCity());
+        owner.setCapacityWarning(
+            cityOwners >= CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY);
     }
 
     /**
