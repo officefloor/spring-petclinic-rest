@@ -43,7 +43,9 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
+import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -230,12 +232,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) before this create, fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        // Assign the customer code '<CITY3>-<LAST3>-<NNNN>' from the city, last name and a
-        // per-city sequence equal to one more than the owners already in that city, fixed at
-        // creation time.
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        // Assign the customer code '<REGION>-<HASH8>' from the region derived from the postcode
+        // and an 8-hex-character hash of the normalized telephone and last name, fixed at creation
+        // time.
+        owner.setCustomerCode(customerCode(owner));
         // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
-        // of the registration date's year (e.g. 'LON-SMI-0007-M26'), fixed at creation time.
+        // of the registration date's year (e.g. 'NSW-A1B2C3D4-M26'), fixed at creation time.
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         // Flag the create when more than 80 owners have already been created on this owner's
         // (adjusted business-day) registration date, fixed at creation time.
@@ -362,22 +364,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code '<CITY3>-<LAST3>-<NNNN>' for a newly created owner, where CITY3 is
-     * the upper-cased first three letters of the city, LAST3 is the upper-cased first three letters
-     * of the last name and NNNN is a per-city 4-digit zero-padded sequence equal to one more than
-     * the owners already in that city (e.g. 'LON-SMI-0007').
+     * Builds the customer code '<REGION>-<HASH8>' for a newly created owner, where REGION is the
+     * region derived from the owner's postcode (falling back to the city, via
+     * {@link LocalityResolver}) and HASH8 is the first 8 upper-case hex characters of the SHA-256
+     * digest over the owner's normalized telephone concatenated with the last name (e.g.
+     * 'NSW-A1B2C3D4'). The identity carries no sequence number, so it is a pure function of the
+     * owner's region and identity fields.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param owner the owner being created, already normalized
      * @return the formatted customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String cityPrefix = city.substring(0, Math.min(3, city.length()))
-            .toUpperCase(java.util.Locale.ROOT);
-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length()))
-            .toUpperCase(java.util.Locale.ROOT);
-        int sequence = countOwnersInCity(city) + 1;
-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+    private String customerCode(Owner owner) {
+        String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String hash8 = Sha256Hex.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+        return region + "-" + hash8;
     }
 
     /**
@@ -410,7 +410,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the membership number '<customerCode>-M<YY>' for a newly created owner, where YY is
-     * the last two digits of the registration date's year (e.g. 'LON-SMI-0007-M26').
+     * the last two digits of the registration date's year (e.g. 'NSW-A1B2C3D4-M26').
      *
      * @param customerCode     the owner's customer code
      * @param registrationDate the owner's registration date
