@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -469,16 +470,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * region derived from the owner's postcode (falling back to the city, via
      * {@link LocalityResolver}) and HASH8 is the first 8 upper-case hex characters of the SHA-256
      * digest over the owner's normalized telephone concatenated with the last name (e.g.
-     * 'NSW-A1B2C3D4'). The identity carries no sequence number, so it is a pure function of the
-     * owner's region and identity fields.
+     * 'NSW-A1B2C3D4'). When that base code already belongs to an existing owner, '-<n>' is appended
+     * with the smallest n of 2 or more that makes it unique, so distinct owners always receive
+     * distinct customer codes.
      *
      * @param owner the owner being created, already normalized
-     * @return the formatted customer code
+     * @return the formatted, de-duplicated customer code
      */
     private String customerCode(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
         String hash8 = Sha256Hex.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
-        return region + "-" + hash8;
+        String base = region + "-" + hash8;
+        Set<String> taken = existingOwners()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(Collectors.toSet());
+        if (!taken.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (taken.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
