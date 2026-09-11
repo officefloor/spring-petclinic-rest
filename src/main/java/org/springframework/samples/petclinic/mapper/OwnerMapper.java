@@ -32,6 +32,9 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+    @Mapping(target = "checkDigit",
+        expression = "java(owner.getCustomerCode() == null ? null "
+            + ": org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
