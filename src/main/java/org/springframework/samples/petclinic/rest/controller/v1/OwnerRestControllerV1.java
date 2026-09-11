@@ -142,10 +142,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeOwnerFields(owner);
         // Enforce the pre-persistence policies that can reject the new owner outright.
         rejectDisallowedOwnerCreation(owner);
+        // Resolve the owner's household membership: reject an un-opted-in duplicate household,
+        // assign the shared 'householdId' when the request opts in, and record the household size.
+        applyHouseholdMembership(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+        // Assign the remaining create-time derived fields (namesake count, customer code,
+        // membership number and bulk-signup warning), each fixed at creation time.
+        assignDerivedFields(owner);
+        this.clinicService.saveOwner(owner);
+        // Emit an audit line for the successful create, carrying the owner id, customer code and
+        // registration date so the create can be traced from the dedicated AUDIT log.
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Enforces the pre-persistence policies that reject a newly mapped and normalized owner
+     * outright, in order, before any derived fields are assigned or the owner is saved. Each
+     * independent rule lives in its own {@code rejectWhen...} guard and is applied here in order, so
+     * the sequence of create-time rejections stays readable and a new rule is added as one more
+     * guard. Grouping the rules here keeps {@link #addOwner} focused on the household, derived-field
+     * and persistence steps. The household rule lives in {@link #applyHouseholdMembership} rather
+     * than here because it shares the matched-member lookup with the shared household-id assignment.
+     *
+     * @param owner the newly mapped and normalized owner being created
+     */
+    private void rejectDisallowedOwnerCreation(Owner owner) {
+        rejectWhenDailyLimitReached(owner);
+        rejectWhenCityAtCapacity(owner);
+        rejectWhenTelephoneInUse(owner);
+        rejectWhenEmailInUse(owner);
+    }
+
+    /**
+     * Applies the household-membership rules for a newly normalized owner being created. It finds
+     * the existing owners who share the owner's household (same last name and address, compared
+     * case-insensitively with collapsed whitespace), then, using that single lookup: rejects the
+     * create with a 409 Conflict when the owner would join an existing household without opting in
+     * via {@code sharesHousehold}; otherwise, when opting in and joining an existing household,
+     * assigns the new owner and every existing member the same stable {@code householdId}; and
+     * finally records the owner's {@code householdSize}. These steps live together here, out of the
+     * {@link #rejectDisallowedOwnerCreation} pipeline, precisely because they share that one
+     * matched-member lookup.
+     *
+     * @param owner           the newly mapped and normalized owner being created
+     * @param sharesHousehold whether the request opted in to joining an existing household
+     */
+    private void applyHouseholdMembership(Owner owner, boolean sharesHousehold) {
         // Identify any existing owners who share a household (same last name and address,
         // compared case-insensitively with collapsed whitespace) with the owner being created.
         List<Owner> householdMembers = sameHouseholdOwners(owner.getLastName(), owner.getAddress());
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // Reject creating an owner who shares a household with an existing owner, unless the
         // request explicitly opts in with 'sharesHousehold' true.
         if (!sharesHousehold && !householdMembers.isEmpty()) {
@@ -170,6 +219,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // household counts the matched members plus itself; an owner without a shared household is a
         // household of one. Fixed at creation time.
         owner.setHouseholdSize(owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1);
+    }
+
+    /**
+     * Assigns the create-time derived fields of a newly normalized owner whose household membership
+     * has already been resolved: the namesake count, the per-city customer code, the membership
+     * number derived from that customer code and the registration year, and the bulk-signup warning
+     * flag. Each value is fixed at creation time and is independent of the others. Grouping them
+     * here keeps {@link #addOwner} focused on the high-level create sequence.
+     *
+     * @param owner the owner being created, already normalized and with its household resolved
+     */
+    private void assignDerivedFields(Owner owner) {
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) before this create, fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -184,33 +245,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (adjusted business-day) registration date, fixed at creation time.
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
-        this.clinicService.saveOwner(owner);
-        // Emit an audit line for the successful create, carrying the owner id, customer code and
-        // registration date so the create can be traced from the dedicated AUDIT log.
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        headers.setLocation(UriComponentsBuilder.newInstance()
-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
-    }
-
-    /**
-     * Enforces the pre-persistence policies that reject a newly mapped and normalized owner
-     * outright, in order, before any derived fields are assigned or the owner is saved. Each
-     * independent rule lives in its own {@code rejectWhen...} guard and is applied here in order, so
-     * the sequence of create-time rejections stays readable and a new rule is added as one more
-     * guard. Grouping the rules here keeps {@link #addOwner} focused on the household, derived-field
-     * and persistence steps. The household rule stays in {@link #addOwner} itself because it shares
-     * the matched-member lookup with the shared household-id assignment.
-     *
-     * @param owner the newly mapped and normalized owner being created
-     */
-    private void rejectDisallowedOwnerCreation(Owner owner) {
-        rejectWhenDailyLimitReached(owner);
-        rejectWhenCityAtCapacity(owner);
-        rejectWhenTelephoneInUse(owner);
-        rejectWhenEmailInUse(owner);
     }
 
     /**
