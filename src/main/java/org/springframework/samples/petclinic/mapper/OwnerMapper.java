@@ -40,12 +40,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
-    @Mapping(target = "checkDigit",
-        expression = "java(owner.getCustomerCode() == null ? null "
-            + ": org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
     @Mapping(target = "fiscalYear",
-        expression = "java(owner.getRegistrationDate() == null ? null "
-            + ": org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
+        expression = "java(fiscalYear(owner))")
     @Mapping(target = "ageBand",
         expression = "java(owner.getBirthDate() == null || owner.getRegistrationDate() == null ? null "
             + ": (java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears() < 18 "
@@ -65,13 +61,26 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Returns the owner's canonical region (locality): the REGION segment of the customer code when
+     * Returns the owner's canonical region (locality): the REGION segment of the member id when
      * present, otherwise the region derived from the city and postcode, or {@code "UNKNOWN"}.
      */
     default String locality(Owner owner) {
-        return owner.getCustomerCode() != null
-            ? org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())
+        return owner.getMemberId() != null
+            ? org.springframework.samples.petclinic.util.MemberId.region(owner.getMemberId())
             : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Returns the owner's fiscal year formatted {@code "FY<YY>"}: the FY segment carried in the
+     * member id when present, so the value is read from the id itself; otherwise (no member id) the
+     * fiscal year of the stored registration date, or {@code null} when neither is present.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner.getMemberId() != null) {
+            return org.springframework.samples.petclinic.util.MemberId.fiscalYear(owner.getMemberId());
+        }
+        return owner.getRegistrationDate() == null ? null
+            : org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate());
     }
 
     /**

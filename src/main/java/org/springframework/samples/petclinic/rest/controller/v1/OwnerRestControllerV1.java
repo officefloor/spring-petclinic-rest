@@ -49,7 +49,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
-import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.LocalityResolver;
@@ -251,8 +251,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // shares an existing owner's last name and postcode with a different telephone. A declared
         // household member is never flagged: it is a known member, not a suspected duplicate.
         assignPossibleDuplicate(owner, declaredHouseholdMember);
-        // Assign the remaining create-time derived fields (namesake count, customer code,
-        // membership number and bulk-signup warning), each fixed at creation time.
+        // Assign the remaining create-time derived fields (namesake count, member id
+        // and bulk-signup warning), each fixed at creation time.
         assignDerivedFields(owner);
         // Assign the (household-capped) membership level, fixed at creation time. This runs after the
         // derived fields above because the level is computed from the membership points, which depend
@@ -270,7 +270,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Emits the audit line recording a successful owner create on the dedicated {@code AUDIT} log,
      * carrying the owner id, its current primary identifier (see {@link #primaryIdentifier}), the
-     * registration date, membership level and membership number so the create can be traced. Keeping
+     * registration date and membership level so the create can be traced. Keeping
      * the audit emission in its own helper leaves {@link #createOwner} a thin pipeline and gives the
      * create's audit side-effects a single home, so a further audit side-effect of a create is added
      * here (or as a sibling helper) rather than inline in the pipeline.
@@ -279,20 +279,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param ownerDto the mapped view of the persisted owner, source of the membership fields
      */
     private void auditOwnerCreated(Owner owner, OwnerDto ownerDto) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+            ownerDto.getMembershipLevel());
         auditOwnerCreatedEvent(owner, ownerDto);
     }
 
     /**
      * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} log as a JSON
-     * object {@code {seq, ownerId, customerCode, membershipLevel, event}}. The {@code seq} is a
+     * object {@code {seq, ownerId, memberId, membershipLevel, event}}. The {@code seq} is a
      * strictly increasing integer across every create (see {@link #OWNER_CREATED_SEQUENCE}), giving
      * the events a total order. The identifier field carries the owner's current primary identifier
-     * (see {@link #primaryIdentifier}) — the customer code today, and whatever replaces it later — so
-     * unifying the customer code into a member id makes the event carry the member id by changing only
-     * {@link #primaryIdentifier}.
+     * (see {@link #primaryIdentifier}) — the member id — so every audit consumer follows the primary
+     * identifier by changing only {@link #primaryIdentifier}.
      *
      * @param owner    the persisted owner
      * @param ownerDto the mapped view of the persisted owner, source of the membership level
@@ -306,25 +305,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The immutable structured audit event published for a successful owner create. Its
-     * {@code customerCode} field carries the owner's current primary identifier (see
+     * {@code memberId} field carries the owner's current primary identifier (see
      * {@link #primaryIdentifier}), so the same event shape follows the identifier as it changes.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
     /**
      * Returns the owner's current primary identifier: the single value that identifies the owner in
-     * the audit trail and in any audit side-effect of a create. This is the customer code today;
-     * resolving it through one accessor means that if the primary identifier is later changed (for
-     * example, the customer code being unified into a member id) every audit consumer follows the new
-     * identifier by changing only this method.
+     * the audit trail and in any audit side-effect of a create. This is the member id; resolving it
+     * through one accessor means that if the primary identifier is later changed every audit consumer
+     * follows the new identifier by changing only this method.
      *
      * @param owner the owner whose primary identifier is required
      * @return the owner's current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
@@ -378,8 +376,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the create-time derived fields of a newly normalized owner whose household membership
-     * has already been resolved: the namesake count, the per-city customer code, the membership
-     * number derived from that customer code and the registration fiscal year, the bulk-signup warning
+     * has already been resolved: the namesake count, the per-city member id, the bulk-signup warning
      * flag and the city capacity warning flag. Each value is fixed at creation time and is
      * independent of the others. Grouping them
      * here keeps {@link #addOwner} focused on the high-level create sequence.
@@ -390,14 +387,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) before this create, fixed at creation time.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        // Assign the customer code '<REGION>-<HASH8>' from the region derived from the postcode
-        // and an 8-hex-character hash of the normalized telephone and last name, fixed at creation
-        // time.
-        owner.setCustomerCode(customerCode(owner));
-        // Assign the membership number '<customerCode>-M<YY>', where YY is the last two digits
-        // of the fiscal year of the registration date (e.g. 'NSW-A1B2C3D4-M26'), fixed at
+        // Assign the member id '<REGION><FY><HASH8><CHK>' from the region derived from the postcode,
+        // the 2-digit fiscal year of the registration date, an 8-hex-character hash of the normalized
+        // telephone and last name, and a Luhn check digit over the preceding digits, fixed at
         // creation time.
-        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMemberId(memberId(owner));
         // Flag the create when more than 80 owners have already been created on this owner's
         // (adjusted business-day) registration date, fixed at creation time.
         owner.setBulkSignupWarning(
@@ -549,7 +543,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * server's current date. Canonicalising the address here, before the household checks read it,
      * ensures duplicate detection and the shared household id both compare the normalized form.
      * Centralising these per-field canonicalizations here keeps {@link #addOwner} focused on the
-     * duplicate, household and customer-code rules.
+     * duplicate, household and member-id rules.
      *
      * @param owner the newly mapped owner to canonicalize
      */
@@ -581,7 +575,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // supply one, then roll the effective date forward to a business day so a Saturday or
         // Sunday (whether supplied or defaulted) becomes the following Monday. The adjusted date
         // is persisted and returned in ISO 'YYYY-MM-DD' form and is the value every registration-
-        // date-derived field (such as the membership number's year segment) and the per-day
+        // date-derived field (such as the member id's fiscal-year segment) and the per-day
         // create-limit are computed from.
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() == null
             ? java.time.LocalDate.now() : owner.getRegistrationDate();
@@ -693,35 +687,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code '<REGION>-<HASH8>' for a newly created owner, where REGION is the
+     * Builds the member id '<REGION><FY><HASH8><CHK>' for a newly created owner, where REGION is the
      * region derived from the owner's postcode (falling back to the city, via
-     * {@link LocalityResolver}) and HASH8 is the first 8 upper-case hex characters of the SHA-256
-     * digest over the owner's normalized telephone concatenated with the last name (e.g.
-     * 'NSW-A1B2C3D4'). When that base code already belongs to an existing owner, '-<n>' is appended
+     * {@link LocalityResolver}), FY is the last two digits of the fiscal year of the
+     * (business-day-adjusted) registration date, HASH8 is the first 8 upper-case hex characters of
+     * the SHA-256 digest over the owner's normalized telephone concatenated with the last name, and
+     * CHK is a single Luhn check digit over the decimal digits of '<REGION><FY><HASH8>' (e.g.
+     * 'NSW26A1B2C3D45'). When that base id already belongs to an existing owner, '-<n>' is appended
      * with the smallest n of 2 or more that makes it unique, so distinct owners always receive
-     * distinct customer codes.
+     * distinct member ids.
      *
      * @param owner the owner being created, already normalized
-     * @return the formatted, de-duplicated customer code
+     * @return the formatted, de-duplicated member id
      */
-    private String customerCode(Owner owner) {
+    private String memberId(Owner owner) {
         String region = LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String fy = String.format("%02d",
+            org.springframework.samples.petclinic.util.FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = Sha256Hex.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
-        String base = CustomerCode.format(region, hash8);
-        return deduplicateCode(base, existingCustomerCodes());
+        String base = MemberId.format(region, fy, hash8);
+        return deduplicateCode(base, existingMemberIds());
     }
 
     /**
-     * Collects the customer codes already assigned to existing owners, the set a newly built code is
-     * de-duplicated against. Gathering them here keeps {@link #customerCode} focused on building the
-     * code and lets the uniqueness step (see {@link #deduplicateCode}) work against the codes alone.
+     * Collects the member ids already assigned to existing owners, the set a newly built id is
+     * de-duplicated against. Gathering them here keeps {@link #memberId} focused on building the
+     * id and lets the uniqueness step (see {@link #deduplicateCode}) work against the ids alone.
      *
-     * @return the customer codes currently in use
+     * @return the member ids currently in use
      */
-    private Set<String> existingCustomerCodes() {
+    private Set<String> existingMemberIds() {
         return existingOwners()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(Collectors.toSet());
     }
 
@@ -765,7 +763,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Counts the existing owners located in the given city, compared case-insensitively. Used to
-     * fix the per-city sequence of an owner's customer code at creation time.
+     * enforce the per-city capacity limit and fix an owner's capacity-warning flag at creation time.
      *
      * @param city the city of the owner being created
      * @return the number of existing owners in a matching city
@@ -789,21 +787,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) existingOwners()
             .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
-    }
-
-    /**
-     * Builds the membership number '<customerCode>-M<YY>' for a newly created owner, where YY is
-     * the last two digits of the fiscal year of the (business-day-adjusted) registration date
-     * (e.g. 'NSW-A1B2C3D4-M26'). The fiscal year starts on 1 July, so a registration date on or
-     * after 1 July carries the following calendar year's fiscal year.
-     *
-     * @param customerCode     the owner's customer code
-     * @param registrationDate the owner's registration date
-     * @return the formatted membership number
-     */
-    private String membershipNumber(String customerCode, java.time.LocalDate registrationDate) {
-        return String.format("%s-M%02d",
-            customerCode, org.springframework.samples.petclinic.util.FiscalYear.of(registrationDate) % 100);
     }
 
     /**

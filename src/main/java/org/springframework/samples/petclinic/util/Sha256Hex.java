@@ -22,7 +22,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Computes SHA-256 digests rendered as hexadecimal. Used to derive the hash segment of an owner's
- * customer code from stable identity fields, so the segment is a deterministic function of that
+ * member id from stable identity fields, so the segment is a deterministic function of that
  * input rather than a mutable sequence.
  */
 public final class Sha256Hex {

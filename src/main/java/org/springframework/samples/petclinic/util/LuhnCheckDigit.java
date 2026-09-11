@@ -18,8 +18,9 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Computes the Luhn check digit over the decimal digits contained in a string. Non-digit
- * characters are ignored, so the check digit is taken over the digits of an owner's customer code
- * (e.g. {@code "SMI-0007"} contributes the digits {@code 0007}).
+ * characters are ignored, so the check digit is taken over the digits of an owner's member-id core
+ * (e.g. {@code "NSW26A1B2C3D4"} contributes the digits {@code 26} and any decimal digits of the
+ * hash segment).
  */
 public final class LuhnCheckDigit {
 
