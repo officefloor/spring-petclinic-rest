@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+index 233fa9bdb..512bb2859 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+@@ -24,9 +24,20 @@ public final class Localities {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     private Localities() {
+     }
+ 
++    /** The IANA timezone for the given region, or {@code null} when the region is unknown. */
++    public static String timezoneForRegion(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++
+     /** The canonical region for the given city, or {@code UNKNOWN} when unlisted. */
+     public static String forCity(String city) {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 80b19b3fe..2d1833250 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.localityOf(owner))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
+     @Mapping(target = "bulkSignupWarning",
+         expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+     @Mapping(target = "possibleDuplicate",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodes.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodes.java
+index cdeb0cf45..444b86acf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodes.java
+@@ -48,6 +48,14 @@ public final class CustomerCodes {
+         return region(owner.getPostcode());
+     }
+ 
++    /**
++     * The owner's IANA timezone, derived from its {@link #localityOf(Owner) locality}
++     * via the fixed region-to-timezone table, or {@code null} when the region is unknown.
++     */
++    public static String timezoneOf(Owner owner) {
++        return Localities.timezoneForRegion(localityOf(owner));
++    }
++
+     /** The region code derived from a postcode, or {@code UNKNOWN} when unresolved. */
+     public static String region(String postcode) {
+         String region = Localities.forPostcode(postcode);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 35fc1ae6a..0d395a24d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2206,6 +2206,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone derived on read from the owner's locality/region using
++                a fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the
++                region is unknown.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
