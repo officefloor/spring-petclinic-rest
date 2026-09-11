@@ -6,7 +6,7 @@ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer
 import org.springframework.stereotype.Component;
 
 /**
- * Derives the owner-identity values matching keys off: the owner's {@code customerCode} and the single
+ * Derives the owner-identity values matching keys off: the owner's {@code memberId} and the single
  * {@code identityKey} that all duplicate detection is expressed through. The identity key is the SHA-256 of the
  * owner's normalized telephone, email and last-name Soundex (see {@link SoundexResolver}). Keeping this
  * here (rather than in {@link OwnerMapper} or the REST controller) mirrors {@link HouseholdResolver},
@@ -47,24 +47,30 @@ public class IdentityKeyResolver {
     }
 
     /**
-     * Derives an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}. {@code REGION} is the region code
-     * derived from the owner's postcode (see {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN}
-     * when the postcode maps to no known region; {@code HASH8} is the first 8 upper-case hex characters of the SHA-256
-     * digest of the normalized telephone (see {@link TelephoneNormalizer#canonicalize}) concatenated with the owner's
-     * last name (e.g. {@code NSW-1A2B3C4D}). Being a pure function of the postcode, telephone and last name it carries
-     * no sequence number and is stable for a given owner.
+     * Derives an owner's {@code memberId}, the single unified identifier formatted
+     * {@code <REGION><FY><HASH8><CHK>}. {@code REGION} is the region code derived from the owner's postcode (see
+     * {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN} when the postcode maps to no known
+     * region; {@code FY} is the two-digit fiscal-year segment of the owner's business-day-adjusted registration date
+     * (see {@link FiscalYearResolver#fiscalYearSuffix}); {@code HASH8} is the first 8 upper-case hex characters of the
+     * SHA-256 digest of the normalized telephone (see {@link TelephoneNormalizer#canonicalize}) concatenated with the
+     * owner's last name; and {@code CHK} is a single Luhn check digit (see {@link CheckDigitResolver#deriveCheckDigit})
+     * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW271A2B3C4D7}). Being a pure function of the
+     * postcode, registration date, telephone and last name it carries no sequence number and is stable for a given owner.
      *
-     * @param owner the newly mapped owner about to be saved, with its telephone already normalized
-     * @return the generated customer code
+     * @param owner the newly mapped owner about to be saved, with its telephone already normalized and its registration
+     *              date resolved
+     * @return the generated member id
      */
-    public String deriveCustomerCode(Owner owner) {
-        return regionCode(owner) + "-" + hash8(owner);
+    public String deriveMemberId(Owner owner) {
+        String base = regionCode(owner) + FiscalYearResolver.fiscalYearSuffix(owner.getRegistrationDate())
+            + hash8(owner);
+        return base + CheckDigitResolver.deriveCheckDigit(base);
     }
 
     /**
      * Returns the {@code REGION} segment of the owner's identifier: the region code derived from the owner's postcode
      * (see {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN} when the postcode maps to no
-     * known region. Factored out of {@link #deriveCustomerCode} so the region segment has a single home, shared by every
+     * known region. Factored out of {@link #deriveMemberId} so the region segment has a single home, shared by every
      * identifier the owner's region prefixes.
      *
      * @param owner the owner whose region segment should be derived
@@ -79,7 +85,7 @@ public class IdentityKeyResolver {
      * Returns the {@code HASH8} segment of the owner's identifier: the first 8 upper-case hex characters of the SHA-256
      * digest (see {@link HexDigest#upperHexPrefix}) of the owner's canonical telephone (see
      * {@link TelephoneNormalizer#canonicalize}) concatenated with the owner's last name. Factored out of
-     * {@link #deriveCustomerCode} so the hash segment has a single home, shared by every identifier the owner's hash
+     * {@link #deriveMemberId} so the hash segment has a single home, shared by every identifier the owner's hash
      * contributes to.
      *
      * @param owner the owner whose hash segment should be derived, with its telephone already normalized

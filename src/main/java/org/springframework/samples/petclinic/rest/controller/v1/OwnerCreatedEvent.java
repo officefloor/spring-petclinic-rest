@@ -21,14 +21,13 @@ package org.springframework.samples.petclinic.rest.controller.v1;
  * a JSON object alongside the human-readable audit line (see
  * {@link OwnerRestControllerV1#auditOwnerCreated(org.springframework.samples.petclinic.model.Owner)}).
  *
- * <p>The event carries the owner's <em>current primary identifier</em> in its {@code primaryId} field: today that is the
- * owner's {@code customerCode}, and whatever replaces it later (for instance a unified {@code memberId}) flows through
- * the same field unchanged, because the field records "the owner's identity" rather than any one named column. The JSON
- * key stays {@code customerCode} for now, matching the identifier it carries.
+ * <p>The event carries the owner's primary identifier in its {@code primaryId} field: the unified {@code memberId}. The
+ * field records "the owner's identity" rather than any one named column, and is rendered under the {@code memberId} JSON
+ * key, matching the identifier it carries.
  *
  * @param seq         monotonically increasing sequence number across all owner creates
  * @param ownerId     the newly created owner's generated id
- * @param primaryId   the owner's current primary identifier (the {@code customerCode} today)
+ * @param primaryId   the owner's primary identifier (the {@code memberId})
  * @param membershipLevel the owner's membership level at creation
  */
 record OwnerCreatedEvent(long seq, Integer ownerId, String primaryId, int membershipLevel) {
@@ -38,8 +37,8 @@ record OwnerCreatedEvent(long seq, Integer ownerId, String primaryId, int member
 
     /**
      * Renders this event as a compact JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}, with the current primary identifier
-     * under the {@code customerCode} key. String values are JSON-escaped; a {@code null} identifier is rendered as JSON
+     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}, with the primary identifier
+     * under the {@code memberId} key. String values are JSON-escaped; a {@code null} identifier is rendered as JSON
      * {@code null}.
      *
      * @return the event serialized as a single-line JSON object
@@ -48,7 +47,7 @@ record OwnerCreatedEvent(long seq, Integer ownerId, String primaryId, int member
         return "{"
             + "\"seq\":" + seq
             + ",\"ownerId\":" + ownerId
-            + ",\"customerCode\":" + jsonString(primaryId)
+            + ",\"memberId\":" + jsonString(primaryId)
             + ",\"membershipLevel\":" + membershipLevel
             + ",\"event\":" + jsonString(EVENT_TYPE)
             + "}";

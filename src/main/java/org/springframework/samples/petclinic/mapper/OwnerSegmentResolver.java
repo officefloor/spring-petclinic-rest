@@ -30,7 +30,7 @@ public final class OwnerSegmentResolver {
     public static String deriveOwnerSegment(Owner owner) {
         String tier = MembershipLevelResolver.deriveMembershipLevel(owner) >= PREMIUM_MIN_LEVEL
             ? "PREMIUM" : "STANDARD";
-        String locality = LocalityResolver.deriveLocality(owner.getCustomerCode());
+        String locality = LocalityResolver.deriveLocality(owner.getMemberId());
         String area = isKnownRegion(locality) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }

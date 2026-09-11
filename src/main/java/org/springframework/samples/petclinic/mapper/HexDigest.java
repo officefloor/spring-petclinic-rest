@@ -5,8 +5,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Shared SHA-256 hex-digest helper for the identifiers derived on create. The customer code (see
- * {@link IdentityKeyResolver#deriveCustomerCode}) and the household id (see
+ * Shared SHA-256 hex-digest helper for the identifiers derived on create. The member id's HASH8 segment (see
+ * {@link IdentityKeyResolver#deriveMemberId}) and the household id (see
  * {@link HouseholdResolver#deriveHouseholdId}) are both a prefix of a SHA-256 digest, so both express the same hashing
  * in one place here. Kept a static utility like {@link LocalityResolver} and {@link MembershipLevelResolver}, since it
  * derives purely from its argument.

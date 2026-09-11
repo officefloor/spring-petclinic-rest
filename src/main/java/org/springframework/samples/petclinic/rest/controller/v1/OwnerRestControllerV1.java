@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.samples.petclinic.mapper.FiscalYearResolver;
 import org.springframework.samples.petclinic.mapper.HouseholdResolver;
 import org.springframework.samples.petclinic.mapper.IdentityKeyResolver;
 import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
@@ -285,45 +284,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the single audit line for a successfully created owner to the dedicated {@link #AUDIT} logger, recording
-     * its id, customer code and registration date alongside the two values derived purely for the audit trail: the
-     * membership level (see {@link MembershipLevelResolver#deriveMembershipLevel}) and the membership number, the
-     * customer code suffixed with {@code -M} and the two-digit fiscal year of the registration date (see
-     * {@link FiscalYearResolver#fiscalYearSuffix}).
+     * its id, member id and registration date alongside the membership level (see
+     * {@link MembershipLevelResolver#deriveMembershipLevel}) derived purely for the audit trail.
      *
      * <p>In addition to the human-readable line, a single immutable structured event is emitted as JSON (see
      * {@link OwnerCreatedEvent}), carrying a monotonically increasing {@code seq} (see
-     * {@link #OWNER_CREATED_SEQUENCE}), the owner's id, its current primary identifier (see
+     * {@link #OWNER_CREATED_SEQUENCE}), the owner's id, its primary identifier (see
      * {@link #primaryIdentifier(Owner)}) and its membership level under the {@code OWNER_CREATED} event type.
      *
      * @param owner the newly created, persisted owner, with all its derived fields already in place
      */
     private void auditOwnerCreated(Owner owner) {
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
-            MembershipLevelResolver.deriveMembershipLevel(owner),
-            owner.getCustomerCode() + "-M" + FiscalYearResolver.fiscalYearSuffix(owner.getRegistrationDate()));
+            MembershipLevelResolver.deriveMembershipLevel(owner));
         OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), cappedMembershipLevel(owner));
         AUDIT.info(event.toJson());
     }
 
     /**
-     * Returns the owner's current primary identifier — the value the structured {@link OwnerCreatedEvent} carries as the
-     * owner's identity. Today that is the {@code customerCode}; when the customer code is later unified into a
-     * {@code memberId}, this single method changes to return the member id and the event carries it instead, with no
-     * other change to the emission.
+     * Returns the owner's primary identifier — the unified {@code memberId} the structured {@link OwnerCreatedEvent}
+     * carries as the owner's identity.
      *
      * @param owner the newly created, persisted owner
-     * @return the owner's current primary identifier
+     * @return the owner's member id
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Stamps onto a newly mapped owner every field derived at creation from the owner itself and from the owners that
-     * already exist, in the order each field depends on. The {@code customerCode} is derived from the owner's own
-     * fields (see {@link IdentityKeyResolver#deriveCustomerCode}); the {@code namesakeCount} (see
+     * already exist, in the order each field depends on. The {@code memberId} is derived from the owner's own
+     * fields (see {@link IdentityKeyResolver#deriveMemberId}); the {@code namesakeCount} (see
      * {@link #countNamesakes}), {@code bulkSignupWarning} (see {@link #computeBulkSignupWarning}) and
      * {@code capacityWarning} (see {@link #computeCapacityWarning}) are snapshots of the existing owners taken before
      * this owner is saved, so none counts the new owner itself; and the shared
@@ -335,7 +329,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param ownerFieldsDto the incoming owner payload
      */
     private void populateDerivedFields(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        owner.setCustomerCode(deriveUniqueCustomerCode(owner));
+        owner.setMemberId(deriveUniqueMemberId(owner));
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setBulkSignupWarning(computeBulkSignupWarning(owner.getRegistrationDate()));
         owner.setCapacityWarning(computeCapacityWarning(owner.getCity()));
@@ -343,29 +337,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives an owner's {@code customerCode} and de-duplicates it against the owners that already exist. The base code
-     * is the pure derivation (see {@link IdentityKeyResolver#deriveCustomerCode}); when it collides with an existing
-     * owner's {@code customerCode} it is suffixed with {@code -<n>}, taking the smallest {@code n} of 2 or more that
-     * makes the whole code unique. Evaluated before the new owner is saved, so the collision check reflects only owners
-     * that predate this create; distinct owners therefore always receive distinct customer codes.
+     * Derives an owner's {@code memberId} and de-duplicates it against the owners that already exist. The base id
+     * is the pure derivation (see {@link IdentityKeyResolver#deriveMemberId}); when it collides with an existing
+     * owner's {@code memberId} it is suffixed with {@code -<n>}, taking the smallest {@code n} of 2 or more that
+     * makes the whole id unique. Evaluated before the new owner is saved, so the collision check reflects only owners
+     * that predate this create; distinct owners therefore always receive distinct member ids.
      *
      * @param owner the newly mapped owner about to be saved, with its telephone already normalized
-     * @return the de-duplicated customer code, unique across all existing owners
+     * @return the de-duplicated member id, unique across all existing owners
      */
-    private String deriveUniqueCustomerCode(Owner owner) {
-        String base = identityKeyResolver.deriveCustomerCode(owner);
+    private String deriveUniqueMemberId(Owner owner) {
+        String base = identityKeyResolver.deriveMemberId(owner);
         Collection<Owner> existing = this.clinicService.findAllOwners();
         String candidate = base;
         int n = 2;
-        while (isCustomerCodeInUse(candidate, existing)) {
+        while (isMemberIdInUse(candidate, existing)) {
             candidate = base + "-" + n;
             n++;
         }
         return candidate;
     }
 
-    private boolean isCustomerCodeInUse(String customerCode, Collection<Owner> existing) {
-        return existing.stream().anyMatch(other -> customerCode.equals(other.getCustomerCode()));
+    private boolean isMemberIdInUse(String memberId, Collection<Owner> existing) {
+        return existing.stream().anyMatch(other -> memberId.equals(other.getMemberId()));
     }
 
     /**

@@ -2,9 +2,11 @@ package org.springframework.samples.petclinic.mapper;
 
 /**
  * Derives the Luhn check digit for an owner identifier, computed over the digits
- * contained in the identifier's value (today the owner's {@code customerCode}).
- * Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit
- * property mapping method.
+ * contained in the identifier's value. It supplies the {@code CHK} segment of the
+ * owner's {@code memberId} (see {@link IdentityKeyResolver#deriveMemberId}), computed
+ * over the digits of the {@code <REGION><FY><HASH8>} prefix. Kept out of
+ * {@link OwnerMapper} so MapStruct does not mistake it for an implicit property
+ * mapping method.
  */
 public final class CheckDigitResolver {
 
