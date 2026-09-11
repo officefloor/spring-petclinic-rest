@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -157,9 +158,24 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", rejectedFieldNames(bindingResult));
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Collects the distinct names of the fields that failed validation, in the order they were
+     * reported, so responses can list the offending fields (e.g. those that are missing or blank).
+     *
+     * @param bindingResult the {@link BindingResult} carrying the validation field errors
+     * @return the distinct rejected field names
+     */
+    private List<String> rejectedFieldNames(BindingResult bindingResult) {
+        return bindingResult.getFieldErrors().stream()
+            .map(FieldError::getField)
+            .distinct()
+            .toList();
     }
 
 }
