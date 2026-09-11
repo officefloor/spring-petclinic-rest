@@ -16,6 +16,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class IdentityKeyResolver {
 
+    /**
+     * The fixed version tag mixed into every derived owner identifier by the version-2 owner identity. It is folded into
+     * the region segment of the {@code memberId} and into the hashed input of the {@code memberId}'s HASH8 segment and
+     * the {@code identityKey} (and, sharing this same tag, the {@code householdId}; see
+     * {@link HouseholdResolver#deriveHouseholdId}), so every identifier changes and no value produced under version 1 is
+     * produced again. It is deliberately absent from the user-facing {@code locality} (see
+     * {@link LocalityResolver#deriveLocality}), which stays the plain region code.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -28,10 +38,11 @@ public class IdentityKeyResolver {
 
     /**
      * Derives the owner's {@code identityKey}, the single value all duplicate detection is expressed through. It is the
-     * full lower-case SHA-256 hex digest (64 characters) of {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>},
-     * joining the canonical E.164 telephone (see {@link TelephoneNormalizer#canonicalize}), the normalized email (see
-     * {@link EmailNormalizer#normalize}, empty when the owner has none) and the American Soundex of the owner's last
-     * name (see {@link SoundexResolver#soundex}). Because the telephone is part of the key, two owners that differ only
+     * full lower-case SHA-256 hex digest (64 characters) of
+     * {@code <VERSION_TAG>|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}, mixing in the fixed version-2
+     * {@link #VERSION_TAG} and joining the canonical E.164 telephone (see {@link TelephoneNormalizer#canonicalize}), the
+     * normalized email (see {@link EmailNormalizer#normalize}, empty when the owner has none) and the American Soundex of
+     * the owner's last name (see {@link SoundexResolver#soundex}). Because the telephone is part of the key, two owners that differ only
      * in telephone — such as two members of the same household — have different keys; only owners whose whole key
      * matches are duplicates.
      *
@@ -43,18 +54,19 @@ public class IdentityKeyResolver {
         String email = emailNormalizer.normalize(owner.getEmail());
         String lowerEmail = (email == null || email.isBlank()) ? "" : email.toLowerCase();
         String lastNameSoundex = SoundexResolver.soundex(owner.getLastName());
-        return HexDigest.lowerHex(telephone + "|" + lowerEmail + "|" + lastNameSoundex);
+        return HexDigest.lowerHex(VERSION_TAG + "|" + telephone + "|" + lowerEmail + "|" + lastNameSoundex);
     }
 
     /**
      * Derives an owner's {@code memberId}, the single unified identifier formatted
-     * {@code <REGION><FY><HASH8><CHK>}. {@code REGION} is the region code derived from the owner's postcode (see
-     * {@link Region#forPostcode}), falling back to {@link LocalityResolver#UNKNOWN} when the postcode maps to no known
-     * region; {@code FY} is the two-digit fiscal-year segment of the owner's business-day-adjusted registration date
+     * {@code <REGION><FY><HASH8><CHK>}. {@code REGION} is the version-2 region segment: the region code derived from the
+     * owner's postcode (see {@link Region#forPostcode}, falling back to {@link LocalityResolver#UNKNOWN} when the
+     * postcode maps to no known region) with the fixed {@link #VERSION_TAG} mixed in; {@code FY} is the two-digit
+     * fiscal-year segment of the owner's business-day-adjusted registration date
      * (see {@link FiscalYearResolver#fiscalYearSuffix}); {@code HASH8} is the first 8 upper-case hex characters of the
-     * SHA-256 digest of the normalized telephone (see {@link TelephoneNormalizer#canonicalize}) concatenated with the
-     * owner's last name; and {@code CHK} is a single Luhn check digit (see {@link CheckDigitResolver#deriveCheckDigit})
-     * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW271A2B3C4D7}). Being a pure function of the
+     * SHA-256 digest of the {@link #VERSION_TAG}, the normalized telephone (see {@link TelephoneNormalizer#canonicalize})
+     * and the owner's last name; and {@code CHK} is a single Luhn check digit (see {@link CheckDigitResolver#deriveCheckDigit})
+     * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSWV2271A2B3C4D9}). Being a pure function of the
      * postcode, registration date, telephone and last name it carries no sequence number and is stable for a given owner.
      *
      * @param owner the newly mapped owner about to be saved, with its telephone already normalized and its registration
@@ -68,23 +80,25 @@ public class IdentityKeyResolver {
     }
 
     /**
-     * Returns the {@code REGION} segment of the owner's identifier: the owner's plain region code (see
+     * Returns the version-2 {@code REGION} segment of the owner's identifier: the owner's plain region code (see
      * {@link LocalityResolver#regionCode}, derived from the owner's postcode, {@link LocalityResolver#UNKNOWN} when it
-     * maps to no known region). Factored out of {@link #deriveMemberId} so the region segment has a single home, shared
-     * by every identifier the owner's region prefixes, and expressed against the one shared plain region code so the
-     * identifier's region and the owner's locality stay in step.
+     * maps to no known region) with the fixed {@link #VERSION_TAG} mixed in. Factored out of {@link #deriveMemberId} so
+     * the region segment has a single home, shared by every identifier the owner's region prefixes. The plain region code
+     * (without the version tag) remains the owner's user-facing {@code locality} (see
+     * {@link LocalityResolver#deriveLocality}), so the two are deliberately kept distinct.
      *
      * @param owner the owner whose region segment should be derived
-     * @return the region code, or {@link LocalityResolver#UNKNOWN} when the postcode maps to no known region
+     * @return the version-2 region segment, the plain region code (or {@link LocalityResolver#UNKNOWN}) with the version
+     * tag mixed in
      */
     private String regionCode(Owner owner) {
-        return LocalityResolver.regionCode(owner.getPostcode());
+        return LocalityResolver.regionCode(owner.getPostcode()) + VERSION_TAG;
     }
 
     /**
-     * Returns the {@code HASH8} segment of the owner's identifier: the first 8 upper-case hex characters of the SHA-256
-     * digest (see {@link HexDigest#upperHexPrefix}) of the owner's canonical telephone (see
-     * {@link TelephoneNormalizer#canonicalize}) concatenated with the owner's last name. Factored out of
+     * Returns the version-2 {@code HASH8} segment of the owner's identifier: the first 8 upper-case hex characters of the
+     * SHA-256 digest (see {@link HexDigest#upperHexPrefix}) of the fixed {@link #VERSION_TAG}, the owner's canonical
+     * telephone (see {@link TelephoneNormalizer#canonicalize}) and the owner's last name. Factored out of
      * {@link #deriveMemberId} so the hash segment has a single home, shared by every identifier the owner's hash
      * contributes to.
      *
@@ -93,6 +107,6 @@ public class IdentityKeyResolver {
      */
     private String hash8(Owner owner) {
         String telephone = telephoneNormalizer.canonicalize(owner.getTelephone());
-        return HexDigest.upperHexPrefix(telephone + owner.getLastName(), 8);
+        return HexDigest.upperHexPrefix(VERSION_TAG + telephone + owner.getLastName(), 8);
     }
 }

@@ -50,8 +50,9 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegmentResolver.deriveOwnerSegment(owner))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+    @Mapping(target = "apiVersion", constant = "2")
     @Mapping(target = "sharesHousehold", ignore = true)
-    @Mapping(target = "identityKey", ignore = true)
+    @Mapping(target = "identity", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

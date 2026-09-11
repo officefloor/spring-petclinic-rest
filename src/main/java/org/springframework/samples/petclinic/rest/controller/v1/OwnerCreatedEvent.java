@@ -35,17 +35,21 @@ record OwnerCreatedEvent(long seq, Integer ownerId, String primaryId, int member
     /** The fixed {@code event} discriminator every owner-created event carries. */
     static final String EVENT_TYPE = "OWNER_CREATED";
 
+    /** The schema version this structured event is emitted under; bumped to 2 for the version-2 owner identity. */
+    static final int SCHEMA_VERSION = 2;
+
     /**
      * Renders this event as a compact JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}, with the primary identifier
-     * under the {@code memberId} key. String values are JSON-escaped; a {@code null} identifier is rendered as JSON
-     * {@code null}.
+     * {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}, with the primary
+     * identifier (the version-2 {@code memberId}) under the {@code memberId} key. String values are JSON-escaped; a
+     * {@code null} identifier is rendered as JSON {@code null}.
      *
      * @return the event serialized as a single-line JSON object
      */
     String toJson() {
         return "{"
             + "\"seq\":" + seq
+            + ",\"schemaVersion\":" + SCHEMA_VERSION
             + ",\"ownerId\":" + ownerId
             + ",\"memberId\":" + jsonString(primaryId)
             + ",\"membershipLevel\":" + membershipLevel

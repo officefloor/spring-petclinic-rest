@@ -41,35 +41,18 @@ public final class LocalityResolver {
     }
 
     /**
-     * Returns the owner's canonical region ('locality'): the region taken from the {@code REGION}
-     * segment of the owner's {@code memberId} (the run of letters before the two-digit fiscal-year
-     * segment), which is the region derived from the owner's postcode. Returns {@link #UNKNOWN} when
-     * the owner has no member id, or its member id carries no region segment.
+     * Returns the owner's canonical region ('locality'): the <em>plain</em> region code derived from
+     * the owner's postcode (see {@link #regionCode(String)}), or {@link #UNKNOWN} when the owner is
+     * {@code null} or its postcode maps to no known region. This is deliberately taken straight from
+     * the postcode rather than parsed back out of the owner's {@code memberId}: the version-2
+     * identifiers decorate their region segment with a {@code 'V2'} version tag (see
+     * {@link IdentityKeyResolver#deriveMemberId}), whereas the user-facing locality — and the
+     * {@code timezone} and owner-segment area derived from it — must stay the plain region code.
      *
      * @param owner the owner whose locality should be derived, may be {@code null}
-     * @return the owner's region code, or {@link #UNKNOWN} when none is present
+     * @return the owner's plain region code, or {@link #UNKNOWN} when none is present
      */
     public static String deriveLocality(Owner owner) {
-        return owner == null ? UNKNOWN : regionOfMemberId(owner.getMemberId());
-    }
-
-    /**
-     * Extracts the leading {@code REGION} segment of a {@code <REGION><FY><HASH8><CHK>} member id:
-     * the run of letters before the two-digit fiscal-year segment. Returns {@link #UNKNOWN} when the
-     * member id is {@code null}, blank, or carries no region segment.
-     *
-     * @param memberId the owner's member id, may be {@code null}
-     * @return the region segment of the member id, or {@link #UNKNOWN} when none is present
-     */
-    private static String regionOfMemberId(String memberId) {
-        if (memberId == null) {
-            return UNKNOWN;
-        }
-        int end = 0;
-        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
-            end++;
-        }
-        String region = memberId.substring(0, end);
-        return region.isBlank() ? UNKNOWN : region;
+        return owner == null ? UNKNOWN : regionCode(owner.getPostcode());
     }
 }

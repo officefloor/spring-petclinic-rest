@@ -51,6 +51,7 @@ import org.springframework.samples.petclinic.rest.advice.OwnerCityFullException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
@@ -206,16 +207,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Stamps onto a mapped owner DTO the identity values the mapper cannot produce on its own. The {@code identityKey}
-     * (see {@link IdentityKeyResolver#deriveIdentityKey}) is not a stored field of the owner, so it is derived and set
-     * here; the owner's {@code memberId} and {@code householdId} are already mapped straight off the owner. Kept as the
-     * single home for assembling the owner's response identity so the shape of that identity is changed in one place.
+     * Assembles and stamps the owner's version-2 {@code identity} object onto a mapped owner DTO. The three identifiers
+     * are grouped under the nested {@code identity} object: the owner's {@code memberId} and {@code householdId} taken
+     * straight off the owner, and the {@code identityKey} (see {@link IdentityKeyResolver#deriveIdentityKey}), which is
+     * not a stored field of the owner and so is derived here. Kept as the single home for assembling the owner's
+     * response identity so the shape of that identity is changed in one place.
      *
      * @param ownerDto the mapped owner DTO to stamp
      * @param owner    the owner the DTO was mapped from
      */
     private void stampIdentity(OwnerDto ownerDto, Owner owner) {
-        ownerDto.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKeyResolver.deriveIdentityKey(owner));
+        ownerDto.setIdentity(identity);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

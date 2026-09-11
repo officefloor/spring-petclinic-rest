@@ -13,18 +13,21 @@ import org.springframework.stereotype.Component;
 public class HouseholdResolver {
 
     /**
-     * Derives a household's stable identifier: the first 12 hex characters of the SHA-256 digest of the normalized
-     * last name, a {@code '|'} separator and the postcode. The last name is normalized by trimming it, collapsing every
-     * run of whitespace to a single space and lower-casing it; the postcode is used as given (an empty string when
-     * none). Being a pure function of the last name and postcode, it is identical for every owner in the same household
-     * and never changes over time.
+     * Derives a household's stable identifier: the first 12 hex characters of the SHA-256 digest of the fixed version-2
+     * {@link IdentityKeyResolver#VERSION_TAG}, the normalized last name and the postcode, joined with {@code '|'}
+     * separators. Mixing in the shared version tag rederives the identifier under the version-2 owner identity so no
+     * value produced under version 1 recurs. The last name is normalized by trimming it, collapsing every run of
+     * whitespace to a single space and lower-casing it; the postcode is used as given (an empty string when none). Being
+     * a pure function of the last name and postcode, it is identical for every owner in the same household and never
+     * changes over time.
      *
      * @param lastName the household's last name
      * @param postcode the household's postcode, may be {@code null}
      * @return the household identifier
      */
     public String deriveHouseholdId(String lastName, String postcode) {
-        String key = collapseWhitespace(lastName).toLowerCase() + "|" + (postcode == null ? "" : postcode);
+        String key = IdentityKeyResolver.VERSION_TAG + "|" + collapseWhitespace(lastName).toLowerCase() + "|"
+            + (postcode == null ? "" : postcode);
         return HexDigest.upperHexPrefix(key, 12);
     }
 
