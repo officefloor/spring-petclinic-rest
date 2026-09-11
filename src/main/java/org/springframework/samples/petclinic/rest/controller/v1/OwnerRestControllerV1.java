@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
@@ -97,13 +98,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
                                  HouseholdNormalizer householdNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -111,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.householdNormalizer = householdNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -369,7 +374,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephoneNormalizer.normalizeAndValidate(owner.getTelephone()));
         // Store the (already syntactically validated) email lower-cased so it is persisted and
         // returned in canonical form. A missing email is left untouched.
-        owner.setEmail(normalizeEmail(owner.getEmail()));
+        owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         // Validate the optional postcode against the fixed range for the city's region. A postcode
         // is checked only when present (it is optional); one out of range for the city's region is
         // rejected with 400. A city with no known region accepts any 4-digit postcode. The stored
@@ -422,18 +427,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             adjusted = adjusted.plusDays(1);
         }
         return adjusted;
-    }
-
-    /**
-     * Lower-cases the supplied email address so it is stored and returned in canonical form.
-     * Bean validation on the request DTO has already guaranteed that any non-null value is a
-     * syntactically valid address (rejecting anything else with 400).
-     *
-     * @param email the email value (may be {@code null})
-     * @return the lower-cased email, or {@code null} if the input was {@code null}
-     */
-    private String normalizeEmail(String email) {
-        return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -554,7 +547,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Normalize the telephone to canonical E.164 form so it is stored and returned
         // consistently with create; an unformattable value is rejected with 400.
         currentOwner.setTelephone(telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
-        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
