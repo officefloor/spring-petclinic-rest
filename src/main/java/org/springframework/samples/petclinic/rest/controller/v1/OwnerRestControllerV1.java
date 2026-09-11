@@ -174,8 +174,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Transactional
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        Owner owner = createOwner(ownerFieldsDto);
+        return createdOwnerResponse(owner);
+    }
+
+    /**
+     * Creates and persists a new owner from an incoming payload, applying every creation rule in order. The payload is
+     * normalized and validated (see {@link #normalizeAndValidate}), mapped to an owner and stamped with its fields
+     * derived at creation (see {@link #populateDerivedFields}); the duplicate guards then run against those derived
+     * fields (see {@link #requireUniqueIdentity} and {@link #requireHouseholdNotDuplicate}) before the soft-duplicate
+     * flag is recorded (see {@link #flagPossibleDuplicate}); the owner is saved, its transient household member count
+     * is resolved (see {@link #populateHouseholdMemberCount}) and the creation is audited (see
+     * {@link #auditOwnerCreated}). The returned owner carries its generated id and every field a response needs.
+     *
+     * @param ownerFieldsDto the incoming owner payload, mutated in place during normalization
+     * @return the newly created, persisted owner
+     */
+    private Owner createOwner(OwnerFieldsDto ownerFieldsDto) {
         normalizeAndValidate(ownerFieldsDto);
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         populateDerivedFields(owner, ownerFieldsDto);
         requireUniqueIdentity(owner);
@@ -183,16 +199,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
         flagPossibleDuplicate(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         populateHouseholdMemberCount(owner);
+        auditOwnerCreated(owner);
+        return owner;
+    }
+
+    /**
+     * Builds the {@code 201 Created} response for a newly created owner: the owner mapped to its DTO (carrying its
+     * identity key, see {@link #toOwnerDto}) as the body, with a {@code Location} header pointing at the new owner's
+     * canonical URL.
+     *
+     * @param owner the newly created, persisted owner
+     * @return a {@code 201 Created} response carrying the owner DTO and its {@code Location} header
+     */
+    private ResponseEntity<OwnerDto> createdOwnerResponse(Owner owner) {
+        OwnerDto ownerDto = toOwnerDto(owner);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the single audit line for a successfully created owner to the dedicated {@link #AUDIT} logger, recording
+     * its id, customer code and registration date alongside the two values derived purely for the audit trail: the
+     * membership level (see {@link MembershipLevelResolver#deriveMembershipLevel}) and the membership number, the
+     * customer code suffixed with {@code -M} and the two-digit fiscal year of the registration date (see
+     * {@link FiscalYearResolver#fiscalYear}).
+     *
+     * @param owner the newly created, persisted owner, with all its derived fields already in place
+     */
+    private void auditOwnerCreated(Owner owner) {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(),
                 owner.getHouseholdMemberCount(), owner.getRegistrationDate()),
             owner.getCustomerCode() + "-M" + String.format("%02d",
                 FiscalYearResolver.fiscalYear(owner.getRegistrationDate()) % 100));
-        OwnerDto ownerDto = toOwnerDto(owner);
-        headers.setLocation(UriComponentsBuilder.newInstance()
-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
     /**
