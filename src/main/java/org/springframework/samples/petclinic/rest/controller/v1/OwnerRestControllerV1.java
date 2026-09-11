@@ -250,7 +250,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws MissingOwnerFieldsException if any required field is missing or blank
      */
     private void normalizeAndValidate(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        normalizeAddress(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         validatePostcode(ownerFieldsDto);
         String telephone = telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
@@ -260,6 +260,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
         normalizeEmail(ownerFieldsDto);
+    }
+
+    /**
+     * Normalizes an owner's address to its canonical stored form and writes it back onto the payload. The canonical
+     * form (see {@link AddressNormalizer#normalize}) is what gets stored and returned as {@code address} and what every
+     * address comparison uses; a {@code null} input yields an empty string, so a blank result is uniformly treated as a
+     * missing address by the required-field check that follows. The payload is mutated in place so the caller can map
+     * and save it directly.
+     *
+     * @param ownerFieldsDto the incoming owner payload, mutated in place
+     */
+    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
     }
 
     /**
