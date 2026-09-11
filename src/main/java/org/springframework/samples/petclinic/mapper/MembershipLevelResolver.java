@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's 'membershipPoints' and numeric 'membershipLevel', assigned
@@ -22,8 +21,8 @@ public final class MembershipLevelResolver {
     /** Points awarded for tenure over the threshold. */
     private static final int TENURE_POINTS = 3;
 
-    /** Tenure, in days, that must be exceeded before the tenure points are awarded. */
-    private static final int TENURE_THRESHOLD_DAYS = 365;
+    /** Elapsed fiscal years that must be exceeded before the tenure points are awarded. */
+    private static final int TENURE_THRESHOLD_FISCAL_YEARS = 1;
 
     /** A household of this many members (or more) earns the household points. */
     private static final int GOLD_HOUSEHOLD_SIZE = 3;
@@ -35,7 +34,8 @@ public final class MembershipLevelResolver {
      * Returns the membership points for an owner. Starts at 0, gains 2 when an
      * email is present (non-blank), gains 1 when the owner's name was unique on
      * create ({@code namesakeCount} is 0), gains 2 when the owner belongs to a
-     * household of three or more members and gains 3 for tenure over 365 days.
+     * household of three or more members and gains 3 for tenure over one elapsed
+     * fiscal year.
      *
      * @param email                the owner's email, may be {@code null}
      * @param namesakeCount        the owner's namesake count, may be {@code null}
@@ -98,17 +98,18 @@ public final class MembershipLevelResolver {
     }
 
     /**
-     * Reports whether an owner's tenure exceeds the tenure threshold, i.e. it has been more than
-     * 365 days since {@code registrationDate}. A {@code null} or future registration date counts as
-     * no tenure.
+     * Reports whether an owner's tenure exceeds the tenure threshold, i.e. more than one whole fiscal
+     * year (see {@link FiscalYearResolver}) has elapsed between {@code registrationDate} and today. A
+     * {@code null} or future registration date counts as no tenure.
      *
      * @param registrationDate the owner's registration date, may be {@code null}
-     * @return {@code true} when the owner has been registered for more than 365 days
+     * @return {@code true} when more than one fiscal year has elapsed since registration
      */
     private static boolean hasTenure(LocalDate registrationDate) {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_THRESHOLD_DAYS;
+        return FiscalYearResolver.elapsedFiscalYears(registrationDate, LocalDate.now())
+            > TENURE_THRESHOLD_FISCAL_YEARS;
     }
 }

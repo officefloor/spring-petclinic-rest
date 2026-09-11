@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.FiscalYearResolver;
 import org.springframework.samples.petclinic.mapper.HouseholdResolver;
 import org.springframework.samples.petclinic.mapper.IdentityKeyResolver;
 import org.springframework.samples.petclinic.mapper.MembershipLevelResolver;
@@ -186,7 +187,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(),
                 owner.getHouseholdMemberCount(), owner.getRegistrationDate()),
-            owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100));
+            owner.getCustomerCode() + "-M" + String.format("%02d",
+                FiscalYearResolver.fiscalYear(owner.getRegistrationDate()) % 100));
         OwnerDto ownerDto = toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
