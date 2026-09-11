@@ -4,37 +4,67 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric 'membershipLevel', assigned on create. Kept out of
- * {@link OwnerMapper} so MapStruct does not mistake it for an implicit property
- * mapping method.
+ * Derives an owner's 'membershipPoints' and numeric 'membershipLevel', assigned
+ * on create. Kept out of {@link OwnerMapper} so MapStruct does not mistake it for
+ * an implicit property mapping method.
  */
 public final class MembershipLevelResolver {
 
-    /** Highest level attainable without tenure; level 4 is gated on tenure. */
-    private static final int PRE_TENURE_MAX_LEVEL = 3;
+    /** Points awarded when an email is present (non-blank). */
+    private static final int EMAIL_POINTS = 2;
 
-    /** Highest level attainable at all, once the tenure requirement is met. */
-    private static final int TENURED_MAX_LEVEL = 4;
+    /** Points awarded when the owner's name was unique on create (namesakeCount is 0). */
+    private static final int UNIQUE_NAME_POINTS = 1;
 
-    /** Tenure, in days, that must be exceeded before level 4 may be awarded. */
+    /** Points awarded for a household of three or more members. */
+    private static final int HOUSEHOLD_POINTS = 2;
+
+    /** Points awarded for tenure over the threshold. */
+    private static final int TENURE_POINTS = 3;
+
+    /** Tenure, in days, that must be exceeded before the tenure points are awarded. */
     private static final int TENURE_THRESHOLD_DAYS = 365;
 
-    /** A household of this many members (or more) earns the GOLD (level 4) factor. */
+    /** A household of this many members (or more) earns the household points. */
     private static final int GOLD_HOUSEHOLD_SIZE = 3;
 
     private MembershipLevelResolver() {
     }
 
     /**
-     * Returns the membership level for an owner. Starts at 1, gains 1 when an
+     * Returns the membership points for an owner. Starts at 0, gains 2 when an
      * email is present (non-blank), gains 1 when the owner's name was unique on
-     * create ({@code namesakeCount} is 0) and gains 1 when the owner belongs to a
-     * household of three or more members (the GOLD factor).
+     * create ({@code namesakeCount} is 0), gains 2 when the owner belongs to a
+     * household of three or more members and gains 3 for tenure over 365 days.
      *
-     * <p>Level 4 is reserved for tenured owners: it is awarded only when the owner
-     * has been registered for more than 365 days. Below that tenure the level is
-     * capped at 3, so a newly created owner (zero tenure) never exceeds level 3 even
-     * with an email, a unique name and a three-member household.
+     * @param email                the owner's email, may be {@code null}
+     * @param namesakeCount        the owner's namesake count, may be {@code null}
+     * @param householdMemberCount the number of owners in the owner's household, may be {@code null}
+     * @param registrationDate     the owner's registration date, may be {@code null}
+     * @return the membership points, zero or more
+     */
+    public static int deriveMembershipPoints(String email, Integer namesakeCount,
+            Integer householdMemberCount, LocalDate registrationDate) {
+        int points = 0;
+        if (email != null && !email.isBlank()) {
+            points += EMAIL_POINTS;
+        }
+        if (namesakeCount != null && namesakeCount == 0) {
+            points += UNIQUE_NAME_POINTS;
+        }
+        if (householdMemberCount != null && householdMemberCount >= GOLD_HOUSEHOLD_SIZE) {
+            points += HOUSEHOLD_POINTS;
+        }
+        if (hasTenure(registrationDate)) {
+            points += TENURE_POINTS;
+        }
+        return points;
+    }
+
+    /**
+     * Returns the membership level for an owner, mapped from its
+     * {@link #deriveMembershipPoints membership points}: level 1 (0-1 points),
+     * level 2 (2-3 points), level 3 (4-5 points) and level 4 (6 or more points).
      *
      * @param email                the owner's email, may be {@code null}
      * @param namesakeCount        the owner's namesake count, may be {@code null}
@@ -44,22 +74,31 @@ public final class MembershipLevelResolver {
      */
     public static int deriveMembershipLevel(String email, Integer namesakeCount,
             Integer householdMemberCount, LocalDate registrationDate) {
-        int level = 1;
-        if (email != null && !email.isBlank()) {
-            level++;
-        }
-        if (namesakeCount != null && namesakeCount == 0) {
-            level++;
-        }
-        if (householdMemberCount != null && householdMemberCount >= GOLD_HOUSEHOLD_SIZE) {
-            level++;
-        }
-        int maxLevel = hasTenure(registrationDate) ? TENURED_MAX_LEVEL : PRE_TENURE_MAX_LEVEL;
-        return Math.min(level, maxLevel);
+        int points = deriveMembershipPoints(email, namesakeCount, householdMemberCount, registrationDate);
+        return levelForPoints(points);
     }
 
     /**
-     * Reports whether an owner's tenure exceeds the level-4 threshold, i.e. it has been more than
+     * Maps membership points to a membership level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more).
+     *
+     * @param points the owner's membership points
+     * @return the membership level, between 1 and 4 inclusive
+     */
+    private static int levelForPoints(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
+    }
+
+    /**
+     * Reports whether an owner's tenure exceeds the tenure threshold, i.e. it has been more than
      * 365 days since {@code registrationDate}. A {@code null} or future registration date counts as
      * no tenure.
      *

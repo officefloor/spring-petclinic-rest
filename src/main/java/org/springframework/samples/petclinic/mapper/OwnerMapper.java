@@ -26,6 +26,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.CheckDigitResolver.deriveCheckDigit(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipPoints(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevelResolver.deriveMembershipLevel(owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()))")
     @Mapping(target = "locality",
