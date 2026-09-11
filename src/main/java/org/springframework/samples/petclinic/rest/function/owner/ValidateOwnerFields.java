@@ -28,6 +28,7 @@ public class ValidateOwnerFields {
         normalizeAddress(request, errors);
         normalizeTelephone(request, errors);
         normalizeEmail(request, errors);
+        validatePostcode(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
@@ -91,6 +92,28 @@ public class ValidateOwnerFields {
         }
         else if (!errors.contains("email")) {
             errors.add("email");
+        }
+    }
+
+    /**
+     * Postcode is optional. When present (non-blank) it must be a 4-digit value that is valid
+     * for the owner's city per the fixed region ranges (see
+     * {@link org.springframework.samples.petclinic.model.Postcode}); an out-of-range or
+     * malformed value is a 400 (adds a "postcode" error). A valid value is stored trimmed back
+     * on the request so later steps persist and return it. A city with no known region accepts
+     * any 4-digit postcode, keeping the create request backward-compatible when absent.
+     */
+    private static void validatePostcode(OwnerFieldsDto request, List<String> errors) {
+        String postcode = request.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String trimmed = postcode.trim();
+        if (org.springframework.samples.petclinic.model.Postcode.isValidForCity(trimmed, request.getCity())) {
+            request.setPostcode(trimmed);
+        }
+        else if (!errors.contains("postcode")) {
+            errors.add("postcode");
         }
     }
 }

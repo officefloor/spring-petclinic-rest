@@ -14,5 +14,7 @@ public class ApplyOwner {
         owner.setTelephone(request.getTelephone());
         String email = request.getEmail();
         owner.setEmail(email == null || email.isBlank() ? null : email.trim().toLowerCase());
+        String postcode = request.getPostcode();
+        owner.setPostcode(postcode == null || postcode.isBlank() ? null : postcode.trim());
     }
 }
