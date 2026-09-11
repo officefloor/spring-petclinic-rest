@@ -54,6 +54,33 @@ public final class Locality {
         return of(city);
     }
 
+    /**
+     * The canonical region string derived from the postcode alone (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), with no city fallback. This is the REGION segment
+     * of an owner's {@code customerCode}. {@link #UNKNOWN} when the postcode is null,
+     * malformed, or in no known range.
+     */
+    public static String regionOf(String postcode) {
+        return fromPostcode(postcode);
+    }
+
+    /**
+     * The owner's locality, taken from the REGION segment of its {@code customerCode}
+     * (the new region-and-hash identity). When the owner has no customer code (e.g. a
+     * record created before an identity was assigned) it falls back to deriving the
+     * region from the owner's postcode and city.
+     */
+    public static String of(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
+        }
+        return of(owner.getCity(), owner.getPostcode());
+    }
+
     /** Region whose range contains the 4-digit postcode, or {@link #UNKNOWN}. */
     private static String fromPostcode(String postcode) {
         if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
