@@ -1,0 +1,224 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
+index 6dbcca658..3f090a8fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevels.java
+@@ -44,8 +44,20 @@ public final class MembershipLevels {
+         return points;
+     }
+ 
+-    /** The membership level (1-4) for the given owner, derived from its points. */
++    /**
++     * The membership level (1-4) for the given owner, derived from its points and then
++     * capped: when a {@code membershipLevelCap} is set (see
++     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap}),
++     * the level cannot exceed it. A {@code null} cap means no ceiling applies.
++     */
+     public static int forOwner(Owner owner) {
++        int level = rawLevelForOwner(owner);
++        Integer cap = owner.getMembershipLevelCap();
++        return cap == null ? level : Math.min(level, cap);
++    }
++
++    /** The uncapped membership level (1-4) for the given owner, derived from its points. */
++    private static int rawLevelForOwner(Owner owner) {
+         int points = pointsForOwner(owner);
+         if (points <= 1) {
+             return 1;
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7360a3f9e..9d057bf31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -86,6 +86,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -218,6 +221,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+new file mode 100644
+index 000000000..0ce6b863e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.MembershipLevels;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Assigns the new owner's {@code membershipLevelCap}: a ceiling of one above the current
++ * maximum membership level among their existing household members (owners already sharing
++ * this owner's {@code householdId}). Runs after {@link AssignHousehold} sets the id but
++ * before the owner is saved, so only pre-existing members are considered. When the owner
++ * has no household ({@code null} id) or no existing household member, no cap applies and
++ * the field is left {@code null}. {@link MembershipLevels#forOwner(Owner)} enforces the cap.
++ */
++public class AssignMembershipLevelCap {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return;
++        }
++        int maxLevel = -1;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                maxLevel = Math.max(maxLevel, MembershipLevels.forOwner(existing));
++            }
++        }
++        if (maxLevel >= 0) {
++            owner.setMembershipLevelCap(maxLevel + 1);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java
+index e186a3755..4bf8199fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKeys.java
+@@ -28,6 +28,15 @@ public final class IdentityKeys {
+         return build(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+     }
+ 
++    /**
++     * The identity key for an incoming create request, from its raw fields and its derived
++     * {@code householdId}. Lets {@link RequireUniqueIdentity} compare a request against
++     * existing owners' {@link #forOwner(Owner) keys} without first building an entity.
++     */
++    public static String forFields(String telephone, String email, String householdId) {
++        return build(telephone, email, householdId);
++    }
++
+     private static String build(String telephone, String email, String householdId) {
+         String tel = Telephones.toE164(telephone);
+         return (tel == null ? "" : tel) + "|" + normalizeEmail(email) + "|"
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index 083531590..55c0f4d8a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -7,16 +7,18 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
+ 
+ /**
+- * Rejects a create request that would join an existing household without declaring it.
+- * The household is keyed on (lastName, postcode) via {@link Households}, so an incoming
+- * owner whose derived {@code householdId} already belongs to an existing owner is a
+- * household duplicate, reported as a 409 by
++ * Rejects a create request that exactly duplicates an existing owner's identity. Identity is
++ * the {@link IdentityKeys#forFields(String, String, String) identity key} —
++ * {@code telephone + email + householdId}, where {@code householdId} is derived from
++ * (lastName, postcode) via {@link Households} — so a second owner in the same household is a
++ * legitimate, distinct household member (different telephone) rather than a duplicate; only a
++ * true resubmit (same telephone, email and household) collides and is reported as a 409 by
+  * {@link org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityExceptionHandler}.
+  *
+- * <p>Setting {@code sharesHousehold} bypasses this block: the owner is then created as a
+- * declared household member (and, being declared, is not flagged as a possible duplicate by
+- * {@link AssignPossibleDuplicate}). Owners in different households always derive a different
+- * {@code householdId}, so they never collide here.
++ * <p>Setting {@code sharesHousehold} bypasses this block entirely: the owner is then created
++ * as a declared household member (and, being declared, is not flagged as a possible duplicate
++ * by {@link AssignPossibleDuplicate}). Owners in different households always derive a
++ * different {@code householdId}, so they never collide here.
+  */
+ public class RequireUniqueIdentity {
+ 
+@@ -26,11 +28,13 @@ public class RequireUniqueIdentity {
+             return; // a declared household member bypasses the duplicate block
+         }
+         String householdId = Households.idFor(request.getLastName(), request.getPostcode());
++        String identityKey = IdentityKeys.forFields(request.getTelephone(), request.getEmail(),
++                householdId);
+         for (Owner existing : ownerRepository.findAll()) {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // a soft-deleted owner does not block a new create
+             }
+-            if (householdId.equals(existing.getHouseholdId())) {
++            if (identityKey.equals(IdentityKeys.forOwner(existing))) {
+                 throw new DuplicateIdentityException(householdId);
+             }
+         }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 27465fc19..f6f97225c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index aa0f3e8e3..f528d8b07 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,6 +54,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 3610ec1bb..966d1c033 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   bulk_signup_warning BIT(1),
+   household_size INT,
++  membership_level_cap INT,
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
+   deleted BIT(1),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a2a2477d6..52990459e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INT,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INT,
++                                      membership_level_cap INT,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INT,
+                                       deleted BOOLEAN
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index d7f719ce9..17150e7f7 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -50,6 +50,11 @@ assignHousehold:
+ assignHouseholdSize:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdSize
+   govern: [ transaction ]
++  next: assignMembershipLevelCap
++
++assignMembershipLevelCap:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap
++  govern: [ transaction ]
+   next: assignNamesakeCount
+ 
+ assignNamesakeCount:
