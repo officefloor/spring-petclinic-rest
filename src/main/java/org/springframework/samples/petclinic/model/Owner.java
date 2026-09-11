@@ -44,6 +44,9 @@ public class Owner extends Person {
     @NotEmpty
     private String city;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "telephone")
     @NotEmpty
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
@@ -88,6 +91,14 @@ public class Owner extends Person {
 
     public void setCity(String city) {
         this.city = city;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getTelephone() {

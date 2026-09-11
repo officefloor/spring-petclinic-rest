@@ -59,6 +59,13 @@ public class RequireOwnerFields {
             }
             request.setEmail(email.toLowerCase());
         }
+        // Postcode is optional; when present it must be a 4-digit code that is valid for
+        // the owner's city per the fixed region ranges (a city with no known region accepts
+        // any 4-digit code). Validated here only when supplied, so a request without a
+        // postcode stays accepted.
+        if (!Postcodes.isValid(request.getPostcode(), request.getCity())) {
+            throw new RequiredFieldsException(List.of("postcode"));
+        }
         validated.set(request);
     }
 
