@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -588,17 +589,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null || postcode.isBlank()) {
             return;
         }
-        String lastName = owner.getLastName();
-        String telephone = owner.getTelephone();
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (lastName.equalsIgnoreCase(existing.getLastName())
-                && postcode.equals(existing.getPostcode())
-                && !java.util.Objects.equals(telephone, existing.getTelephone())) {
+            if (isPossibleDuplicateOf(owner, existing)) {
                 owner.setPossibleDuplicate(true);
                 owner.setPossibleDuplicateOf(existing.getId());
                 return;
             }
         }
+    }
+
+    /**
+     * Decides whether {@code existing} makes {@code owner} a possible (soft) duplicate: some other owner that shares its
+     * last name (compared case-insensitively) and its postcode but carries a different telephone. The postcode-present
+     * guard is applied by the caller (see {@link #flagPossibleDuplicate}), so {@code owner}'s postcode is non-blank here.
+     *
+     * @param owner    the newly mapped owner about to be saved, with its normalized fields already in place
+     * @param existing an already-persisted owner to test the new owner against
+     * @return {@code true} when {@code existing} makes {@code owner} a possible duplicate
+     */
+    private boolean isPossibleDuplicateOf(Owner owner, Owner existing) {
+        return owner.getLastName().equalsIgnoreCase(existing.getLastName())
+            && owner.getPostcode().equals(existing.getPostcode())
+            && !Objects.equals(owner.getTelephone(), existing.getTelephone());
     }
 
     /**

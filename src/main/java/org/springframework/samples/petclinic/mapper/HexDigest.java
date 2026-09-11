@@ -25,13 +25,24 @@ public final class HexDigest {
      * @return the leading upper-case hex characters of the digest
      */
     public static String upperHexPrefix(String value, int chars) {
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest(value)) {
+            hex.append(String.format("%02X", b));
+        }
+        return hex.substring(0, chars);
+    }
+
+    /**
+     * Computes the raw SHA-256 digest of the UTF-8 bytes of {@code value}. Isolated here so every hex rendering shares
+     * one notion of "the digest" (and one place that handles a missing SHA-256 provider) rather than repeating the
+     * {@link MessageDigest} plumbing.
+     *
+     * @param value the value to hash
+     * @return the SHA-256 digest bytes
+     */
+    private static byte[] digest(String value) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append(String.format("%02X", b));
-            }
-            return hex.substring(0, chars);
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }
