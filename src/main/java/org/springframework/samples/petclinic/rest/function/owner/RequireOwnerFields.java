@@ -30,7 +30,15 @@ public class RequireOwnerFields {
         List<String> errors = new ArrayList<>();
         checkField("firstName", request.getFirstName(), errors);
         checkField("lastName", request.getLastName(), errors);
-        checkField("address", request.getAddress(), errors);
+        // Normalize the address before the required-field check, so an address that is
+        // blank after normalization is rejected and the stored/returned value is canonical.
+        String address = AddressNormalizer.normalize(request.getAddress());
+        if (address.isEmpty()) {
+            errors.add("address");
+        }
+        else {
+            request.setAddress(address);
+        }
         checkField("city", request.getCity(), errors);
         checkField("telephone", request.getTelephone(), errors);
         if (!errors.isEmpty()) {

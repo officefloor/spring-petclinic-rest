@@ -25,14 +25,14 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         String householdId = hash(lastName + "|" + address);
         owner.setHouseholdId(householdId);
         // Back-fill existing household members so both sides share the identifier.
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getHouseholdId() == null
                     && lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 existing.setHouseholdId(householdId);
                 ownerRepository.save(existing);
             }
