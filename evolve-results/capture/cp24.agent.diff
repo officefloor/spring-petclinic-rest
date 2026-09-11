@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 52a90fe79..5127d2de9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,10 +23,10 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-        expression = "java((owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) ? \"GOLD\" "
+-            + ": ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(Math.min(3, 1 "
++            + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
++            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5980e4525..c47a175ea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -167,7 +167,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Record the size of this owner's household after this create, i.e. the number of owners
+         // sharing this owner's 'householdId' once it is persisted. An owner that shares an existing
+         // household counts the matched members plus itself; an owner without a shared household is a
+-        // household of one. Fixed at creation time and used to derive the 'GOLD' membership tier.
++        // household of one. Fixed at creation time.
+         owner.setHouseholdSize(owner.getHouseholdId() == null ? 1 : householdMembers.size() + 1);
+         // Record how many existing owners already share this owner's first and last name
+         // (compared case-insensitively) before this create, fixed at creation time.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d2f128c16..bd6e4d5d5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2148,16 +2148,18 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The pet owner's membership tier derived from their details:
+-                'GOLD' when the owner's household (owners sharing the same
+-                householdId) has 3 or more members after this create; otherwise
+-                'SILVER' when the namesake count is 0 and an email address is
+-                present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The pet owner's numeric membership level from 1 to 3, derived at
++                creation: it starts at 1, gains 1 when an email address is
++                present, gains 1 when the namesake count is 0, and is capped at 3
++                (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
