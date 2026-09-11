@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -65,6 +66,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * @author Vitaliy Fedoriv
@@ -95,6 +98,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; a line is emitted here for each successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Serializes the immutable structured audit event emitted alongside the audit line. */
+    private static final ObjectMapper AUDIT_EVENT_MAPPER = JsonMapper.builder().build();
+
+    /** Monotonically increasing sequence stamped on each structured {@code OWNER_CREATED} event,
+     *  shared across all creates so the events carry a strict global order. */
+    private static final AtomicLong OWNER_CREATED_SEQUENCE = new AtomicLong();
 
     private final ClinicService clinicService;
 
@@ -265,6 +275,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), primaryIdentifier(owner), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        auditOwnerCreatedEvent(owner, ownerDto);
+    }
+
+    /**
+     * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} log as a JSON
+     * object {@code {seq, ownerId, customerCode, membershipLevel, event}}. The {@code seq} is a
+     * strictly increasing integer across every create (see {@link #OWNER_CREATED_SEQUENCE}), giving
+     * the events a total order. The identifier field carries the owner's current primary identifier
+     * (see {@link #primaryIdentifier}) — the customer code today, and whatever replaces it later — so
+     * unifying the customer code into a member id makes the event carry the member id by changing only
+     * {@link #primaryIdentifier}.
+     *
+     * @param owner    the persisted owner
+     * @param ownerDto the mapped view of the persisted owner, source of the membership level
+     */
+    private void auditOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(
+            OWNER_CREATED_SEQUENCE.incrementAndGet(), owner.getId(), primaryIdentifier(owner),
+            ownerDto.getMembershipLevel(), "OWNER_CREATED");
+        AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * The immutable structured audit event published for a successful owner create. Its
+     * {@code customerCode} field carries the owner's current primary identifier (see
+     * {@link #primaryIdentifier}), so the same event shape follows the identifier as it changes.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+        Integer membershipLevel, String event) {
     }
 
     /**
