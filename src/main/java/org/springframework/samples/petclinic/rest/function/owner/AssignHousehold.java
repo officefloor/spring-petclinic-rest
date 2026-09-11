@@ -17,8 +17,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * them all a shared {@code householdId}. Runs after {@link BuildOwner} (so the entity
  * exists) and before {@link SaveOwner} (so the new owner is persisted with the id).
  *
- * <p>The household is keyed on the normalized last name and address (the same
- * comparison {@link CheckOwnerHouseholdUnique} uses). If an existing housemate already
+ * <p>The household is keyed on the normalized last name and address. If an existing housemate already
  * carries a {@code householdId} it is reused; otherwise a stable id is derived from the
  * household key and back-filled onto the existing housemates, so every member — the new
  * owner and each prior one — shares one identifier. A request that does not opt in is

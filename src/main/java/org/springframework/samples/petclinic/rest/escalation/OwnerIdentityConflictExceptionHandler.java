@@ -7,9 +7,9 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-public class OwnerTelephoneInUseExceptionHandler {
+public class OwnerIdentityConflictExceptionHandler {
 
-    public void handle(@Parameter OwnerTelephoneInUseException ex,
+    public void handle(@Parameter OwnerIdentityConflictException ex,
             ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
         response.send(ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", ex.getMessage())));
