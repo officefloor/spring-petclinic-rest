@@ -53,6 +53,7 @@ import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
 import org.springframework.samples.petclinic.util.Sha256Hex;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -218,14 +219,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Enforce the pre-persistence policies that can reject the new owner outright.
         rejectDisallowedOwnerCreation(owner);
         // Resolve the owner's household membership: assign the deterministic 'householdId' (a pure
-        // function of last name and postcode), reject a household duplicate unless the request
-        // declares it shares the household, and record the household size. This runs before the
-        // identity-key check so that check sees the owner's household id.
+        // function of last name and postcode), cap the membership level for a new household member,
+        // and record the household size. The household id is no longer part of the identity key, so
+        // this no longer rejects a household duplicate: owners sharing a household are distinguished
+        // by the identity-key check below and otherwise flagged as soft duplicates.
         boolean declaredHouseholdMember =
             applyHouseholdMembership(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
-        // Reject the create when the owner's whole derived identity key (normalized telephone,
-        // email and household id) already matches an existing owner. This single rule subsumes the
-        // former separate telephone, email and household duplicate checks.
+        // Reject the create when the owner's whole derived identity key (the SHA-256 over normalized
+        // telephone, lower-cased email and the Soundex of the last name) already matches an existing
+        // owner. This single rule subsumes the former separate telephone, email and household
+        // duplicate checks.
         rejectWhenIdentityInUse(owner);
         // Flag the owner as a possible (soft) duplicate when, although not a hard duplicate, it
         // shares an existing owner's last name and postcode with a different telephone. A declared
@@ -258,8 +261,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the sequence of create-time rejections stays readable and a new rule is added as one more
      * guard. Grouping the rules here keeps {@link #addOwner} focused on the household, derived-field
      * and persistence steps. The single duplicate rule that rejects an owner whose whole identity
-     * key matches an existing one is applied separately in {@link #rejectWhenIdentityInUse}, after
-     * the household id has been resolved, because that key includes the household id.
+     * key matches an existing one is applied separately in {@link #rejectWhenIdentityInUse}.
      *
      * @param owner the newly mapped and normalized owner being created
      */
@@ -279,8 +281,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the request declares it shares the household via {@code sharesHousehold} the owner is a known,
      * declared member and is never flagged as a possible duplicate. The owner's
      * {@code householdSize} (the number of owners sharing the household after this create) is
-     * recorded either way. The assigned household id is part of the owner's identity key, so it is
-     * resolved here before {@link #rejectWhenIdentityInUse}.
+     * recorded either way.
      *
      * @param owner           the newly mapped and normalized owner being created
      * @param sharesHousehold whether the request declared that the owner shares an existing household
@@ -369,13 +370,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner whose whole derived identity key already matches an existing owner,
-     * with 409 Conflict. The identity key ({@link Owner#getIdentityKey()}) joins the normalized
-     * telephone, the email (or empty) and the household id (or empty), so this single rule replaces
-     * the former separate telephone, email and household duplicate checks: two owners collide only
-     * when their whole keys are equal, and members of one household with different telephones have
-     * different keys and are both allowed.
+     * with 409 Conflict. The identity key ({@link Owner#getIdentityKey()}) is the SHA-256 hex over
+     * the normalized telephone, the lower-cased email (or empty) and the Soundex of the last name, so
+     * this single rule replaces the former separate telephone, email and household duplicate checks:
+     * two owners collide only when their whole keys are equal, and members of one household with
+     * different telephones have different keys and are both allowed (instead flagged as soft
+     * duplicates).
      *
-     * @param owner the owner being created, already normalized and with its household resolved
+     * @param owner the owner being created, already normalized
      */
     private void rejectWhenIdentityInUse(Owner owner) {
         String identityKey = owner.getIdentityKey();
@@ -389,9 +391,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the soft-duplicate flags for a newly normalized owner that has already passed the hard
-     * duplicate (identity-key) check. When an existing owner shares this owner's last name (compared
-     * case-insensitively) and postcode but carries a different (normalized) telephone, the new owner
-     * is still created but flagged as a possible duplicate: {@code possibleDuplicate} is set true and
+     * duplicate (identity-key) check. When an existing owner has a different identity key but shares
+     * this owner's postcode and the Soundex code of its last name, the new owner is still created but
+     * flagged as a possible duplicate: {@code possibleDuplicate} is set true and
      * {@code possibleDuplicateOf} to the matching owner's id (the lowest such id when several match).
      * Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
      * A postcode is required on both sides for a match, so an owner without a postcode is never a
@@ -415,9 +417,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Tests whether an existing owner makes the owner being created a possible (soft) duplicate: the
-     * two share a postcode (required on both sides, so an owner without a postcode never matches) and
-     * a last name (compared case-insensitively) but carry different (normalized) telephones. A match
-     * flags the new owner as a possible duplicate of the existing one without rejecting the create.
+     * two have different identity keys (an equal key would already have been rejected as a hard
+     * duplicate) but share a postcode (required on both sides, so an owner without a postcode never
+     * matches) and the Soundex code of their last name. A match flags the new owner as a possible
+     * duplicate of the existing one without rejecting the create.
      *
      * @param existing an existing owner to compare against
      * @param owner    the owner being created
@@ -426,10 +429,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isPossibleDuplicateOf(Owner existing, Owner owner) {
         return existing.getPostcode() != null
             && existing.getPostcode().equals(owner.getPostcode())
-            && existing.getLastName() != null
-            && existing.getLastName().equalsIgnoreCase(owner.getLastName())
-            && existing.getTelephone() != null
-            && !existing.getTelephone().equals(owner.getTelephone());
+            && Soundex.encode(existing.getLastName()).equals(Soundex.encode(owner.getLastName()))
+            && !existing.getIdentityKey().equals(owner.getIdentityKey());
     }
 
     /**

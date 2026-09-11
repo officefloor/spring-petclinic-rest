@@ -285,18 +285,21 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived key that duplicate detection compares owners by, formed as the normalized
-     * telephone, the (lower-cased) email or an empty string when absent, and the household id or an
-     * empty string when absent, joined with {@code '|'}. Two owners are duplicates only when their
-     * whole identity keys are equal, so members of one household with different telephones (and hence
-     * different keys) are not duplicates. Derived on read from the stored, already-normalized fields.
+     * The derived key that duplicate detection compares owners by: the 64-character lower-case hex
+     * SHA-256 digest over the normalized telephone, the lower-cased email (or an empty string when
+     * absent) and the Soundex code of the last name, joined with {@code '|'}. Two owners are
+     * duplicates only when their whole identity keys are equal, so members of one household with
+     * different telephones (and hence different keys) are not duplicates. Derived on read from the
+     * stored, already-normalized fields.
      *
      * @return the derived identity key
      */
     public String getIdentityKey() {
-        return (this.telephone == null ? "" : this.telephone) + '|'
-            + (this.email == null ? "" : this.email) + '|'
-            + (this.householdId == null ? "" : this.householdId);
+        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
+        String lowerEmail = this.email == null ? "" : this.email;
+        return org.springframework.samples.petclinic.util.Sha256Hex.lowerHex(
+            normalizedTelephone + '|' + lowerEmail + '|'
+                + org.springframework.samples.petclinic.util.Soundex.encode(this.getLastName()));
     }
 
     protected Set<Pet> getPetsInternal() {
