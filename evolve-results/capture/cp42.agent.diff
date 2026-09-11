@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 202004468..444e6f660 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,9 +30,9 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(membershipLevel(membershipPoints(owner)))")
+     @Mapping(target = "locality",
+-        expression = "java(owner.getCustomerCode() != null "
+-            + "? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) "
+-            + ": org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode()))")
++        expression = "java(locality(owner))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.timezone(locality(owner)))")
+     @Mapping(target = "contactPreference",
+         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
+             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+@@ -57,6 +57,16 @@ public interface OwnerMapper {
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
++    /**
++     * Returns the owner's canonical region (locality): the REGION segment of the customer code when
++     * present, otherwise the region derived from the city and postcode, or {@code "UNKNOWN"}.
++     */
++    default String locality(Owner owner) {
++        return owner.getCustomerCode() != null
++            ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))
++            : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
++    }
++
+     /**
+      * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
+      * plus 1 when the namesake count is 0, plus 2 for a household of 3 or more, and plus 3 for
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index cb1818c01..89f909e50 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -37,6 +37,12 @@ public final class LocalityResolver {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Fixed region -> IANA timezone table; anything not listed has no known timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     private LocalityResolver() {
+     }
+ 
+@@ -65,6 +71,17 @@ public final class LocalityResolver {
+         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
+ 
++    /**
++     * Returns the IANA timezone name for the given region via the fixed region-to-timezone table,
++     * or {@code null} when the region is {@code null} or not a known region.
++     *
++     * @param region the canonical region string (e.g. {@code "NSW"}, may be {@code null})
++     * @return the IANA timezone name, or {@code null}
++     */
++    public static String timezone(String region) {
++        return region == null ? null : REGION_TIMEZONE.get(region);
++    }
++
+     /**
+      * Returns the region whose range contains the postcode, or {@code null} when the postcode is
+      * {@code null}, not a parseable integer, or in no known range.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3149446d0..9870c23a8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2242,6 +2242,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                via the fixed region-to-timezone table (NSW -> Australia/Sydney,
++                VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), or absent
++                when the region resolves to no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
