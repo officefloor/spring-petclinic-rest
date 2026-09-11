@@ -113,19 +113,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
-        // A value that cannot form a valid E.164 number is rejected with 400.
-        String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
-        owner.setTelephone(normalizedTelephone);
-        // Store the (already syntactically validated) email lower-cased so it is persisted and
-        // returned in canonical form. A missing email is left untouched.
-        owner.setEmail(normalizeEmail(owner.getEmail()));
-        // Default the registration date to the server's current date when the client did not
-        // supply one, so it is persisted and returned in ISO 'YYYY-MM-DD' form.
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
+        normalizeOwnerFields(owner);
         // Reject creating an owner whose normalized telephone is already used by another owner.
+        String normalizedTelephone = owner.getTelephone();
         if (isTelephoneInUse(normalizedTelephone)) {
             throw new DuplicateTelephoneException(
                 "An owner with telephone " + normalizedTelephone + " already exists");
@@ -161,6 +151,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Canonicalizes the fields of a newly mapped owner on create, in place, so each value is
+     * persisted and returned in its canonical form. The telephone is normalized to E.164
+     * (rejecting an unformattable value with 400), the email is lower-cased, and a missing
+     * registration date defaults to the server's current date. Centralising these per-field
+     * canonicalizations here keeps {@link #addOwner} focused on the duplicate, household and
+     * customer-code rules.
+     *
+     * @param owner the newly mapped owner to canonicalize
+     */
+    private void normalizeOwnerFields(Owner owner) {
+        // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
+        // A value that cannot form a valid E.164 number is rejected with 400.
+        owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
+        // Store the (already syntactically validated) email lower-cased so it is persisted and
+        // returned in canonical form. A missing email is left untouched.
+        owner.setEmail(normalizeEmail(owner.getEmail()));
+        // Default the registration date to the server's current date when the client did not
+        // supply one, so it is persisted and returned in ISO 'YYYY-MM-DD' form.
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
     }
 
     /**
