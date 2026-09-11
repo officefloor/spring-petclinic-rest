@@ -30,9 +30,9 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(membershipLevel(membershipPoints(owner)))")
     @Mapping(target = "locality",
-        expression = "java(owner.getCustomerCode() != null "
-            + "? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) "
-            + ": org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode()))")
+        expression = "java(locality(owner))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.timezone(locality(owner)))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
@@ -56,6 +56,16 @@ public interface OwnerMapper {
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+
+    /**
+     * Returns the owner's canonical region (locality): the REGION segment of the customer code when
+     * present, otherwise the region derived from the city and postcode, or {@code "UNKNOWN"}.
+     */
+    default String locality(Owner owner) {
+        return owner.getCustomerCode() != null
+            ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))
+            : org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+    }
 
     /**
      * Computes the owner's membership points: 0 to start, plus 2 when an email address is present,
