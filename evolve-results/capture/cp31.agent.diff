@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigits.java b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigits.java
+new file mode 100644
+index 000000000..87216e806
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigits.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over
++ * the digits contained in the owner's {@code customerCode}. Non-digit characters are
++ * ignored; the rightmost digit is doubled and doubling alternates leftward.
++ */
++public final class CheckDigits {
++
++    private CheckDigits() {
++    }
++
++    /** The Luhn check digit (0-9) over the digits of the owner's customerCode. */
++    public static int forOwner(Owner owner) {
++        return luhn(owner.getCustomerCode());
++    }
++
++    /** The Luhn check digit (0-9) over the digits contained in {@code value}. */
++    public static int luhn(String value) {
++        if (value == null) {
++            return 0;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 63a5c4bb1..c3ad84f23 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "checkDigit",
++        expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.forOwner(owner))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a01386d50..f99817337 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2110,6 +2110,17 @@ components:
+               type: string
+               example: 'SYD-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the owner's
++                customerCode (non-digit characters ignored).
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
