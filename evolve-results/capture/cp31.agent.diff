@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4c22d54c4..2c26d99ff 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.of(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java
+new file mode 100644
+index 000000000..feb4f533b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over
++ * the digits contained in the owner's {@code customerCode}.
++ *
++ * <p>The digits are processed right-to-left, doubling every second digit starting with
++ * the rightmost (subtracting 9 when a doubled digit exceeds 9); the check digit is the
++ * amount needed to bring the running total to the next multiple of ten. Non-digit
++ * characters in the customer code are ignored. Null when the owner has no customer code.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /** The Luhn check digit for the given owner, or null when it has no customer code. */
++    public static Integer of(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ec71b73a7..41d9d8d74 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2109,6 +2109,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained in the
++                owner's customerCode. Derived from the owner's own fields.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
