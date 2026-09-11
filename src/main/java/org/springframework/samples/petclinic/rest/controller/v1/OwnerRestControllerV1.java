@@ -153,6 +153,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // email and household id) already matches an existing owner. This single rule subsumes the
         // former separate telephone, email and household duplicate checks.
         rejectWhenIdentityInUse(owner);
+        // Flag the owner as a possible (soft) duplicate when, although not a hard duplicate, it
+        // shares an existing owner's last name and postcode with a different telephone.
+        assignPossibleDuplicate(owner);
         // Assign the remaining create-time derived fields (namesake count, customer code,
         // membership number and bulk-signup warning), each fixed at creation time.
         assignDerivedFields(owner);
@@ -265,6 +268,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateIdentityException(
                 "An owner with identity key " + identityKey + " already exists");
         }
+    }
+
+    /**
+     * Assigns the soft-duplicate flags for a newly normalized owner that has already passed the hard
+     * duplicate (identity-key) check. When an existing owner shares this owner's last name (compared
+     * case-insensitively) and postcode but carries a different (normalized) telephone, the new owner
+     * is still created but flagged as a possible duplicate: {@code possibleDuplicate} is set true and
+     * {@code possibleDuplicateOf} to the matching owner's id (the lowest such id when several match).
+     * Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left absent.
+     * A postcode is required on both sides for a match, so an owner without a postcode is never a
+     * possible duplicate. Both values are fixed at creation time.
+     *
+     * @param owner the owner being created, already normalized and confirmed not a hard duplicate
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        Integer matchId = owner.getPostcode() == null ? null : existingOwners()
+            .filter(existing -> existing.getPostcode() != null
+                && existing.getPostcode().equals(owner.getPostcode())
+                && existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(owner.getLastName())
+                && existing.getTelephone() != null
+                && !existing.getTelephone().equals(owner.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
     }
 
     /**
