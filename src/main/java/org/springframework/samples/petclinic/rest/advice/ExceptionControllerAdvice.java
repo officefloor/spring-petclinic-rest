@@ -56,6 +56,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the same telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
     private static final String ERROR_INVALID_TELEPHONE = "The supplied telephone number is not a valid E.164 number";
+    private static final String ERROR_INVALID_ADDRESS = "The supplied address is blank after normalization";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -184,6 +185,26 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_TELEPHONE);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidAddressException}, raised when a supplied address value is blank after
+     * normalization (and so carries no address), returning a 400 Bad Request status.
+     *
+     * @param e The {@link InvalidAddressException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(InvalidAddressException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidAddressException(InvalidAddressException e, HttpServletRequest request) {
+        logger.warn("Invalid address at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_ADDRESS);
         return ResponseEntity.status(status).body(detail);
     }
 

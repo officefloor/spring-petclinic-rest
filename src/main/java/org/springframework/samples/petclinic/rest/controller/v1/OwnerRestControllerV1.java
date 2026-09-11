@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -69,18 +70,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdNormalizer householdNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 HouseholdNormalizer householdNormalizer) {
+                                 HouseholdNormalizer householdNormalizer,
+                                 AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.householdNormalizer = householdNormalizer;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -155,15 +160,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Canonicalizes the fields of a newly mapped owner on create, in place, so each value is
-     * persisted and returned in its canonical form. The telephone is normalized to E.164
-     * (rejecting an unformattable value with 400), the email is lower-cased, and a missing
-     * registration date defaults to the server's current date. Centralising these per-field
-     * canonicalizations here keeps {@link #addOwner} focused on the duplicate, household and
-     * customer-code rules.
+     * persisted and returned in its canonical form. The address is normalized (trimmed, whitespace
+     * collapsed, upper-cased and common abbreviations expanded, rejecting a value blank after
+     * normalization with 400), the telephone is normalized to E.164 (rejecting an unformattable
+     * value with 400), the email is lower-cased, and a missing registration date defaults to the
+     * server's current date. Canonicalising the address here, before the household checks read it,
+     * ensures duplicate detection and the shared household id both compare the normalized form.
+     * Centralising these per-field canonicalizations here keeps {@link #addOwner} focused on the
+     * duplicate, household and customer-code rules.
      *
      * @param owner the newly mapped owner to canonicalize
      */
     private void normalizeOwnerFields(Owner owner) {
+        // Normalize the address on create so it is stored and returned in canonical form and every
+        // later comparison (household duplicate detection and the shared household id) uses it.
+        // A value that is blank after normalization is rejected with 400.
+        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
         // Normalize the telephone on create so it is stored and returned in canonical E.164 form.
         // A value that cannot form a valid E.164 number is rejected with 400.
         owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
