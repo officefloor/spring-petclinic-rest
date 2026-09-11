@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a8fe8804d..f660fccdf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -59,6 +59,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.context.request.RequestAttributes;
++import org.springframework.web.context.request.RequestContextHolder;
++import org.springframework.web.context.request.ServletRequestAttributes;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -109,6 +112,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final EmailNormalizer emailNormalizer;
+ 
++    /**
++     * Records the owner created for each already-seen {@code Idempotency-Key}, so a create that
++     * repeats with the same key returns the originally created owner (200) instead of creating a
++     * duplicate. Keyed by the header value; concurrent because creates may be handled on any thread.
++     */
++    private final java.util.concurrent.ConcurrentMap<String, OwnerDto> idempotentCreates =
++        new java.util.concurrent.ConcurrentHashMap<>();
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -155,7 +166,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+-        return createOwner(ownerFieldsDto);
++        // Idempotent create: when the request carries an 'Idempotency-Key' header that has already
++        // been used for a successful create, return the originally created owner with 200 OK instead
++        // of running the create pipeline again (which would otherwise reject the repeat as a duplicate
++        // with 409). A first, unseen key runs the normal create and records its result under the key.
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey == null || idempotencyKey.isBlank()) {
++            return createOwner(ownerFieldsDto);
++        }
++        OwnerDto previouslyCreated = idempotentCreates.get(idempotencyKey);
++        if (previouslyCreated != null) {
++            return new ResponseEntity<>(previouslyCreated, HttpStatus.OK);
++        }
++        ResponseEntity<OwnerDto> response = createOwner(ownerFieldsDto);
++        idempotentCreates.put(idempotencyKey, response.getBody());
++        return response;
++    }
++
++    /**
++     * Returns the value of the current request's {@code Idempotency-Key} header, or {@code null} when
++     * the request carries no such header (or there is no active servlet request). Reading it from the
++     * request context here keeps the header — a request-level concern surrounding the create — out of
++     * the generated {@link #addOwner} signature and the {@link #createOwner} pipeline.
++     *
++     * @return the {@code Idempotency-Key} header value, or {@code null} when absent
++     */
++    private String currentIdempotencyKey() {
++        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
++        if (attributes instanceof ServletRequestAttributes servletAttributes) {
++            return servletAttributes.getRequest().getHeader("Idempotency-Key");
++        }
++        return null;
+     }
+ 
+     /**
