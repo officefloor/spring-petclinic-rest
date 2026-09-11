@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7867d00e2..09527ae7a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -48,6 +48,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.forOwner(owner))")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.Telephones.toDisplay(owner.getTelephone()))")
++    @Mapping(target = "deleted",
++        expression = "java(owner.getDeleted() != null && owner.getDeleted())")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8e541e32f..7360a3f9e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -92,6 +92,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -231,6 +234,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+index 8f9221579..ee3ae61ea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+@@ -37,6 +37,9 @@ public class AssignPossibleDuplicate {
+         Integer matchId = null;
+         if (lastName != null && postcode != null && !postcode.isBlank()) {
+             for (Owner existing : ownerRepository.findAll()) {
++                if (Boolean.TRUE.equals(existing.getDeleted())) {
++                    continue; // a soft-deleted owner is not a possible duplicate
++                }
+                 if (lastName.equalsIgnoreCase(existing.getLastName())
+                         && postcode.equals(existing.getPostcode())
+                         && (matchId == null || existing.getId() < matchId)) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..e2db6e62f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -4,9 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
++/**
++ * Soft-deletes the owner: flags {@code deleted} true and retains the record, so
++ * {@code GET /api/owners/{id}} still returns the owner (with {@code deleted} true) and the
++ * create endpoint's duplicate/identity checks can ignore it.
++ */
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index c09e05cc9..083531590 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -27,6 +27,9 @@ public class RequireUniqueIdentity {
+         }
+         String householdId = Households.idFor(request.getLastName(), request.getPostcode());
+         for (Owner existing : ownerRepository.findAll()) {
++            if (Boolean.TRUE.equals(existing.getDeleted())) {
++                continue; // a soft-deleted owner does not block a new create
++            }
+             if (householdId.equals(existing.getHouseholdId())) {
+                 throw new DuplicateIdentityException(householdId);
+             }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a58ad6d47..27465fc19 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index f42c0bdeb..aa0f3e8e3 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a3597cb5b..3610ec1bb 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INT,
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
++  deleted BIT(1),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index f4c71ec09..a2a2477d6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INT,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INT
++                                      possible_duplicate_of INT,
++                                      deleted BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 137f0142a..defc7526e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2309,6 +2309,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether this owner has been soft-deleted. A DELETE of the owner flags this
++                true and retains the record; a newly created owner is false. Owners flagged
++                deleted are ignored by the create endpoint's duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
