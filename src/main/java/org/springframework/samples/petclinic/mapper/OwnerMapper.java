@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -37,6 +38,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.timezone(locality(owner)))")
     @Mapping(target = "ownerSegment",
         expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag",
+        expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
@@ -151,6 +154,53 @@ public interface OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * The registrable labels of the known disposable-email providers (the label immediately before
+     * the final TLD of each blocklisted domain). An owner's email domain is "disposable-adjacent"
+     * when it shares one of these labels, which flags a subdomain of a disposable provider or the
+     * same provider name under a different TLD.
+     */
+    java.util.Set<String> DISPOSABLE_EMAIL_LABELS =
+        java.util.Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Whether this owner is flagged for manual risk review, derived on read. True when any of these
+     * hold: the owner is a possible duplicate ({@code possibleDuplicate}), the owner's email domain
+     * is disposable-adjacent (see {@link #disposableAdjacentEmail(String)}), or the owner's city was
+     * over its soft capacity when the owner was created ({@code capacityWarning}); false otherwise.
+     */
+    default boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || Boolean.TRUE.equals(owner.getCapacityWarning())
+            || disposableAdjacentEmail(owner.getEmail());
+    }
+
+    /**
+     * Whether the (already lower-cased) email's domain is "disposable-adjacent": it is not itself on
+     * the disposable blocklist (such a value is rejected at create) but belongs to the same family as
+     * a known disposable-email provider, sharing the provider's registrable label (the label
+     * immediately before the final TLD). A different top-level domain (e.g. {@code mailinator.net})
+     * or a subdomain (e.g. {@code inbox.mailinator.com}) of a disposable provider therefore counts. A
+     * {@code null} or domain-less email is never adjacent.
+     */
+    default boolean disposableAdjacentEmail(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        int lastDot = domain.lastIndexOf('.');
+        if (lastDot <= 0) {
+            return false;
+        }
+        int prevDot = domain.lastIndexOf('.', lastDot - 1);
+        String label = domain.substring(prevDot + 1, lastDot);
+        return DISPOSABLE_EMAIL_LABELS.contains(label);
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
