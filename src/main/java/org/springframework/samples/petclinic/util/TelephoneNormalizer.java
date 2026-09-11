@@ -112,6 +112,48 @@ public class TelephoneNormalizer {
     }
 
     /**
+     * Formats a stored E.164 telephone for human display: a leading {@code '+'} and country code,
+     * a space, then the national digits grouped in threes (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). The country code is recognised from
+     * {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE} (a prefix-free set); a number whose country code is
+     * not listed keeps its digits grouped in threes without a separate country-code segment. The
+     * raw stored {@code telephone} is left untouched in E.164 form.
+     *
+     * @param e164 the stored E.164 telephone (may be {@code null})
+     * @return the human-formatted telephone, or {@code null} if the input was {@code null}
+     */
+    public static String formatForDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        for (String countryCode : NATIONAL_DIGITS_BY_COUNTRY_CODE.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /**
+     * Joins the digits of {@code nationalDigits} into space-separated groups of three, counting from
+     * the left (e.g. {@code "412345678"} becomes {@code "412 345 678"}).
+     *
+     * @param nationalDigits the national-number digits to group
+     * @return the grouped digits
+     */
+    private static String groupInThrees(String nationalDigits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < nationalDigits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(nationalDigits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Rejects a normalized number whose national-number length does not match the requirement for
      * its country code. Numbers whose country code is not in {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE}
      * are left to the generic total-length rule enforced by {@link #normalize(String)}.

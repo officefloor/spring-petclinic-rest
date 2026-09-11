@@ -23,6 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.formatForDisplay(owner.getTelephone()))")
     @Mapping(target = "membershipLevel",
         expression = "java(Math.min(3, 1 "
             + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
