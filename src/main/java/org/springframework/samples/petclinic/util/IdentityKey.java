@@ -18,11 +18,13 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Derives an owner's identity key: the value duplicate detection compares owners by. It is the
- * 64-character lower-case hex SHA-256 digest over the owner's stable identity fields — the
- * normalized telephone, the lower-cased email (or an empty string when absent) and the Soundex code
- * of the last name — joined with {@code '|'}, hashed via the shared {@link Sha256Hex} helper so
- * every hash-derived identifier in the app is computed one way. Two owners are duplicates only when
- * their whole identity keys are equal.
+ * 64-character lower-case hex SHA-256 digest over the fixed {@code "V2"} identity version tag and
+ * the owner's stable identity fields — the normalized telephone, the lower-cased email (or an empty
+ * string when absent) and the Soundex code of the last name — joined with {@code '|'}, hashed via
+ * the shared {@link Sha256Hex} helper so every hash-derived identifier in the app is computed one
+ * way. The version tag is mixed into every key, so it changes every value from its version-1 form
+ * without affecting duplicate detection: two owners are duplicates only when their whole identity
+ * keys are equal.
  * <p>
  * Keeping the identity key's derivation in a focused util gathers it alongside the other derived
  * owner identifiers ({@link MemberId}, {@link HouseholdNormalizer}) rather than inline in the
@@ -30,6 +32,14 @@ package org.springframework.samples.petclinic.util;
  * single home.
  */
 public final class IdentityKey {
+
+    /**
+     * The fixed identity version tag mixed into the hashed identity fields so the version-2 identity
+     * key differs from every value produced under version 1. It is prepended to the joined fields
+     * before hashing; because the same tag is mixed into every key, duplicate detection is unchanged
+     * (two owners still collide only when their whole keys are equal).
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
 
     private IdentityKey() {
     }
@@ -47,6 +57,7 @@ public final class IdentityKey {
     public static String of(String telephone, String email, String lastName) {
         String normalizedTelephone = telephone == null ? "" : telephone;
         String lowerEmail = email == null ? "" : email;
-        return Sha256Hex.lowerHex(normalizedTelephone + '|' + lowerEmail + '|' + Soundex.encode(lastName));
+        return Sha256Hex.lowerHex(IDENTITY_VERSION_TAG + '|' + normalizedTelephone + '|' + lowerEmail
+            + '|' + Soundex.encode(lastName));
     }
 }

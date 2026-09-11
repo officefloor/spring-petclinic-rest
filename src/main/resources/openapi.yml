@@ -2143,6 +2143,59 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The pet owner's version-2 derived identifiers, grouped together. The
+        region code mixed into each identifier carries a fixed 'V2' version tag,
+        so every value differs from the version-1 identifiers; the user-facing
+        'locality', 'timezone' and 'ownerSegment' keep the plain region code.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The pet owner's member id formatted '<REGION><FY><HASH8><CHK>':
+            REGION is the version-2 region derived from the postcode (falling
+            back to the city) with a fixed 'V2' version tag mixed in, FY is the
+            2-digit fiscal year of the (business-day-adjusted) registration date,
+            HASH8 is the first 8 upper-case hex characters of the SHA-256 digest
+            over the normalized telephone concatenated with the last name, and
+            CHK is a single Luhn check digit computed over the decimal digits of
+            '<REGION><FY><HASH8>'. Assigned once at creation and returned
+            unchanged; on a collision '-<n>' is appended so distinct owners
+            always receive distinct member ids.
+          type: string
+          example: 'V2NSW26A1B2C3D45'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            The deterministic identifier shared by all owners of the same
+            household (same last name and postcode), computed as the first
+            12 hex characters of the SHA-256 of the fixed 'V2' version tag, the
+            normalized last name and the postcode joined with '|'. Every owner
+            with the same last name and postcode carries the same value
+            automatically; it is always assigned.
+          type: string
+          example: '1A2B3C4D5E6F'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The derived key used for duplicate detection: the 64-character
+            lower-case hex SHA-256 digest over the fixed 'V2' version tag, the
+            normalized telephone, the lower-cased email (or empty when absent)
+            and the Soundex code of the last name, joined with '|'. A new owner
+            is rejected with 409 Conflict only when its whole identity key equals
+            an existing owner's.
+          type: string
+          example: '3b8c1f2a9d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e'
+          readOnly: true
+      required:
+        - memberId
+        - householdId
+        - identityKey
     Owner:
       title: Owner
       description: A pet owner.
@@ -2203,45 +2256,20 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The pet owner's member id formatted '<REGION><FY><HASH8><CHK>':
-                REGION is the region derived from the postcode (falling back to the
-                city), FY is the 2-digit fiscal year of the (business-day-adjusted)
-                registration date, HASH8 is the first 8 upper-case hex characters of
-                the SHA-256 digest over the normalized telephone concatenated with
-                the last name, and CHK is a single Luhn check digit computed over the
-                decimal digits of '<REGION><FY><HASH8>'. Assigned once at creation
-                and returned unchanged; on a collision '-<n>' is appended so distinct
-                owners always receive distinct member ids.
-              type: string
-              example: 'NSW26A1B2C3D45'
+                The version of the owner identity contract this response was
+                produced under. Always 2 for the current (version-2) identity:
+                the region code mixed into the identifiers carries a fixed 'V2'
+                version tag and the three identifiers are grouped under
+                'identity'. Derived on read.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                The deterministic identifier shared by all owners of the same
-                household (same last name and postcode), computed as the first
-                12 hex characters of the SHA-256 of the normalized last name and
-                the postcode joined with '|'. Every owner with the same last name
-                and postcode carries the same value automatically; it is always
-                assigned.
-              type: string
-              example: '1A2B3C4D5E6F'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The derived key used for duplicate detection: the 64-character
-                lower-case hex SHA-256 digest over the normalized telephone, the
-                lower-cased email (or empty when absent) and the Soundex code of
-                the last name, joined with '|'. A new owner is rejected with 409
-                Conflict only when its whole identity key equals an existing
-                owner's.
-              type: string
-              example: '3b8c1f2a9d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: >-
@@ -2299,9 +2327,11 @@ components:
             locality:
               title: Locality
               description: >-
-                The canonical region taken from the REGION segment of the owner's
-                member id (the region derived from the postcode, falling back
+                The canonical plain region derived from the postcode (falling back
                 to the city), or 'UNKNOWN' when neither resolves to a known region.
+                This is not an identifier: it stays the plain region code (e.g.
+                'NSW') and never carries the 'V2' version tag mixed into the
+                identifiers under 'identity'.
               type: string
               example: 'NSW'
               readOnly: true

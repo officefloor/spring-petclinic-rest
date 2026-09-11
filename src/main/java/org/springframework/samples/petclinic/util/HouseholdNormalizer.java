@@ -39,20 +39,30 @@ import org.springframework.stereotype.Component;
 public class HouseholdNormalizer {
 
     /**
+     * The fixed identity version tag mixed into the hashed household fields so the version-2
+     * household id differs from every value produced under version 1. It is prepended to the joined
+     * fields before hashing; because the same tag is mixed into every id, owners with the same last
+     * name and postcode still derive the identical value.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * Derives the deterministic shared identifier for the household with the given last name and
      * postcode. The identifier is a pure function of the normalized last name and the postcode, so
      * every owner with the same last name and postcode derives the identical value and it never
      * changes between calls. It is the first 12 hexadecimal characters of the SHA-256 of
-     * {@code normalizedLastName + '|' + postcode}, hashed via the shared {@link Sha256Hex} helper so
-     * every hash-derived identifier in the app is computed one way. Owners with the same last name
-     * and postcode therefore share the household id automatically.
+     * {@code "V2" + '|' + normalizedLastName + '|' + postcode} — the fixed {@code "V2"} identity
+     * version tag mixed in so the value differs from its version-1 form — hashed via the shared
+     * {@link Sha256Hex} helper so every hash-derived identifier in the app is computed one way.
+     * Owners with the same last name and postcode therefore share the household id automatically.
      *
      * @param lastName the owner's last name (may be {@code null})
      * @param postcode the owner's postcode (may be {@code null})
      * @return the deterministic household identifier
      */
     public String householdId(String lastName, String postcode) {
-        return Sha256Hex.upperHexPrefix(normalizeLastName(lastName) + '|' + (postcode == null ? "" : postcode), 12);
+        return Sha256Hex.upperHexPrefix(
+            IDENTITY_VERSION_TAG + '|' + normalizeLastName(lastName) + '|' + (postcode == null ? "" : postcode), 12);
     }
 
     /**

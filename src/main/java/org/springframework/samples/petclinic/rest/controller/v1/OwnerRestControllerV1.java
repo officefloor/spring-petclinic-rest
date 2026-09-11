@@ -305,30 +305,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The schema version stamped on every structured {@code OWNER_CREATED} audit event. Version 2
+     * groups the identity under the owner's version-2 identifiers: it carries an explicit
+     * {@code schemaVersion} of 2 and the owner segment recomputed from the version-2 identity.
+     */
+    private static final int AUDIT_EVENT_SCHEMA_VERSION = 2;
+
+    /**
      * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} log as a JSON
-     * object {@code {seq, ownerId, memberId, membershipLevel, event}}. The {@code seq} is a
-     * strictly increasing integer across every create (see {@link #OWNER_CREATED_SEQUENCE}), giving
-     * the events a total order. The identifier field carries the owner's current primary identifier
-     * (see {@link #primaryIdentifier}) — the member id — so every audit consumer follows the primary
-     * identifier by changing only {@link #primaryIdentifier}.
+     * object {@code {seq, schemaVersion, ownerId, memberId, membershipLevel, ownerSegment, event}}.
+     * The {@code seq} is a strictly increasing integer across every create (see
+     * {@link #OWNER_CREATED_SEQUENCE}), giving the events a total order, and {@code schemaVersion} is
+     * the fixed schema version of the event (see {@link #AUDIT_EVENT_SCHEMA_VERSION}). The identifier
+     * field carries the owner's current primary identifier (see {@link #primaryIdentifier}) — the
+     * version-2 member id — and {@code ownerSegment} the marketing segment recomputed from the
+     * version-2 identity, so every audit consumer follows the primary identifier by changing only
+     * {@link #primaryIdentifier}.
      *
      * @param owner    the persisted owner
-     * @param ownerDto the mapped view of the persisted owner, source of the membership level
+     * @param ownerDto the mapped view of the persisted owner, source of the membership level and
+     *                 owner segment
      */
     private void auditOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
-            OWNER_CREATED_SEQUENCE.incrementAndGet(), owner.getId(), primaryIdentifier(owner),
-            ownerDto.getMembershipLevel(), "OWNER_CREATED");
+            OWNER_CREATED_SEQUENCE.incrementAndGet(), AUDIT_EVENT_SCHEMA_VERSION, owner.getId(),
+            primaryIdentifier(owner), ownerDto.getMembershipLevel(),
+            ownerDto.getOwnerSegment() == null ? null : ownerDto.getOwnerSegment().getValue(),
+            "OWNER_CREATED");
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
     }
 
     /**
-     * The immutable structured audit event published for a successful owner create. Its
-     * {@code memberId} field carries the owner's current primary identifier (see
-     * {@link #primaryIdentifier}), so the same event shape follows the identifier as it changes.
+     * The immutable structured audit event published for a successful owner create. It carries an
+     * explicit {@code schemaVersion} (2), its {@code memberId} field carries the owner's current
+     * primary identifier (see {@link #primaryIdentifier}), and {@code ownerSegment} the marketing
+     * segment recomputed from the version-2 identity, so the same event shape follows the identifier
+     * as it changes.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-        Integer membershipLevel, String event) {
+    private record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
+        Integer membershipLevel, String ownerSegment, String event) {
     }
 
     /**

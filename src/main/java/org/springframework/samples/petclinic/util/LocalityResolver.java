@@ -27,6 +27,15 @@ import java.util.Map;
  */
 public final class LocalityResolver {
 
+    /**
+     * The fixed identity version tag mixed into the region code embedded inside an owner's
+     * identifiers (see {@link #identityRegion}). Bumping the identity to version 2 mixes {@code "V2"}
+     * into the identifier region so every derived identifier changes and no value produced under
+     * version 1 is produced again, while the user-facing {@link #resolve display region} stays the
+     * plain region code.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
     /** Fixed city-to-region table; anything not listed derives locality "UNKNOWN". */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -61,20 +70,22 @@ public final class LocalityResolver {
     }
 
     /**
-     * Returns the region code embedded inside an owner's identifiers (such as the REGION segment of
-     * the member id), as opposed to the plain region shown to users as their locality. It is
-     * resolved from the same city and postcode, preferring the postcode, via {@link #resolve(String,
-     * String)}; the two coincide today. Deriving the identifier region through its own accessor keeps
-     * it separate from the user-facing {@link #resolve display region}, so the region baked into
-     * identifiers can later be derived differently without disturbing the plain region returned as
-     * the owner's locality and timezone.
+     * Returns the version-2 region code embedded inside an owner's identifiers (such as the REGION
+     * segment of the member id), as opposed to the plain region shown to users as their locality. It
+     * is the plain region resolved from the same city and postcode, preferring the postcode (via
+     * {@link #resolve(String, String)}), with the fixed {@link #IDENTITY_VERSION_TAG "V2"} version
+     * tag mixed in as a prefix (for example {@code "V2NSW"}). Deriving the identifier region through
+     * its own accessor keeps it separate from the user-facing {@link #resolve display region}: the
+     * {@code "V2"} tag appears only inside the identifiers, so every derived identifier changes and no
+     * value produced under version 1 is produced again, while the plain region returned as the
+     * owner's locality and timezone is undisturbed.
      *
      * @param city     the owner's city (may be {@code null})
      * @param postcode the owner's postcode (may be {@code null})
-     * @return the region code to embed in the owner's identifiers
+     * @return the version-2 region code to embed in the owner's identifiers
      */
     public static String identityRegion(String city, String postcode) {
-        return resolve(city, postcode);
+        return IDENTITY_VERSION_TAG + resolve(city, postcode);
     }
 
     /**
