@@ -36,6 +36,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevels.forOwner(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.localityOf(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegments.forOwner(owner))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodes.timezoneOf(owner))")
     @Mapping(target = "bulkSignupWarning",
