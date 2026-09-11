@@ -223,6 +223,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DisposableEmailException}, thrown when an owner's email uses a domain on the disposable-domain
+     * blocklist ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Returns a
+     * {@code 400 Bad Request} reporting the {@code email} field.
+     *
+     * @param e The {@link DisposableEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
+        logger.debug("Disposable email domain at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return errorResponse(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("email"));
+    }
+
+    /**
      * Handles {@link DuplicateOwnerException}, thrown when a request to create an owner carries a whole derived
      * {@code identityKey} (normalized telephone, email and household id) already used by another owner. This is the
      * single, consolidated duplicate rule. Returns a {@code 409 Conflict} reporting the {@code telephone},
