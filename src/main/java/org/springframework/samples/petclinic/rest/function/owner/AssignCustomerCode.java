@@ -4,17 +4,16 @@ import java.util.HashSet;
 import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Hash8;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}: REGION is
  * the region code derived from the owner's postcode (see {@link Locality#regionOf}) and
- * HASH8 is the first 8 upper-case hexadecimal characters of the SHA-256 digest over the
- * concatenation of the owner's normalized (E.164) telephone and lastName (e.g.
- * {@code NSW-1A2B3C4D}). When the computed code collides with an existing owner's
+ * HASH8 is the owner's identity hash (see {@link Hash8}), e.g. {@code NSW-1A2B3C4D}. When
+ * the computed code collides with an existing owner's
  * {@code customerCode}, {@code -<n>} is appended with the smallest {@code n} of 2 or more
  * that makes it unique. Runs after {@link BuildOwner} (so the telephone is already
  * normalized) and before {@link SaveOwner}.
@@ -23,8 +22,7 @@ public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = Locality.regionOf(owner.getPostcode());
-        String hash8 = hash8(nullToEmpty(owner.getTelephone()) + nullToEmpty(owner.getLastName()));
-        String base = region + "-" + hash8;
+        String base = region + "-" + Hash8.of(owner);
         owner.setCustomerCode(deduplicate(base, existingCodes(ownerRepository)));
     }
 
@@ -50,14 +48,5 @@ public class AssignCustomerCode {
                 return candidate;
             }
         }
-    }
-
-    private static String nullToEmpty(String value) {
-        return value == null ? "" : value;
-    }
-
-    /** The first 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
-    private static String hash8(String value) {
-        return Sha256.hex(value).substring(0, 8).toUpperCase();
     }
 }

@@ -12,8 +12,9 @@ import java.time.Month;
  * June 2025 falls in fiscal year 2025.
  *
  * <p>{@link #of(Owner)} formats this as {@code 'FY<YY>'} (the two-digit ending year, e.g.
- * {@code 'FY26'}); {@link #yearOf(LocalDate)} exposes the four-digit ending year for
- * callers that build their own segments (such as the membership number).
+ * {@code 'FY26'}); {@link #shortYear(LocalDate)} exposes the two-digit ending year on its
+ * own and {@link #yearOf(LocalDate)} the four-digit ending year, for callers that build
+ * their own segments (such as the membership number).
  */
 public final class FiscalYear {
 
@@ -29,7 +30,12 @@ public final class FiscalYear {
         if (registrationDate == null) {
             return null;
         }
-        return "FY" + String.format("%02d", yearOf(registrationDate) % 100);
+        return "FY" + shortYear(registrationDate);
+    }
+
+    /** The two-digit ending year ({@code 'YY'}) of the fiscal year that {@code date} falls in. */
+    public static String shortYear(LocalDate date) {
+        return String.format("%02d", yearOf(date) % 100);
     }
 
     /** The fiscal year (the calendar year it ends in) that {@code date} falls in. */

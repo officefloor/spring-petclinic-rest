@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import net.officefloor.plugin.variable.Val;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.samples.petclinic.model.MembershipLevel;
+import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -27,13 +29,10 @@ public class AuditOwnerCreated {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner) {
-        String membershipNumber = (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null
-                : owner.getCustomerCode() + "-M" + String.format("%02d",
-                        org.springframework.samples.petclinic.model.FiscalYear.yearOf(owner.getRegistrationDate()) % 100);
         audit.info(
                 "Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                org.springframework.samples.petclinic.model.MembershipLevel.of(owner), membershipNumber);
+                MembershipLevel.of(owner), MembershipNumber.of(owner));
 
         audit.info(OwnerCreatedEvent.of(SEQ.incrementAndGet(), owner).toJson());
     }
