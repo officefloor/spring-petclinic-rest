@@ -1,6 +1,18 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: an optional 'Idempotency-Key' header lets a retried create be safe.
+# The first time a key is seen the request proceeds normally (and RecordIdempotency remembers
+# the created owner); a repeat with an already-seen key short-circuits to respondExisting,
+# returning the originally created owner with 200 instead of validating, running the duplicate
+# checks and inserting again. Runs first, before validate binds the body.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  govern: [ transaction ]
+  outputs:
+    proceed: validate
+    existing: respondExisting
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   govern: [ transaction ]
@@ -68,6 +80,12 @@ assignPossibleDuplicate:
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
   govern: [ transaction ]
+  next: record
+
+# Associate the Idempotency-Key (if any) with the created owner, so a repeat replays it.
+record:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
+  govern: [ transaction ]
   next: audit
 
 audit:
@@ -77,4 +95,9 @@ audit:
 
 respond:
   class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwnerCreated
+  govern: [ transaction ]
+
+# Idempotent replay: respond 200 with the originally created owner (loaded by checkIdempotency).
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
   govern: [ transaction ]
