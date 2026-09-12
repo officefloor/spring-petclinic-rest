@@ -34,6 +34,6 @@ public class ValidationExceptionHandler {
                     .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
         }
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+        response.send(ProblemDetails.response(HttpStatus.BAD_REQUEST, detail));
     }
 }
