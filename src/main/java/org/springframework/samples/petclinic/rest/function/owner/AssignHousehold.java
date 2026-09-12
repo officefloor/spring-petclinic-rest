@@ -1,11 +1,8 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Sha256;
 
 /**
  * Assigns the owner's {@code householdId} deterministically: the first 12 hexadecimal
@@ -29,18 +26,7 @@ public class AssignHousehold {
 
     /** The first 12 lower-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
     private static String hash12(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(12);
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return Sha256.hex(value).substring(0, 12);
     }
 
     private static String nullToEmpty(String value) {
