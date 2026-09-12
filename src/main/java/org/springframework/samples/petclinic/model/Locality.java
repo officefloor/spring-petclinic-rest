@@ -56,32 +56,32 @@ public final class Locality {
 
     /**
      * The canonical region string derived from the postcode alone (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099), with no city fallback. This is the REGION segment
-     * of an owner's {@code memberId}. {@link #UNKNOWN} when the postcode is null,
-     * malformed, or in no known range.
+     * VIC 3000-3099, QLD 4000-4099), with no city fallback. This is the plain region and
+     * never carries a version tag. {@link #UNKNOWN} when the postcode is null, malformed,
+     * or in no known range.
      */
     public static String regionOf(String postcode) {
         return fromPostcode(postcode);
     }
 
     /**
-     * The owner's locality, taken from the leading REGION segment of its {@code memberId}
-     * (the region-and-hash identity, whose format is {@code <REGION><FY><HASH8><CHK>} so
-     * the region is the leading run of letters before the two-digit fiscal year). When the
-     * owner has no memberId (e.g. a record created before an identity was assigned) it
-     * falls back to deriving the region from the owner's postcode and city.
+     * The version-2 region code used <em>inside</em> an owner's {@code memberId}: the plain
+     * {@link #regionOf(String)} region with the fixed {@link IdentityVersion#TAG} version tag
+     * mixed in (e.g. postcode 2000 yields {@code 'NSWV2'}). Because the tag is appended, this
+     * can never equal a version-1 region, so no version-1 identifier is produced again. The
+     * tag lives only here, inside the identifier — the user-facing locality stays plain.
+     */
+    public static String identityRegionOf(String postcode) {
+        return regionOf(postcode) + IdentityVersion.TAG;
+    }
+
+    /**
+     * The owner's user-facing locality: the plain region code (e.g. {@code 'NSW'}), derived
+     * from the owner's postcode first and city second. This is <em>not</em> an identifier, so
+     * it never carries the {@link IdentityVersion#TAG} version tag that appears inside the
+     * {@code memberId}. {@link #UNKNOWN} when neither postcode nor city yields a region.
      */
     public static String of(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int i = 0;
-            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-                i++;
-            }
-            if (i > 0) {
-                return memberId.substring(0, i);
-            }
-        }
         return of(owner.getCity(), owner.getPostcode());
     }
 

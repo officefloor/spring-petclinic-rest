@@ -2,8 +2,9 @@ package org.springframework.samples.petclinic.model;
 
 /**
  * Assembles an owner's unified {@code memberId}, formatted
- * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region code derived from the owner's
- * postcode (see {@link Locality#regionOf}); FY is the two-digit {@link FiscalYear} of the
+ * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the version-2 region code derived from the
+ * owner's postcode with the fixed {@code 'V2'} version tag mixed in (see
+ * {@link Locality#identityRegionOf}); FY is the two-digit {@link FiscalYear} of the
  * owner's (business-day-adjusted) registrationDate; HASH8 is the owner's identity hash (see
  * {@link Hash8}); and CHK is a single {@link Luhn} check digit computed over the digits of
  * {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW261A2B3C4D7'}).
@@ -24,7 +25,7 @@ public final class MemberId {
         if (owner.getRegistrationDate() == null) {
             return null;
         }
-        String region = Locality.regionOf(owner.getPostcode());
+        String region = Locality.identityRegionOf(owner.getPostcode());
         String fy = FiscalYear.shortYear(owner.getRegistrationDate());
         String hash8 = Hash8.of(owner);
         String withoutCheck = region + fy + hash8;

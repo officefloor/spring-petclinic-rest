@@ -30,10 +30,27 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.model.Timezone.of(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.of(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.of(owner))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.model.IdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(org.springframework.samples.petclinic.model.IdentityVersion.API_VERSION)")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentityDto(owner))")
     @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.model.OwnerSegment.of(owner))")
     @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.model.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identifiers into the nested {@code identity} object: the
+     * stored {@code memberId} and {@code householdId}, plus the derived {@code identityKey}.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.model.IdentityKey.of(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

@@ -5,7 +5,9 @@ package org.springframework.samples.petclinic.model;
  * expressed through and which is also exposed on the owner response.
  *
  * <p>The key is the lower-case hex SHA-256 digest over
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. By the time an
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}: the
+ * fixed version-2 tag is mixed in so the key is rederived and never repeats a version-1 value
+ * (see {@link IdentityVersion}). By the time an
  * owner is built its telephone has been normalized to E.164 and its email lower-cased, so
  * those stored values are the normalized forms; a null email contributes an empty segment.
  * The last-name segment is its {@link Soundex} code (never null).
@@ -22,8 +24,8 @@ public final class IdentityKey {
 
     /** The identity key for the given owner. */
     public static String of(Owner owner) {
-        String key = segment(owner.getTelephone()) + "|" + segment(owner.getEmail()) + "|"
-                + Soundex.of(owner.getLastName());
+        String key = IdentityVersion.TAG + "|" + segment(owner.getTelephone()) + "|"
+                + segment(owner.getEmail()) + "|" + Soundex.of(owner.getLastName());
         return Sha256.hex(key);
     }
 

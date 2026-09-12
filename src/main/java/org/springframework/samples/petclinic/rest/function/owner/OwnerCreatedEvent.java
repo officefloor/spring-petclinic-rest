@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -8,7 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Besides the human-readable audit line, {@link AuditOwnerCreated} emits one of
  * these per successful create as
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED', schemaVersion:2}}.
+ * The {@code schemaVersion} marks the version-2 audit schema.
  *
  * <p>The event carries the owner's <em>current primary identifier</em>, the unified
  * {@code memberId}; the value is sourced in a single place
@@ -37,16 +39,17 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int 
 
     /**
      * Renders the event as a compact JSON object with a stable key order:
-     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED","schemaVersion":2}}.
      */
     public String toJson() {
-        StringBuilder sb = new StringBuilder(96);
+        StringBuilder sb = new StringBuilder(112);
         sb.append('{');
         sb.append("\"seq\":").append(seq);
         sb.append(",\"ownerId\":").append(ownerId);
         sb.append(",\"memberId\":").append(jsonString(memberId));
         sb.append(",\"membershipLevel\":").append(membershipLevel);
         sb.append(",\"event\":").append(jsonString(EVENT));
+        sb.append(",\"schemaVersion\":").append(IdentityVersion.AUDIT_SCHEMA_VERSION);
         sb.append('}');
         return sb.toString();
     }
