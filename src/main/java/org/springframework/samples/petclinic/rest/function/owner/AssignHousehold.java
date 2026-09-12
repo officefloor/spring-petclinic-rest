@@ -10,12 +10,11 @@ import org.springframework.samples.petclinic.model.Sha256;
  * owners with the same last name and postcode therefore always derive the <em>same</em>
  * {@code householdId} — they are automatically the same household, with no opt-in and no
  * back-fill. Runs after {@link BuildOwner} (so the entity carries its stored last name and
- * postcode) and before {@link CheckOwnerIdentityUnique} (so the household id is available
- * to the duplicate block) and {@link AssignHouseholdSize}.
+ * postcode) and before {@link AssignHouseholdSize} (which counts the household).
  *
- * <p>The request flag {@code sharesHousehold} no longer creates the link; it only lets a
- * second owner in an existing household bypass the duplicate block (see
- * {@link CheckOwnerIdentityUnique}).
+ * <p>Duplicate detection no longer keys on this value: it is now the single
+ * {@code identityKey} (see {@link CheckOwnerIdentityUnique}). The {@code householdId}
+ * remains a descriptive grouping used to size the household.
  */
 public class AssignHousehold {
 

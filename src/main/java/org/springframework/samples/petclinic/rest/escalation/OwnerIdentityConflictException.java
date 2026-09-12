@@ -1,21 +1,21 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create request would add a second owner to an existing household — i.e. an
- * owner whose deterministic {@code householdId} (derived from its last name and postcode)
- * equals that of an existing owner — without opting in via {@code sharesHousehold}. Handled
- * by {@link OwnerIdentityConflictExceptionHandler}, which responds 409 Conflict.
+ * Thrown when a create request's {@code identityKey} — the SHA-256 over
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} — equals that of
+ * an existing, non-deleted owner. Handled by {@link OwnerIdentityConflictExceptionHandler},
+ * which responds 409 Conflict.
  */
 public class OwnerIdentityConflictException extends Exception {
 
-    private final String householdId;
+    private final String identityKey;
 
-    public OwnerIdentityConflictException(String householdId) {
-        super("Another owner already exists in the same household: " + householdId);
-        this.householdId = householdId;
+    public OwnerIdentityConflictException(String identityKey) {
+        super("Another owner already exists with the same identity key: " + identityKey);
+        this.identityKey = identityKey;
     }
 
-    public String getHouseholdId() {
-        return householdId;
+    public String getIdentityKey() {
+        return identityKey;
     }
 }

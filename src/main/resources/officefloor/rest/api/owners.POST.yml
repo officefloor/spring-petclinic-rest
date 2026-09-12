@@ -31,6 +31,15 @@ checkDailyLimit:
 build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
+  next: checkIdentity
+
+# Duplicate detection: reject (409) a create whose identityKey (SHA-256 over
+# normalizedTelephone|lowerEmail|soundex(lastName)) equals an existing non-deleted owner's.
+# The email-domain blocklist has already run in validate. Runs after build (so the owner
+# carries its normalized fields) and before save (so a duplicate is a 409, not a record).
+checkIdentity:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdentityUnique
+  govern: [ transaction ]
   next: assignHousehold
 
 assignHousehold:
@@ -67,10 +76,10 @@ assignBulkSignupWarning:
   govern: [ transaction ]
   next: assignPossibleDuplicate
 
-# Soft-match: after checkIdentity has rejected/admitted the household duplicate, flag a new
-# owner that shares an existing owner's lastName + postcode with a different telephone. A
-# declared household member (sharesHousehold) is never flagged. Runs before save so the
-# flags are computed against pre-existing owners and persisted with this one.
+# Soft-match: after checkIdentity has rejected any exact identity duplicate, flag a new
+# owner whose identityKey differs from an existing owner's while its soundex(lastName) and
+# postcode match. Runs before save so the flags are computed against pre-existing owners and
+# persisted with this one.
 assignPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
   govern: [ transaction ]

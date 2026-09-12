@@ -1,39 +1,32 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.IdentityKey;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Soundex;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Flags a soft (non-hard) duplicate. Runs after {@link CheckOwnerIdentityUnique} — so a
- * household duplicate has already been rejected with 409 — and before {@link SaveOwner}, so
- * the flags are computed against the owners that existed before this create and are
+ * Flags a soft (non-hard) duplicate. Runs after {@link CheckOwnerIdentityUnique} — so any
+ * exact identity duplicate has already been rejected with 409 — and before {@link SaveOwner},
+ * so the flags are computed against the owners that existed before this create and are
  * persisted with the new owner.
  *
- * <p>A <em>declared</em> household member (a request that opted in via
- * {@code sharesHousehold}) is never a suspected duplicate: it is deliberately created into
- * an existing household, so it is left un-flagged.
- *
- * <p>Otherwise an owner is a possible duplicate when it shares an existing owner's
- * {@code lastName} (compared case-insensitively) and {@code postcode} while carrying a
- * <em>different</em> telephone. When such an existing owner is found,
- * {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to that owner's id
- * (the lowest id when several match); otherwise {@code possibleDuplicate} is false and
- * {@code possibleDuplicateOf} null. A null postcode never matches, so it is never a possible
- * duplicate.
+ * <p>An owner is a possible duplicate when its {@code identityKey} <em>differs</em> from an
+ * existing owner's while its {@code soundex(lastName)} and {@code postcode} both match. This
+ * is exactly the case the identity key no longer treats as a hard duplicate: same household
+ * (phonetic last name + postcode) but a different telephone (hence a different key). When
+ * such an existing owner is found, {@code possibleDuplicate} is set true and
+ * {@code possibleDuplicateOf} to that owner's id (the lowest id when several match);
+ * otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} null. A
+ * soft-deleted owner never matches, and a null postcode is never a possible duplicate.
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
-            owner.setPossibleDuplicate(false);
-            owner.setPossibleDuplicateOf(null);
-            return; // a declared household member is not a suspected duplicate
-        }
-        String lastName = owner.getLastName();
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+        String identityKey = IdentityKey.of(owner);
+        String soundex = Soundex.of(owner.getLastName());
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
 
         Owner match = null;
         if (postcode != null) {
@@ -42,8 +35,8 @@ public class AssignPossibleDuplicate {
                     continue; // a soft-deleted owner is not a possible duplicate match
                 }
                 if (postcode.equals(existing.getPostcode())
-                        && equalsIgnoreCase(lastName, existing.getLastName())
-                        && !equals(telephone, existing.getTelephone())) {
+                        && soundex.equals(Soundex.of(existing.getLastName()))
+                        && !identityKey.equals(IdentityKey.of(existing))) {
                     if (match == null || existing.getId() < match.getId()) {
                         match = existing;
                     }
@@ -59,13 +52,5 @@ public class AssignPossibleDuplicate {
             owner.setPossibleDuplicate(false);
             owner.setPossibleDuplicateOf(null);
         }
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
-    }
-
-    private static boolean equals(String a, String b) {
-        return a == null ? b == null : a.equals(b);
     }
 }
