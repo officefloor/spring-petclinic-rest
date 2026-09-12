@@ -6,8 +6,8 @@ package org.springframework.samples.petclinic.model;
  * normalized (E.164) telephone and lastName (e.g. {@code 1A2B3C4D}).
  *
  * <p>This is the one place the segment is computed, so every identity that embeds it (the
- * owner's {@code customerCode} today) reads the same value rather than re-deriving it. A
- * null telephone or lastName contributes an empty string to the concatenation.
+ * owner's {@code memberId}) reads the same value rather than re-deriving it. A null
+ * telephone or lastName contributes an empty string to the concatenation.
  */
 public final class Hash8 {
 

@@ -57,7 +57,7 @@ public final class Locality {
     /**
      * The canonical region string derived from the postcode alone (NSW 2000-2099,
      * VIC 3000-3099, QLD 4000-4099), with no city fallback. This is the REGION segment
-     * of an owner's {@code customerCode}. {@link #UNKNOWN} when the postcode is null,
+     * of an owner's {@code memberId}. {@link #UNKNOWN} when the postcode is null,
      * malformed, or in no known range.
      */
     public static String regionOf(String postcode) {
@@ -65,17 +65,21 @@ public final class Locality {
     }
 
     /**
-     * The owner's locality, taken from the REGION segment of its {@code customerCode}
-     * (the new region-and-hash identity). When the owner has no customer code (e.g. a
-     * record created before an identity was assigned) it falls back to deriving the
-     * region from the owner's postcode and city.
+     * The owner's locality, taken from the leading REGION segment of its {@code memberId}
+     * (the region-and-hash identity, whose format is {@code <REGION><FY><HASH8><CHK>} so
+     * the region is the leading run of letters before the two-digit fiscal year). When the
+     * owner has no memberId (e.g. a record created before an identity was assigned) it
+     * falls back to deriving the region from the owner's postcode and city.
      */
     public static String of(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return of(owner.getCity(), owner.getPostcode());

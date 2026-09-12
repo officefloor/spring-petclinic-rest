@@ -3,7 +3,8 @@ package org.springframework.samples.petclinic.model;
 /**
  * Computes a single Luhn check digit (0-9) over the digits contained in a string — the one
  * place the algorithm lives, so the several places that pin a Luhn digit onto an identifier
- * (such as an owner's {@link CheckDigit}) delegate here rather than re-implementing it.
+ * (such as the CHK segment of an owner's {@link MemberId}) delegate here rather than
+ * re-implementing it.
  *
  * <p>The digits are processed right-to-left, doubling every second digit starting with the
  * rightmost (subtracting 9 when a doubled digit exceeds 9); the check digit is the amount

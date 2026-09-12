@@ -12,9 +12,12 @@ import java.time.Month;
  * June 2025 falls in fiscal year 2025.
  *
  * <p>{@link #of(Owner)} formats this as {@code 'FY<YY>'} (the two-digit ending year, e.g.
- * {@code 'FY26'}); {@link #shortYear(LocalDate)} exposes the two-digit ending year on its
- * own and {@link #yearOf(LocalDate)} the four-digit ending year, for callers that build
- * their own segments (such as the membership number).
+ * {@code 'FY26'}), reading the two-digit FY segment back out of the owner's {@code memberId}
+ * when present (that segment was itself built from {@link #shortYear(LocalDate)} at
+ * creation) and falling back to the registrationDate for records without one.
+ * {@link #shortYear(LocalDate)} exposes the two-digit ending year on its own and
+ * {@link #yearOf(LocalDate)} the four-digit ending year, for callers that build their own
+ * segments (such as the memberId).
  */
 public final class FiscalYear {
 
@@ -26,11 +29,38 @@ public final class FiscalYear {
 
     /** The fiscal year label ({@code 'FY<YY>'}) for the owner, or null when unregistered. */
     public static String of(Owner owner) {
+        String fromMemberId = shortYearFromMemberId(owner.getMemberId());
+        if (fromMemberId != null) {
+            return "FY" + fromMemberId;
+        }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return null;
         }
         return "FY" + shortYear(registrationDate);
+    }
+
+    /**
+     * The two-digit FY segment of a {@code memberId} ({@code <REGION><FY><HASH8><CHK>}):
+     * the two digits immediately after the leading letter REGION. Null when the memberId is
+     * null or does not hold two digits at that position.
+     */
+    private static String shortYearFromMemberId(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        if (i + 2 > memberId.length()) {
+            return null;
+        }
+        String fy = memberId.substring(i, i + 2);
+        if (Character.isDigit(fy.charAt(0)) && Character.isDigit(fy.charAt(1))) {
+            return fy;
+        }
+        return null;
     }
 
     /** The two-digit ending year ({@code 'YY'}) of the fiscal year that {@code date} falls in. */

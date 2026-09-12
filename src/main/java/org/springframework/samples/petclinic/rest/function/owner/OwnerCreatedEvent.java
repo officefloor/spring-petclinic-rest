@@ -8,17 +8,15 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Besides the human-readable audit line, {@link AuditOwnerCreated} emits one of
  * these per successful create as
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
  *
- * <p>The event carries the owner's <em>current primary identifier</em>. Today that is
- * the {@code customerCode}; the value is sourced in a single place
- * ({@link #primaryIdentifier(Owner)}), so when the customerCode is later unified into
- * the memberId, changing that one method makes the event carry the memberId instead —
- * the rest of the pipeline is untouched.
+ * <p>The event carries the owner's <em>current primary identifier</em>, the unified
+ * {@code memberId}; the value is sourced in a single place
+ * ({@link #primaryIdentifier(Owner)}).
  *
  * <p>A record: once constructed the event cannot be mutated.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel) {
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel) {
 
     /** The {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT = "OWNER_CREATED";
@@ -32,25 +30,21 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
                 MembershipLevel.of(owner));
     }
 
-    /**
-     * The owner's current primary identifier. Today the {@code customerCode}; when the
-     * customerCode is unified into the memberId, return {@code owner.getMemberId()} here
-     * and the emitted event carries the memberId instead.
-     */
+    /** The owner's current primary identifier, the unified {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Renders the event as a compact JSON object with a stable key order:
-     * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
      */
     public String toJson() {
         StringBuilder sb = new StringBuilder(96);
         sb.append('{');
         sb.append("\"seq\":").append(seq);
         sb.append(",\"ownerId\":").append(ownerId);
-        sb.append(",\"customerCode\":").append(jsonString(customerCode));
+        sb.append(",\"memberId\":").append(jsonString(memberId));
         sb.append(",\"membershipLevel\":").append(membershipLevel);
         sb.append(",\"event\":").append(jsonString(EVENT));
         sb.append('}');

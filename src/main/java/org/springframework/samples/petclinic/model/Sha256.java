@@ -7,7 +7,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * Lower-case hexadecimal SHA-256 of a string's UTF-8 bytes — the one place the digest is
  * computed for the values several derived fields hang off (an owner's {@code householdId}
- * and the HASH segment of its {@code customerCode}). Callers that want a shorter code take
+ * and the HASH8 segment of its {@code memberId}). Callers that want a shorter code take
  * a prefix of {@link #hex(String)} (and upper-case it where required), keeping the digest
  * itself in a single place rather than re-deriving it per field.
  */
