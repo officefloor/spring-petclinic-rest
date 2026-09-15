@@ -1,0 +1,420 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a32c007b0..7403f9cd1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -49,6 +49,9 @@ public class Owner extends Person {
+     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+     private String telephone;
+ 
++    @Column(name = "email")
++    private String email;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -76,6 +79,14 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    public String getEmail() {
++        return this.email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+@@ -147,6 +158,7 @@ public class Owner extends Person {
+             .append("address", this.address)
+             .append("city", this.city)
+             .append("telephone", this.telephone)
++            .append("email", this.email)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 692866761..e1bffb356 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -83,7 +83,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -98,7 +98,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -122,7 +122,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -153,7 +153,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("telephone", telephone);
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE telephone = :telephone",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE telephone = :telephone",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -170,7 +170,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -196,7 +196,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -211,7 +211,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 573257204..7a5686209 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+@@ -210,6 +211,22 @@ public class ExceptionControllerAdvice {
+             .body(new ValidationErrorsResponse(List.of(InvalidTelephoneException.FIELD)));
+     }
+ 
++    /**
++     * Handles {@link InvalidEmailException} raised when an owner's email is present but is
++     * not a syntactically valid address. Returns a 400 Bad Request whose {@code errors}
++     * array names the offending field.
++     *
++     * @param e The {@link InvalidEmailException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ValidationErrorsResponse> handleInvalidEmailException(InvalidEmailException e) {
++        logger.debug("Invalid email: {}", e.getMessage());
++        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
++            .body(new ValidationErrorsResponse(List.of(InvalidEmailException.FIELD)));
++    }
++
+     /**
+      * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
+      * normalized telephone that is already used by another owner. Returns a 409 Conflict
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 26d43edc0..18902e7c8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+@@ -69,18 +70,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final TelephoneNormalizer telephoneNormalizer;
+ 
++    private final EmailNormalizer emailNormalizer;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  OwnerFieldsValidator ownerFieldsValidator,
+-                                 TelephoneNormalizer telephoneNormalizer) {
++                                 TelephoneNormalizer telephoneNormalizer,
++                                 EmailNormalizer emailNormalizer) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.ownerFieldsValidator = ownerFieldsValidator;
+         this.telephoneNormalizer = telephoneNormalizer;
++        this.emailNormalizer = emailNormalizer;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -122,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new DuplicateTelephoneException(normalizedTelephone);
+         }
+         owner.setTelephone(normalizedTelephone);
++        owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -141,6 +147,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+new file mode 100644
+index 000000000..e338152f0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Normalizes an optional submitted email to its canonical stored form: a syntactically
++ * valid address, lower-cased. An absent (null) email is left as {@code null}.
++ */
++@Component
++public class EmailNormalizer {
++
++    /**
++     * A pragmatic syntactic check: a non-empty local part, an {@code @}, and a domain
++     * containing at least one dot, with no whitespace or stray {@code @} characters.
++     */
++    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
++
++    /**
++     * @param email the raw submitted email (may be {@code null})
++     * @return {@code null} if the input is {@code null}; otherwise the address lower-cased
++     * @throws InvalidEmailException if the value is present but not a syntactically valid address
++     */
++    public String normalize(String email) {
++        if (email == null) {
++            return null;
++        }
++        if (!EMAIL.matcher(email).matches()) {
++            throw new InvalidEmailException(email);
++        }
++        return email.toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java
+new file mode 100644
+index 000000000..5e0fa5334
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidEmailException.java
+@@ -0,0 +1,31 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's email is present but is not a syntactically valid address.
++ * Carries the rejected input so it can be logged.
++ */
++public class InvalidEmailException extends RuntimeException {
++
++    /** Name of the offending field, used to build the error response. */
++    public static final String FIELD = "email";
++
++    public InvalidEmailException(String rejectedValue) {
++        super("Email must be a syntactically valid address, but was: " + rejectedValue);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index db1adf51a..33bc0c808 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+-  telephone VARCHAR(20) NOT NULL
++  telephone VARCHAR(20) NOT NULL,
++  email VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index fa2c1c73b..c61e6fe0f 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ac9440efc..005b04d18 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE owners (
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+-  telephone  VARCHAR(20)
++  telephone  VARCHAR(20),
++  email      VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/data.sql b/src/main/resources/db/mysql/data.sql
+index 2d4b20856..ae323801d 100644
+--- a/src/main/resources/db/mysql/data.sql
++++ b/src/main/resources/db/mysql/data.sql
+@@ -22,16 +22,16 @@ INSERT IGNORE INTO types VALUES (4, 'snake');
+ INSERT IGNORE INTO types VALUES (5, 'bird');
+ INSERT IGNORE INTO types VALUES (6, 'hamster');
+ 
+-INSERT IGNORE INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT IGNORE INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT IGNORE INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT IGNORE INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT IGNORE INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT IGNORE INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT IGNORE INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT IGNORE INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT IGNORE INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT IGNORE INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
+ 
+ INSERT IGNORE INTO pets VALUES (1, 'Leo', '2000-09-07', 1, 1);
+ INSERT IGNORE INTO pets VALUES (2, 'Basil', '2002-08-06', 6, 2);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 316c22293..e2082e0b0 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
++  email VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 56af1a010..c1e01cc48 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       last_name  TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
+-                                      telephone  TEXT
++                                      telephone  TEXT,
++                                      email      TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 44c6a2bd9..f4c7b4fc2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2031,6 +2031,14 @@ components:
+           minLength: 1
+           maxLength: 20
+           example: '6085551023'
++        email:
++          title: Email address
++          description: The email address of the pet owner. Optional; when supplied it must
++            be a syntactically valid address and is stored and returned lower-cased.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: george.franklin@example.com
+       required:
+         - firstName
+         - lastName
