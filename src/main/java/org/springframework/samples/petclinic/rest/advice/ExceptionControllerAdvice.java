@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -259,6 +260,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Duplicate household: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(new ValidationErrorsResponse(DuplicateHouseholdException.FIELDS));
+    }
+
+    /**
+     * Handles {@link CityOwnerLimitException} raised when an owner is created in a city that
+     * already contains the maximum allowed number of owners. Returns a 409 Conflict whose
+     * {@code errors} array names the offending field.
+     *
+     * @param e The {@link CityOwnerLimitException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleCityOwnerLimitException(CityOwnerLimitException e) {
+        logger.debug("City owner limit reached: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ValidationErrorsResponse(List.of(CityOwnerLimitException.FIELD)));
     }
 
 }
