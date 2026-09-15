@@ -206,10 +206,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code sharesHousehold}. When it opts in, the new owner and every existing household
      * member are stamped with the same stable {@code householdId}.
      *
+     * <p>The new owner's household size after this create is recorded on it (the existing members
+     * plus the owner itself), so an owner joining a household of three or more can be recognised.
+     *
      * @throws DuplicateHouseholdException if a conflicting owner exists and the caller did not opt in
      */
     private void applyHouseholdPolicy(Owner owner, OwnerFieldsDto ownerFieldsDto, Collection<Owner> sameLastName) {
         List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
+        owner.setHouseholdSize(members.size() + 1);
         if (members.isEmpty()) {
             return;
         }
