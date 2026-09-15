@@ -27,6 +27,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
@@ -43,6 +44,17 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds an owner's canonical self link from its id, formatted
+     * {@code "/api/owners/<id>"}. Returns {@code null} when the owner has no id yet.
+     */
+    default String formatSelfLink(Owner owner) {
+        if (owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Builds an owner's display name from the stored names, formatted as
