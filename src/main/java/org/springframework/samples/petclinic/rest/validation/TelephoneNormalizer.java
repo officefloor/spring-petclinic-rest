@@ -16,10 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Comparator;
-import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.springframework.samples.petclinic.util.CountryCallingCodes;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,12 +40,6 @@ public class TelephoneNormalizer {
 
     /** The digits following the '+' must number between 8 and 15 inclusive. */
     private static final Pattern E164_DIGITS = Pattern.compile("[0-9]{8,15}");
-
-    /**
-     * Required national-number length for each recognised country code. A country code absent
-     * from this map carries no national-length constraint beyond the generic E.164 bounds.
-     */
-    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of("61", 9, "1", 10);
 
     /**
      * @param telephone the raw submitted telephone (may be {@code null})
@@ -73,14 +66,15 @@ public class TelephoneNormalizer {
     /**
      * Checks the national number (the digits after the country code) against the length its
      * country code requires. The longest matching country code wins, so a '+61' number is
-     * never mistaken for a shorter code. Country codes outside {@link #NATIONAL_NUMBER_LENGTHS}
-     * carry no additional constraint.
+     * never mistaken for a shorter code. Country codes outside
+     * {@link CountryCallingCodes#NATIONAL_NUMBER_LENGTHS} carry no additional constraint.
      */
     private boolean hasValidNationalLength(String digits) {
-        return NATIONAL_NUMBER_LENGTHS.entrySet().stream()
-            .filter(entry -> digits.startsWith(entry.getKey()))
-            .max(Comparator.comparingInt(entry -> entry.getKey().length()))
-            .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
-            .orElse(true);
+        String countryCode = CountryCallingCodes.prefixOf(digits);
+        if (countryCode == null) {
+            return true;
+        }
+        return digits.length() - countryCode.length()
+            == CountryCallingCodes.NATIONAL_NUMBER_LENGTHS.get(countryCode);
     }
 }

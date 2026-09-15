@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.util.AgeBandResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+import org.springframework.samples.petclinic.util.TelephoneDisplayFormatter;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
@@ -51,6 +53,14 @@ public interface OwnerMapper {
     default String formatInitials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * Formats an owner's stored E.164 telephone for humans, delegating to
+     * {@link TelephoneDisplayFormatter}. The raw {@code telephone} stays in E.164 form.
+     */
+    default String formatTelephoneDisplay(Owner owner) {
+        return TelephoneDisplayFormatter.display(owner.getTelephone());
     }
 
     /**
