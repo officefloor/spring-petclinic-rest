@@ -77,6 +77,16 @@ public interface OwnerRepository {
      */
     Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
 
+    /**
+     * Retrieve <code>Owner</code>s from the data store whose email equals the given value,
+     * ignoring case. Intended for duplicate detection of the lower-cased email.
+     *
+     * @param email the email to search for
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none found)
+     */
+    Collection<Owner> findByEmailIgnoreCase(String email) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

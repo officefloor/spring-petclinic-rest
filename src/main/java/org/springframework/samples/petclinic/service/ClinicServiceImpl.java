@@ -256,6 +256,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersByEmailIgnoreCase(String email) throws DataAccessException {
+        return ownerRepository.findByEmailIgnoreCase(email);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countOwners() throws DataAccessException {
         return ownerRepository.count();
     }

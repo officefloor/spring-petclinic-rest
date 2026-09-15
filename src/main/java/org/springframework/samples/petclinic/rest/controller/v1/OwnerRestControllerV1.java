@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -174,7 +175,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(normalizedTelephone);
         }
         owner.setTelephone(normalizedTelephone);
-        owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+        String normalizedEmail = emailNormalizer.normalize(owner.getEmail());
+        if (normalizedEmail != null && !this.clinicService.findOwnersByEmailIgnoreCase(normalizedEmail).isEmpty()) {
+            throw new DuplicateEmailException(normalizedEmail);
+        }
+        owner.setEmail(normalizedEmail);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }

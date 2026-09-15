@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -244,6 +245,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Duplicate telephone: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(new ValidationErrorsResponse(List.of(DuplicateTelephoneException.FIELD)));
+    }
+
+    /**
+     * Handles {@link DuplicateEmailException} raised when an owner is created with an email
+     * whose lower-cased form is already used by another owner. Returns a 409 Conflict whose
+     * {@code errors} array names the offending field.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleDuplicateEmailException(DuplicateEmailException e) {
+        logger.debug("Duplicate email: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ValidationErrorsResponse(List.of(DuplicateEmailException.FIELD)));
     }
 
     /**
