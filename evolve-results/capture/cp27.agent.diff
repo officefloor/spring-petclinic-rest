@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1c7744a41..1b68f8107 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
++    @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -76,6 +77,14 @@ public interface OwnerMapper {
+         return LocalityResolver.localityOf(owner.getCity());
+     }
+ 
++    /**
++     * Derives an owner's preferred contact channel from its stored fields:
++     * {@code "EMAIL"} when an email is present, otherwise {@code "PHONE"}.
++     */
++    default String formatContactPreference(Owner owner) {
++        return owner.hasEmail() ? "EMAIL" : "PHONE";
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 28c48cebd..1d5b7179e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -104,6 +104,13 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    /**
++     * Whether this owner has an email address, i.e. a non-blank {@code email}.
++     */
++    public boolean hasEmail() {
++        return this.email != null && !this.email.isBlank();
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
+index 29e5bf253..b723c13c5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
+@@ -38,7 +38,7 @@ public abstract class MembershipLevelCalculator {
+      */
+     public static int levelOf(Owner owner) {
+         int level = BASE_LEVEL;
+-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++        if (owner.hasEmail()) {
+             level++;
+         }
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3ea42b019..45365c720 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2151,6 +2151,13 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            contactPreference:
++              title: Contact preference
++              description: The owner's preferred contact channel, derived from its stored
++                fields; 'EMAIL' when an email is present, otherwise 'PHONE'.
++              type: string
++              example: 'EMAIL'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
