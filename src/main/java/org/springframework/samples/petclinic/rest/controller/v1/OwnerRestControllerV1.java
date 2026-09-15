@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerato
 import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateDetector;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final IdentityDuplicateValidator identityDuplicateValidator;
 
+    private final PossibleDuplicateDetector possibleDuplicateDetector;
+
     private final HouseholdIdGenerator householdIdGenerator;
 
     private final TelephoneNormalizer telephoneNormalizer;
@@ -117,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  RegistrationDateValidator registrationDateValidator,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  IdentityDuplicateValidator identityDuplicateValidator,
+                                 PossibleDuplicateDetector possibleDuplicateDetector,
                                  HouseholdIdGenerator householdIdGenerator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
@@ -134,6 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.registrationDateValidator = registrationDateValidator;
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.identityDuplicateValidator = identityDuplicateValidator;
+        this.possibleDuplicateDetector = possibleDuplicateDetector;
         this.householdIdGenerator = householdIdGenerator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
@@ -189,6 +194,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         postcodeValidator.validate(owner.getPostcode(), owner.getCity());
         rejectIfDuplicateIdentity(owner);
+        flagPossibleDuplicate(owner, sameLastName);
         joinHousehold(owner, householdMembers);
         registrationDateValidator.validate(owner.getRegistrationDate());
         if (owner.getRegistrationDate() == null) {
@@ -268,6 +274,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityDuplicateValidator.isDuplicate(owner, sameTelephone)) {
             throw new DuplicateIdentityException(IdentityKey.of(owner));
         }
+    }
+
+    /**
+     * Flags the owner as a soft (possible) duplicate when it is not a hard duplicate yet shares an
+     * existing owner's last name and postcode with a different telephone. The matching owner's id
+     * is recorded in {@code possibleDuplicateOf}; when nothing matches the owner is stamped as not
+     * a possible duplicate. Called after {@link #rejectIfDuplicateIdentity(Owner)}, so any candidate
+     * seen here is guaranteed not to be a hard duplicate.
+     */
+    private void flagPossibleDuplicate(Owner owner, Collection<Owner> sameLastName) {
+        Owner match = possibleDuplicateDetector.findPossibleDuplicate(owner, sameLastName).orElse(null);
+        owner.setPossibleDuplicate(match != null);
+        owner.setPossibleDuplicateOf(match == null ? null : match.getId());
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
