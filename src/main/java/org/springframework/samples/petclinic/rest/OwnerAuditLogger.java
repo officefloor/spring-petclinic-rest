@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,13 +33,15 @@ public class OwnerAuditLogger {
 
     /**
      * Record that an owner was successfully created, capturing its id, customer code,
-     * registration date and membership level.
+     * registration date, membership level and membership number.
      *
      * @param owner the persisted owner
      */
     public void ownerCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info(
+            "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevelCalculator.membershipLevel(owner));
+            MembershipLevelCalculator.membershipLevel(owner),
+            MembershipNumberFormatter.membershipNumber(owner));
     }
 }
