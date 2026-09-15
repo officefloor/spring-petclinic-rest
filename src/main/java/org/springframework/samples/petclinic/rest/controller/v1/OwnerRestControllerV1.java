@@ -51,6 +51,7 @@ import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateVa
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
+import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BusinessDayResolver;
@@ -85,6 +86,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final PostcodeValidator postcodeValidator;
 
+    private final RegistrationDateValidator registrationDateValidator;
+
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
     private final IdentityDuplicateValidator identityDuplicateValidator;
@@ -111,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  PostcodeValidator postcodeValidator,
+                                 RegistrationDateValidator registrationDateValidator,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  IdentityDuplicateValidator identityDuplicateValidator,
                                  HouseholdIdGenerator householdIdGenerator,
@@ -127,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.postcodeValidator = postcodeValidator;
+        this.registrationDateValidator = registrationDateValidator;
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.identityDuplicateValidator = identityDuplicateValidator;
         this.householdIdGenerator = householdIdGenerator;
@@ -185,6 +190,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         postcodeValidator.validate(owner.getPostcode(), owner.getCity());
         rejectIfDuplicateIdentity(owner);
         joinHousehold(owner, householdMembers);
+        registrationDateValidator.validate(owner.getRegistrationDate());
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }

@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -244,6 +245,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid postcode: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ValidationErrorsResponse(List.of(InvalidPostcodeException.FIELD)));
+    }
+
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when an owner is created with a
+     * supplied registration date later than the server's current date. Returns a 400 Bad Request
+     * whose {@code errors} array names the offending field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleFutureRegistrationDateException(FutureRegistrationDateException e) {
+        logger.debug("Future registration date: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ValidationErrorsResponse(List.of(FutureRegistrationDateException.FIELD)));
     }
 
     /**
