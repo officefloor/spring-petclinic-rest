@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.MemberIdGenerator;
+import org.springframework.samples.petclinic.rest.validation.OwnerRiskResolver;
 import org.springframework.samples.petclinic.util.AgeBandResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
@@ -39,6 +40,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(computeRiskFlag(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -165,6 +167,13 @@ public interface OwnerMapper {
      */
     default String formatOwnerSegment(Owner owner) {
         return OwnerSegmentResolver.segmentOf(computeMembershipLevel(owner), formatLocality(owner));
+    }
+
+    /**
+     * Derives an owner's risk flag from its stored fields, delegating to {@link OwnerRiskResolver}.
+     */
+    default boolean computeRiskFlag(Owner owner) {
+        return OwnerRiskResolver.isAtRisk(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);

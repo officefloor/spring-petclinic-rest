@@ -16,36 +16,22 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Locale;
-import java.util.Set;
-
 import org.springframework.stereotype.Component;
 
 /**
  * Rejects an owner's email when its domain belongs to a known disposable-email provider.
- * An absent (null) email is accepted; the domain is compared case-insensitively.
+ * An absent (null) email is accepted; the domain is compared case-insensitively. The set of
+ * blocked providers lives in {@link DisposableEmailDomains}.
  */
 @Component
 public class DisposableEmailDomainValidator {
-
-    /** Domains of disposable-email providers whose addresses are not accepted. */
-    private static final Set<String> BLOCKED_DOMAINS = Set.of(
-        "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * @param email the owner's email (may be {@code null}); expected already normalized
      * @throws DisposableEmailDomainException if the email's domain is on the blocklist
      */
     public void validate(String email) {
-        if (email == null) {
-            return;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return;
-        }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        if (BLOCKED_DOMAINS.contains(domain)) {
+        if (DisposableEmailDomains.isBlocked(email)) {
             throw new DisposableEmailDomainException(email);
         }
     }
