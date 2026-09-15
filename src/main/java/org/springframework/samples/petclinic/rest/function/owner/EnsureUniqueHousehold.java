@@ -1,9 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
-import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
@@ -13,8 +10,8 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
  * owner, comparing both case-insensitively with collapsed whitespace. Runs before
  * {@link BuildOwner}, so a collision is a 409 via {@link DuplicateHouseholdException}
  * before any owner is built or saved. A request that opts in with
- * {@code sharesHousehold=true} is allowed through, since the owners knowingly share a
- * household.
+ * {@code sharesHousehold=true} is allowed through; {@link AssignHousehold} then groups it
+ * with the existing owners under a shared household id.
  */
 public class EnsureUniqueHousehold {
 
@@ -23,18 +20,8 @@ public class EnsureUniqueHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
-                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
-            }
+        if (!Households.membersAt(ownerRepository, request.getLastName(), request.getAddress()).isEmpty()) {
+            throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
         }
-    }
-
-    /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
-    private static String normalize(String value) {
-        return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
