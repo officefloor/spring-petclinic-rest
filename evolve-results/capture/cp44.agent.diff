@@ -1,0 +1,373 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a5dee13ed..b8b8906eb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -92,6 +98,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+@@ -272,6 +294,8 @@ public class Owner extends Person {
+             .append("lastName", this.getLastName())
+             .append("firstName", this.getFirstName())
+             .append("address", this.address)
++            .append("addressLine1", this.addressLine1)
++            .append("addressLine2", this.addressLine2)
+             .append("city", this.city)
+             .append("telephone", this.telephone)
+             .append("email", this.email)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 74a260589..86e4a4be7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,7 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.AddressResolver;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
+@@ -105,7 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+ 
+-    private final AddressNormalizer addressNormalizer;
++    private final AddressResolver addressResolver;
+ 
+     private final CustomerCodeGenerator customerCodeGenerator;
+ 
+@@ -129,7 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
+-                                 AddressNormalizer addressNormalizer,
++                                 AddressResolver addressResolver,
+                                  CustomerCodeGenerator customerCodeGenerator,
+                                  NamesakeCounter namesakeCounter,
+                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
+@@ -148,7 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
+-        this.addressNormalizer = addressNormalizer;
++        this.addressResolver = addressResolver;
+         this.customerCodeGenerator = customerCodeGenerator;
+         this.namesakeCounter = namesakeCounter;
+         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+@@ -183,9 +183,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+-        if (ownerFieldsDto != null) {
+-            ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+-        }
++        addressResolver.resolve(ownerFieldsDto);
+         List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFieldsDto);
+         if (!missingFields.isEmpty()) {
+             throw new MissingOwnerFieldsException(missingFields);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressResolver.java
+new file mode 100644
+index 000000000..f3801d73b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressResolver.java
+@@ -0,0 +1,66 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.stereotype.Component;
++
++/**
++ * Reconciles the structured and flat address inputs of an owner into their canonical stored
++ * form. Each supplied address field is normalized by {@link AddressNormalizer}, and the flat
++ * {@code address} is set to the effective address: the composed structured address (the
++ * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
++ * appended when present) when a structured {@code addressLine1} is supplied, otherwise the
++ * normalized flat {@code address}. This keeps the flat {@code address} the single value every
++ * downstream reader sees, while the structured fields remain available in their normalized form.
++ */
++@Component
++public class AddressResolver {
++
++    private final AddressNormalizer addressNormalizer;
++
++    public AddressResolver(AddressNormalizer addressNormalizer) {
++        this.addressNormalizer = addressNormalizer;
++    }
++
++    /**
++     * Normalizes the address fields of {@code owner} in place and sets its flat {@code address}
++     * to the effective address, preferring the structured fields when {@code addressLine1} is
++     * present. A {@code null} owner is left untouched.
++     */
++    public void resolve(OwnerFieldsDto owner) {
++        if (owner == null) {
++            return;
++        }
++        String line1 = addressNormalizer.normalize(owner.getAddressLine1());
++        String line2 = addressNormalizer.normalize(owner.getAddressLine2());
++        String flat = addressNormalizer.normalize(owner.getAddress());
++        owner.setAddressLine1(line1);
++        owner.setAddressLine2(line2);
++        owner.setAddress(isPresent(line1) ? compose(line1, line2) : flat);
++    }
++
++    /** Compose the normalized structured lines: {@code addressLine1} plus a space and
++     *  {@code addressLine2} when {@code addressLine2} is present. */
++    private String compose(String line1, String line2) {
++        return isPresent(line2) ? line1 + " " + line2 : line1;
++    }
++
++    private boolean isPresent(String value) {
++        return value != null && !value.isBlank();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java
+index be465bb9c..cca4ae3d9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java
+@@ -25,9 +25,11 @@ import org.springframework.stereotype.Component;
+ /**
+  * Authoritative check for the owner fields that must be present and non-blank.
+  * <p>
+- * Returns the names of any of {@code firstName}, {@code lastName}, {@code address},
++ * Returns the names of any of {@code firstName}, {@code lastName}, an address,
+  * {@code city} or {@code telephone} that are missing (null) or blank, in a stable
+- * canonical order.
++ * canonical order. An owner supplies an address in either form: a non-blank
++ * structured {@code addressLine1} or the flat {@code address}; {@code "address"} is
++ * reported missing only when neither is present.
+  */
+ @Component
+ public class OwnerFieldsValidator {
+@@ -41,15 +43,29 @@ public class OwnerFieldsValidator {
+         List<String> missing = new ArrayList<>();
+         addIfBlank(missing, "firstName", owner == null ? null : owner.getFirstName());
+         addIfBlank(missing, "lastName", owner == null ? null : owner.getLastName());
+-        addIfBlank(missing, "address", owner == null ? null : owner.getAddress());
++        addIfMissingAddress(missing, owner);
+         addIfBlank(missing, "city", owner == null ? null : owner.getCity());
+         addIfBlank(missing, "telephone", owner == null ? null : owner.getTelephone());
+         return missing;
+     }
+ 
+     private void addIfBlank(List<String> missing, String fieldName, String value) {
+-        if (value == null || value.isBlank()) {
++        if (isBlank(value)) {
+             missing.add(fieldName);
+         }
+     }
++
++    /** An address is present when the structured {@code addressLine1} or the flat
++     *  {@code address} is non-blank; otherwise {@code "address"} is reported missing. */
++    private void addIfMissingAddress(List<String> missing, OwnerFieldsDto owner) {
++        String addressLine1 = owner == null ? null : owner.getAddressLine1();
++        String address = owner == null ? null : owner.getAddress();
++        if (isBlank(addressLine1) && isBlank(address)) {
++            missing.add("address");
++        }
++    }
++
++    private boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c79d87b19..f15e185a3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 13f6c786c..6fb25f031 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE owners (
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ae0302053..88859e984 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index ff1f58ff3..27cce2e92 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address    TEXT,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fe54b5e05..83a8cbf23 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,31 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. Accepted as a flat input for
++            backward compatibility. On create it is normalized; when structured address
++            fields are supplied it is returned as the composed addressLine1 (with a single
++            space and addressLine2 appended when addressLine2 is present).
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the structured postal address. Preferred over the
++            flat 'address' when supplied (non-blank); normalized on create by the same rules
++            as 'address'.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the structured postal address. When
++            supplied it is normalized and appended to the composed 'address'.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2079,7 +2099,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/validation/AddressResolverTest.java b/src/test/java/org/springframework/samples/petclinic/rest/validation/AddressResolverTest.java
+new file mode 100644
+index 000000000..a2038b954
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/rest/validation/AddressResolverTest.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import org.junit.jupiter.api.Test;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Unit tests for {@link AddressResolver}: structured fields are normalized and composed into the
++ * flat {@code address}, with the flat input used as a backward-compatible fallback.
++ */
++class AddressResolverTest {
++
++    private final AddressResolver resolver = new AddressResolver(new AddressNormalizer());
++
++    @Test
++    void composesAddressLine1WithoutLine2() {
++        OwnerFieldsDto owner = new OwnerFieldsDto();
++        owner.setAddressLine1("10 king st");
++
++        resolver.resolve(owner);
++
++        assertThat(owner.getAddressLine1()).isEqualTo("10 KING STREET");
++        assertThat(owner.getAddress()).isEqualTo("10 KING STREET");
++    }
++
++    @Test
++    void appendsNormalizedAddressLine2WhenPresent() {
++        OwnerFieldsDto owner = new OwnerFieldsDto();
++        owner.setAddressLine1("10 king st");
++        owner.setAddressLine2("apt  4");
++
++        resolver.resolve(owner);
++
++        assertThat(owner.getAddressLine2()).isEqualTo("APT 4");
++        assertThat(owner.getAddress()).isEqualTo("10 KING STREET APT 4");
++    }
++
++    @Test
++    void fallsBackToFlatAddressWhenNoStructuredLine1() {
++        OwnerFieldsDto owner = new OwnerFieldsDto();
++        owner.setAddress("110 w. liberty ave");
++
++        resolver.resolve(owner);
++
++        assertThat(owner.getAddress()).isEqualTo("110 W. LIBERTY AVENUE");
++    }
++}
