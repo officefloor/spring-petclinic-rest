@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 
 import java.util.Collection;
 import java.util.List;
@@ -22,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -60,19 +61,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determines an owner's membership tier from its stored fields: {@code "GOLD"} when the
-     * owner's household (owners sharing the same {@code householdId}) had three or more members
-     * when the owner was created; otherwise {@code "SILVER"} when the owner has no namesakes (a
-     * {@code namesakeCount} of 0) and an email is present, and {@code "BRONZE"} in all other cases.
+     * Computes an owner's numeric membership level from its stored fields, delegating to
+     * {@link MembershipLevelCalculator}.
      */
-    default String formatMembershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
-        }
-        boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    default int computeMembershipLevel(Owner owner) {
+        return MembershipLevelCalculator.levelOf(owner);
     }
 
     /**
