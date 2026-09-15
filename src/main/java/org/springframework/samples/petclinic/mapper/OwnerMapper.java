@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.CityRegion;
 
 import java.util.Collection;
 import java.util.List;
@@ -22,7 +23,16 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's locality: the canonical region derived from its city via the pinned
+     * city-to-region table, or "UNKNOWN" for any city not in the table.
+     */
+    default String locality(Owner owner) {
+        return CityRegion.localityOf(owner.getCity());
+    }
 
     /**
      * The owner's membership tier: SILVER when they have no namesakes and a stored
