@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -207,6 +208,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid telephone: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ValidationErrorsResponse(List.of(InvalidTelephoneException.FIELD)));
+    }
+
+    /**
+     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
+     * normalized telephone that is already used by another owner. Returns a 409 Conflict
+     * whose {@code errors} array names the offending field.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleDuplicateTelephoneException(DuplicateTelephoneException e) {
+        logger.debug("Duplicate telephone: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ValidationErrorsResponse(List.of(DuplicateTelephoneException.FIELD)));
     }
 
 }
