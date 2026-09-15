@@ -1,0 +1,264 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/IdentityDuplicateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/IdentityDuplicateValidator.java
+index 01c0fb76a..0b273792a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/IdentityDuplicateValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/IdentityDuplicateValidator.java
+@@ -25,7 +25,8 @@ import org.springframework.stereotype.Component;
+ /**
+  * Detects whether a would-be owner duplicates an existing one. Duplication is decided by a
+  * single derived {@link IdentityKey}: a candidate is a duplicate exactly when its whole
+- * identity key equals that of some existing owner. This consolidates the former separate
++ * identity key equals that of some existing owner. Being the SHA-256 hex over the normalized
++ * telephone, lower-cased email and Soundex of the last name, this consolidates the former separate
+  * telephone, email and household checks into one rule.
+  */
+ @Component
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
+index 7624f37ee..73afd6904 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
+@@ -18,18 +18,19 @@ package org.springframework.samples.petclinic.rest.validation;
+ 
+ import java.util.Collection;
+ import java.util.Comparator;
+-import java.util.Objects;
+ import java.util.Optional;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.IdentityKey;
++import org.springframework.samples.petclinic.util.Soundex;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Flags a would-be owner as a <em>possible</em> (soft) duplicate of an existing one. Unlike the
+  * hard {@link IdentityDuplicateValidator} rule, a soft match does not reject the create: an owner
+- * that shares an existing owner's last name and postcode but carries a different telephone is a
+- * distinct person who merely looks like a household namesake, so it is still created and only
+- * annotated with the existing owner it resembles.
++ * whose {@link IdentityKey} differs from every existing owner's yet whose last name (compared by
++ * {@link Soundex}) and postcode match an existing owner is a distinct person who merely looks like a
++ * household namesake, so it is still created and only annotated with the existing owner it resembles.
+  *
+  * <p>A hard duplicate (whole identity key equal) is expected to have been rejected before this
+  * runs, so the candidates seen here are never exact duplicates.
+@@ -38,20 +39,23 @@ import org.springframework.stereotype.Component;
+ public class PossibleDuplicateDetector {
+ 
+     /**
+-     * @param candidate the owner about to be created, with its telephone already in canonical
+-     *                  (stored) form
++     * @param candidate the owner about to be created, with its telephone and email already in
++     *                  canonical (stored) form
+      * @param existingOwners owners already stored to compare against (typically pre-filtered to
+      *                       the candidate's last name)
+-     * @return the earliest-created existing owner (lowest id) that shares the candidate's postcode
+-     *         but has a different telephone, or empty when none does
++     * @return the earliest-created existing owner (lowest id) whose Soundex last name and postcode
++     *         match the candidate's while its identity key differs, or empty when none does
+      */
+     public Optional<Owner> findPossibleDuplicate(Owner candidate, Collection<Owner> existingOwners) {
+         if (candidate.getPostcode() == null) {
+             return Optional.empty();
+         }
++        String candidateKey = IdentityKey.of(candidate);
++        String candidateSoundex = Soundex.encode(candidate.getLastName());
+         return existingOwners.stream()
+             .filter(existing -> candidate.getPostcode().equals(existing.getPostcode()))
+-            .filter(existing -> !Objects.equals(candidate.getTelephone(), existing.getTelephone()))
++            .filter(existing -> candidateSoundex.equals(Soundex.encode(existing.getLastName())))
++            .filter(existing -> !candidateKey.equals(IdentityKey.of(existing)))
+             .min(Comparator.comparing(Owner::getId));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+index 1f73d8993..382abd33b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+@@ -16,18 +16,24 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
++import java.util.Locale;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives the single key that identifies an owner for duplicate detection, namely
+- * {@code normalizedTelephone + "|" + (email or empty) + "|" + (householdId or empty)}.
++ * Derives the single key that identifies an owner for duplicate detection: the lower-case,
++ * 64-character hex SHA-256 digest over
++ * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
+  * <p>
+  * Two owners are duplicates exactly when their whole identity keys are equal. Because the
+- * telephone is part of the key, owners in the same household (same {@code householdId}) with
+- * different telephones have different keys and are not duplicates.
++ * telephone is part of the key, owners with the same last name and postcode but different
++ * telephones have different keys and are not hard duplicates; they are instead flagged as soft
++ * (possible) duplicates. The household id no longer takes part in identity: household grouping is a
++ * separate concern.
+  * <p>
+- * The values are taken as already normalized: the telephone in its stored E.164 form and the
+- * email lower-cased, so the key computed at creation matches the one derived from stored fields.
++ * The telephone is taken in its stored E.164 form; the email is lower-cased and the last name is
++ * reduced to its {@link Soundex} code here, so the key computed at creation matches the one derived
++ * from stored fields.
+  */
+ public final class IdentityKey {
+ 
+@@ -36,8 +42,10 @@ public final class IdentityKey {
+ 
+     /** @return the identity key for {@code owner}. */
+     public static String of(Owner owner) {
+-        return orEmpty(owner.getTelephone()) + "|" + orEmpty(owner.getEmail()) + "|"
+-            + orEmpty(owner.getHouseholdId());
++        String raw = orEmpty(owner.getTelephone()) + "|"
++            + orEmpty(owner.getEmail()).toLowerCase(Locale.ROOT) + "|"
++            + Soundex.encode(owner.getLastName());
++        return Sha256Hex.lowerHex(raw);
+     }
+ 
+     private static String orEmpty(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Sha256Hex.java b/src/main/java/org/springframework/samples/petclinic/util/Sha256Hex.java
+index 44d3589b3..2534d0d93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Sha256Hex.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Sha256Hex.java
+@@ -21,8 +21,8 @@ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ 
+ /**
+- * Produces upper-case hexadecimal SHA-256 digests, the shared building block for the
+- * deterministic identifiers derived from owner data (customer code, household id).
++ * Produces hexadecimal SHA-256 digests, the shared building block for the deterministic
++ * identifiers derived from owner data (customer code, household id, identity key).
+  */
+ public final class Sha256Hex {
+ 
+@@ -42,6 +42,18 @@ public final class Sha256Hex {
+         return hex.substring(0, length);
+     }
+ 
++    /**
++     * @return the full 64-character lower-case hex SHA-256 digest of {@code value}'s UTF-8 bytes.
++     */
++    public static String lowerHex(String value) {
++        byte[] digest = sha256(value.getBytes(StandardCharsets.UTF_8));
++        StringBuilder hex = new StringBuilder(digest.length * 2);
++        for (byte b : digest) {
++            hex.append(String.format("%02x", b));
++        }
++        return hex.toString();
++    }
++
+     private static byte[] sha256(byte[] bytes) {
+         try {
+             return MessageDigest.getInstance("SHA-256").digest(bytes);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..644aec711
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,84 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the American Soundex code of a name: a phonetic index consisting of the (upper-cased)
++ * first letter followed by three digits, e.g. {@code "Robert" -> "R163"}. Names that sound alike
++ * share a code, which lets duplicate detection group likely-same surnames that are spelled
++ * differently. Non-letters are ignored; {@code H} and {@code W} are transparent (they do not break
++ * a run of same-coded consonants) while vowels do. A value with no letters yields the empty string.
++ */
++public final class Soundex {
++
++    private Soundex() {
++    }
++
++    /**
++     * @param value the name to encode (may be {@code null})
++     * @return the four-character Soundex code, or {@code ""} when {@code value} carries no letters
++     */
++    public static String encode(String value) {
++        if (value == null) {
++            return "";
++        }
++        StringBuilder letters = new StringBuilder();
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            if (Character.isLetter(c)) {
++                letters.append(Character.toUpperCase(c));
++            }
++        }
++        if (letters.length() == 0) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder(4).append(letters.charAt(0));
++        char previous = digit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            if (c == 'H' || c == 'W') {
++                continue;
++            }
++            char d = digit(c);
++            if (d != '0' && d != previous) {
++                code.append(d);
++            }
++            previous = isVowel(c) ? '0' : d;
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /** @return the Soundex digit for an upper-case letter, {@code '0'} for vowels, H, W and Y. */
++    private static char digit(char c) {
++        return switch (c) {
++            case 'B', 'F', 'P', 'V' -> '1';
++            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
++            case 'D', 'T' -> '3';
++            case 'L' -> '4';
++            case 'M', 'N' -> '5';
++            case 'R' -> '6';
++            default -> '0';
++        };
++    }
++
++    private static boolean isVowel(char c) {
++        return c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U' || c == 'Y';
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ecee8458f..03682ea41 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2203,11 +2203,12 @@ components:
+               readOnly: true
+             identityKey:
+               title: Identity key
+-              description: The derived key used to detect duplicate owners, formatted
+-                '<normalizedTelephone>|<email or empty>|<householdId or empty>'. Two owners
+-                are duplicates only when their whole identity keys are equal.
++              description: The derived key used to detect duplicate owners. It is the lower-case
++                64-character hex SHA-256 digest over the normalized telephone, the lower-cased email
++                and the Soundex of the last name, joined by '|'. Two owners are duplicates only when
++                their whole identity keys are equal.
+               type: string
+-              example: '+61412345678||3F2A9C1E7B4D'
++              example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
