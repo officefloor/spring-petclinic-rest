@@ -250,6 +250,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersByLastNameIgnoreCase(String lastName) throws DataAccessException {
+        return ownerRepository.findByLastNameIgnoreCase(lastName);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countOwners() throws DataAccessException {
         return ownerRepository.count();
     }

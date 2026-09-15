@@ -37,8 +37,10 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -70,6 +72,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
+    private final HouseholdDuplicateValidator householdDuplicateValidator;
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -81,6 +85,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
+                                 HouseholdDuplicateValidator householdDuplicateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator) {
@@ -89,6 +94,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
+        this.householdDuplicateValidator = householdDuplicateValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
@@ -128,6 +134,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        rejectDuplicateHousehold(owner, ownerFieldsDto);
         String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnersByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
@@ -144,6 +151,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects creating an owner that shares a household (same last name and address, compared
+     * case-insensitively with collapsed whitespace) with an existing owner, unless the request
+     * opted in via {@code sharesHousehold}.
+     *
+     * @throws DuplicateHouseholdException if a conflicting owner exists and the caller did not opt in
+     */
+    private void rejectDuplicateHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        Collection<Owner> sameLastName = this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
+        if (householdDuplicateValidator.sharesHouseholdWithExisting(owner, sameLastName)) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

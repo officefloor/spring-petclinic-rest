@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

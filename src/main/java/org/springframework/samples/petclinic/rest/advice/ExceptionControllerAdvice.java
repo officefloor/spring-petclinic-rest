@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -241,6 +242,23 @@ public class ExceptionControllerAdvice {
         logger.debug("Duplicate telephone: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(new ValidationErrorsResponse(List.of(DuplicateTelephoneException.FIELD)));
+    }
+
+    /**
+     * Handles {@link DuplicateHouseholdException} raised when an owner is created whose last
+     * name and address already belong to another owner and the request did not opt in via
+     * {@code sharesHousehold}. Returns a 409 Conflict whose {@code errors} array names the
+     * offending fields.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field names and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleDuplicateHouseholdException(DuplicateHouseholdException e) {
+        logger.debug("Duplicate household: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ValidationErrorsResponse(DuplicateHouseholdException.FIELDS));
     }
 
 }
