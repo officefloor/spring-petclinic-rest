@@ -17,15 +17,16 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Thrown when an owner is created with an email whose lower-cased form is already used by
- * another owner. Carries the offending value so it can be logged.
+ * Thrown when an owner is created whose whole derived identity key already belongs to another
+ * owner. This is the single duplicate rule that replaces the former separate telephone, email
+ * and household checks. Carries the offending key so it can be logged.
  */
-public class DuplicateEmailException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
     /** Name of the offending field, used to build the error response. */
-    public static final String FIELD = "email";
+    public static final String FIELD = "identityKey";
 
-    public DuplicateEmailException(String email) {
-        super("Email is already in use by another owner: " + email);
+    public DuplicateIdentityException(String identityKey) {
+        super("Identity key is already in use by another owner: " + identityKey);
     }
 }

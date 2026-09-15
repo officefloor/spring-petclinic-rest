@@ -43,17 +43,17 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerator;
+import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BusinessDayResolver;
+import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -83,6 +83,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
+    private final IdentityDuplicateValidator identityDuplicateValidator;
+
     private final HouseholdIdGenerator householdIdGenerator;
 
     private final TelephoneNormalizer telephoneNormalizer;
@@ -105,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                 IdentityDuplicateValidator identityDuplicateValidator,
                                  HouseholdIdGenerator householdIdGenerator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
@@ -119,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.householdDuplicateValidator = householdDuplicateValidator;
+        this.identityDuplicateValidator = identityDuplicateValidator;
         this.householdIdGenerator = householdIdGenerator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
@@ -169,17 +173,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Collection<Owner> sameLastName =
             this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
         owner.setNamesakeCount(namesakeCounter.count(owner, sameLastName));
-        applyHouseholdPolicy(owner, ownerFieldsDto, sameLastName);
-        String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
-        if (!this.clinicService.findOwnersByTelephone(normalizedTelephone).isEmpty()) {
-            throw new DuplicateTelephoneException(normalizedTelephone);
-        }
-        owner.setTelephone(normalizedTelephone);
-        String normalizedEmail = emailNormalizer.normalize(owner.getEmail());
-        if (normalizedEmail != null && !this.clinicService.findOwnersByEmailIgnoreCase(normalizedEmail).isEmpty()) {
-            throw new DuplicateEmailException(normalizedEmail);
-        }
-        owner.setEmail(normalizedEmail);
+        List<Owner> householdMembers = assignHousehold(owner, ownerFieldsDto, sameLastName);
+        owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
+        owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+        rejectIfDuplicateIdentity(owner);
+        joinHousehold(owner, householdMembers);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -205,33 +203,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Applies the household rule to an owner about to be created. When the owner shares a
-     * household (same last name and address, compared case-insensitively with collapsed
-     * whitespace) with an existing owner, creation is rejected unless the request opted in via
-     * {@code sharesHousehold}. When it opts in, the new owner and every existing household
-     * member are stamped with the same stable {@code householdId}.
+     * Assigns the household attributes of an owner about to be created, without touching any
+     * existing owner. The new owner's household size after this create is recorded (the existing
+     * members that share its last name and address, compared case-insensitively with collapsed
+     * whitespace, plus the owner itself). When the owner shares a household with an existing one
+     * and the request opted in via {@code sharesHousehold}, the new owner is stamped with the
+     * household's stable {@code householdId}.
      *
-     * <p>The new owner's household size after this create is recorded on it (the existing members
-     * plus the owner itself), so an owner joining a household of three or more can be recognised.
+     * <p>Sharing a household is no longer a rejection in itself: duplicate detection is decided
+     * solely by the derived identity key in {@link #rejectIfDuplicateIdentity(Owner)}. Because the
+     * telephone is part of that key, household members with different telephones are all allowed.
      *
-     * @throws DuplicateHouseholdException if a conflicting owner exists and the caller did not opt in
+     * @return the existing household members that the new owner joins (empty when it starts a new
+     *         household or does not opt in)
      */
-    private void applyHouseholdPolicy(Owner owner, OwnerFieldsDto ownerFieldsDto, Collection<Owner> sameLastName) {
+    private List<Owner> assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto, Collection<Owner> sameLastName) {
         List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
         owner.setHouseholdSize(members.size() + 1);
-        if (members.isEmpty()) {
-            return;
+        if (members.isEmpty() || !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return List.of();
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-        }
-        String householdId = householdIdGenerator.generate(owner);
-        owner.setHouseholdId(householdId);
+        owner.setHouseholdId(householdIdGenerator.generate(owner));
+        return members;
+    }
+
+    /**
+     * Stamps every existing member the new owner joins with the owner's {@code householdId}, so
+     * the whole household shares one identifier. Called only once the owner has cleared duplicate
+     * detection, so no existing owner is mutated for a create that is going to be rejected.
+     */
+    private void joinHousehold(Owner owner, List<Owner> members) {
+        String householdId = owner.getHouseholdId();
         for (Owner member : members) {
             if (!householdId.equals(member.getHouseholdId())) {
                 member.setHouseholdId(householdId);
                 this.clinicService.saveOwner(member);
             }
+        }
+    }
+
+    /**
+     * Rejects the owner when its whole derived {@link IdentityKey} already belongs to another
+     * owner. A full-key match requires an equal telephone, so only owners with the same
+     * (already normalized) telephone are compared.
+     *
+     * @throws DuplicateIdentityException if an existing owner shares the new owner's identity key
+     */
+    private void rejectIfDuplicateIdentity(Owner owner) {
+        Collection<Owner> sameTelephone = this.clinicService.findOwnersByTelephone(owner.getTelephone());
+        if (identityDuplicateValidator.isDuplicate(owner, sameTelephone)) {
+            throw new DuplicateIdentityException(IdentityKey.of(owner));
         }
     }
 

@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 
@@ -26,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -83,6 +85,14 @@ public interface OwnerMapper {
      */
     default String formatContactPreference(Owner owner) {
         return owner.hasEmail() ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derives an owner's identity key from its stored fields, delegating to {@link IdentityKey}.
+     * This is the same key used to detect duplicate owners on create.
+     */
+    default String formatIdentityKey(Owner owner) {
+        return IdentityKey.of(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);

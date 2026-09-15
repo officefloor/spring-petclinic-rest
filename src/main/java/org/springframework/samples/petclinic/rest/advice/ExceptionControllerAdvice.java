@@ -33,9 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
@@ -232,52 +230,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
-     * normalized telephone that is already used by another owner. Returns a 409 Conflict
-     * whose {@code errors} array names the offending field.
+     * Handles {@link DuplicateIdentityException} raised when an owner is created whose whole
+     * derived identity key already belongs to another owner. This is the single duplicate rule
+     * that replaces the former separate telephone, email and household checks. Returns a 409
+     * Conflict whose {@code errors} array names the offending field.
      *
-     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param e The {@link DuplicateIdentityException} to be handled
      * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDuplicateTelephoneException(DuplicateTelephoneException e) {
-        logger.debug("Duplicate telephone: {}", e.getMessage());
+    public ResponseEntity<ValidationErrorsResponse> handleDuplicateIdentityException(DuplicateIdentityException e) {
+        logger.debug("Duplicate identity: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(List.of(DuplicateTelephoneException.FIELD)));
-    }
-
-    /**
-     * Handles {@link DuplicateEmailException} raised when an owner is created with an email
-     * whose lower-cased form is already used by another owner. Returns a 409 Conflict whose
-     * {@code errors} array names the offending field.
-     *
-     * @param e The {@link DuplicateEmailException} to be handled
-     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDuplicateEmailException(DuplicateEmailException e) {
-        logger.debug("Duplicate email: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(List.of(DuplicateEmailException.FIELD)));
-    }
-
-    /**
-     * Handles {@link DuplicateHouseholdException} raised when an owner is created whose last
-     * name and address already belong to another owner and the request did not opt in via
-     * {@code sharesHousehold}. Returns a 409 Conflict whose {@code errors} array names the
-     * offending fields.
-     *
-     * @param e The {@link DuplicateHouseholdException} to be handled
-     * @return A {@link ResponseEntity} containing the offending field names and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDuplicateHouseholdException(DuplicateHouseholdException e) {
-        logger.debug("Duplicate household: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(DuplicateHouseholdException.FIELDS));
+            .body(new ValidationErrorsResponse(List.of(DuplicateIdentityException.FIELD)));
     }
 
     /**
