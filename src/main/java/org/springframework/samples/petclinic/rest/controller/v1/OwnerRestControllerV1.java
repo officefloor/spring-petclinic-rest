@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsE
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.BusinessDayResolver;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -167,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setRegistrationDate(BusinessDayResolver.toBusinessDay(owner.getRegistrationDate()));
         LocalDate registrationDate = owner.getRegistrationDate();
         if (clinicService.countOwnersByRegistrationDate(registrationDate)
                 >= DailyOwnerLimitException.MAX_OWNERS_PER_DAY) {
