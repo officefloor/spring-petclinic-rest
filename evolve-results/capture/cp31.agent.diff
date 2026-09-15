@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6596a8da3..aa8663675 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.LocalityResolver;
++import org.springframework.samples.petclinic.util.LuhnCheckDigit;
+ import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+ 
+ import java.util.Collection;
+@@ -23,6 +24,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
++    @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+@@ -63,6 +65,17 @@ public interface OwnerMapper {
+             owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /**
++     * Computes an owner's check digit from its stored customer code, delegating to
++     * {@link LuhnCheckDigit}. Returns {@code null} when the customer code is absent.
++     */
++    default Integer computeCheckDigit(Owner owner) {
++        if (owner.getCustomerCode() == null) {
++            return null;
++        }
++        return LuhnCheckDigit.of(owner.getCustomerCode());
++    }
++
+     /**
+      * Computes an owner's numeric membership level from its stored fields, delegating to
+      * {@link MembershipLevelCalculator}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LuhnCheckDigit.java b/src/main/java/org/springframework/samples/petclinic/util/LuhnCheckDigit.java
+new file mode 100644
+index 000000000..aaf60af70
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/LuhnCheckDigit.java
+@@ -0,0 +1,53 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the standard Luhn check digit (0-9) over the decimal digits contained in a string.
++ * <p>
++ * Non-digit characters are ignored, so a value such as {@code "SMI-0007"} is checked over its
++ * digits {@code "0007"}. Digits are weighted from the rightmost, doubling every second one and
++ * subtracting 9 from any doubled value above 9; the check digit is what makes the weighted sum
++ * a multiple of 10.
++ */
++public final class LuhnCheckDigit {
++
++    private LuhnCheckDigit() {
++    }
++
++    /** @return the Luhn check digit (0-9) over the digits contained in {@code value}. */
++    public static int of(String value) {
++        int sum = 0;
++        boolean doubled = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (doubled) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            doubled = !doubled;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4d8eaa603..064fdf9dc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2107,6 +2107,16 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The single Luhn check digit (0-9) computed over the digits of the
++                customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is
