@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.util.AgeBandResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -106,6 +108,15 @@ public interface OwnerMapper {
      */
     default String formatIdentityKey(Owner owner) {
         return IdentityKey.of(owner);
+    }
+
+    /**
+     * Derives an owner's age band from its birth date measured against its registration
+     * date, delegating to {@link AgeBandResolver}. Returns {@code null} when no birth date
+     * is present.
+     */
+    default String formatAgeBand(Owner owner) {
+        return AgeBandResolver.bandOf(owner.getBirthDate(), owner.getRegistrationDate());
     }
 
     Owner toOwner(OwnerDto ownerDto);
