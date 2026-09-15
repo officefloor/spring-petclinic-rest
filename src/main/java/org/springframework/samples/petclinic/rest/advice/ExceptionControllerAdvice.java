@@ -29,7 +29,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.validation.ValidationErrorsResponse;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -52,6 +56,12 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+
+    private final OwnerFieldsValidator ownerFieldsValidator;
+
+    public ExceptionControllerAdvice(OwnerFieldsValidator ownerFieldsValidator) {
+        this.ownerFieldsValidator = ownerFieldsValidator;
+    }
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -131,10 +141,16 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
+    public ResponseEntity<?> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         BindingErrorsResponse errors = new BindingErrorsResponse();
         BindingResult bindingResult = e.getBindingResult();
+        if (bindingResult.getTarget() instanceof OwnerFieldsDto ownerFields) {
+            List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFields);
+            if (!missingFields.isEmpty()) {
+                return ResponseEntity.status(status).body(new ValidationErrorsResponse(missingFields));
+            }
+        }
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
@@ -160,6 +176,20 @@ public class ExceptionControllerAdvice {
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException} raised when an owner is created with required
+     * fields that are missing or blank. Returns a 400 Bad Request whose {@code errors} array lists
+     * the name of each offending field.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field names and a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleMissingOwnerFieldsException(MissingOwnerFieldsException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ValidationErrorsResponse(e.getFields()));
     }
 
 }

@@ -35,6 +35,8 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -61,14 +63,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final OwnerFieldsValidator ownerFieldsValidator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 OwnerFieldsValidator ownerFieldsValidator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.ownerFieldsValidator = ownerFieldsValidator;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -99,6 +105,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFieldsDto);
+        if (!missingFields.isEmpty()) {
+            throw new MissingOwnerFieldsException(missingFields);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
