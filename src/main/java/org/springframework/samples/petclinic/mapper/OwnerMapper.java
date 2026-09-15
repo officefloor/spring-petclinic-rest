@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 
 import java.util.Collection;
 import java.util.List;
@@ -22,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -66,6 +68,14 @@ public interface OwnerMapper {
         boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * Derives an owner's locality (canonical region) from its stored city using the
+     * fixed city-to-region table, yielding {@code "UNKNOWN"} for any unlisted city.
+     */
+    default String formatLocality(Owner owner) {
+        return LocalityResolver.localityOf(owner.getCity());
     }
 
     Owner toOwner(OwnerDto ownerDto);
