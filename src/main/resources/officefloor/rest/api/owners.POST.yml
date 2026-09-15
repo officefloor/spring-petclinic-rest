@@ -39,10 +39,17 @@ ensureUniqueHousehold:
 ensureCityCapacity:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureCityCapacity
   govern: [ transaction ]
+  next: resolveRegistrationDate
+
+# Resolve the effective registration date (supplied, else the server's current date) and
+# roll a weekend forward to the next business day. Runs before the daily-limit check so
+# the limit counts against the adjusted business day this create will land on.
+resolveRegistrationDate:
+  class: org.springframework.samples.petclinic.rest.function.owner.ResolveRegistrationDate
   next: ensureDailyLimit
 
-# Reject a create once the maximum number of owners has already been registered today
-# (by registrationDate) as a 429, before any owner is built or saved.
+# Reject a create once the maximum number of owners has already been registered on the
+# resolved business day (by registrationDate) as a 429, before any owner is built or saved.
 ensureDailyLimit:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureDailyLimit
   govern: [ transaction ]
@@ -51,12 +58,12 @@ ensureDailyLimit:
 build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
-  next: defaultRegistrationDate
+  next: applyRegistrationDate
 
-# When the request omitted a registration date, stamp it with the server's current
-# date so the owner is stored and returned with one; a supplied date is kept as is.
-defaultRegistrationDate:
-  class: org.springframework.samples.petclinic.rest.function.owner.DefaultRegistrationDate
+# Stamp the built owner with the resolved business-day registration date, overwriting any
+# date the request body mapped in, so the owner is stored and returned with the adjusted day.
+applyRegistrationDate:
+  class: org.springframework.samples.petclinic.rest.function.owner.ApplyRegistrationDate
   govern: [ transaction ]
   next: assignCustomerCode
 
