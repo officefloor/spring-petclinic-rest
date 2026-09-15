@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
+import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final NamesakeCounter namesakeCounter;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -103,7 +106,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
-                                 NamesakeCounter namesakeCounter) {
+                                 NamesakeCounter namesakeCounter,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -116,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -181,6 +186,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCodeGenerator.generate(
             owner.getCity(), owner.getLastName(), cityOwnerCount));
         this.clinicService.saveOwner(owner);
+        ownerAuditLogger.ownerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
