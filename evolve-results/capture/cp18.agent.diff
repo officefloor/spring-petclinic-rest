@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index dfcb8b562..0829ce960 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+@@ -261,4 +262,20 @@ public class ExceptionControllerAdvice {
+             .body(new ValidationErrorsResponse(DuplicateHouseholdException.FIELDS));
+     }
+ 
++    /**
++     * Handles {@link CityOwnerLimitException} raised when an owner is created in a city that
++     * already contains the maximum allowed number of owners. Returns a 409 Conflict whose
++     * {@code errors} array names the offending field.
++     *
++     * @param e The {@link CityOwnerLimitException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
++     */
++    @ExceptionHandler(CityOwnerLimitException.class)
++    @ResponseBody
++    public ResponseEntity<ValidationErrorsResponse> handleCityOwnerLimitException(CityOwnerLimitException e) {
++        logger.debug("City owner limit reached: {}", e.getMessage());
++        return ResponseEntity.status(HttpStatus.CONFLICT)
++            .body(new ValidationErrorsResponse(List.of(CityOwnerLimitException.FIELD)));
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 219f9a011..dde085258 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+@@ -165,8 +166,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        long cityOwnerCount = clinicService.countOwnersByCity(owner.getCity());
++        if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
++            throw new CityOwnerLimitException(owner.getCity());
++        }
+         owner.setCustomerCode(customerCodeGenerator.generate(
+-            owner.getCity(), owner.getLastName(), clinicService.countOwnersByCity(owner.getCity())));
++            owner.getCity(), owner.getLastName(), cityOwnerCount));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerLimitException.java
+new file mode 100644
+index 000000000..efadd0960
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerLimitException.java
+@@ -0,0 +1,34 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner is created in a city that already contains the maximum allowed number
++ * of owners. Carries the offending city so it can be logged.
++ */
++public class CityOwnerLimitException extends RuntimeException {
++
++    /** Maximum number of owners a single city may contain. */
++    public static final long MAX_OWNERS_PER_CITY = 50;
++
++    /** Name of the offending field, used to build the error response. */
++    public static final String FIELD = "city";
++
++    public CityOwnerLimitException(String city) {
++        super("City already contains the maximum of " + MAX_OWNERS_PER_CITY + " owners: " + city);
++    }
++}
