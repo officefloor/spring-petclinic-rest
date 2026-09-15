@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitExcep
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -227,6 +228,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid email: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ValidationErrorsResponse(List.of(InvalidEmailException.FIELD)));
+    }
+
+    /**
+     * Handles {@link InvalidPostcodeException} raised when an owner's postcode is present but is
+     * not four digits, or is out of range for the region of the owner's city. Returns a 400 Bad
+     * Request whose {@code errors} array names the offending field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleInvalidPostcodeException(InvalidPostcodeException e) {
+        logger.debug("Invalid postcode: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ValidationErrorsResponse(List.of(InvalidPostcodeException.FIELD)));
     }
 
     /**

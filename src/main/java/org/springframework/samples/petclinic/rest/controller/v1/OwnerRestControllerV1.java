@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerato
 import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BusinessDayResolver;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
+    private final PostcodeValidator postcodeValidator;
+
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
     private final IdentityDuplicateValidator identityDuplicateValidator;
@@ -106,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
+                                 PostcodeValidator postcodeValidator,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  IdentityDuplicateValidator identityDuplicateValidator,
                                  HouseholdIdGenerator householdIdGenerator,
@@ -121,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
+        this.postcodeValidator = postcodeValidator;
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.identityDuplicateValidator = identityDuplicateValidator;
         this.householdIdGenerator = householdIdGenerator;
@@ -176,6 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<Owner> householdMembers = assignHousehold(owner, ownerFieldsDto, sameLastName);
         owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+        postcodeValidator.validate(owner.getPostcode(), owner.getCity());
         rejectIfDuplicateIdentity(owner);
         joinHousehold(owner, householdMembers);
         if (owner.getRegistrationDate() == null) {
