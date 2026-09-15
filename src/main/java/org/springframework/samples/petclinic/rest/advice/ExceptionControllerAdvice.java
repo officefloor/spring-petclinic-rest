@@ -42,7 +42,6 @@ import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeExce
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
-import org.springframework.samples.petclinic.rest.validation.ValidationErrorsResponse;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -88,6 +87,25 @@ public class ExceptionControllerAdvice {
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
+    }
+
+    /**
+     * Builds an RFC7807 {@code application/problem+json} response for a rejected owner-creation
+     * request. The offending field names are carried in an {@code errors} extension member so
+     * callers can still see which fields caused the rejection; the HTTP status is unchanged.
+     *
+     * @param e       the exception describing the rejected request
+     * @param status  the HTTP status to report (400, 409 or 429)
+     * @param request the current request, used to derive the problem {@code type} URI
+     * @param detail  the human-readable {@code detail} message
+     * @param fields  the names of the offending fields
+     * @return a {@link ResponseEntity} wrapping the {@link ProblemDetail}
+     */
+    private ResponseEntity<ProblemDetail> fieldRejection(Exception e, HttpStatus status,
+            HttpServletRequest request, String detail, List<String> fields) {
+        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
+        problemDetail.setProperty("errors", fields);
+        return ResponseEntity.status(status).body(problemDetail);
     }
 
     /**
@@ -157,7 +175,7 @@ public class ExceptionControllerAdvice {
         if (bindingResult.getTarget() instanceof OwnerFieldsDto ownerFields) {
             List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFields);
             if (!missingFields.isEmpty()) {
-                return ResponseEntity.status(status).body(new ValidationErrorsResponse(missingFields));
+                return fieldRejection(e, status, request, ERROR_INVALID_REQUEST, missingFields);
             }
         }
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
@@ -197,8 +215,8 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(MissingOwnerFieldsException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleMissingOwnerFieldsException(MissingOwnerFieldsException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ValidationErrorsResponse(e.getFields()));
+    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(), e.getFields());
     }
 
     /**
@@ -211,10 +229,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(InvalidTelephoneException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleInvalidTelephoneException(InvalidTelephoneException e) {
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
         logger.debug("Invalid telephone: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ValidationErrorsResponse(List.of(InvalidTelephoneException.FIELD)));
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(),
+            List.of(InvalidTelephoneException.FIELD));
     }
 
     /**
@@ -227,10 +245,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(InvalidEmailException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleInvalidEmailException(InvalidEmailException e) {
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
         logger.debug("Invalid email: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ValidationErrorsResponse(List.of(InvalidEmailException.FIELD)));
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(),
+            List.of(InvalidEmailException.FIELD));
     }
 
     /**
@@ -243,10 +261,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(DisposableEmailDomainException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDisposableEmailDomainException(DisposableEmailDomainException e) {
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
         logger.debug("Disposable email domain: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ValidationErrorsResponse(List.of(DisposableEmailDomainException.FIELD)));
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(),
+            List.of(DisposableEmailDomainException.FIELD));
     }
 
     /**
@@ -259,10 +277,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(InvalidPostcodeException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleInvalidPostcodeException(InvalidPostcodeException e) {
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
         logger.debug("Invalid postcode: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ValidationErrorsResponse(List.of(InvalidPostcodeException.FIELD)));
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(),
+            List.of(InvalidPostcodeException.FIELD));
     }
 
     /**
@@ -275,10 +293,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(FutureRegistrationDateException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleFutureRegistrationDateException(FutureRegistrationDateException e) {
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
         logger.debug("Future registration date: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ValidationErrorsResponse(List.of(FutureRegistrationDateException.FIELD)));
+        return fieldRejection(e, HttpStatus.BAD_REQUEST, request, e.getMessage(),
+            List.of(FutureRegistrationDateException.FIELD));
     }
 
     /**
@@ -292,10 +310,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDuplicateIdentityException(DuplicateIdentityException e) {
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
         logger.debug("Duplicate identity: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(List.of(DuplicateIdentityException.FIELD)));
+        return fieldRejection(e, HttpStatus.CONFLICT, request, e.getMessage(),
+            List.of(DuplicateIdentityException.FIELD));
     }
 
     /**
@@ -308,10 +326,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(HouseholdDuplicateException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleHouseholdDuplicateException(HouseholdDuplicateException e) {
+    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
         logger.debug("Household duplicate: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(List.of(HouseholdDuplicateException.FIELD)));
+        return fieldRejection(e, HttpStatus.CONFLICT, request, e.getMessage(),
+            List.of(HouseholdDuplicateException.FIELD));
     }
 
     /**
@@ -324,10 +342,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(CityOwnerLimitException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleCityOwnerLimitException(CityOwnerLimitException e) {
+    public ResponseEntity<ProblemDetail> handleCityOwnerLimitException(CityOwnerLimitException e, HttpServletRequest request) {
         logger.debug("City owner limit reached: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ValidationErrorsResponse(List.of(CityOwnerLimitException.FIELD)));
+        return fieldRejection(e, HttpStatus.CONFLICT, request, e.getMessage(),
+            List.of(CityOwnerLimitException.FIELD));
     }
 
     /**
@@ -340,10 +358,10 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(DailyOwnerLimitException.class)
     @ResponseBody
-    public ResponseEntity<ValidationErrorsResponse> handleDailyOwnerLimitException(DailyOwnerLimitException e) {
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitException(DailyOwnerLimitException e, HttpServletRequest request) {
         logger.debug("Daily owner limit reached: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-            .body(new ValidationErrorsResponse(List.of(DailyOwnerLimitException.FIELD)));
+        return fieldRejection(e, HttpStatus.TOO_MANY_REQUESTS, request, e.getMessage(),
+            List.of(DailyOwnerLimitException.FIELD));
     }
 
 }
