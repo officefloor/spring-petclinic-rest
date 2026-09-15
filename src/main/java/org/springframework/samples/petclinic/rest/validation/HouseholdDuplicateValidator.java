@@ -17,38 +17,44 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Collection;
-import java.util.Locale;
+import java.util.List;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
  * Decides whether a would-be owner shares a household with an existing one, i.e. has the
- * same last name and address. Both fields are compared case-insensitively and with runs of
- * whitespace collapsed to a single space, so cosmetic differences do not defeat the check.
+ * same last name and address. Household identity is delegated to {@link HouseholdKey}, so the
+ * comparison ignores case and whitespace differences.
  */
 @Component
 public class HouseholdDuplicateValidator {
 
+    private final HouseholdKey householdKey;
+
+    public HouseholdDuplicateValidator(HouseholdKey householdKey) {
+        this.householdKey = householdKey;
+    }
+
     /**
      * @param candidate the owner about to be created
      * @param existingOwners owners already stored (typically pre-filtered by last name)
-     * @return {@code true} when any existing owner has the same normalized last name and
-     *         address as the candidate
+     * @return the existing owners that belong to the same household as the candidate, in
+     *         encounter order; empty when none do
      */
-    public boolean sharesHouseholdWithExisting(Owner candidate, Collection<Owner> existingOwners) {
-        String lastName = normalize(candidate.getLastName());
-        String address = normalize(candidate.getAddress());
-        return existingOwners.stream().anyMatch(existing ->
-            normalize(existing.getLastName()).equals(lastName)
-                && normalize(existing.getAddress()).equals(address));
+    public List<Owner> findHouseholdMembers(Owner candidate, Collection<Owner> existingOwners) {
+        String key = householdKey.of(candidate);
+        return existingOwners.stream()
+            .filter(existing -> householdKey.of(existing).equals(key))
+            .toList();
     }
 
-    /** Trim, collapse internal whitespace and lower-case, so equality ignores case and spacing. */
-    private String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    /**
+     * @param candidate the owner about to be created
+     * @param existingOwners owners already stored (typically pre-filtered by last name)
+     * @return {@code true} when any existing owner shares the candidate's household
+     */
+    public boolean sharesHouseholdWithExisting(Owner candidate, Collection<Owner> existingOwners) {
+        return !findHouseholdMembers(candidate, existingOwners).isEmpty();
     }
 }

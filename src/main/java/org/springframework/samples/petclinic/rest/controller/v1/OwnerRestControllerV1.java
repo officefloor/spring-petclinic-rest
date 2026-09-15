@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdE
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -74,6 +75,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
+    private final HouseholdIdGenerator householdIdGenerator;
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -86,6 +89,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                 HouseholdIdGenerator householdIdGenerator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator) {
@@ -95,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.householdDuplicateValidator = householdDuplicateValidator;
+        this.householdIdGenerator = householdIdGenerator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
@@ -134,7 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        rejectDuplicateHousehold(owner, ownerFieldsDto);
+        applyHouseholdPolicy(owner, ownerFieldsDto);
         String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnersByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
@@ -154,19 +159,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that shares a household (same last name and address, compared
-     * case-insensitively with collapsed whitespace) with an existing owner, unless the request
-     * opted in via {@code sharesHousehold}.
+     * Applies the household rule to an owner about to be created. When the owner shares a
+     * household (same last name and address, compared case-insensitively with collapsed
+     * whitespace) with an existing owner, creation is rejected unless the request opted in via
+     * {@code sharesHousehold}. When it opts in, the new owner and every existing household
+     * member are stamped with the same stable {@code householdId}.
      *
      * @throws DuplicateHouseholdException if a conflicting owner exists and the caller did not opt in
      */
-    private void rejectDuplicateHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+    private void applyHouseholdPolicy(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        Collection<Owner> sameLastName = this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
+        List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
+        if (members.isEmpty()) {
             return;
         }
-        Collection<Owner> sameLastName = this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
-        if (householdDuplicateValidator.sharesHouseholdWithExisting(owner, sameLastName)) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+        String householdId = householdIdGenerator.generate(owner);
+        owner.setHouseholdId(householdId);
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                this.clinicService.saveOwner(member);
+            }
         }
     }
 
