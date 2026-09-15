@@ -69,8 +69,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByEmailIgnoreCase(@Param("email") String email);
 
     @Override
-    @Query("SELECT owner FROM Owner owner WHERE owner.customerCode LIKE CONCAT(:prefix, '%')")
-    Collection<Owner> findByCustomerCodeStartingWith(@Param("prefix") String prefix);
+    @Query("SELECT owner FROM Owner owner WHERE owner.memberId LIKE CONCAT(:prefix, '%')")
+    Collection<Owner> findByMemberIdStartingWith(@Param("prefix") String prefix);
 
     @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")

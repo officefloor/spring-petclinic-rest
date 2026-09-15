@@ -31,7 +31,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.CityCapacityWarningEvaluator;
-import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.OwnerCreationIdempotencyStore;
@@ -111,7 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressResolver addressResolver;
 
-    private final CustomerCodeGenerator customerCodeGenerator;
+    private final MemberIdGenerator memberIdGenerator;
 
     private final NamesakeCounter namesakeCounter;
 
@@ -140,7 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
                                  AddressResolver addressResolver,
-                                 CustomerCodeGenerator customerCodeGenerator,
+                                 MemberIdGenerator memberIdGenerator,
                                  NamesakeCounter namesakeCounter,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
                                  CityCapacityWarningEvaluator cityCapacityWarningEvaluator,
@@ -162,7 +162,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
         this.addressResolver = addressResolver;
-        this.customerCodeGenerator = customerCodeGenerator;
+        this.memberIdGenerator = memberIdGenerator;
         this.namesakeCounter = namesakeCounter;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
         this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
@@ -237,7 +237,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new CityOwnerLimitException(owner.getCity());
         }
         owner.setCapacityWarning(cityCapacityWarningEvaluator.isApproachingCapacity(cityOwnerCount));
-        owner.setCustomerCode(assignCustomerCode(owner));
+        owner.setMemberId(assignMemberId(owner));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             idempotencyStore.record(idempotencyKey, owner.getId());
@@ -293,20 +293,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Computes the customer code for an owner about to be created, de-duplicated against the codes
-     * already assigned to existing owners so that distinct owners always receive distinct codes.
+     * Computes the member id for an owner about to be created, de-duplicated against the ids already
+     * assigned to existing owners so that distinct owners always receive distinct ids.
      *
-     * @return the owner's unique customer code
+     * @return the owner's unique member id
      */
-    private String assignCustomerCode(Owner owner) {
+    private String assignMemberId(Owner owner) {
         String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
-        String baseCode = customerCodeGenerator.generate(
-            region, owner.getTelephone(), owner.getLastName());
-        List<String> takenCodes = clinicService.findOwnersByCustomerCodeStartingWith(baseCode)
+        String baseId = memberIdGenerator.generate(
+            region, owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
+        List<String> takenIds = clinicService.findOwnersByMemberIdStartingWith(baseId)
             .stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .toList();
-        return customerCodeGenerator.deduplicate(baseCode, takenCodes);
+        return memberIdGenerator.deduplicate(baseId, takenIds);
     }
 
     /**

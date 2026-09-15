@@ -20,21 +20,20 @@ import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 
 /**
  * Immutable structured audit event recording that an owner was created. Serialized to the
- * {@code AUDIT} logger as a JSON object {@code {seq, ownerId, customerCode, membershipLevel,
+ * {@code AUDIT} logger as a JSON object {@code {seq, ownerId, memberId, membershipLevel,
  * event}}.
  *
- * <p>The {@code customerCode} field carries the owner's current
- * {@link Owner#primaryIdentifier() primary identifier}, which is the customer code today; when the
- * customer code is unified into a member id the same field will carry the member id instead, so
- * downstream consumers keep receiving whatever presently identifies the owner.
+ * <p>The {@code memberId} field carries the owner's
+ * {@link Owner#primaryIdentifier() primary identifier}, so downstream consumers receive whatever
+ * presently identifies the owner.
  *
  * @param seq             monotonically increasing sequence number, unique per created owner
  * @param ownerId         the persisted owner's id
- * @param customerCode    the owner's current primary identifier
+ * @param memberId        the owner's primary identifier
  * @param membershipLevel the owner's effective membership level at creation
  * @param event           the event marker, always {@link #EVENT_NAME}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
                                 String event) {
 
     /** Event marker distinguishing this event from other audit events on the {@code AUDIT} logger. */

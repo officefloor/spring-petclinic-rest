@@ -69,8 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -189,23 +189,21 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * This owner's current primary identifier: the stable key by which the outside world refers to
-     * it. Today that is the {@link #getCustomerCode() customerCode}; when the customer code is later
-     * unified into a member id this method will return the member id instead. Callers that only need
-     * "whatever identifies this owner right now" should read it here rather than from a specific
-     * field, so they keep working across that change.
+     * This owner's primary identifier: the stable key by which the outside world refers to it,
+     * namely its {@link #getMemberId() memberId}. Callers that only need "whatever identifies this
+     * owner" should read it here rather than from a specific field.
      */
     public String primaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {
@@ -372,7 +370,7 @@ public class Owner extends Person {
             .append("postcode", this.postcode)
             .append("registrationDate", this.registrationDate)
             .append("birthDate", this.birthDate)
-            .append("customerCode", this.customerCode)
+            .append("memberId", this.memberId)
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
             .append("householdSize", this.householdSize)

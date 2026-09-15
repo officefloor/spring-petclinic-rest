@@ -8,13 +8,10 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.MemberIdGenerator;
 import org.springframework.samples.petclinic.util.AgeBandResolver;
-import org.springframework.samples.petclinic.util.FiscalYearResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
-import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
-import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
 import org.springframework.samples.petclinic.util.OwnerSegmentResolver;
 import org.springframework.samples.petclinic.util.TelephoneDisplayFormatter;
 import org.springframework.samples.petclinic.util.TimezoneResolver;
@@ -33,8 +30,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
-    @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(computeMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
@@ -98,33 +93,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * Builds an owner's membership number from its stored fields, formatted
-     * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of
-     * the registration date's year, e.g. {@code "NSW-3F2A9C1E-M26"}. Returns
-     * {@code null} when either the customer code or registration date is absent.
-     */
-    default String formatMembershipNumber(Owner owner) {
-        return MembershipNumberFormatter.membershipNumber(owner);
-    }
-
-    /**
-     * Derives an owner's fiscal year from its (business-day-adjusted) registration date,
-     * delegating to {@link FiscalYearResolver}. Returns {@code null} when no registration
-     * date is present.
+     * Derives an owner's fiscal year from the {@code FY} segment embedded in its member id,
+     * formatted {@code 'FY<YY>'}, delegating to {@link MemberIdGenerator}. Returns {@code null}
+     * when no member id is present.
      */
     default String formatFiscalYear(Owner owner) {
-        return FiscalYearResolver.label(owner.getRegistrationDate());
-    }
-
-    /**
-     * Computes an owner's check digit from its stored customer code, delegating to
-     * {@link LuhnCheckDigit}. Returns {@code null} when the customer code is absent.
-     */
-    default Integer computeCheckDigit(Owner owner) {
-        if (owner.getCustomerCode() == null) {
-            return null;
-        }
-        return LuhnCheckDigit.of(owner.getCustomerCode());
+        return MemberIdGenerator.fiscalYearOf(owner.getMemberId());
     }
 
     /**
@@ -145,10 +119,10 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's locality (canonical region) from the region segment embedded in its
-     * customer code, yielding {@code "UNKNOWN"} when the code is absent or carries no region.
+     * member id, yielding {@code "UNKNOWN"} when the id is absent or carries no region.
      */
     default String formatLocality(Owner owner) {
-        return CustomerCodeGenerator.regionOf(owner.getCustomerCode());
+        return MemberIdGenerator.regionOf(owner.getMemberId());
     }
 
     /**

@@ -115,9 +115,9 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 
     @Override
     @SuppressWarnings("unchecked")
-    public Collection<Owner> findByCustomerCodeStartingWith(String prefix) throws DataAccessException {
+    public Collection<Owner> findByMemberIdStartingWith(String prefix) throws DataAccessException {
         Query query = this.em.createQuery(
-            "SELECT owner FROM Owner owner WHERE owner.customerCode LIKE CONCAT(:prefix, '%')");
+            "SELECT owner FROM Owner owner WHERE owner.memberId LIKE CONCAT(:prefix, '%')");
         query.setParameter("prefix", prefix);
         return query.getResultList();
     }

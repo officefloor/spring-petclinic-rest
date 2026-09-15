@@ -19,7 +19,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
-import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,17 +38,16 @@ public class OwnerAuditLogger {
 
     /**
      * Record that an owner was successfully created: a human-readable audit line capturing its id,
-     * customer code, registration date, membership level and membership number, plus the immutable
-     * structured {@link OwnerCreatedEvent}.
+     * member id, registration date and membership level, plus the immutable structured
+     * {@link OwnerCreatedEvent}.
      *
      * @param owner the persisted owner
      */
     public void ownerCreated(Owner owner) {
         AUDIT.info(
-            "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevelCalculator.effectiveMembershipLevel(owner),
-            MembershipNumberFormatter.membershipNumber(owner));
+            "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            MembershipLevelCalculator.effectiveMembershipLevel(owner));
         ownerCreatedEventEmitter.emit(owner);
     }
 }
