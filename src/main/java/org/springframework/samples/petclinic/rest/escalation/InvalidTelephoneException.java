@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request carries a telephone that is not exactly ten
- * digits once every non-digit character has been stripped. Handled by
+ * Thrown when a create-owner request carries a telephone that cannot be converted to
+ * valid E.164 form (a leading {@code '+'} followed by 8 to 15 digits). Handled by
  * {@link InvalidTelephoneExceptionHandler}, which responds 400.
  */
 public class InvalidTelephoneException extends Exception {
@@ -10,7 +10,7 @@ public class InvalidTelephoneException extends Exception {
     private final String telephone;
 
     public InvalidTelephoneException(String telephone) {
-        super("Telephone must contain exactly 10 digits: " + telephone);
+        super("Telephone cannot be formatted as E.164: " + telephone);
         this.telephone = telephone;
     }
 
