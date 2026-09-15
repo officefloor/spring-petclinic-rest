@@ -217,9 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(owner.getCity());
         }
-        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
-        owner.setCustomerCode(customerCodeGenerator.generate(
-            region, owner.getTelephone(), owner.getLastName()));
+        owner.setCustomerCode(assignCustomerCode(owner));
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.ownerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -242,6 +240,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
         owner.setHouseholdSize(members.size() + 1);
         return members;
+    }
+
+    /**
+     * Computes the customer code for an owner about to be created, de-duplicated against the codes
+     * already assigned to existing owners so that distinct owners always receive distinct codes.
+     *
+     * @return the owner's unique customer code
+     */
+    private String assignCustomerCode(Owner owner) {
+        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
+        String baseCode = customerCodeGenerator.generate(
+            region, owner.getTelephone(), owner.getLastName());
+        List<String> takenCodes = clinicService.findOwnersByCustomerCodeStartingWith(baseCode)
+            .stream()
+            .map(Owner::getCustomerCode)
+            .toList();
+        return customerCodeGenerator.deduplicate(baseCode, takenCodes);
     }
 
     /**

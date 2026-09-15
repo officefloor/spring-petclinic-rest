@@ -89,6 +89,17 @@ public interface OwnerRepository {
 
 
     /**
+     * Retrieve <code>Owner</code>s from the data store whose customer code equals the given value
+     * or begins with it followed by a de-duplication suffix (<code>'&lt;prefix&gt;-&lt;n&gt;'</code>).
+     * Intended for detecting customer-code collisions when assigning a code to a new owner.
+     *
+     * @param prefix the base customer code to search for
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none found)
+     */
+    Collection<Owner> findByCustomerCodeStartingWith(String prefix) throws DataAccessException;
+
+    /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
      *
      * @param owner the <code>Owner</code> to save

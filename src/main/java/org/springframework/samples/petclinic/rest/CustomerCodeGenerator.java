@@ -15,6 +15,10 @@
  */
 package org.springframework.samples.petclinic.rest;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Component;
@@ -44,6 +48,28 @@ public class CustomerCodeGenerator {
      */
     public String generate(String region, String telephone, String lastName) {
         return region + SEPARATOR + Sha256Hex.upperHexPrefix(telephone + lastName, HASH_LENGTH);
+    }
+
+    /**
+     * De-duplicate a customer code against those already in use. When {@code baseCode} does not
+     * collide it is returned unchanged; otherwise {@code '-<n>'} is appended with the smallest
+     * {@code n} of 2 or more that yields a code not present in {@code takenCodes}.
+     *
+     * @param baseCode   the customer code produced by {@link #generate}
+     * @param takenCodes the customer codes already assigned to existing owners
+     * @return {@code baseCode} when unique, otherwise the first available {@code '<baseCode>-<n>'}
+     */
+    public String deduplicate(String baseCode, Collection<String> takenCodes) {
+        Set<String> taken = new HashSet<>(takenCodes);
+        if (!taken.contains(baseCode)) {
+            return baseCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = baseCode + SEPARATOR + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**

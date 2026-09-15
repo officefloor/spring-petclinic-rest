@@ -262,6 +262,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersByCustomerCodeStartingWith(String prefix) throws DataAccessException {
+        return ownerRepository.findByCustomerCodeStartingWith(prefix);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countOwners() throws DataAccessException {
         return ownerRepository.count();
     }

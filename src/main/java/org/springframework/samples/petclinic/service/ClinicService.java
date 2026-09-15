@@ -62,6 +62,7 @@ public interface ClinicService {
 	Collection<Owner> findOwnersByTelephone(String telephone) throws DataAccessException;
 	Collection<Owner> findOwnersByLastNameIgnoreCase(String lastName) throws DataAccessException;
 	Collection<Owner> findOwnersByEmailIgnoreCase(String email) throws DataAccessException;
+	Collection<Owner> findOwnersByCustomerCodeStartingWith(String prefix) throws DataAccessException;
 	long countOwners() throws DataAccessException;
 	long countOwnersByCity(String city) throws DataAccessException;
 	long countOwnersByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException;
