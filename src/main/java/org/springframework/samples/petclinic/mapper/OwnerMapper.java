@@ -21,7 +21,19 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's membership tier: SILVER when they have no namesakes and a stored
+     * email address, otherwise BRONZE.
+     */
+    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER
+            : OwnerDto.MembershipTierEnum.BRONZE;
+    }
 
     /**
      * The upper-cased first letters of firstName and lastName, dot-separated with a
