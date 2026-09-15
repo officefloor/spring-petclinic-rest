@@ -21,27 +21,42 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
- * Normalizes a submitted telephone to its canonical stored form: every non-digit
- * character is removed and the result must be exactly ten digits.
+ * Normalizes a submitted telephone to its canonical stored form in E.164: spaces, dashes
+ * and brackets are stripped; a leading '+' and country code are kept when present,
+ * otherwise the default country code '+61' is assumed and a single leading '0' is dropped
+ * from the national digits. The result must carry 8 to 15 digits after the '+'.
  */
 @Component
 public class TelephoneNormalizer {
 
-    private static final Pattern NON_DIGIT = Pattern.compile("\\D");
+    /** Formatting characters removed before interpreting the number. */
+    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
 
-    private static final int REQUIRED_DIGITS = 10;
+    /** Country code assumed when the submitted number carries no leading '+'. */
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** The digits following the '+' must number between 8 and 15 inclusive. */
+    private static final Pattern E164_DIGITS = Pattern.compile("[0-9]{8,15}");
 
     /**
      * @param telephone the raw submitted telephone (may be {@code null})
-     * @return the telephone reduced to exactly ten digits
-     * @throws InvalidTelephoneException if the value does not contain exactly ten digits
-     *         once every non-digit character has been stripped
+     * @return the telephone in E.164 form, i.e. a '+' followed by 8 to 15 digits
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public String normalize(String telephone) {
-        String digits = telephone == null ? "" : NON_DIGIT.matcher(telephone).replaceAll("");
-        if (digits.length() != REQUIRED_DIGITS) {
+        String cleaned = telephone == null ? "" : SEPARATORS.matcher(telephone.trim()).replaceAll("");
+        String digits = cleaned.startsWith("+") ? cleaned.substring(1) : toDefaultCountry(cleaned);
+        if (!E164_DIGITS.matcher(digits).matches()) {
             throw new InvalidTelephoneException(telephone);
         }
-        return digits;
+        return "+" + digits;
+    }
+
+    /**
+     * Applies the default country code to national digits, dropping a single leading '0'.
+     */
+    private String toDefaultCountry(String national) {
+        String trunkless = national.startsWith("0") ? national.substring(1) : national;
+        return DEFAULT_COUNTRY_CODE + trunkless;
     }
 }
