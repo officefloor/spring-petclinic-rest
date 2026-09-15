@@ -250,6 +250,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public long countOwners() throws DataAccessException {
+        return ownerRepository.count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {
         return visitRepository.findByPetId(petId);
     }
