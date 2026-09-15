@@ -62,6 +62,7 @@ public interface ClinicService {
 	Collection<Owner> findOwnersByTelephone(String telephone) throws DataAccessException;
 	Collection<Owner> findOwnersByLastNameIgnoreCase(String lastName) throws DataAccessException;
 	long countOwners() throws DataAccessException;
+	long countOwnersByCity(String city) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;

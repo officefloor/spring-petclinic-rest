@@ -165,8 +165,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(
-            customerCodeGenerator.generate(owner.getLastName(), clinicService.countOwners()));
+        owner.setCustomerCode(customerCodeGenerator.generate(
+            owner.getCity(), owner.getLastName(), clinicService.countOwnersByCity(owner.getCity())));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
