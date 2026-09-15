@@ -22,46 +22,80 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Computes an owner's numeric membership level from its stored fields. The level starts at
- * {@link #BASE_LEVEL}, gains a point when the owner has an email and another when it has no
- * namesakes (a {@code namesakeCount} of 0) — capped at {@link #PRE_TENURE_MAX_LEVEL} before
- * tenure is considered — and gains a final point, up to {@link #MAX_LEVEL}, once the owner's
- * tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days. A newly created owner has zero tenure,
- * so it never exceeds {@link #PRE_TENURE_MAX_LEVEL}.
+ * Computes an owner's membership standing from its stored fields. An owner earns
+ * {@link #membershipPoints(Owner) membership points} — starting at 0 and gaining
+ * {@link #EMAIL_POINTS} for a present email, {@link #SOLE_NAMESAKE_POINTS} for having no
+ * namesakes (a {@code namesakeCount} of 0), {@link #LARGE_HOUSEHOLD_POINTS} for a household of
+ * {@link #LARGE_HOUSEHOLD_SIZE} or more, and {@link #TENURE_POINTS} once tenure exceeds
+ * {@link #TENURE_THRESHOLD_DAYS} days. Those points map to a numeric
+ * {@link #membershipLevel(Owner) membership level} from {@link #MIN_LEVEL} to {@link #MAX_LEVEL}.
  */
 public abstract class MembershipLevelCalculator {
 
-    /** Level every owner starts at on creation. */
-    public static final int BASE_LEVEL = 1;
+    /** Points awarded when the owner has an email address. */
+    public static final int EMAIL_POINTS = 2;
 
-    /** Highest level awarded before tenure is taken into account; level 4 is reserved for tenure. */
-    public static final int PRE_TENURE_MAX_LEVEL = 3;
+    /** Points awarded when the owner has no namesakes (a {@code namesakeCount} of 0). */
+    public static final int SOLE_NAMESAKE_POINTS = 1;
 
-    /** Highest level this calculator awards, reached only by a sufficiently tenured owner. */
-    public static final int MAX_LEVEL = 4;
+    /** Household size, in members, at or above which the large-household points are awarded. */
+    public static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Tenure, in days, that an owner must exceed to earn the tenure point (level 4). */
+    /** Points awarded when the owner belongs to a household of {@link #LARGE_HOUSEHOLD_SIZE} or more. */
+    public static final int LARGE_HOUSEHOLD_POINTS = 2;
+
+    /** Tenure, in days, that an owner must exceed to earn the tenure points. */
     public static final long TENURE_THRESHOLD_DAYS = 365;
 
+    /** Points awarded when the owner's tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days. */
+    public static final int TENURE_POINTS = 3;
+
+    /** Lowest level this calculator awards, given to owners scoring 0-1 points. */
+    public static final int MIN_LEVEL = 1;
+
+    /** Highest level this calculator awards, reached once an owner scores 6 or more points. */
+    public static final int MAX_LEVEL = 4;
+
     /**
-     * Return the membership level for the given owner: {@link #BASE_LEVEL}, plus one when an
-     * email is present and one when {@code namesakeCount} is 0 (capped at
-     * {@link #PRE_TENURE_MAX_LEVEL}), plus one when the owner's tenure exceeds
-     * {@link #TENURE_THRESHOLD_DAYS} days, up to {@link #MAX_LEVEL}.
+     * Return the membership points for the given owner: 0 plus {@link #EMAIL_POINTS} when an
+     * email is present, {@link #SOLE_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
+     * {@link #LARGE_HOUSEHOLD_POINTS} for a household of {@link #LARGE_HOUSEHOLD_SIZE} or more,
+     * and {@link #TENURE_POINTS} when tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days.
      */
-    public static int levelOf(Owner owner) {
-        int level = BASE_LEVEL;
+    public static int membershipPoints(Owner owner) {
+        int points = 0;
         if (owner.hasEmail()) {
-            level++;
+            points += EMAIL_POINTS;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += SOLE_NAMESAKE_POINTS;
         }
-        level = Math.min(level, PRE_TENURE_MAX_LEVEL);
+        if (hasLargeHousehold(owner)) {
+            points += LARGE_HOUSEHOLD_POINTS;
+        }
         if (hasQualifyingTenure(owner)) {
-            level++;
+            points += TENURE_POINTS;
         }
-        return Math.min(level, MAX_LEVEL);
+        return points;
+    }
+
+    /**
+     * Return the membership level for the given owner, mapped from its
+     * {@link #membershipPoints(Owner) membership points}: level 1 for 0-1 points, 2 for 2-3,
+     * 3 for 4-5, and {@link #MAX_LEVEL} for 6 or more.
+     */
+    public static int membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        return Math.min(MAX_LEVEL, MIN_LEVEL + points / 2);
+    }
+
+    /**
+     * Whether the owner belongs to a household of {@link #LARGE_HOUSEHOLD_SIZE} or more members.
+     * An owner with no recorded household size is treated as not qualifying.
+     */
+    private static boolean hasLargeHousehold(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        return householdSize != null && householdSize >= LARGE_HOUSEHOLD_SIZE;
     }
 
     /**

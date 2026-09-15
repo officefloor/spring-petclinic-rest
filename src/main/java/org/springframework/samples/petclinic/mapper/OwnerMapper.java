@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(computeMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
@@ -89,11 +90,19 @@ public interface OwnerMapper {
     }
 
     /**
+     * Computes an owner's membership points from its stored fields, delegating to
+     * {@link MembershipLevelCalculator}.
+     */
+    default int computeMembershipPoints(Owner owner) {
+        return MembershipLevelCalculator.membershipPoints(owner);
+    }
+
+    /**
      * Computes an owner's numeric membership level from its stored fields, delegating to
      * {@link MembershipLevelCalculator}.
      */
     default int computeMembershipLevel(Owner owner) {
-        return MembershipLevelCalculator.levelOf(owner);
+        return MembershipLevelCalculator.membershipLevel(owner);
     }
 
     /**
