@@ -38,7 +38,7 @@ public abstract class MembershipLevelCalculator {
      */
     public static int levelOf(Owner owner) {
         int level = BASE_LEVEL;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+        if (owner.hasEmail()) {
             level++;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {

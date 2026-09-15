@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -74,6 +75,14 @@ public interface OwnerMapper {
      */
     default String formatLocality(Owner owner) {
         return LocalityResolver.localityOf(owner.getCity());
+    }
+
+    /**
+     * Derives an owner's preferred contact channel from its stored fields:
+     * {@code "EMAIL"} when an email is present, otherwise {@code "PHONE"}.
+     */
+    default String formatContactPreference(Owner owner) {
+        return owner.hasEmail() ? "EMAIL" : "PHONE";
     }
 
     Owner toOwner(OwnerDto ownerDto);

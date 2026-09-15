@@ -104,6 +104,13 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /**
+     * Whether this owner has an email address, i.e. a non-blank {@code email}.
+     */
+    public boolean hasEmail() {
+        return this.email != null && !this.email.isBlank();
+    }
+
     public LocalDate getRegistrationDate() {
         return this.registrationDate;
     }
