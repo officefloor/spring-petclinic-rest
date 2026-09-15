@@ -40,7 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.AddressResolver;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
@@ -105,7 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DisposableEmailDomainValidator disposableEmailDomainValidator;
 
-    private final AddressNormalizer addressNormalizer;
+    private final AddressResolver addressResolver;
 
     private final CustomerCodeGenerator customerCodeGenerator;
 
@@ -129,7 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
-                                 AddressNormalizer addressNormalizer,
+                                 AddressResolver addressResolver,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  NamesakeCounter namesakeCounter,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
@@ -148,7 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
-        this.addressNormalizer = addressNormalizer;
+        this.addressResolver = addressResolver;
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
@@ -183,9 +183,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        if (ownerFieldsDto != null) {
-            ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
-        }
+        addressResolver.resolve(ownerFieldsDto);
         List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);

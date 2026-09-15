@@ -25,9 +25,11 @@ import org.springframework.stereotype.Component;
 /**
  * Authoritative check for the owner fields that must be present and non-blank.
  * <p>
- * Returns the names of any of {@code firstName}, {@code lastName}, {@code address},
+ * Returns the names of any of {@code firstName}, {@code lastName}, an address,
  * {@code city} or {@code telephone} that are missing (null) or blank, in a stable
- * canonical order.
+ * canonical order. An owner supplies an address in either form: a non-blank
+ * structured {@code addressLine1} or the flat {@code address}; {@code "address"} is
+ * reported missing only when neither is present.
  */
 @Component
 public class OwnerFieldsValidator {
@@ -41,15 +43,29 @@ public class OwnerFieldsValidator {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", owner == null ? null : owner.getFirstName());
         addIfBlank(missing, "lastName", owner == null ? null : owner.getLastName());
-        addIfBlank(missing, "address", owner == null ? null : owner.getAddress());
+        addIfMissingAddress(missing, owner);
         addIfBlank(missing, "city", owner == null ? null : owner.getCity());
         addIfBlank(missing, "telephone", owner == null ? null : owner.getTelephone());
         return missing;
     }
 
     private void addIfBlank(List<String> missing, String fieldName, String value) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(fieldName);
         }
+    }
+
+    /** An address is present when the structured {@code addressLine1} or the flat
+     *  {@code address} is non-blank; otherwise {@code "address"} is reported missing. */
+    private void addIfMissingAddress(List<String> missing, OwnerFieldsDto owner) {
+        String addressLine1 = owner == null ? null : owner.getAddressLine1();
+        String address = owner == null ? null : owner.getAddress();
+        if (isBlank(addressLine1) && isBlank(address)) {
+            missing.add("address");
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
