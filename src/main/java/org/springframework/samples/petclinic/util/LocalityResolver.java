@@ -95,4 +95,12 @@ public abstract class LocalityResolver {
         return range == null ? null : range.clone();
     }
 
+    /**
+     * Whether the given locality is a known canonical region (one of NSW, VIC or QLD),
+     * as opposed to {@link #UNKNOWN} or any other value.
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_RANGE.containsKey(region);
+    }
+
 }

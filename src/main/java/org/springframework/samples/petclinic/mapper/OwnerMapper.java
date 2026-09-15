@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
+import org.springframework.samples.petclinic.util.OwnerSegmentResolver;
 import org.springframework.samples.petclinic.util.TelephoneDisplayFormatter;
 import org.springframework.samples.petclinic.util.TimezoneResolver;
 
@@ -42,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -181,6 +183,14 @@ public interface OwnerMapper {
      */
     default String formatAgeBand(Owner owner) {
         return AgeBandResolver.bandOf(owner.getBirthDate(), owner.getRegistrationDate());
+    }
+
+    /**
+     * Derives an owner's marketing segment ({@code '<TIER>_<AREA>'}) from its effective
+     * membership level and locality, delegating to {@link OwnerSegmentResolver}.
+     */
+    default String formatOwnerSegment(Owner owner) {
+        return OwnerSegmentResolver.segmentOf(computeMembershipLevel(owner), formatLocality(owner));
     }
 
     Owner toOwner(OwnerDto ownerDto);
