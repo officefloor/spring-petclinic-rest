@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.util.Comparator;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
@@ -24,7 +26,9 @@ import org.springframework.stereotype.Component;
  * Normalizes a submitted telephone to its canonical stored form in E.164: spaces, dashes
  * and brackets are stripped; a leading '+' and country code are kept when present,
  * otherwise the default country code '+61' is assumed and a single leading '0' is dropped
- * from the national digits. The result must carry 8 to 15 digits after the '+'.
+ * from the national digits. The result must carry 8 to 15 digits after the '+', and for a
+ * recognised country code the national number (the digits after the country code) must be
+ * exactly the length that country requires ('+61' => 9, '+1' => 10).
  */
 @Component
 public class TelephoneNormalizer {
@@ -39,6 +43,12 @@ public class TelephoneNormalizer {
     private static final Pattern E164_DIGITS = Pattern.compile("[0-9]{8,15}");
 
     /**
+     * Required national-number length for each recognised country code. A country code absent
+     * from this map carries no national-length constraint beyond the generic E.164 bounds.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of("61", 9, "1", 10);
+
+    /**
      * @param telephone the raw submitted telephone (may be {@code null})
      * @return the telephone in E.164 form, i.e. a '+' followed by 8 to 15 digits
      * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
@@ -46,7 +56,7 @@ public class TelephoneNormalizer {
     public String normalize(String telephone) {
         String cleaned = telephone == null ? "" : SEPARATORS.matcher(telephone.trim()).replaceAll("");
         String digits = cleaned.startsWith("+") ? cleaned.substring(1) : toDefaultCountry(cleaned);
-        if (!E164_DIGITS.matcher(digits).matches()) {
+        if (!E164_DIGITS.matcher(digits).matches() || !hasValidNationalLength(digits)) {
             throw new InvalidTelephoneException(telephone);
         }
         return "+" + digits;
@@ -58,5 +68,19 @@ public class TelephoneNormalizer {
     private String toDefaultCountry(String national) {
         String trunkless = national.startsWith("0") ? national.substring(1) : national;
         return DEFAULT_COUNTRY_CODE + trunkless;
+    }
+
+    /**
+     * Checks the national number (the digits after the country code) against the length its
+     * country code requires. The longest matching country code wins, so a '+61' number is
+     * never mistaken for a shorter code. Country codes outside {@link #NATIONAL_NUMBER_LENGTHS}
+     * carry no additional constraint.
+     */
+    private boolean hasValidNationalLength(String digits) {
+        return NATIONAL_NUMBER_LENGTHS.entrySet().stream()
+            .filter(entry -> digits.startsWith(entry.getKey()))
+            .max(Comparator.comparingInt(entry -> entry.getKey().length()))
+            .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
+            .orElse(true);
     }
 }
