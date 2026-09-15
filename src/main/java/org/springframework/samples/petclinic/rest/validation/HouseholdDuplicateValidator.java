@@ -24,8 +24,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Decides whether a would-be owner shares a household with an existing one, i.e. has the
- * same last name and address. Household identity is delegated to {@link HouseholdKey}, so the
- * comparison ignores case and whitespace differences.
+ * same last name and postcode. Household identity is delegated to {@link HouseholdKey}, so the
+ * last name is compared ignoring case and whitespace differences.
  */
 @Component
 public class HouseholdDuplicateValidator {

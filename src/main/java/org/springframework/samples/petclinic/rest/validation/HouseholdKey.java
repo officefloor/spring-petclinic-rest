@@ -23,21 +23,23 @@ import org.springframework.stereotype.Component;
 
 /**
  * Computes the canonical key that identifies an owner's household, namely the pair of last
- * name and address. Both fields are compared case-insensitively and with runs of whitespace
- * collapsed to a single space, so cosmetic differences do not split a household. Two owners
- * belong to the same household exactly when their keys are equal.
+ * name and postcode, joined as {@code normalizedLastName + "|" + postcode}. The last name is
+ * compared case-insensitively and with runs of whitespace collapsed to a single space, so
+ * cosmetic differences do not split a household; the postcode is taken verbatim. Two owners
+ * belong to the same household exactly when their keys are equal, and the key is the input from
+ * which {@link HouseholdIdGenerator} derives the stable household identifier.
  */
 @Component
 public class HouseholdKey {
 
     /** @return the canonical household key for {@code owner}. */
     public String of(Owner owner) {
-        return of(owner.getLastName(), owner.getAddress());
+        return of(owner.getLastName(), owner.getPostcode());
     }
 
-    /** @return the canonical household key for the given last name and address. */
-    public String of(String lastName, String address) {
-        return normalize(lastName) + "\n" + normalize(address);
+    /** @return the canonical household key for the given last name and postcode. */
+    public String of(String lastName, String postcode) {
+        return normalize(lastName) + "|" + (postcode == null ? "" : postcode);
     }
 
     /** Trim, collapse internal whitespace and lower-case, so equality ignores case and spacing. */

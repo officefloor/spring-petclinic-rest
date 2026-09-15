@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitExcep
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
+import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -278,6 +279,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Duplicate identity: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(new ValidationErrorsResponse(List.of(DuplicateIdentityException.FIELD)));
+    }
+
+    /**
+     * Handles {@link HouseholdDuplicateException} raised when an owner is created into a household
+     * (same last name and postcode) that already exists without declaring {@code sharesHousehold}.
+     * Returns a 409 Conflict whose {@code errors} array names the offending field.
+     *
+     * @param e The {@link HouseholdDuplicateException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(HouseholdDuplicateException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleHouseholdDuplicateException(HouseholdDuplicateException e) {
+        logger.debug("Household duplicate: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ValidationErrorsResponse(List.of(HouseholdDuplicateException.FIELD)));
     }
 
     /**

@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitExcep
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
@@ -189,13 +190,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Collection<Owner> sameLastName =
             this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
         owner.setNamesakeCount(namesakeCounter.count(owner, sameLastName));
-        List<Owner> householdMembers = assignHousehold(owner, ownerFieldsDto, sameLastName);
+        List<Owner> householdMembers = assignHousehold(owner, sameLastName);
         owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         postcodeValidator.validate(owner.getPostcode(), owner.getCity());
         rejectIfDuplicateIdentity(owner);
-        flagPossibleDuplicate(owner, sameLastName);
-        joinHousehold(owner, householdMembers);
+        applyHouseholdRule(owner, ownerFieldsDto, householdMembers, sameLastName);
         registrationDateValidator.validate(owner.getRegistrationDate());
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -224,42 +224,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the household attributes of an owner about to be created, without touching any
-     * existing owner. The new owner's household size after this create is recorded (the existing
-     * members that share its last name and address, compared case-insensitively with collapsed
-     * whitespace, plus the owner itself). When the owner shares a household with an existing one
-     * and the request opted in via {@code sharesHousehold}, the new owner is stamped with the
-     * household's stable {@code householdId}.
+     * existing owner. The {@code householdId} is derived deterministically from the owner's last
+     * name and postcode, so every owner in the same household shares it automatically regardless of
+     * creation order. The new owner's household size after this create is recorded: the existing
+     * members that share its household (same last name and postcode) plus the owner itself.
      *
-     * <p>Sharing a household is no longer a rejection in itself: duplicate detection is decided
-     * solely by the derived identity key in {@link #rejectIfDuplicateIdentity(Owner)}. Because the
-     * telephone is part of that key, household members with different telephones are all allowed.
-     *
-     * @return the existing household members that the new owner joins (empty when it starts a new
-     *         household or does not opt in)
+     * @return the existing members of the owner's household (empty when it starts a new household)
      */
-    private List<Owner> assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto, Collection<Owner> sameLastName) {
+    private List<Owner> assignHousehold(Owner owner, Collection<Owner> sameLastName) {
+        owner.setHouseholdId(householdIdGenerator.generate(owner));
         List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
         owner.setHouseholdSize(members.size() + 1);
-        if (members.isEmpty() || !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return List.of();
-        }
-        owner.setHouseholdId(householdIdGenerator.generate(owner));
         return members;
     }
 
     /**
-     * Stamps every existing member the new owner joins with the owner's {@code householdId}, so
-     * the whole household shares one identifier. Called only once the owner has cleared duplicate
-     * detection, so no existing owner is mutated for a create that is going to be rejected.
+     * Applies the household-membership rule once the owner has cleared hard duplicate detection.
+     * When the owner joins an existing household (same last name and postcode) it is rejected as a
+     * household duplicate, unless the request declared {@code sharesHousehold}: a declared member is
+     * created and, being knowingly registered, is not treated as a suspected duplicate. When the
+     * owner starts a new household the ordinary possible-duplicate detection runs.
+     *
+     * @throws HouseholdDuplicateException if the owner joins an existing household without opting in
      */
-    private void joinHousehold(Owner owner, List<Owner> members) {
-        String householdId = owner.getHouseholdId();
-        for (Owner member : members) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                this.clinicService.saveOwner(member);
-            }
+    private void applyHouseholdRule(Owner owner, OwnerFieldsDto ownerFieldsDto,
+                                    List<Owner> householdMembers, Collection<Owner> sameLastName) {
+        if (householdMembers.isEmpty()) {
+            flagPossibleDuplicate(owner, sameLastName);
+            return;
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            throw new HouseholdDuplicateException(owner.getHouseholdId());
+        }
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
     }
 
     /**

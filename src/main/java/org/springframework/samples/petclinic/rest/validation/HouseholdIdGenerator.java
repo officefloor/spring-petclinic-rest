@@ -21,12 +21,16 @@ import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Component;
 
 /**
- * Produces the stable identifier shared by the members of a household. The identifier is
- * derived deterministically from the household's {@link HouseholdKey}, so every owner in the
- * same household maps to the same value regardless of creation order.
+ * Produces the stable identifier shared by the members of a household. The identifier is the
+ * first 12 hex characters of the SHA-256 digest of the household's {@link HouseholdKey}
+ * ({@code normalizedLastName + "|" + postcode}), so every owner with the same last name and
+ * postcode maps to the same value regardless of creation order.
  */
 @Component
 public class HouseholdIdGenerator {
+
+    /** Number of leading hex characters of the digest that form the household identifier. */
+    private static final int HOUSEHOLD_ID_LENGTH = 12;
 
     private final HouseholdKey householdKey;
 
@@ -34,8 +38,8 @@ public class HouseholdIdGenerator {
         this.householdKey = householdKey;
     }
 
-    /** @return the stable household identifier for {@code owner}, e.g. {@code "HH-3F2A9C1E7B4D6058"}. */
+    /** @return the stable household identifier for {@code owner}, e.g. {@code "3F2A9C1E7B4D"}. */
     public String generate(Owner owner) {
-        return "HH-" + Sha256Hex.upperHexPrefix(householdKey.of(owner), 16);
+        return Sha256Hex.upperHexPrefix(householdKey.of(owner), HOUSEHOLD_ID_LENGTH);
     }
 }
