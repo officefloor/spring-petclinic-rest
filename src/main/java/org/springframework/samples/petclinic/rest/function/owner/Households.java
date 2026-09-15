@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Identifies the owners that make up a household — those sharing a last name and address,
- * compared case-insensitively with collapsed whitespace. Used both to guard against
- * accidental duplicates ({@link EnsureUniqueHousehold}) and to group knowing house-mates
- * under a shared, stable household id ({@link AssignHousehold}).
+ * Identifies the owners that make up a household — those sharing a last name (compared
+ * case-insensitively with collapsed whitespace) and a normalized address (see
+ * {@link AddressNormalizer}). Used both to guard against accidental duplicates
+ * ({@link EnsureUniqueHousehold}) and to group knowing house-mates under a shared,
+ * stable household id ({@link AssignHousehold}).
  */
 final class Households {
 
@@ -44,11 +45,11 @@ final class Households {
 
     /** The normalized last name and address joined into a single household key. */
     private static String key(String lastName, String address) {
-        return normalize(lastName) + '\n' + normalize(address);
+        return normalizeName(lastName) + '\n' + AddressNormalizer.normalize(address);
     }
 
     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
-    private static String normalize(String value) {
+    private static String normalizeName(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 

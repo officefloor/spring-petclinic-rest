@@ -13,11 +13,17 @@ import org.springframework.web.bind.annotation.RequestBody;
  * first in the {@code POST /api/owners} pipeline so an incomplete body is a 400
  * before any owner is built or saved. It binds the body once and republishes it as
  * a variable for the later {@link BuildOwner} step.
+ *
+ * <p>The address is normalized in place first (see {@link AddressNormalizer}) so the
+ * required-field check rejects an address that is blank once normalized, and every
+ * later step — including the household comparisons and the stored, returned value —
+ * sees the canonical form.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         require(missing, "firstName", request.getFirstName());
         require(missing, "lastName", request.getLastName());
