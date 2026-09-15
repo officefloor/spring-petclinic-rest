@@ -17,19 +17,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        long ownersInCity = countOwnersInCity(ownerRepository, owner.getCity());
+        long ownersInCity = Cities.countIn(ownerRepository, owner.getCity());
         owner.setCustomerCode(customerCode(owner.getCity(), owner.getLastName(), ownersInCity + 1));
-    }
-
-    private static long countOwnersInCity(OwnerRepository ownerRepository, String city) {
-        String key = cityKey(city);
-        long count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (key.equals(cityKey(existing.getCity()))) {
-                count++;
-            }
-        }
-        return count;
     }
 
     private static String customerCode(String city, String lastName, long sequence) {
@@ -39,9 +28,5 @@ public class AssignCustomerCode {
     /** Upper-cased first three letters of the value, used as a code segment. */
     private static String prefix(String value) {
         return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
-    }
-
-    private static String cityKey(String city) {
-        return city == null ? "" : city.toLowerCase(Locale.ROOT);
     }
 }
