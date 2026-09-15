@@ -63,6 +63,7 @@ import org.springframework.samples.petclinic.util.BusinessDayResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -305,7 +306,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the owner's unique member id
      */
     private String assignMemberId(Owner owner) {
-        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
+        String region = OwnerIdentityVersion.tag(
+            LocalityResolver.localityOf(owner.getPostcode(), owner.getCity()));
         String baseId = memberIdGenerator.generate(
             region, owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
         List<String> takenIds = clinicService.findOwnersByMemberIdStartingWith(baseId)

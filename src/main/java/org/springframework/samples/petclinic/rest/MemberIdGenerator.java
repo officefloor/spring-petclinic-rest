@@ -21,7 +21,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.springframework.samples.petclinic.util.FiscalYearResolver;
-import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Component;
@@ -88,22 +87,6 @@ public class MemberIdGenerator {
                 return candidate;
             }
         }
-    }
-
-    /**
-     * Extract the region segment from a member id, i.e. everything preceding the fixed trailing
-     * {@code <FY><HASH8><CHK>} segments. Yields {@link LocalityResolver#UNKNOWN} when the id is
-     * absent or carries no region segment.
-     *
-     * @param memberId a member id produced by {@link #generate}, or {@code null}
-     * @return the region code embedded in {@code memberId}
-     */
-    public static String regionOf(String memberId) {
-        String body = body(memberId);
-        if (body == null || body.length() <= TRAILING_LENGTH) {
-            return LocalityResolver.UNKNOWN;
-        }
-        return body.substring(0, body.length() - TRAILING_LENGTH);
     }
 
     /**

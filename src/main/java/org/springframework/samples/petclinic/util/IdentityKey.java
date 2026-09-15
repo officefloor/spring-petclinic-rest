@@ -34,6 +34,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * The telephone is taken in its stored E.164 form; the email is lower-cased and the last name is
  * reduced to its {@link Soundex} code here, so the key computed at creation matches the one derived
  * from stored fields.
+ * <p>
+ * Under {@link OwnerIdentityVersion identity version 2} the {@link OwnerIdentityVersion#TAG version
+ * tag} is mixed into the digest input, so a key never coincides with the version-1 key for the same
+ * owner. Because both owners in a comparison are keyed the same way, duplicate detection is
+ * unaffected.
  */
 public final class IdentityKey {
 
@@ -45,7 +50,7 @@ public final class IdentityKey {
         String raw = orEmpty(owner.getTelephone()) + "|"
             + orEmpty(owner.getEmail()).toLowerCase(Locale.ROOT) + "|"
             + Soundex.encode(owner.getLastName());
-        return Sha256Hex.lowerHex(raw);
+        return Sha256Hex.lowerHex(OwnerIdentityVersion.tag(raw));
     }
 
     private static String orEmpty(String value) {

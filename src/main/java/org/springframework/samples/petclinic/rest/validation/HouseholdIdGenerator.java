@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,11 @@ import org.springframework.stereotype.Component;
  * first 12 hex characters of the SHA-256 digest of the household's {@link HouseholdKey}
  * ({@code normalizedLastName + "|" + postcode}), so every owner with the same last name and
  * postcode maps to the same value regardless of creation order.
+ * <p>
+ * Under {@link OwnerIdentityVersion identity version 2} the {@link OwnerIdentityVersion#TAG version
+ * tag} is mixed into the digest input, so the identifier never coincides with the version-1 value.
+ * The household {@link HouseholdKey key} that decides membership is left untouched, so grouping is
+ * unaffected.
  */
 @Component
 public class HouseholdIdGenerator {
@@ -40,6 +46,7 @@ public class HouseholdIdGenerator {
 
     /** @return the stable household identifier for {@code owner}, e.g. {@code "3F2A9C1E7B4D"}. */
     public String generate(Owner owner) {
-        return Sha256Hex.upperHexPrefix(householdKey.of(owner), HOUSEHOLD_ID_LENGTH);
+        return Sha256Hex.upperHexPrefix(
+            OwnerIdentityVersion.tag(householdKey.of(owner)), HOUSEHOLD_ID_LENGTH);
     }
 }

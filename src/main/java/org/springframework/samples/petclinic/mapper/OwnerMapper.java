@@ -7,12 +7,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerRiskResolver;
 import org.springframework.samples.petclinic.util.AgeBandResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.OwnerSegmentResolver;
 import org.springframework.samples.petclinic.util.TelephoneDisplayFormatter;
 import org.springframework.samples.petclinic.util.TimezoneResolver;
@@ -37,10 +40,11 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(computeRiskFlag(owner))")
+    @Mapping(target = "apiVersion", expression = "java(formatApiVersion())")
+    @Mapping(target = "identity", expression = "java(formatIdentity(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -120,11 +124,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (canonical region) from the region segment embedded in its
-     * member id, yielding {@code "UNKNOWN"} when the id is absent or carries no region.
+     * Derives an owner's locality (the plain canonical region) from its postcode, falling back to
+     * its city, delegating to {@link LocalityResolver}. This is the user-facing region and never
+     * carries the identity version tag embedded in the identifiers; it yields {@code "UNKNOWN"}
+     * when neither the postcode nor the city resolves to a region.
      */
     default String formatLocality(Owner owner) {
-        return MemberIdGenerator.regionOf(owner.getMemberId());
+        return LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -145,11 +151,25 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's identity key from its stored fields, delegating to {@link IdentityKey}.
-     * This is the same key used to detect duplicate owners on create.
+     * The identity version surfaced as the response's {@code apiVersion}, delegating to
+     * {@link OwnerIdentityVersion}.
      */
-    default String formatIdentityKey(Owner owner) {
-        return IdentityKey.of(owner);
+    default int formatApiVersion() {
+        return OwnerIdentityVersion.API_VERSION;
+    }
+
+    /**
+     * Groups an owner's version-2 identifiers under the nested {@code identity} object: its member
+     * id, its household id and its derived identity key (the same key used to detect duplicate
+     * owners on create, delegating to {@link IdentityKey}). Each value is rederived under
+     * {@link OwnerIdentityVersion identity version 2}.
+     */
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(IdentityKey.of(owner));
+        return identity;
     }
 
     /**

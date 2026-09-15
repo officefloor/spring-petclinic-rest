@@ -2109,6 +2109,47 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: The owner's derived identifiers, grouped together. Each value is rederived
+        under identity version 2, which mixes in a fixed 'V2' version tag, so no value coincides
+        with the version-1 identifier for the same owner.
+      type: object
+      properties:
+        memberId:
+          title: Member id
+          description: The owner's member id, formatted '<REGION><FY><HASH8><CHK>' where REGION is
+            the version-2 identifier region (the region code derived from the postcode, prefixed
+            with the 'V2' version tag), FY is the two-digit fiscal year (starting 1 July) of the
+            business-day-adjusted registrationDate, HASH8 is the first 8 upper-case hex characters
+            of SHA-256 over the normalized telephone concatenated with the last name, and CHK is a
+            single Luhn check digit computed over the digits of the preceding '<REGION><FY><HASH8>'
+            body, e.g. 'V2NSW273F2A9C1E4'.
+          type: string
+          example: 'V2NSW273F2A9C1E4'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: A stable identifier shared by owners in the same household. It is
+            deterministic, being the first 12 upper-case hex characters of SHA-256 over the 'V2'
+            version tag mixed into the normalized last name concatenated with '|' and the postcode,
+            so every owner with the same last name and postcode shares it automatically.
+          type: string
+          example: '3F2A9C1E7B4D'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: The derived key used to detect duplicate owners. It is the lower-case
+            64-character hex SHA-256 digest over the 'V2' version tag mixed into the normalized
+            telephone, the lower-cased email and the Soundex of the last name, joined by '|'. Two
+            owners are duplicates only when their whole identity keys are equal.
+          type: string
+          example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+          readOnly: true
+      required:
+        - memberId
+        - householdId
+        - identityKey
     Owner:
       title: Owner
       description: A pet owner.
@@ -2157,16 +2198,14 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member id
-              description: The owner's member id, formatted '<REGION><FY><HASH8><CHK>' where REGION is
-                the region code derived from the postcode, FY is the two-digit fiscal year (starting
-                1 July) of the business-day-adjusted registrationDate, HASH8 is the first 8 upper-case
-                hex characters of SHA-256 over the normalized telephone concatenated with the last
-                name, and CHK is a single Luhn check digit computed over the digits of the preceding
-                '<REGION><FY><HASH8>' body, e.g. 'NSW273F2A9C1E4'.
-              type: string
-              example: 'NSW273F2A9C1E4'
+            apiVersion:
+              title: API version
+              description: The version of the owner identity surfaced by this response. Version 2
+                groups the derived identifiers under the 'identity' object and rederives each of
+                them under identity version 2.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
             fiscalYear:
               title: Fiscal year
@@ -2177,24 +2216,13 @@ components:
               type: string
               example: 'FY27'
               readOnly: true
-            householdId:
-              title: Household ID
-              description: A stable identifier shared by owners in the same household. It is
-                deterministic, being the first 12 upper-case hex characters of SHA-256 over the
-                normalized last name concatenated with '|' and the postcode, so every owner with
-                the same last name and postcode shares it automatically.
-              type: string
-              example: '3F2A9C1E7B4D'
+            identity:
+              title: Identity
+              description: The owner's version-2 identity, grouping the derived identifiers
+                (memberId, householdId and identityKey).
               readOnly: true
-            identityKey:
-              title: Identity key
-              description: The derived key used to detect duplicate owners. It is the lower-case
-                64-character hex SHA-256 digest over the normalized telephone, the lower-cased email
-                and the Soundex of the last name, joined by '|'. Two owners are duplicates only when
-                their whole identity keys are equal.
-              type: string
-              example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-              readOnly: true
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: The number of existing owners that shared this owner's first and last
@@ -2245,9 +2273,10 @@ components:
               readOnly: true
             locality:
               title: Locality
-              description: The canonical region taken from the REGION segment of the owner's
-                memberId (the region code derived from the postcode at creation), or
-                'UNKNOWN' when no region could be resolved.
+              description: The plain canonical region derived from the owner's postcode (falling
+                back to the city), e.g. 'NSW', or 'UNKNOWN' when no region could be resolved. This
+                user-facing region never carries the 'V2' identity version tag that is mixed into
+                the identifiers.
               type: string
               example: 'NSW'
               readOnly: true
