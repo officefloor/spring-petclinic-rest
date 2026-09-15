@@ -16,18 +16,24 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.util.Locale;
+
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives the single key that identifies an owner for duplicate detection, namely
- * {@code normalizedTelephone + "|" + (email or empty) + "|" + (householdId or empty)}.
+ * Derives the single key that identifies an owner for duplicate detection: the lower-case,
+ * 64-character hex SHA-256 digest over
+ * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}.
  * <p>
  * Two owners are duplicates exactly when their whole identity keys are equal. Because the
- * telephone is part of the key, owners in the same household (same {@code householdId}) with
- * different telephones have different keys and are not duplicates.
+ * telephone is part of the key, owners with the same last name and postcode but different
+ * telephones have different keys and are not hard duplicates; they are instead flagged as soft
+ * (possible) duplicates. The household id no longer takes part in identity: household grouping is a
+ * separate concern.
  * <p>
- * The values are taken as already normalized: the telephone in its stored E.164 form and the
- * email lower-cased, so the key computed at creation matches the one derived from stored fields.
+ * The telephone is taken in its stored E.164 form; the email is lower-cased and the last name is
+ * reduced to its {@link Soundex} code here, so the key computed at creation matches the one derived
+ * from stored fields.
  */
 public final class IdentityKey {
 
@@ -36,8 +42,10 @@ public final class IdentityKey {
 
     /** @return the identity key for {@code owner}. */
     public static String of(Owner owner) {
-        return orEmpty(owner.getTelephone()) + "|" + orEmpty(owner.getEmail()) + "|"
-            + orEmpty(owner.getHouseholdId());
+        String raw = orEmpty(owner.getTelephone()) + "|"
+            + orEmpty(owner.getEmail()).toLowerCase(Locale.ROOT) + "|"
+            + Soundex.encode(owner.getLastName());
+        return Sha256Hex.lowerHex(raw);
     }
 
     private static String orEmpty(String value) {

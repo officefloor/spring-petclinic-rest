@@ -25,7 +25,8 @@ import org.springframework.stereotype.Component;
 /**
  * Detects whether a would-be owner duplicates an existing one. Duplication is decided by a
  * single derived {@link IdentityKey}: a candidate is a duplicate exactly when its whole
- * identity key equals that of some existing owner. This consolidates the former separate
+ * identity key equals that of some existing owner. Being the SHA-256 hex over the normalized
+ * telephone, lower-cased email and Soundex of the last name, this consolidates the former separate
  * telephone, email and household checks into one rule.
  */
 @Component

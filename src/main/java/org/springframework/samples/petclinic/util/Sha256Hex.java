@@ -21,8 +21,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Produces upper-case hexadecimal SHA-256 digests, the shared building block for the
- * deterministic identifiers derived from owner data (customer code, household id).
+ * Produces hexadecimal SHA-256 digests, the shared building block for the deterministic
+ * identifiers derived from owner data (customer code, household id, identity key).
  */
 public final class Sha256Hex {
 
@@ -40,6 +40,18 @@ public final class Sha256Hex {
             hex.append(String.format("%02X", b));
         }
         return hex.substring(0, length);
+    }
+
+    /**
+     * @return the full 64-character lower-case hex SHA-256 digest of {@code value}'s UTF-8 bytes.
+     */
+    public static String lowerHex(String value) {
+        byte[] digest = sha256(value.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
     }
 
     private static byte[] sha256(byte[] bytes) {
