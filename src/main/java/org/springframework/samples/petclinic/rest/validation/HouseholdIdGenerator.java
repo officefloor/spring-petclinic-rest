@@ -16,11 +16,8 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.Sha256Hex;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,25 +36,6 @@ public class HouseholdIdGenerator {
 
     /** @return the stable household identifier for {@code owner}, e.g. {@code "HH-3F2A9C1E7B4D6058"}. */
     public String generate(Owner owner) {
-        return "HH-" + shaHex(householdKey.of(owner), 16);
-    }
-
-    /** First {@code n} upper-case hex characters of the SHA-256 digest of {@code value}. */
-    private String shaHex(String value, int n) {
-        byte[] digest = sha256(value.getBytes(StandardCharsets.UTF_8));
-        StringBuilder hex = new StringBuilder(digest.length * 2);
-        for (byte b : digest) {
-            hex.append(String.format("%02X", b));
-        }
-        return hex.substring(0, n);
-    }
-
-    private byte[] sha256(byte[] bytes) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(bytes);
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+        return "HH-" + Sha256Hex.upperHexPrefix(householdKey.of(owner), 16);
     }
 }

@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.IdentityKey;
-import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 
@@ -54,7 +54,7 @@ public interface OwnerMapper {
     /**
      * Builds an owner's membership number from its stored fields, formatted
      * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of
-     * the registration date's year, e.g. {@code "SMI-0007-M26"}. Returns
+     * the registration date's year, e.g. {@code "NSW-3F2A9C1E-M26"}. Returns
      * {@code null} when either the customer code or registration date is absent.
      */
     default String formatMembershipNumber(Owner owner) {
@@ -85,12 +85,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (canonical region) from its stored postcode and city,
-     * preferring the postcode range and falling back to the fixed city-to-region table,
-     * yielding {@code "UNKNOWN"} when neither resolves to a region.
+     * Derives an owner's locality (canonical region) from the region segment embedded in its
+     * customer code, yielding {@code "UNKNOWN"} when the code is absent or carries no region.
      */
     default String formatLocality(Owner owner) {
-        return LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
+        return CustomerCodeGenerator.regionOf(owner.getCustomerCode());
     }
 
     /**

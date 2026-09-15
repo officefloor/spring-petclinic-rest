@@ -55,6 +55,7 @@ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BusinessDayResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -198,8 +199,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(owner.getCity());
         }
+        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
         owner.setCustomerCode(customerCodeGenerator.generate(
-            owner.getCity(), owner.getLastName(), cityOwnerCount));
+            region, owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.ownerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
