@@ -191,7 +191,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> sameLastName =
-            this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
+            activeOwners(this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName()));
         owner.setNamesakeCount(namesakeCounter.count(owner, sameLastName));
         List<Owner> householdMembers = assignHousehold(owner, sameLastName);
         owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
@@ -287,10 +287,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DuplicateIdentityException if an existing owner shares the new owner's identity key
      */
     private void rejectIfDuplicateIdentity(Owner owner) {
-        Collection<Owner> sameTelephone = this.clinicService.findOwnersByTelephone(owner.getTelephone());
+        Collection<Owner> sameTelephone =
+            activeOwners(this.clinicService.findOwnersByTelephone(owner.getTelephone()));
         if (identityDuplicateValidator.isDuplicate(owner, sameTelephone)) {
             throw new DuplicateIdentityException(IdentityKey.of(owner));
         }
+    }
+
+    /**
+     * Filters out soft-deleted owners, so the create endpoint's duplicate and identity checks
+     * consider only owners that are still active. A soft-deleted owner keeps its row but is
+     * treated as absent for the purpose of detecting duplicates of a newly created owner.
+     */
+    private List<Owner> activeOwners(Collection<Owner> owners) {
+        return owners.stream().filter(candidate -> !candidate.isDeleted()).toList();
     }
 
     /**
@@ -331,7 +341,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
