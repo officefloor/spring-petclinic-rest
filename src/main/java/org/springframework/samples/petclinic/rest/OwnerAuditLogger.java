@@ -31,9 +31,16 @@ public class OwnerAuditLogger {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private final OwnerCreatedEventEmitter ownerCreatedEventEmitter;
+
+    public OwnerAuditLogger(OwnerCreatedEventEmitter ownerCreatedEventEmitter) {
+        this.ownerCreatedEventEmitter = ownerCreatedEventEmitter;
+    }
+
     /**
-     * Record that an owner was successfully created, capturing its id, customer code,
-     * registration date, membership level and membership number.
+     * Record that an owner was successfully created: a human-readable audit line capturing its id,
+     * customer code, registration date, membership level and membership number, plus the immutable
+     * structured {@link OwnerCreatedEvent}.
      *
      * @param owner the persisted owner
      */
@@ -43,5 +50,6 @@ public class OwnerAuditLogger {
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevelCalculator.effectiveMembershipLevel(owner),
             MembershipNumberFormatter.membershipNumber(owner));
+        ownerCreatedEventEmitter.emit(owner);
     }
 }

@@ -194,6 +194,17 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * This owner's current primary identifier: the stable key by which the outside world refers to
+     * it. Today that is the {@link #getCustomerCode() customerCode}; when the customer code is later
+     * unified into a member id this method will return the member id instead. Callers that only need
+     * "whatever identifies this owner right now" should read it here rather than from a specific
+     * field, so they keep working across that change.
+     */
+    public String primaryIdentifier() {
+        return getCustomerCode();
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
