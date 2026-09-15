@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.BulkSignupWarningEvaluator;
+import org.springframework.samples.petclinic.rest.CityCapacityWarningEvaluator;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
@@ -116,6 +117,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
 
+    private final CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+
     private final OwnerAuditLogger ownerAuditLogger;
 
     private final OwnerCreationIdempotencyStore idempotencyStore;
@@ -140,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CustomerCodeGenerator customerCodeGenerator,
                                  NamesakeCounter namesakeCounter,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
+                                 CityCapacityWarningEvaluator cityCapacityWarningEvaluator,
                                  OwnerAuditLogger ownerAuditLogger,
                                  OwnerCreationIdempotencyStore idempotencyStore,
                                  HttpServletRequest request) {
@@ -161,6 +165,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+        this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.idempotencyStore = idempotencyStore;
         this.request = request;
@@ -231,6 +236,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(owner.getCity());
         }
+        owner.setCapacityWarning(cityCapacityWarningEvaluator.isApproachingCapacity(cityOwnerCount));
         owner.setCustomerCode(assignCustomerCode(owner));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {

@@ -87,6 +87,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -250,6 +253,19 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * Whether this owner's city was approaching the per-city capacity limit at the moment it was
+     * created: the city already held between 40 and 49 owners (inclusive). At the hard limit of 50
+     * the create is rejected instead, so a stored owner never carries a warning for a full city.
+     */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
+    }
+
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
     }
@@ -362,6 +378,7 @@ public class Owner extends Person {
             .append("householdSize", this.householdSize)
             .append("membershipLevelCap", this.membershipLevelCap)
             .append("bulkSignupWarning", this.bulkSignupWarning)
+            .append("capacityWarning", this.capacityWarning)
             .append("possibleDuplicate", this.possibleDuplicate)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("deleted", this.deleted)
