@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 000000000..3895577ab
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,60 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++/**
++ * Shared address normalization for the owner pipelines: trim, collapse internal
++ * whitespace, upper-case, and expand common street-type abbreviations
++ * ({@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}, matched whole-word).
++ *
++ * <p>Used by {@link ValidateOwnerFields} so a created owner is stored and returned
++ * with the canonical address (and the required-field check rejects an address that is
++ * blank once normalized), and by {@link Households} so duplicate detection and the
++ * shared household id compare addresses in that same canonical form. The transform is
++ * idempotent, so re-normalizing an already-normalized address is a no-op.
++ */
++final class AddressNormalizer {
++
++    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * @return the canonical form of {@code address}, or {@code ""} when it is null or
++     *         blank (so callers can treat a blank-after-normalization address uniformly).
++     */
++    static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = WHITESPACE.matcher(address.strip()).replaceAll(" ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder normalized = new StringBuilder(collapsed.length());
++        for (String token : tokens) {
++            if (normalized.length() > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(expand(token));
++        }
++        return normalized.toString();
++    }
++
++    /** Expand a single street-type abbreviation to its full word, else leave it unchanged. */
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+index e41fdb291..0f5b6146a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Identifies the owners that make up a household — those sharing a last name and address,
+- * compared case-insensitively with collapsed whitespace. Used both to guard against
+- * accidental duplicates ({@link EnsureUniqueHousehold}) and to group knowing house-mates
+- * under a shared, stable household id ({@link AssignHousehold}).
++ * Identifies the owners that make up a household — those sharing a last name (compared
++ * case-insensitively with collapsed whitespace) and a normalized address (see
++ * {@link AddressNormalizer}). Used both to guard against accidental duplicates
++ * ({@link EnsureUniqueHousehold}) and to group knowing house-mates under a shared,
++ * stable household id ({@link AssignHousehold}).
+  */
+ final class Households {
+ 
+@@ -44,11 +45,11 @@ final class Households {
+ 
+     /** The normalized last name and address joined into a single household key. */
+     private static String key(String lastName, String address) {
+-        return normalize(lastName) + '\n' + normalize(address);
++        return normalizeName(lastName) + '\n' + AddressNormalizer.normalize(address);
+     }
+ 
+     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
+-    private static String normalize(String value) {
++    private static String normalizeName(String value) {
+         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 7b5f348ad..045e7a8e2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -13,11 +13,17 @@ import org.springframework.web.bind.annotation.RequestBody;
+  * first in the {@code POST /api/owners} pipeline so an incomplete body is a 400
+  * before any owner is built or saved. It binds the body once and republishes it as
+  * a variable for the later {@link BuildOwner} step.
++ *
++ * <p>The address is normalized in place first (see {@link AddressNormalizer}) so the
++ * required-field check rejects an address that is blank once normalized, and every
++ * later step — including the household comparisons and the stored, returned value —
++ * sees the canonical form.
+  */
+ public class ValidateOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException {
++        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         require(missing, "firstName", request.getFirstName());
+         require(missing, "lastName", request.getLastName());
