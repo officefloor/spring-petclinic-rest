@@ -1,0 +1,193 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 2498bb382..af2786a49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -88,6 +88,17 @@ public interface OwnerRepository {
+     Collection<Owner> findByEmailIgnoreCase(String email) throws DataAccessException;
+ 
+ 
++    /**
++     * Retrieve <code>Owner</code>s from the data store whose customer code equals the given value
++     * or begins with it followed by a de-duplication suffix (<code>'&lt;prefix&gt;-&lt;n&gt;'</code>).
++     * Intended for detecting customer-code collisions when assigning a code to a new owner.
++     *
++     * @param prefix the base customer code to search for
++     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
++     * <code>Collection</code> if none found)
++     */
++    Collection<Owner> findByCustomerCodeStartingWith(String prefix) throws DataAccessException;
++
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 04404ed10..0a1f3089d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -187,6 +187,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return owners;
+     }
+ 
++    @Override
++    public Collection<Owner> findByCustomerCodeStartingWith(String prefix) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("prefix", prefix + "%");
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, email, customer_code FROM owners WHERE customer_code LIKE :prefix",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index e52b21168..8e57a4598 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -113,6 +113,15 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByCustomerCodeStartingWith(String prefix) throws DataAccessException {
++        Query query = this.em.createQuery(
++            "SELECT owner FROM Owner owner WHERE owner.customerCode LIKE CONCAT(:prefix, '%')");
++        query.setParameter("prefix", prefix);
++        return query.getResultList();
++    }
++
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 32f54de55..c9e2b9453 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -68,6 +68,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)")
+     Collection<Owner> findByEmailIgnoreCase(@Param("email") String email);
+ 
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE owner.customerCode LIKE CONCAT(:prefix, '%')")
++    Collection<Owner> findByCustomerCodeStartingWith(@Param("prefix") String prefix);
++
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/rest/CustomerCodeGenerator.java
+index d571cb115..e387d945f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/CustomerCodeGenerator.java
+@@ -15,6 +15,10 @@
+  */
+ package org.springframework.samples.petclinic.rest;
+ 
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.Set;
++
+ import org.springframework.samples.petclinic.util.LocalityResolver;
+ import org.springframework.samples.petclinic.util.Sha256Hex;
+ import org.springframework.stereotype.Component;
+@@ -46,6 +50,28 @@ public class CustomerCodeGenerator {
+         return region + SEPARATOR + Sha256Hex.upperHexPrefix(telephone + lastName, HASH_LENGTH);
+     }
+ 
++    /**
++     * De-duplicate a customer code against those already in use. When {@code baseCode} does not
++     * collide it is returned unchanged; otherwise {@code '-<n>'} is appended with the smallest
++     * {@code n} of 2 or more that yields a code not present in {@code takenCodes}.
++     *
++     * @param baseCode   the customer code produced by {@link #generate}
++     * @param takenCodes the customer codes already assigned to existing owners
++     * @return {@code baseCode} when unique, otherwise the first available {@code '<baseCode>-<n>'}
++     */
++    public String deduplicate(String baseCode, Collection<String> takenCodes) {
++        Set<String> taken = new HashSet<>(takenCodes);
++        if (!taken.contains(baseCode)) {
++            return baseCode;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = baseCode + SEPARATOR + n;
++            if (!taken.contains(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * Extract the region segment from a customer code, i.e. the part before the first
+      * {@value #SEPARATOR}. Yields {@link LocalityResolver#UNKNOWN} when the code is absent
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 224b43904..74a260589 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -217,9 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
+             throw new CityOwnerLimitException(owner.getCity());
+         }
+-        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
+-        owner.setCustomerCode(customerCodeGenerator.generate(
+-            region, owner.getTelephone(), owner.getLastName()));
++        owner.setCustomerCode(assignCustomerCode(owner));
+         this.clinicService.saveOwner(owner);
+         ownerAuditLogger.ownerCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -244,6 +242,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return members;
+     }
+ 
++    /**
++     * Computes the customer code for an owner about to be created, de-duplicated against the codes
++     * already assigned to existing owners so that distinct owners always receive distinct codes.
++     *
++     * @return the owner's unique customer code
++     */
++    private String assignCustomerCode(Owner owner) {
++        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
++        String baseCode = customerCodeGenerator.generate(
++            region, owner.getTelephone(), owner.getLastName());
++        List<String> takenCodes = clinicService.findOwnersByCustomerCodeStartingWith(baseCode)
++            .stream()
++            .map(Owner::getCustomerCode)
++            .toList();
++        return customerCodeGenerator.deduplicate(baseCode, takenCodes);
++    }
++
+     /**
+      * Applies the household-membership rule once the owner has cleared hard duplicate detection.
+      * When the owner joins an existing household (same last name and postcode) it is rejected as a
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 2b4735dc6..dfb5a1ef7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -62,6 +62,7 @@ public interface ClinicService {
+ 	Collection<Owner> findOwnersByTelephone(String telephone) throws DataAccessException;
+ 	Collection<Owner> findOwnersByLastNameIgnoreCase(String lastName) throws DataAccessException;
+ 	Collection<Owner> findOwnersByEmailIgnoreCase(String email) throws DataAccessException;
++	Collection<Owner> findOwnersByCustomerCodeStartingWith(String prefix) throws DataAccessException;
+ 	long countOwners() throws DataAccessException;
+ 	long countOwnersByCity(String city) throws DataAccessException;
+ 	long countOwnersByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index f463e04ad..6cf5760df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -260,6 +260,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByEmailIgnoreCase(email);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Collection<Owner> findOwnersByCustomerCodeStartingWith(String prefix) throws DataAccessException {
++        return ownerRepository.findByCustomerCodeStartingWith(prefix);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public long countOwners() throws DataAccessException {
