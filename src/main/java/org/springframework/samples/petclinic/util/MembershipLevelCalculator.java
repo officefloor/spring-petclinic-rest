@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.util;
 import org.springframework.samples.petclinic.model.Owner;
 
 import java.time.LocalDate;
+import java.util.Collection;
 
 /**
  * Computes an owner's membership standing from its stored fields. An owner earns
@@ -86,6 +87,30 @@ public abstract class MembershipLevelCalculator {
     public static int membershipLevel(Owner owner) {
         int points = membershipPoints(owner);
         return Math.min(MAX_LEVEL, MIN_LEVEL + points / 2);
+    }
+
+    /**
+     * Return the owner's effective membership level: its {@link #membershipLevel(Owner) level}
+     * lowered to the owner's stored {@code membershipLevelCap} when that cap is present and smaller.
+     * An owner with no recorded cap keeps its uncapped level.
+     */
+    public static int effectiveMembershipLevel(Owner owner) {
+        int level = membershipLevel(owner);
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
+    }
+
+    /**
+     * Return the membership-level ceiling for a new owner joining the given household members,
+     * namely one above the highest {@link #effectiveMembershipLevel(Owner) effective level} among
+     * them. Only meaningful for a non-empty household; an owner starting a new household has no cap.
+     */
+    public static int householdLevelCeiling(Collection<Owner> householdMembers) {
+        int maxLevel = householdMembers.stream()
+            .mapToInt(MembershipLevelCalculator::effectiveMembershipLevel)
+            .max()
+            .orElse(MAX_LEVEL);
+        return maxLevel + 1;
     }
 
     /**

@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -215,6 +218,19 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    /**
+     * The ceiling applied to this owner's membership level at creation, or {@code null} when none
+     * applies. When set, it caps the effective level at one above the highest level among the
+     * household members that existed when this owner joined their household.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
@@ -333,6 +349,7 @@ public class Owner extends Person {
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
             .append("householdSize", this.householdSize)
+            .append("membershipLevelCap", this.membershipLevelCap)
             .append("bulkSignupWarning", this.bulkSignupWarning)
             .append("possibleDuplicate", this.possibleDuplicate)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)

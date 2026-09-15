@@ -41,7 +41,7 @@ public class OwnerAuditLogger {
         AUDIT.info(
             "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevelCalculator.membershipLevel(owner),
+            MembershipLevelCalculator.effectiveMembershipLevel(owner),
             MembershipNumberFormatter.membershipNumber(owner));
     }
 }

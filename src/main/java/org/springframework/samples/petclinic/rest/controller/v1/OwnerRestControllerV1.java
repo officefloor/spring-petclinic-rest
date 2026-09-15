@@ -47,7 +47,6 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
-import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
@@ -61,6 +60,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BusinessDayResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -305,12 +305,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Applies the household-membership rule once the owner has cleared hard duplicate detection.
-     * When the owner joins an existing household (same last name and postcode) it is rejected as a
-     * household duplicate, unless the request declared {@code sharesHousehold}: a declared member is
-     * created and, being knowingly registered, is not treated as a suspected duplicate. When the
-     * owner starts a new household the ordinary possible-duplicate detection runs.
-     *
-     * @throws HouseholdDuplicateException if the owner joins an existing household without opting in
+     * When the owner joins an existing household (same last name and postcode) its membership level
+     * is capped to at most one above the highest level among the existing members. A member declared
+     * with {@code sharesHousehold} is, being knowingly registered, not treated as a suspected
+     * duplicate; an undeclared one still runs the ordinary possible-duplicate detection. When the
+     * owner starts a new household no cap applies and possible-duplicate detection runs as usual.
      */
     private void applyHouseholdRule(Owner owner, OwnerFieldsDto ownerFieldsDto,
                                     List<Owner> householdMembers, Collection<Owner> sameLastName) {
@@ -318,11 +317,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             flagPossibleDuplicate(owner, sameLastName);
             return;
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            throw new HouseholdDuplicateException(owner.getHouseholdId());
+        owner.setMembershipLevelCap(MembershipLevelCalculator.householdLevelCeiling(householdMembers));
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        } else {
+            flagPossibleDuplicate(owner, sameLastName);
         }
-        owner.setPossibleDuplicate(false);
-        owner.setPossibleDuplicateOf(null);
     }
 
     /**

@@ -134,11 +134,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's numeric membership level from its stored fields, delegating to
-     * {@link MembershipLevelCalculator}.
+     * Computes an owner's effective numeric membership level from its stored fields, delegating to
+     * {@link MembershipLevelCalculator}. Any membership-level cap recorded at creation is applied.
      */
     default int computeMembershipLevel(Owner owner) {
-        return MembershipLevelCalculator.membershipLevel(owner);
+        return MembershipLevelCalculator.effectiveMembershipLevel(owner);
     }
 
     /**
