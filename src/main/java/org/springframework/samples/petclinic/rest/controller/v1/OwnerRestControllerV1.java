@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -86,6 +87,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CustomerCodeGenerator customerCodeGenerator;
 
+    private final NamesakeCounter namesakeCounter;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -96,7 +99,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 CustomerCodeGenerator customerCodeGenerator) {
+                                 CustomerCodeGenerator customerCodeGenerator,
+                                 NamesakeCounter namesakeCounter) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -108,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.namesakeCounter = namesakeCounter;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -147,7 +152,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        applyHouseholdPolicy(owner, ownerFieldsDto);
+        Collection<Owner> sameLastName =
+            this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
+        owner.setNamesakeCount(namesakeCounter.count(owner, sameLastName));
+        applyHouseholdPolicy(owner, ownerFieldsDto, sameLastName);
         String normalizedTelephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnersByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
@@ -175,8 +183,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @throws DuplicateHouseholdException if a conflicting owner exists and the caller did not opt in
      */
-    private void applyHouseholdPolicy(Owner owner, OwnerFieldsDto ownerFieldsDto) {
-        Collection<Owner> sameLastName = this.clinicService.findOwnersByLastNameIgnoreCase(owner.getLastName());
+    private void applyHouseholdPolicy(Owner owner, OwnerFieldsDto ownerFieldsDto, Collection<Owner> sameLastName) {
         List<Owner> members = householdDuplicateValidator.findHouseholdMembers(owner, sameLastName);
         if (members.isEmpty()) {
             return;
