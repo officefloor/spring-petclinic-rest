@@ -1,0 +1,166 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a62d536e2..7571e9a7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
++import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+@@ -246,6 +247,22 @@ public class ExceptionControllerAdvice {
+             .body(new ValidationErrorsResponse(List.of(InvalidPostcodeException.FIELD)));
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException} raised when an owner is created with a
++     * supplied registration date later than the server's current date. Returns a 400 Bad Request
++     * whose {@code errors} array names the offending field.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ValidationErrorsResponse> handleFutureRegistrationDateException(FutureRegistrationDateException e) {
++        logger.debug("Future registration date: {}", e.getMessage());
++        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
++            .body(new ValidationErrorsResponse(List.of(FutureRegistrationDateException.FIELD)));
++    }
++
+     /**
+      * Handles {@link DuplicateIdentityException} raised when an owner is created whose whole
+      * derived identity key already belongs to another owner. This is the single duplicate rule
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6ef2d7b46..45bcb0d32 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -51,6 +51,7 @@ import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateVa
+ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
++import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.BusinessDayResolver;
+@@ -85,6 +86,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final PostcodeValidator postcodeValidator;
+ 
++    private final RegistrationDateValidator registrationDateValidator;
++
+     private final HouseholdDuplicateValidator householdDuplicateValidator;
+ 
+     private final IdentityDuplicateValidator identityDuplicateValidator;
+@@ -111,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  VisitMapper visitMapper,
+                                  OwnerFieldsValidator ownerFieldsValidator,
+                                  PostcodeValidator postcodeValidator,
++                                 RegistrationDateValidator registrationDateValidator,
+                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                  IdentityDuplicateValidator identityDuplicateValidator,
+                                  HouseholdIdGenerator householdIdGenerator,
+@@ -127,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.visitMapper = visitMapper;
+         this.ownerFieldsValidator = ownerFieldsValidator;
+         this.postcodeValidator = postcodeValidator;
++        this.registrationDateValidator = registrationDateValidator;
+         this.householdDuplicateValidator = householdDuplicateValidator;
+         this.identityDuplicateValidator = identityDuplicateValidator;
+         this.householdIdGenerator = householdIdGenerator;
+@@ -185,6 +190,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         postcodeValidator.validate(owner.getPostcode(), owner.getCity());
+         rejectIfDuplicateIdentity(owner);
+         joinHousehold(owner, householdMembers);
++        registrationDateValidator.validate(owner.getRegistrationDate());
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..9b8474b2b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java
+@@ -0,0 +1,33 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an owner is created with a supplied registration date later than the server's
++ * current date. Carries the rejected date so it can be logged.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    /** Name of the offending field, used to build the error response. */
++    public static final String FIELD = "registrationDate";
++
++    public FutureRegistrationDateException(LocalDate registrationDate) {
++        super("Registration date must not be later than the current date, but was: " + registrationDate);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java
+new file mode 100644
+index 000000000..14608ca8f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java
+@@ -0,0 +1,41 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.time.LocalDate;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Validates an optional owner registration date. A supplied date may not be later than the
++ * server's current date; an absent (null) date is left unvalidated so it can be defaulted to
++ * the current date, keeping the create contract backward-compatible.
++ */
++@Component
++public class RegistrationDateValidator {
++
++    /**
++     * @param registrationDate the raw submitted registration date (may be {@code null})
++     * @throws FutureRegistrationDateException if the date is present and later than the server's
++     *         current date
++     */
++    public void validate(LocalDate registrationDate) {
++        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(registrationDate);
++        }
++    }
++}
