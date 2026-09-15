@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
@@ -93,6 +94,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final NamesakeCounter namesakeCounter;
 
+    private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+
     private final OwnerAuditLogger ownerAuditLogger;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -107,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  NamesakeCounter namesakeCounter,
+                                 BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
                                  OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -120,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
+        this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
         this.ownerAuditLogger = ownerAuditLogger;
     }
 
@@ -175,10 +180,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(BusinessDayResolver.toBusinessDay(owner.getRegistrationDate()));
         LocalDate registrationDate = owner.getRegistrationDate();
-        if (clinicService.countOwnersByRegistrationDate(registrationDate)
-                >= DailyOwnerLimitException.MAX_OWNERS_PER_DAY) {
+        long ownersRegisteredToday = clinicService.countOwnersByRegistrationDate(registrationDate);
+        if (ownersRegisteredToday >= DailyOwnerLimitException.MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitException(registrationDate);
         }
+        owner.setBulkSignupWarning(bulkSignupWarningEvaluator.isBulkSignup(ownersRegisteredToday));
         long cityOwnerCount = clinicService.countOwnersByCity(owner.getCity());
         if (cityOwnerCount >= CityOwnerLimitException.MAX_OWNERS_PER_CITY) {
             throw new CityOwnerLimitException(owner.getCity());
