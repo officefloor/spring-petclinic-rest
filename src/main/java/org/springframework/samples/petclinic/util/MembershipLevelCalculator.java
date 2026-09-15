@@ -18,23 +18,36 @@ package org.springframework.samples.petclinic.util;
 
 import org.springframework.samples.petclinic.model.Owner;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 /**
  * Computes an owner's numeric membership level from its stored fields. The level starts at
  * {@link #BASE_LEVEL}, gains a point when the owner has an email and another when it has no
- * namesakes (a {@code namesakeCount} of 0), and is capped at {@link #MAX_LEVEL} ({@code 4}
- * is reserved for tenure).
+ * namesakes (a {@code namesakeCount} of 0) — capped at {@link #PRE_TENURE_MAX_LEVEL} before
+ * tenure is considered — and gains a final point, up to {@link #MAX_LEVEL}, once the owner's
+ * tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days. A newly created owner has zero tenure,
+ * so it never exceeds {@link #PRE_TENURE_MAX_LEVEL}.
  */
 public abstract class MembershipLevelCalculator {
 
     /** Level every owner starts at on creation. */
     public static final int BASE_LEVEL = 1;
 
-    /** Highest level this calculator awards; level 4 is reserved for tenure. */
-    public static final int MAX_LEVEL = 3;
+    /** Highest level awarded before tenure is taken into account; level 4 is reserved for tenure. */
+    public static final int PRE_TENURE_MAX_LEVEL = 3;
+
+    /** Highest level this calculator awards, reached only by a sufficiently tenured owner. */
+    public static final int MAX_LEVEL = 4;
+
+    /** Tenure, in days, that an owner must exceed to earn the tenure point (level 4). */
+    public static final long TENURE_THRESHOLD_DAYS = 365;
 
     /**
      * Return the membership level for the given owner: {@link #BASE_LEVEL}, plus one when an
-     * email is present and one when {@code namesakeCount} is 0, capped at {@link #MAX_LEVEL}.
+     * email is present and one when {@code namesakeCount} is 0 (capped at
+     * {@link #PRE_TENURE_MAX_LEVEL}), plus one when the owner's tenure exceeds
+     * {@link #TENURE_THRESHOLD_DAYS} days, up to {@link #MAX_LEVEL}.
      */
     public static int levelOf(Owner owner) {
         int level = BASE_LEVEL;
@@ -44,7 +57,23 @@ public abstract class MembershipLevelCalculator {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
+        level = Math.min(level, PRE_TENURE_MAX_LEVEL);
+        if (hasQualifyingTenure(owner)) {
+            level++;
+        }
         return Math.min(level, MAX_LEVEL);
+    }
+
+    /**
+     * Whether the owner's tenure, measured from its registration date to today, exceeds
+     * {@link #TENURE_THRESHOLD_DAYS} days. An owner with no registration date has no tenure.
+     */
+    private static boolean hasQualifyingTenure(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return false;
+        }
+        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_THRESHOLD_DAYS;
     }
 
 }
