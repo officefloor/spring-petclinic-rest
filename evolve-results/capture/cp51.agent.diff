@@ -1,0 +1,237 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0ec762d97..486f56626 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -134,11 +134,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Computes an owner's numeric membership level from its stored fields, delegating to
+-     * {@link MembershipLevelCalculator}.
++     * Computes an owner's effective numeric membership level from its stored fields, delegating to
++     * {@link MembershipLevelCalculator}. Any membership-level cap recorded at creation is applied.
+      */
+     default int computeMembershipLevel(Owner owner) {
+-        return MembershipLevelCalculator.membershipLevel(owner);
++        return MembershipLevelCalculator.effectiveMembershipLevel(owner);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a2d75377d..76aeb39b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -215,6 +218,19 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    /**
++     * The ceiling applied to this owner's membership level at creation, or {@code null} when none
++     * applies. When set, it caps the effective level at one above the highest level among the
++     * household members that existed when this owner joined their household.
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+@@ -333,6 +349,7 @@ public class Owner extends Person {
+             .append("householdId", this.householdId)
+             .append("namesakeCount", this.namesakeCount)
+             .append("householdSize", this.householdSize)
++            .append("membershipLevelCap", this.membershipLevelCap)
+             .append("bulkSignupWarning", this.bulkSignupWarning)
+             .append("possibleDuplicate", this.possibleDuplicate)
+             .append("possibleDuplicateOf", this.possibleDuplicateOf)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/OwnerAuditLogger.java
+index c19572149..41a745a88 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/OwnerAuditLogger.java
+@@ -41,7 +41,7 @@ public class OwnerAuditLogger {
+         AUDIT.info(
+             "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            MembershipLevelCalculator.membershipLevel(owner),
++            MembershipLevelCalculator.effectiveMembershipLevel(owner),
+             MembershipNumberFormatter.membershipNumber(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index afa9bd930..a2b445272 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -47,7 +47,6 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
+ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+-import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdIdGenerator;
+ import org.springframework.samples.petclinic.rest.validation.IdentityDuplicateValidator;
+@@ -61,6 +60,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.BusinessDayResolver;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.LocalityResolver;
++import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -305,12 +305,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Applies the household-membership rule once the owner has cleared hard duplicate detection.
+-     * When the owner joins an existing household (same last name and postcode) it is rejected as a
+-     * household duplicate, unless the request declared {@code sharesHousehold}: a declared member is
+-     * created and, being knowingly registered, is not treated as a suspected duplicate. When the
+-     * owner starts a new household the ordinary possible-duplicate detection runs.
+-     *
+-     * @throws HouseholdDuplicateException if the owner joins an existing household without opting in
++     * When the owner joins an existing household (same last name and postcode) its membership level
++     * is capped to at most one above the highest level among the existing members. A member declared
++     * with {@code sharesHousehold} is, being knowingly registered, not treated as a suspected
++     * duplicate; an undeclared one still runs the ordinary possible-duplicate detection. When the
++     * owner starts a new household no cap applies and possible-duplicate detection runs as usual.
+      */
+     private void applyHouseholdRule(Owner owner, OwnerFieldsDto ownerFieldsDto,
+                                     List<Owner> householdMembers, Collection<Owner> sameLastName) {
+@@ -318,11 +317,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             flagPossibleDuplicate(owner, sameLastName);
+             return;
+         }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+-            throw new HouseholdDuplicateException(owner.getHouseholdId());
++        owner.setMembershipLevelCap(MembershipLevelCalculator.householdLevelCeiling(householdMembers));
++        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++            owner.setPossibleDuplicate(false);
++            owner.setPossibleDuplicateOf(null);
++        } else {
++            flagPossibleDuplicate(owner, sameLastName);
+         }
+-        owner.setPossibleDuplicate(false);
+-        owner.setPossibleDuplicateOf(null);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
+index e3a9152a9..536e5cccd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelCalculator.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.util;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ import java.time.LocalDate;
++import java.util.Collection;
+ 
+ /**
+  * Computes an owner's membership standing from its stored fields. An owner earns
+@@ -88,6 +89,30 @@ public abstract class MembershipLevelCalculator {
+         return Math.min(MAX_LEVEL, MIN_LEVEL + points / 2);
+     }
+ 
++    /**
++     * Return the owner's effective membership level: its {@link #membershipLevel(Owner) level}
++     * lowered to the owner's stored {@code membershipLevelCap} when that cap is present and smaller.
++     * An owner with no recorded cap keeps its uncapped level.
++     */
++    public static int effectiveMembershipLevel(Owner owner) {
++        int level = membershipLevel(owner);
++        Integer cap = owner.getMembershipLevelCap();
++        return cap == null ? level : Math.min(level, cap);
++    }
++
++    /**
++     * Return the membership-level ceiling for a new owner joining the given household members,
++     * namely one above the highest {@link #effectiveMembershipLevel(Owner) effective level} among
++     * them. Only meaningful for a non-empty household; an owner starting a new household has no cap.
++     */
++    public static int householdLevelCeiling(Collection<Owner> householdMembers) {
++        int maxLevel = householdMembers.stream()
++            .mapToInt(MembershipLevelCalculator::effectiveMembershipLevel)
++            .max()
++            .orElse(MAX_LEVEL);
++        return maxLevel + 1;
++    }
++
+     /**
+      * Whether the owner belongs to a household of {@link #LARGE_HOUSEHOLD_SIZE} or more members.
+      * An owner with no recorded household size is treated as not qualifying.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8849bf4f0..511dbe0c0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0561bb370..ed4f2c882 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index acc1c057f..c9eddb0cf 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INT,
+   household_size INT,
++  membership_level_cap INT,
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 23c02280a..2ae662fae 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4bccf57cf..ecee8458f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2239,7 +2239,10 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: The owner's numeric membership level derived from membershipPoints;
+-                1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++                1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. A new owner joining
++                an existing household is capped at one above the highest membershipLevel among the
++                household members that existed when they were created; with no existing household
++                member no cap applies.
+               type: integer
+               format: int32
+               minimum: 1
