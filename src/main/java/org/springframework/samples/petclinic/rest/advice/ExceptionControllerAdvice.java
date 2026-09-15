@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
+import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -276,6 +277,22 @@ public class ExceptionControllerAdvice {
         logger.debug("City owner limit reached: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(new ValidationErrorsResponse(List.of(CityOwnerLimitException.FIELD)));
+    }
+
+    /**
+     * Handles {@link DailyOwnerLimitException} raised when an owner is created on a day that has
+     * already reached the maximum allowed number of owner registrations. Returns a 429 Too Many
+     * Requests whose {@code errors} array names the offending field.
+     *
+     * @param e The {@link DailyOwnerLimitException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 429 status.
+     */
+    @ExceptionHandler(DailyOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleDailyOwnerLimitException(DailyOwnerLimitException e) {
+        logger.debug("Daily owner limit reached: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .body(new ValidationErrorsResponse(List.of(DailyOwnerLimitException.FIELD)));
     }
 
 }

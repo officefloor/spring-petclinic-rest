@@ -113,6 +113,15 @@ public interface OwnerRepository {
     long countByCity(String city) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s currently held in the data store whose registration date
+     * matches the given one.
+     *
+     * @param registrationDate the registration date to match
+     * @return the number of owners registered on that date
+     */
+    long countByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException;
+
+    /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
      *
      * @param owner the <code>Owner</code> to delete

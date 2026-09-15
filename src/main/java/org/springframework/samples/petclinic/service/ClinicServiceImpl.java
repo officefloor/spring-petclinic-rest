@@ -268,6 +268,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public long countOwnersByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(registrationDate);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {
         return visitRepository.findByPetId(petId);
     }
