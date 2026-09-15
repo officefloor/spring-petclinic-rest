@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -208,6 +209,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid telephone: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ValidationErrorsResponse(List.of(InvalidTelephoneException.FIELD)));
+    }
+
+    /**
+     * Handles {@link InvalidEmailException} raised when an owner's email is present but is
+     * not a syntactically valid address. Returns a 400 Bad Request whose {@code errors}
+     * array names the offending field.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleInvalidEmailException(InvalidEmailException e) {
+        logger.debug("Invalid email: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ValidationErrorsResponse(List.of(InvalidEmailException.FIELD)));
     }
 
     /**
