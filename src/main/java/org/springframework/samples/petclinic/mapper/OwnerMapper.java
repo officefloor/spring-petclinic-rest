@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.AgeBandResolver;
+import org.springframework.samples.petclinic.util.FiscalYearResolver;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
@@ -32,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(computeMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -89,6 +91,15 @@ public interface OwnerMapper {
      */
     default String formatMembershipNumber(Owner owner) {
         return MembershipNumberFormatter.membershipNumber(owner);
+    }
+
+    /**
+     * Derives an owner's fiscal year from its (business-day-adjusted) registration date,
+     * delegating to {@link FiscalYearResolver}. Returns {@code null} when no registration
+     * date is present.
+     */
+    default String formatFiscalYear(Owner owner) {
+        return FiscalYearResolver.label(owner.getRegistrationDate());
     }
 
     /**

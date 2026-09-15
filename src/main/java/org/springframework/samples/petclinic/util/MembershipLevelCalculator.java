@@ -19,7 +19,6 @@ package org.springframework.samples.petclinic.util;
 import org.springframework.samples.petclinic.model.Owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Computes an owner's membership standing from its stored fields. An owner earns
@@ -27,7 +26,7 @@ import java.time.temporal.ChronoUnit;
  * {@link #EMAIL_POINTS} for a present email, {@link #SOLE_NAMESAKE_POINTS} for having no
  * namesakes (a {@code namesakeCount} of 0), {@link #LARGE_HOUSEHOLD_POINTS} for a household of
  * {@link #LARGE_HOUSEHOLD_SIZE} or more, and {@link #TENURE_POINTS} once tenure exceeds
- * {@link #TENURE_THRESHOLD_DAYS} days. Those points map to a numeric
+ * {@link #TENURE_THRESHOLD_FISCAL_YEARS} fiscal years. Those points map to a numeric
  * {@link #membershipLevel(Owner) membership level} from {@link #MIN_LEVEL} to {@link #MAX_LEVEL}.
  */
 public abstract class MembershipLevelCalculator {
@@ -44,10 +43,10 @@ public abstract class MembershipLevelCalculator {
     /** Points awarded when the owner belongs to a household of {@link #LARGE_HOUSEHOLD_SIZE} or more. */
     public static final int LARGE_HOUSEHOLD_POINTS = 2;
 
-    /** Tenure, in days, that an owner must exceed to earn the tenure points. */
-    public static final long TENURE_THRESHOLD_DAYS = 365;
+    /** Elapsed fiscal years an owner's tenure must exceed to earn the tenure points. */
+    public static final long TENURE_THRESHOLD_FISCAL_YEARS = 1;
 
-    /** Points awarded when the owner's tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days. */
+    /** Points awarded when the owner's tenure exceeds {@link #TENURE_THRESHOLD_FISCAL_YEARS} fiscal years. */
     public static final int TENURE_POINTS = 3;
 
     /** Lowest level this calculator awards, given to owners scoring 0-1 points. */
@@ -60,7 +59,7 @@ public abstract class MembershipLevelCalculator {
      * Return the membership points for the given owner: 0 plus {@link #EMAIL_POINTS} when an
      * email is present, {@link #SOLE_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
      * {@link #LARGE_HOUSEHOLD_POINTS} for a household of {@link #LARGE_HOUSEHOLD_SIZE} or more,
-     * and {@link #TENURE_POINTS} when tenure exceeds {@link #TENURE_THRESHOLD_DAYS} days.
+     * and {@link #TENURE_POINTS} when tenure exceeds {@link #TENURE_THRESHOLD_FISCAL_YEARS} fiscal years.
      */
     public static int membershipPoints(Owner owner) {
         int points = 0;
@@ -99,15 +98,17 @@ public abstract class MembershipLevelCalculator {
     }
 
     /**
-     * Whether the owner's tenure, measured from its registration date to today, exceeds
-     * {@link #TENURE_THRESHOLD_DAYS} days. An owner with no registration date has no tenure.
+     * Whether the owner's tenure, measured as the fiscal years elapsed from its registration
+     * date to today, exceeds {@link #TENURE_THRESHOLD_FISCAL_YEARS}. An owner with no
+     * registration date has no tenure.
      */
     private static boolean hasQualifyingTenure(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_THRESHOLD_DAYS;
+        return FiscalYearResolver.elapsedYears(registrationDate, LocalDate.now())
+            > TENURE_THRESHOLD_FISCAL_YEARS;
     }
 
 }
