@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
@@ -230,6 +231,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Invalid email: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ValidationErrorsResponse(List.of(InvalidEmailException.FIELD)));
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException} raised when an owner's email domain is on the
+     * disposable-domain blocklist. Returns a 400 Bad Request whose {@code errors} array names the
+     * offending field.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ValidationErrorsResponse> handleDisposableEmailDomainException(DisposableEmailDomainException e) {
+        logger.debug("Disposable email domain: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ValidationErrorsResponse(List.of(DisposableEmailDomainException.FIELD)));
     }
 
     /**

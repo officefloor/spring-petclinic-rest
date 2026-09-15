@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateException;
@@ -102,6 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+
     private final AddressNormalizer addressNormalizer;
 
     private final CustomerCodeGenerator customerCodeGenerator;
@@ -125,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdIdGenerator householdIdGenerator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 DisposableEmailDomainValidator disposableEmailDomainValidator,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  NamesakeCounter namesakeCounter,
@@ -143,6 +147,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdIdGenerator = householdIdGenerator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.disposableEmailDomainValidator = disposableEmailDomainValidator;
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
@@ -193,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<Owner> householdMembers = assignHousehold(owner, sameLastName);
         owner.setTelephone(telephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+        disposableEmailDomainValidator.validate(owner.getEmail());
         postcodeValidator.validate(owner.getPostcode(), owner.getCity());
         rejectIfDuplicateIdentity(owner);
         applyHouseholdRule(owner, ownerFieldsDto, householdMembers, sameLastName);
