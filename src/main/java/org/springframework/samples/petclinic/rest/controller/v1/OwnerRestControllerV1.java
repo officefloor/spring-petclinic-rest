@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     private final CustomerCodeGenerator customerCodeGenerator;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -92,6 +95,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdIdGenerator householdIdGenerator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -102,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdIdGenerator = householdIdGenerator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
     }
 
@@ -133,6 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        if (ownerFieldsDto != null) {
+            ownerFieldsDto.setAddress(addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
         List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
