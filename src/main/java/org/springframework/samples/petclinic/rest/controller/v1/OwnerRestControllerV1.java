@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.OwnerCreationIdempotencyStore;
+import org.springframework.samples.petclinic.rest.WelcomeNotifier;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -121,6 +122,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     private final OwnerCreationIdempotencyStore idempotencyStore;
 
     private final HttpServletRequest request;
@@ -145,6 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
                                  CityCapacityWarningEvaluator cityCapacityWarningEvaluator,
                                  OwnerAuditLogger ownerAuditLogger,
+                                 WelcomeNotifier welcomeNotifier,
                                  OwnerCreationIdempotencyStore idempotencyStore,
                                  HttpServletRequest request) {
         this.clinicService = clinicService;
@@ -167,6 +171,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
         this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.welcomeNotifier = welcomeNotifier;
         this.idempotencyStore = idempotencyStore;
         this.request = request;
     }
@@ -243,6 +248,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             idempotencyStore.record(idempotencyKey, owner.getId());
         }
         ownerAuditLogger.ownerCreated(owner);
+        welcomeNotifier.welcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
