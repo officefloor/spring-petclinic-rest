@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.MembershipLevelCalculator;
 
 import java.util.Collection;
@@ -23,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(computeMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -61,6 +63,17 @@ public interface OwnerMapper {
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
             owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Computes an owner's check digit from its stored customer code, delegating to
+     * {@link LuhnCheckDigit}. Returns {@code null} when the customer code is absent.
+     */
+    default Integer computeCheckDigit(Owner owner) {
+        if (owner.getCustomerCode() == null) {
+            return null;
+        }
+        return LuhnCheckDigit.of(owner.getCustomerCode());
     }
 
     /**
