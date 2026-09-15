@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.OwnerAuditLogger;
+import org.springframework.samples.petclinic.rest.OwnerCreationIdempotencyStore;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -64,8 +65,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -115,6 +118,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final OwnerCreationIdempotencyStore idempotencyStore;
+
+    private final HttpServletRequest request;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -133,7 +140,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CustomerCodeGenerator customerCodeGenerator,
                                  NamesakeCounter namesakeCounter,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 OwnerCreationIdempotencyStore idempotencyStore,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -153,6 +162,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.namesakeCounter = namesakeCounter;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.idempotencyStore = idempotencyStore;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -183,6 +194,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = idempotencyKey();
+        ResponseEntity<OwnerDto> replay = replayIfDuplicateKey(idempotencyKey);
+        if (replay != null) {
+            return replay;
+        }
         addressResolver.resolve(ownerFieldsDto);
         List<String> missingFields = ownerFieldsValidator.findMissingOrBlankFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
@@ -217,11 +233,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(assignCustomerCode(owner));
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            idempotencyStore.record(idempotencyKey, owner.getId());
+        }
         ownerAuditLogger.ownerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Reads the request's {@code Idempotency-Key} header, treating a blank value as absent.
+     *
+     * @return the trimmed key, or {@code null} when the request carries no usable key
+     */
+    private String idempotencyKey() {
+        String key = request.getHeader("Idempotency-Key");
+        return StringUtils.hasText(key) ? key.trim() : null;
+    }
+
+    /**
+     * Replays the owner originally created for an already-seen idempotency key, so a repeated
+     * create returns that owner with 200 instead of storing a duplicate. Returns {@code null}
+     * when there is no key or the key has not been seen, in which case the create proceeds
+     * normally.
+     */
+    private ResponseEntity<OwnerDto> replayIfDuplicateKey(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        return idempotencyStore.find(idempotencyKey)
+            .map(clinicService::findOwnerById)
+            .map(ownerMapper::toOwnerDto)
+            .map(ownerDto -> new ResponseEntity<>(ownerDto, HttpStatus.OK))
+            .orElse(null);
     }
 
     /**
