@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 
+import org.springframework.samples.petclinic.model.DisposableEmailDomains;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,13 +32,6 @@ public class EmailNormalizer {
 
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
-
-    /**
-     * Domains of disposable/throwaway email providers that are not accepted as an
-     * owner's email address.
-     */
-    private static final Set<String> DISPOSABLE_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Lower-case the given email, trimming surrounding whitespace.
@@ -63,14 +56,6 @@ public class EmailNormalizer {
      * @return {@code true} if the email's domain is on the disposable-domain blocklist
      */
     public boolean isDisposable(String email) {
-        if (email == null) {
-            return false;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        return DISPOSABLE_DOMAINS.contains(domain);
+        return DisposableEmailDomains.isDisposable(email);
     }
 }

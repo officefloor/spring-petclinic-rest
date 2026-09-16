@@ -485,6 +485,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Whether this owner warrants a manual review: {@code true} when any risk signal holds,
+     * namely when it is a {@link #getPossibleDuplicate() possible duplicate}, its email
+     * domain is disposable-adjacent (see {@link DisposableEmailDomains}), or its city was
+     * over its soft capacity when it was created (see {@link #getCapacityWarning()});
+     * otherwise {@code false}. Derived from the owner's own fields, so it stays consistent
+     * with them.
+     */
+    @Transient
+    public Boolean getRiskFlag() {
+        return Boolean.TRUE.equals(this.possibleDuplicate)
+            || Boolean.TRUE.equals(this.capacityWarning)
+            || DisposableEmailDomains.isDisposableAdjacent(this.email);
+    }
+
+    /**
      * Normalize the registration date before persisting: default it to the server's
      * current date when none was supplied, then roll it forward onto a business day so
      * every newly persisted owner is registered on a weekday.
