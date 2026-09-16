@@ -14,16 +14,19 @@ import org.springframework.web.bind.annotation.RequestBody;
  * before any owner is built or saved. It binds the body once and republishes it as
  * a variable for the later {@link BuildOwner} step.
  *
- * <p>The address is normalized in place first (see {@link AddressNormalizer}) so the
- * required-field check rejects an address that is blank once normalized, and every
- * later step — including the household comparisons and the stored, returned value —
- * sees the canonical form.
+ * <p>The address form is canonicalized in place first (see {@link OwnerAddress}): the
+ * structured {@code addressLine1}/{@code addressLine2} fields are preferred when present,
+ * otherwise the flat {@code address} is used, and either way the flat {@code address} is
+ * set to the normalized composed value. The required-field check then treats {@code
+ * address} as satisfied when either form supplied one (composed address is blank only when
+ * neither did), and every later step — and the stored, returned value — sees the canonical
+ * form.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        OwnerAddress.normalizeInto(request);
         List<String> missing = new ArrayList<>();
         require(missing, "firstName", request.getFirstName());
         require(missing, "lastName", request.getLastName());
