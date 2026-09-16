@@ -49,6 +49,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * Number of owners a city must already hold before a further owner registered in it
+     * is flagged with a capacity warning, signalling the city is approaching (but has not
+     * yet reached) the hard per-city capacity limit enforced by the create endpoint.
+     */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -260,6 +267,8 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(
                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
+            owner.setCapacityWarning(
+                ownerRepository.countByCity(owner.getCity()) >= CITY_CAPACITY_WARNING_THRESHOLD);
             owner.setHouseholdId(householdIdFor(owner));
             owner.setHouseholdSize(householdSizeIncluding(owner));
             owner.setMembershipLevelCap(membershipLevelCapFor(owner));
