@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerAuditLogger;
 import org.springframework.samples.petclinic.service.OwnerCreationIdempotencyStore;
+import org.springframework.samples.petclinic.service.WelcomeNotifier;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerCreationIdempotencyStore idempotencyStore;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -104,7 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  PostcodeValidator postcodeValidator,
                                  OwnerAuditLogger ownerAuditLogger,
-                                 OwnerCreationIdempotencyStore idempotencyStore) {
+                                 OwnerCreationIdempotencyStore idempotencyStore,
+                                 WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -115,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.postcodeValidator = postcodeValidator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.idempotencyStore = idempotencyStore;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -224,6 +229,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setDeclaredHouseholdMember(Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
+        this.welcomeNotifier.welcome(owner);
         if (idempotencyKey != null) {
             this.idempotencyStore.remember(idempotencyKey, owner.getId());
         }
