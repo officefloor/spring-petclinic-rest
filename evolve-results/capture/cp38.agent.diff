@@ -1,0 +1,174 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+new file mode 100644
+index 000000000..cdcd83231
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when an owner request carries an {@code email} whose domain is on the
++ * disposable-domain blocklist. Handled by {@link DisposableEmailExceptionHandler},
++ * which responds 400.
++ */
++public class DisposableEmailException extends Exception {
++
++    private final String email;
++
++    public DisposableEmailException(String email) {
++        super("Email domain is not accepted: " + email);
++        this.email = email;
++    }
++
++    public String getEmail() {
++        return this.email;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+new file mode 100644
+index 000000000..a31a86902
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class DisposableEmailExceptionHandler {
++
++    /** Response body: {@code {"error": "..."}}. */
++    public record Error(String error) {
++    }
++
++    public void handle(@Parameter DisposableEmailException ex, ObjectResponse<ResponseEntity<Error>> response) {
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new Error(ex.getMessage())));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..5cbf72604
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++/**
++ * The disposable-email policy: the fixed blocklist of throwaway mail domains and the
++ * decision of whether an address belongs to one. Kept as its own unit so the blocklist
++ * has a single home and {@link RejectDisposableEmail} stays free of policy data.
++ */
++final class DisposableEmailDomains {
++
++    private static final Set<String> BLOCKED = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomains() {
++    }
++
++    static boolean isDisposable(String email) {
++        String domain = EmailNormalizer.domainOf(email);
++        return domain != null && BLOCKED.contains(domain);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailNormalizer.java
+index 379f57aa2..95a03d3c9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmailNormalizer.java
+@@ -29,4 +29,17 @@ final class EmailNormalizer {
+     static String normalize(String email) {
+         return email.trim().toLowerCase(Locale.ROOT);
+     }
++
++    /**
++     * The lower-cased domain part (after the last {@code @}), or {@code null} when the
++     * address has no domain. Kept here so domain-based policies parse the address the
++     * same way the validator does.
++     */
++    static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
++        int at = email.lastIndexOf('@');
++        return at < 0 ? null : email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+new file mode 100644
+index 000000000..e8374cceb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
++
++/**
++ * Rejects an owner whose email domain is on the disposable-domain blocklist with a 400
++ * via {@link DisposableEmailException}. Email is optional, so a null or blank value is
++ * left untouched. Runs after {@link NormalizeOwnerEmail} so the address has already been
++ * validated and lower-cased.
++ */
++public class RejectDisposableEmail {
++
++    public void service(@Val OwnerFieldsDto request) throws DisposableEmailException {
++        String email = request.getEmail();
++        if (email == null || email.isBlank()) {
++            return;
++        }
++        if (DisposableEmailDomains.isDisposable(email)) {
++            throw new DisposableEmailException(email);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+new file mode 100644
+index 000000000..7f783fc25
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DisposableEmailExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 6694b5efd..8ba2671e4 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -17,6 +17,13 @@ normalizeTelephone:
+ # stored and returned lower-cased.
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
++  next: rejectDisposableEmail
++
++# When an email is present, reject it as a 400 if its domain is on the disposable-domain
++# blocklist. Runs after the email is validated and normalized and before any owner is
++# built or saved.
++rejectDisposableEmail:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableEmail
+   next: validatePostcode
+ 
+ # The postcode is optional; when present it must be 4 digits and valid for the city's
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+index 962b50ba6..0171cc8cb 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+@@ -11,6 +11,14 @@ validate:
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
+   govern: [ transaction ]
++  next: rejectDisposableEmail
++
++# When an email is present, reject it as a 400 if its domain is on the disposable-domain
++# blocklist. Runs after the email is validated and normalized and before the owner is
++# loaded or saved.
++rejectDisposableEmail:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableEmail
++  govern: [ transaction ]
+   next: validatePostcode
+ 
+ # The postcode is optional; when present it must be 4 digits and valid for the city's
