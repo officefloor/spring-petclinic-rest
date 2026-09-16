@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index de915059d..b9af662a1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerIdentityException;
++import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+@@ -263,6 +264,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException} raised when an owner's supplied registration
++     * date is later than the server's current date. Returns a 400 Bad Request whose body carries an
++     * {@code errors} array naming the {@code registrationDate} field.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("registrationDate"));
++        logger.debug("Future registration date at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateOwnerIdentityException} raised when an owner is created whose whole
+      * identity key (normalized telephone, email and household id) already belongs to another owner.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a8aec4e47..a94e16496 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
+ import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
+ import org.springframework.samples.petclinic.rest.validation.OwnerIdentityUniquenessValidator;
+ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
++import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -146,6 +147,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
+         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
++        RegistrationDateValidator.validateNotFuture(owner.getRegistrationDate());
+         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+         owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
+         this.dailyRegistrationCapacityValidator.validateHasCapacity(owner.getRegistrationDate());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..9ac2efeb1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/FutureRegistrationDateException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's supplied registration date is later than the server's current date. The
++ * REST layer reports this as a 400 Bad Request.
++ *
++ * @see RegistrationDateValidator
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    public FutureRegistrationDateException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java
+new file mode 100644
+index 000000000..5f848a8ed
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateValidator.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.time.LocalDate;
++
++/**
++ * Validates an owner's optional registration date. A supplied date may not lie in the future: it
++ * must not be later than the server's current date. A registration date is optional, so an absent
++ * value defaults elsewhere and is accepted here.
++ */
++public final class RegistrationDateValidator {
++
++    private RegistrationDateValidator() {
++    }
++
++    /**
++     * Rejects a registration date that is later than today on the server. Registration date is
++     * optional, so a {@code null} value is accepted.
++     *
++     * @param registrationDate the submitted registration date, or {@code null} if none was provided
++     * @throws FutureRegistrationDateException if a value is present and later than the server date
++     */
++    public static void validateNotFuture(LocalDate registrationDate) {
++        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(
++                "Registration date '" + registrationDate + "' is later than the current server date");
++        }
++    }
++}
