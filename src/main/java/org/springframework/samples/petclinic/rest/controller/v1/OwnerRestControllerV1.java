@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.model.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.model.RegionResolver;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
+import org.springframework.samples.petclinic.rest.notification.WelcomeNotifier;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -100,6 +101,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     private final MemberIdDeduplicator memberIdDeduplicator;
 
     private final IdempotentOwnerCreationStore idempotentOwnerCreationStore;
@@ -116,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
                                  OwnerAuditLogger ownerAuditLogger,
+                                 WelcomeNotifier welcomeNotifier,
                                  MemberIdDeduplicator memberIdDeduplicator,
                                  IdempotentOwnerCreationStore idempotentOwnerCreationStore) {
         this.clinicService = clinicService;
@@ -130,6 +134,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.welcomeNotifier = welcomeNotifier;
         this.memberIdDeduplicator = memberIdDeduplicator;
         this.idempotentOwnerCreationStore = idempotentOwnerCreationStore;
     }
@@ -207,6 +212,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMemberId(this.memberIdDeduplicator.deduplicate(memberId));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
+        this.welcomeNotifier.enqueueWelcome(owner);
         return owner;
     }
 
