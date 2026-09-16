@@ -5,10 +5,9 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
-import org.springframework.samples.petclinic.model.CheckDigit;
-import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Locality;
+import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.model.OwnerSegment;
@@ -32,7 +31,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -40,7 +38,6 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -78,15 +75,6 @@ public interface OwnerMapper {
 
     private static String initial(String name) {
         return Character.toUpperCase(name.charAt(0)) + ".";
-    }
-
-    /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the fiscal year of the registrationDate (see {@link FiscalYear}). */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), FiscalYear.of(owner.getRegistrationDate()) % 100);
     }
 
     /** The owner's 'FY&lt;YY&gt;' fiscal year, derived from the business-day-adjusted
@@ -135,10 +123,10 @@ public interface OwnerMapper {
         return cap == null ? level : Math.min(level, cap);
     }
 
-    /** The owner's canonical region: the REGION segment of the customer code (see
-     * {@link CustomerCode}), or null when the customer code is unset. */
+    /** The owner's canonical region: the REGION segment of the member id (see
+     * {@link MemberId}), or null when the member id is unset. */
     default String locality(Owner owner) {
-        return CustomerCode.region(owner.getCustomerCode());
+        return MemberId.region(owner.getMemberId());
     }
 
     /** The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;', derived from the owner's
@@ -169,11 +157,6 @@ public interface OwnerMapper {
         return OwnerIdentity.of(owner);
     }
 
-    /** The Luhn check digit over the digits of the owner's customer code, or null when unset. */
-    default Integer checkDigit(Owner owner) {
-        return owner.getCustomerCode() == null ? null : CheckDigit.luhn(owner.getCustomerCode());
-    }
-
     /** The owner's age band on their registration date, derived from their birth date (see
      * {@link AgeBand}), or null when either date is unset. */
     default String ageBand(Owner owner) {
@@ -188,7 +171,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)

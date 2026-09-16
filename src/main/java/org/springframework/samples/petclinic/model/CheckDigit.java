@@ -1,13 +1,13 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * The single definition of the <em>Luhn check digit</em> computed over the digits of a
- * customer code. Non-digit characters (separators, letters) are ignored; the remaining
- * digits are folded right-to-left with the rightmost digit doubled, and the check digit is
- * the amount that rounds the running sum up to the next multiple of ten.
+ * The single definition of the <em>Luhn check digit</em> computed over the digits of a string.
+ * Non-digit characters (separators, letters) are ignored; the remaining digits are folded
+ * right-to-left with the rightmost digit doubled, and the check digit is the amount that rounds
+ * the running sum up to the next multiple of ten.
  *
- * <p>Returned by the response mapper alongside the customer code so a caller can verify the
- * code was transcribed correctly.
+ * <p>Used by {@link MemberId} as the trailing CHK segment of a member id, so a caller can verify
+ * the id was transcribed correctly.
  */
 public final class CheckDigit {
 

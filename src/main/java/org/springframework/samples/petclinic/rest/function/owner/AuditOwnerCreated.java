@@ -22,9 +22,8 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, AuditEventSequence sequence,
             ObjectMapper objectMapper) {
         int membershipLevel = ownerMapper.membershipLevel(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipLevel, ownerMapper.membershipNumber(owner));
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.next(), owner, membershipLevel);
         AUDIT.info(objectMapper.writeValueAsString(event));
     }

@@ -8,9 +8,9 @@ import java.time.Month;
  * on 1 July and is named by the calendar year it ends in — so 1 July 2025 to 30 June 2026 is fiscal
  * year 2026, labelled {@code FY26}.
  *
- * <p>Used by the response mapper to derive an owner's {@code fiscalYear} label and the year segment
- * of their membership number, and by {@link Tenure} to count elapsed fiscal years — all from the
- * business-day-adjusted registration date stamped on the owner at creation.
+ * <p>Used by the response mapper to derive an owner's {@code fiscalYear} label, by {@link MemberId}
+ * as the FY segment of their member id, and by {@link Tenure} to count elapsed fiscal years — all
+ * from the business-day-adjusted registration date stamped on the owner at creation.
  */
 public final class FiscalYear {
 

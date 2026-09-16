@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * The single definition of a SHA-256 fingerprint of a string. Shared by everything that
- * fingerprints owner data — the customer code hash and household id (a truncated upper-case
+ * fingerprints owner data — the member id hash and household id (a truncated upper-case
  * prefix) and the identity key (the full lower-case digest) — so they all hash identically.
  */
 public final class Sha256 {
