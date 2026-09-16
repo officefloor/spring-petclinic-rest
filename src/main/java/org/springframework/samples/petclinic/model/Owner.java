@@ -131,6 +131,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
+     * is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
+     * Derived from the owner's own fields, so it stays consistent with them.
+     */
+    @Transient
+    public String getMembershipNumber() {
+        if (this.customerCode == null || this.registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+    }
+
+    /**
      * Default the registration date to the server's current date when none was
      * supplied, so every newly persisted owner has a registration date.
      */
