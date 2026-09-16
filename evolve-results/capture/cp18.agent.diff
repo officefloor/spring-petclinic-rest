@@ -1,0 +1,151 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+new file mode 100644
+index 000000000..387b165aa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request targets a city that already contains the maximum
++ * number of owners. Handled by {@link CityAtCapacityExceptionHandler}, which responds 409.
++ */
++public class CityAtCapacityException extends Exception {
++
++    public CityAtCapacityException(String city, int capacity) {
++        super("City " + city + " already contains " + capacity + " or more owners");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+new file mode 100644
+index 000000000..fbcab97ca
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class CityAtCapacityExceptionHandler {
++
++    public void handle(@Parameter CityAtCapacityException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index bbd16e408..8bb123895 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -18,17 +18,11 @@ public class AssignOwnerCustomerCode {
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String cityPrefix = prefix(owner.getCity());
+         String lastNamePrefix = prefix(owner.getLastName());
+-        int sequence = citySize(ownerRepository, owner.getCity()) + 1;
++        int sequence = OwnerCities.size(ownerRepository.findAll(), owner.getCity()) + 1;
+         owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence));
+     }
+ 
+     private static String prefix(String value) {
+         return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+     }
+-
+-    private static int citySize(OwnerRepository ownerRepository, String city) {
+-        return (int) ownerRepository.findAll().stream()
+-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+-            .count();
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java
+new file mode 100644
+index 000000000..48480308c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The single definition of how owners are grouped by city: compared case-insensitively.
++ * Shared by {@link AssignOwnerCustomerCode} (which derives the per-city sequence) and
++ * {@link RejectFullOwnerCity} (which caps a city's population), so both count a city's
++ * members identically.
++ */
++final class OwnerCities {
++
++    private OwnerCities() {
++    }
++
++    /** The number of existing owners in {@code city}. */
++    static int size(Iterable<Owner> owners, String city) {
++        int count = 0;
++        for (Owner existing : owners) {
++            if (city != null && city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java
+new file mode 100644
+index 000000000..51a1a1d5a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
++
++/**
++ * Rejects a create-owner request whose city already holds {@link #CITY_CAPACITY} or more
++ * owners, responding 409. City membership is counted case-insensitively via
++ * {@link OwnerCities}, the same definition {@link AssignOwnerCustomerCode} uses.
++ */
++public class RejectFullOwnerCity {
++
++    /** Maximum number of owners a single city may hold. */
++    static final int CITY_CAPACITY = 50;
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws CityAtCapacityException {
++        if (OwnerCities.size(ownerRepository.findAll(), request.getCity()) >= CITY_CAPACITY) {
++            throw new CityAtCapacityException(request.getCity(), CITY_CAPACITY);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+new file mode 100644
+index 000000000..0a0bdf3c0
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7f11a2cc3..39a13ded5 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ normalizeAddress:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateRequiredOwnerFields
+   govern: [ transaction ]
++  next: rejectFullCity
++
++rejectFullCity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectFullOwnerCity
++  govern: [ transaction ]
+   next: normalizeTelephone
+ 
+ normalizeTelephone:
