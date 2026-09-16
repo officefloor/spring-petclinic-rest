@@ -20,38 +20,44 @@ import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
- * Derives a household's stable, shared identifier from its last name and address.
+ * Derives a household's stable, shared identifier from its last name and postcode.
  *
- * <p>Owners belong to the same household when they share a last name and address,
- * compared case-insensitively and ignoring differences in surrounding or repeated
- * whitespace. Because the identifier is a deterministic hash of that normalized
- * identity, every owner in a household maps to the same value, independently and
- * across requests.
+ * <p>Owners belong to the same household when they share a last name (compared
+ * case-insensitively and ignoring differences in surrounding or repeated whitespace)
+ * and postcode. Because the identifier is a deterministic hash of that normalized
+ * identity, every owner in a household maps to the same value automatically,
+ * independently and across requests, without any owner having to opt in.
  */
 @Component
 public class HouseholdIdGenerator {
-
-    private static final String PREFIX = "HH-";
 
     private static final int ID_LENGTH = 12;
 
     /**
      * Build the shared household identifier for the household identified by the given
-     * last name and address.
+     * last name and postcode: the first {@value #ID_LENGTH} hex characters of the
+     * SHA-256 digest of {@code normalizedLastName + '|' + postcode}.
+     *
+     * <p>An owner without a postcode belongs to no shared household, so this returns
+     * {@code null} in that case.
      *
      * @param lastName the household's last name
-     * @param address  the household's address
-     * @return the stable household identifier, e.g. {@code "HH-0A1B2C3D4E5F"}
+     * @param postcode the household's postcode
+     * @return the stable household identifier, e.g. {@code "0a1b2c3d4e5f"}, or
+     * {@code null} when no postcode is supplied
      */
-    public String generate(String lastName, String address) {
-        String identity = normalize(lastName) + "\n" + normalize(address);
-        return PREFIX + Sha256.hex(identity).substring(0, ID_LENGTH).toUpperCase(Locale.ROOT);
+    public String generate(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String identity = normalize(lastName) + "|" + postcode;
+        return Sha256.hex(identity).substring(0, ID_LENGTH);
     }
 
     /**
-     * Normalize a household identity value for comparison: trim, collapse each run of
-     * whitespace to a single space and lower-case, so that differences in case or
-     * spacing do not split what is really one household.
+     * Normalize the last name for comparison: trim, collapse each run of whitespace to
+     * a single space and lower-case, so that differences in case or spacing do not
+     * split what is really one household.
      */
     private static String normalize(String value) {
         if (value == null) {

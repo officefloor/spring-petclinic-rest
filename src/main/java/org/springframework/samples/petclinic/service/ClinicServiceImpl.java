@@ -256,6 +256,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(
                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
+            owner.setHouseholdId(householdIdFor(owner));
             owner.setHouseholdSize(householdSizeIncluding(owner));
             Optional<Owner> possibleDuplicate = findPossibleDuplicate(owner);
             owner.setPossibleDuplicate(possibleDuplicate.isPresent());
@@ -263,6 +264,14 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * The deterministic, shared household id this owner maps to, derived from its last
+     * name and postcode so that owners sharing both belong to the same household.
+     */
+    private String householdIdFor(Owner owner) {
+        return householdIdGenerator.generate(owner.getLastName(), owner.getPostcode());
     }
 
     /**
@@ -290,16 +299,18 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Find the existing owner, if any, that this new owner is a possible (soft) duplicate
-     * of: one that shares its last name (case-insensitively) and postcode but carries a
-     * different telephone, so it is not a hard duplicate. When several match, the earliest
-     * (lowest id) is chosen. An owner with no postcode can share none, so never matches.
+     * of: one that occupies the same household (the same computed household id) but carries
+     * a different telephone, so it is not a hard duplicate. When several match, the earliest
+     * (lowest id) is chosen. An owner that belongs to no household (no household id), or one
+     * that deliberately declared it shares a household, is never a suspected duplicate.
      */
     private Optional<Owner> findPossibleDuplicate(Owner owner) {
-        if (owner.getPostcode() == null) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || owner.isDeclaredHouseholdMember()) {
             return Optional.empty();
         }
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
-            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
             .min(Comparator.comparing(Owner::getId));
     }
@@ -312,9 +323,9 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerByIdentityKey(String identityKey) throws DataAccessException {
-        return ownerRepository.findAll().stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    public boolean isHouseholdOccupied(Owner owner) throws DataAccessException {
+        String householdId = householdIdFor(owner);
+        return householdId != null && ownerRepository.countByHouseholdId(householdId) > 0;
     }
 
     @Override
@@ -327,33 +338,6 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
         return ownerRepository.countByRegistrationDate(registrationDate);
-    }
-
-    @Override
-    @Transactional
-    public String shareHousehold(Owner owner) throws DataAccessException {
-        String householdId = householdIdGenerator.generate(owner.getLastName(), owner.getAddress());
-        // Backfill the existing members so the whole household carries one shared id.
-        householdMembers(owner.getLastName(), owner.getAddress()).stream()
-            .filter(member -> !householdId.equals(member.getHouseholdId()))
-            .forEach(member -> {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            });
-        owner.setHouseholdId(householdId);
-        return householdId;
-    }
-
-    /**
-     * Return the existing owners that already occupy the household identified by the
-     * given last name and address, i.e. that map to the same shared household id.
-     */
-    private List<Owner> householdMembers(String lastName, String address) {
-        String householdId = householdIdGenerator.generate(lastName, address);
-        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
-            .filter(owner -> householdId.equals(
-                householdIdGenerator.generate(owner.getLastName(), owner.getAddress())))
-            .toList();
     }
 
     @Override

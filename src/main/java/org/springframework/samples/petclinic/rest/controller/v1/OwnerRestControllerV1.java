@@ -171,18 +171,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(telephone);
         owner.setEmail(email);
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            clinicService.shareHousehold(owner);
-        }
         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // A single derived identity key now captures the telephone, email and household
-        // duplicate checks: only an exact whole-key match with an existing owner is a
-        // duplicate, so two household members with different telephones both remain valid.
-        if (clinicService.existsOwnerByIdentityKey(owner.getIdentityKey())) {
+        // The household is keyed on (last name, postcode): a second owner sharing both is a
+        // household duplicate and is rejected, unless it declares 'sharesHousehold', which
+        // bypasses this block and creates it as a (non-suspected) declared household member.
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold && clinicService.isHouseholdOccupied(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setDeclaredHouseholdMember(sharesHousehold);
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

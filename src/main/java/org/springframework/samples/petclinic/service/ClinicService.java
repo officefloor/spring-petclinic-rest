@@ -62,14 +62,15 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	/**
-	 * Check whether another owner already carries the given identity key, the single
-	 * derived value ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId})
-	 * used to detect duplicate owners. Only an exact whole-key match counts as a duplicate.
+	 * Check whether an existing owner already occupies the given owner's household, i.e.
+	 * whether another owner shares its last name and postcode (its computed household id).
+	 * Used to reject a new owner as a household duplicate unless it declares it shares the
+	 * household.
 	 *
-	 * @param identityKey the identity key to match
-	 * @return <code>true</code> if at least one existing owner has the same identity key
+	 * @param owner the owner about to be created
+	 * @return <code>true</code> if at least one existing owner already occupies that household
 	 */
-	boolean existsOwnerByIdentityKey(String identityKey) throws DataAccessException;
+	boolean isHouseholdOccupied(Owner owner) throws DataAccessException;
 
 	/**
 	 * Count the <code>Owner</code>s already registered in the given city, compared
@@ -88,17 +89,6 @@ public interface ClinicService {
 	 * @return the number of owners registered on that date
 	 */
 	long countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
-
-	/**
-	 * Join the given (not-yet-persisted) owner to its household, assigning the stable,
-	 * shared household id to the owner and backfilling it onto any existing members
-	 * that share the same last name and address (compared case-insensitively and with
-	 * runs of whitespace collapsed to a single space).
-	 *
-	 * @param owner the owner about to be created that deliberately shares a household
-	 * @return the shared household id assigned to the owner
-	 */
-	String shareHousehold(Owner owner) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;

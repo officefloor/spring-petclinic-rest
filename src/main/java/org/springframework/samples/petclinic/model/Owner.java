@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Transient
+    private boolean declaredHouseholdMember;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -178,6 +181,21 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    /**
+     * Whether this owner deliberately declared, when created, that it shares its
+     * household with an existing owner (the request's {@code sharesHousehold} flag).
+     * A declared member is created despite occupying an existing household and is not
+     * treated as a suspected duplicate. This is a request-scoped flag, not persisted.
+     */
+    @Transient
+    public boolean isDeclaredHouseholdMember() {
+        return this.declaredHouseholdMember;
+    }
+
+    public void setDeclaredHouseholdMember(boolean declaredHouseholdMember) {
+        this.declaredHouseholdMember = declaredHouseholdMember;
     }
 
     /**
