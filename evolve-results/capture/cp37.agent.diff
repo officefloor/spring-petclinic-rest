@@ -1,0 +1,227 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CountryCallingCode.java b/src/main/java/org/springframework/samples/petclinic/model/CountryCallingCode.java
+new file mode 100644
+index 000000000..f254dddb3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/CountryCallingCode.java
+@@ -0,0 +1,58 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.model;
++
++import java.util.Map;
++import java.util.Optional;
++
++/**
++ * Knowledge of E.164 country calling codes: which codes are recognised and how
++ * many national-number digits each one requires. Country calling codes form a
++ * prefix-free set, so at most one recognised code prefixes a given number. Codes
++ * not listed here are unrecognised; callers apply only generic rules to them.
++ */
++public final class CountryCallingCode {
++
++    private static final Map<String, Integer> NATIONAL_DIGITS_BY_CODE = Map.of("1", 10, "61", 9);
++
++    private CountryCallingCode() {
++    }
++
++    /**
++     * The recognised country calling code that prefixes the given E.164 digits
++     * (the digits following the {@code '+'}), or empty when none is recognised.
++     *
++     * @param digits the E.164 digits (country code followed by the national number)
++     * @return the matching country calling code, or {@link Optional#empty()}
++     */
++    public static Optional<String> of(String digits) {
++        return NATIONAL_DIGITS_BY_CODE.keySet().stream()
++            .filter(digits::startsWith)
++            .findFirst();
++    }
++
++    /**
++     * The exact national-number length required for a recognised country calling
++     * code, or empty when the code is not recognised.
++     *
++     * @param countryCode the country calling code
++     * @return the required national-number length, or {@link Optional#empty()}
++     */
++    public static Optional<Integer> nationalDigits(String countryCode) {
++        return Optional.ofNullable(NATIONAL_DIGITS_BY_CODE.get(countryCode));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index eba55fab8..100e5e3fa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -298,6 +298,18 @@ public class Owner extends Person {
+         return hasEmail ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * The owner's telephone formatted for human display: the stored E.164 number
++     * rendered as its country calling code, a space and the national digits grouped
++     * in threes (e.g. {@code "+61 412 345 678"}). The raw {@link #getTelephone()}
++     * stays in E.164 form. Derived from the owner's own telephone, so it stays
++     * consistent with it. See {@link TelephoneFormatter}.
++     */
++    @Transient
++    public String getTelephoneDisplay() {
++        return TelephoneFormatter.toDisplay(this.telephone);
++    }
++
+     /**
+      * The owner's identity key: the single derived value used to detect duplicate owners,
+      * formed as {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+new file mode 100644
+index 000000000..682a486ae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Formats a stored E.164 telephone number for human display: the country calling
++ * code, a space, then the national digits grouped in threes (for example
++ * {@code "+61412345678"} becomes {@code "+61 412 345 678"}). When the country
++ * calling code is not recognised (see {@link CountryCallingCode}) only the
++ * digits are grouped, with no country-code split.
++ */
++public final class TelephoneFormatter {
++
++    private static final int GROUP_SIZE = 3;
++
++    private TelephoneFormatter() {
++    }
++
++    /**
++     * Format an E.164 telephone number for human display.
++     *
++     * @param e164 the stored E.164 number (e.g. {@code "+61412345678"}); may be {@code null}
++     * @return the human-readable form (e.g. {@code "+61 412 345 678"}), or the
++     *         input unchanged when it is {@code null} or not in E.164 form
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        String countryCode = CountryCallingCode.of(digits).orElse("");
++        String national = groupInThrees(digits.substring(countryCode.length()));
++        return countryCode.isEmpty() ? "+" + national : "+" + countryCode + " " + national;
++    }
++
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % GROUP_SIZE == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index 1750eb62f..4835191f1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -16,10 +16,10 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+-import java.util.Map;
+ import java.util.Optional;
+ import java.util.regex.Pattern;
+ 
++import org.springframework.samples.petclinic.model.CountryCallingCode;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
+  * brackets are stripped. The result is only accepted when it carries between
+  * {@link #MIN_DIGITS} and {@link #MAX_DIGITS} digits after the {@code '+'} and,
+  * for a recognised country code, exactly as many national digits as that
+- * country requires (see {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE}).
++ * country requires (see {@link CountryCallingCode}).
+  */
+ @Component
+ public class TelephoneNormalizer {
+@@ -45,15 +45,6 @@ public class TelephoneNormalizer {
+     /** The most digits a valid E.164 number may have after the {@code '+'}. */
+     public static final int MAX_DIGITS = 15;
+ 
+-    /**
+-     * Exact national-number length required for each recognised E.164 country
+-     * calling code. Country codes form a prefix-free set, so at most one entry
+-     * matches a given number; codes not listed here are subject only to the
+-     * generic {@link #MIN_DIGITS}/{@link #MAX_DIGITS} bounds.
+-     */
+-    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE =
+-        Map.of("1", 10, "61", 9);
+-
+     /** Separators that carry no numeric meaning and are stripped before parsing. */
+     private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-]");
+ 
+@@ -99,10 +90,8 @@ public class TelephoneNormalizer {
+      * @return {@code true} if the national-number length matches the country code
+      */
+     private boolean hasValidNationalLength(String digits) {
+-        return NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet().stream()
+-            .filter(entry -> digits.startsWith(entry.getKey()))
+-            .findFirst()
+-            .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
++        return CountryCallingCode.of(digits)
++            .map(code -> digits.length() - code.length() == CountryCallingCode.nationalDigits(code).orElseThrow())
+             .orElse(true);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a42f1aece..454d27bf2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2211,6 +2211,15 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The owner's stored E.164 telephone formatted for humans: the
++                country calling code, a space, then the national digits grouped
++                in threes. Raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
