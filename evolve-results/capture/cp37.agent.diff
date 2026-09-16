@@ -1,0 +1,182 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a2fe22f0f..6d0f7416c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.Telephone;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -31,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
+     // Not derivable from a single owner; the responder sets it from the daily registration count.
+@@ -56,6 +58,17 @@ public interface OwnerMapper {
+         return ContactPreference.of(owner);
+     }
+ 
++    /**
++     * The owner's stored E.164 telephone formatted for humans: the country code, a
++     * space, then the national digits grouped in threes (e.g. "+61 412 345 678"). The
++     * raw {@code telephone} stays in E.164 form.
++     *
++     * @see Telephone#display(String)
++     */
++    default String telephoneDisplay(Owner owner) {
++        return Telephone.display(owner.getTelephone());
++    }
++
+     /**
+      * The owner's age band, derived from its birth date against its registration date.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
+index cb76a2372..73f6260ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneNormalizer.java
+@@ -1,6 +1,6 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Map;
++import org.springframework.samples.petclinic.util.Telephone;
+ 
+ /**
+  * Shared telephone normalization for the owner pipelines: convert a raw telephone to
+@@ -19,9 +19,6 @@ import java.util.Map;
+  */
+ final class TelephoneNormalizer {
+ 
+-    /** Country code -> the exact number of national digits E.164 requires for it. */
+-    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
+-
+     private TelephoneNormalizer() {
+     }
+ 
+@@ -56,21 +53,10 @@ final class TelephoneNormalizer {
+      *         general 8-to-15-digit E.164 shape check.
+      */
+     private static boolean hasValidNationalLength(String digits) {
+-        String code = countryCode(digits);
++        String code = Telephone.countryCode(digits);
+         if (code == null) {
+             return true;
+         }
+-        return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
+-    }
+-
+-    /** The longest recognised country code that {@code digits} begins with, or null. */
+-    private static String countryCode(String digits) {
+-        String match = null;
+-        for (String code : NATIONAL_LENGTHS.keySet()) {
+-            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
+-                match = code;
+-            }
+-        }
+-        return match;
++        return digits.length() - code.length() == Telephone.nationalLength(code);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Telephone.java b/src/main/java/org/springframework/samples/petclinic/util/Telephone.java
+new file mode 100644
+index 000000000..0d76e62c4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Telephone.java
+@@ -0,0 +1,75 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Shared E.164 telephone knowledge: the recognized country codes and how to present a
++ * stored E.164 number to humans.
++ *
++ * <p>The country-code table is the single source of truth for both normalization (see
++ * {@code TelephoneNormalizer}, which validates the national-number length against it)
++ * and display formatting ({@link #display(String)}, which uses it to split the country
++ * code from the national digits).
++ */
++public final class Telephone {
++
++    /** Country code (without '+') -> the exact number of national digits E.164 requires. */
++    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
++
++    private Telephone() {
++    }
++
++    /**
++     * @return the longest recognized country code that {@code digits} (an E.164 number
++     *         without its leading '+') begins with, or {@code null} when none is
++     *         recognized.
++     */
++    public static String countryCode(String digits) {
++        String match = null;
++        for (String code : NATIONAL_LENGTHS.keySet()) {
++            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
++                match = code;
++            }
++        }
++        return match;
++    }
++
++    /**
++     * @return the exact number of national digits E.164 requires for the recognized
++     *         country {@code code}, or {@code null} when the code is not recognized.
++     */
++    public static Integer nationalLength(String code) {
++        return NATIONAL_LENGTHS.get(code);
++    }
++
++    /**
++     * Formats a stored E.164 number (a leading '+' followed by 8 to 15 digits) for
++     * humans: the country code, a space, then the national digits grouped left-to-right
++     * in threes, e.g. {@code '+61412345678'} -> {@code '+61 412 345 678'}. An
++     * unrecognized country code is not split out; all digits are grouped as national.
++     *
++     * @return the human-readable form, or {@code null} when {@code e164} is {@code null}.
++     */
++    public static String display(String e164) {
++        if (e164 == null) {
++            return null;
++        }
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        String code = countryCode(digits);
++        String national = (code == null) ? digits : digits.substring(code.length());
++        String grouped = groupInThrees(national);
++        return (code == null) ? "+" + grouped : "+" + code + " " + grouped;
++    }
++
++    /** Groups the digits left-to-right in threes, space-separated. */
++    private static String groupInThrees(String digits) {
++        StringBuilder builder = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                builder.append(' ');
++            }
++            builder.append(digits.charAt(i));
++        }
++        return builder.toString();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 882fc63df..c8cfb292b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2175,6 +2175,12 @@ components:
+               type: string
+               example: EMAIL
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans, derived on read - the country code, a space, then the national digits grouped left-to-right in threes. The raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: The owner's age band, derived on read from birthDate against registrationDate - 'MINOR' when under 18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or over. Null when no birthDate is present.
