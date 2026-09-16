@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Locale;
-
-import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
@@ -47,24 +44,11 @@ public class OwnerHouseholdUniquenessValidator {
      *                                          address
      */
     public void validateUnique(String lastName, String address) {
-        String normalizedLastName = normalize(lastName);
-        String normalizedAddress = normalize(address);
+        String key = HouseholdKey.of(lastName, address);
         boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalize(existing.getLastName()).equals(normalizedLastName)
-                && normalize(existing.getAddress()).equals(normalizedAddress));
+            .anyMatch(existing -> HouseholdKey.of(existing.getLastName(), existing.getAddress()).equals(key));
         if (duplicate) {
             throw new DuplicateOwnerHouseholdException(lastName, address);
         }
-    }
-
-    /**
-     * Reduces a value to its comparison form: trimmed, with internal whitespace runs collapsed to a
-     * single space and lower-cased.
-     */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
