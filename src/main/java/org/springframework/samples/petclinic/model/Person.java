@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.Transient;
 
 import jakarta.validation.constraints.NotEmpty;
 
@@ -52,5 +53,17 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    /**
+     * Return this person's initials: the upper-cased first letters of the first
+     * and last name, dot-separated with a trailing dot (e.g. {@code J.S.}).
+     */
+    @Transient
+    public String getInitials() {
+        return initial(this.firstName) + initial(this.lastName);
+    }
+
+    private static String initial(String name) {
+        return Character.toUpperCase(name.charAt(0)) + ".";
+    }
 
 }
