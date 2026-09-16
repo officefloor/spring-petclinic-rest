@@ -18,16 +18,16 @@ package org.springframework.samples.petclinic.service;
 /**
  * Immutable structured audit event recording the creation of an owner. It captures the
  * create's monotonic {@code seq}, the owner's id, its current primary identifier (the
- * {@code customerCode}, and whatever later replaces it) and its membership level, and is
- * serialized to JSON on the {@code AUDIT} trail alongside the human-readable audit line.
+ * {@code memberId}) and its membership level, and is serialized to JSON on the
+ * {@code AUDIT} trail alongside the human-readable audit line.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     /** The fixed discriminator identifying this kind of audit event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
-        this(seq, ownerId, customerCode, membershipLevel, EVENT_TYPE);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
     }
 }

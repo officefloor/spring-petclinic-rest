@@ -300,11 +300,11 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
-    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+    public boolean existsByMemberId(String memberId) throws DataAccessException {
         Map<String, Object> params = new HashMap<>();
-        params.put("customerCode", customerCode);
+        params.put("memberId", memberId);
         Long total = this.namedParameterJdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode AND deleted = FALSE",
+            "SELECT COUNT(*) FROM owners WHERE member_id = :memberId AND deleted = FALSE",
             params,
             Long.class);
         return total != null && total > 0;

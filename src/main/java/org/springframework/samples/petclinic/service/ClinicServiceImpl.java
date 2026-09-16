@@ -62,7 +62,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final CustomerCodeGenerator customerCodeGenerator;
+    private final MemberIdGenerator memberIdGenerator;
     private final HouseholdIdGenerator householdIdGenerator;
 
     public ClinicServiceImpl(
@@ -72,7 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator,
+        MemberIdGenerator memberIdGenerator,
         HouseholdIdGenerator householdIdGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
@@ -80,7 +80,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.customerCodeGenerator = customerCodeGenerator;
+        this.memberIdGenerator = memberIdGenerator;
         this.householdIdGenerator = householdIdGenerator;
     }
 
@@ -258,11 +258,14 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
-            if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(customerCodeGenerator.generateUnique(
+            if (owner.getMemberId() == null) {
+                LocalDate registrationDate = BusinessDay.rollForward(
+                    owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
+                owner.setMemberId(memberIdGenerator.generateUnique(
                     RegionResolver.regionFor(owner.getPostcode(), owner.getCity()),
+                    FiscalYear.shortYearOf(registrationDate),
                     owner.getTelephone(), owner.getLastName(),
-                    ownerRepository::existsByCustomerCode));
+                    ownerRepository::existsByMemberId));
             }
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(

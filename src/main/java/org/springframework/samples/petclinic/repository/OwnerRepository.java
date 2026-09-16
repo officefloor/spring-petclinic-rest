@@ -124,13 +124,13 @@ public interface OwnerRepository {
     long countByHouseholdId(String householdId) throws DataAccessException;
 
     /**
-     * Report whether any <code>Owner</code> already carries the given customer code. Used
-     * to de-duplicate a newly derived customer code when it collides with an existing one.
+     * Report whether any <code>Owner</code> already carries the given member id. Used
+     * to de-duplicate a newly derived member id when it collides with an existing one.
      *
-     * @param customerCode the customer code to match exactly
-     * @return {@code true} if an owner with that customer code already exists
+     * @param memberId the member id to match exactly
+     * @return {@code true} if an owner with that member id already exists
      */
-    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
+    boolean existsByMemberId(String memberId) throws DataAccessException;
 
     /**
      * Retrieve <code>Owner</code>s from the data store, returning all owners

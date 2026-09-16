@@ -85,6 +85,6 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     long countByHouseholdId(@Param("householdId") String householdId);
 
     @Override
-    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN true ELSE false END FROM Owner owner WHERE owner.customerCode = :customerCode AND owner.deleted = false")
-    boolean existsByCustomerCode(@Param("customerCode") String customerCode);
+    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN true ELSE false END FROM Owner owner WHERE owner.memberId = :memberId AND owner.deleted = false")
+    boolean existsByMemberId(@Param("memberId") String memberId);
 }

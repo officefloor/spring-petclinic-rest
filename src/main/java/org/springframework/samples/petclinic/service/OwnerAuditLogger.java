@@ -40,14 +40,14 @@ public class OwnerAuditLogger {
 
     /**
      * Record the successful registration of a new owner. Besides the human-readable audit
-     * line (capturing its id, customer code, registration date, membership level and
-     * membership number), an immutable {@link OwnerCreatedEvent} carrying the owner's
-     * current primary identifier is emitted as JSON on the same trail.
+     * line (capturing its id, member id, registration date and membership level), an
+     * immutable {@link OwnerCreatedEvent} carrying the owner's current primary identifier
+     * is emitted as JSON on the same trail.
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            owner.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(),
             owner.getId(), owner.getPrimaryIdentifier(), owner.getMembershipLevel());
         AUDIT.info(objectMapper.writeValueAsString(event));
