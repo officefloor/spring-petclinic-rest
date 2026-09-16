@@ -29,4 +29,17 @@ final class EmailNormalizer {
     static String normalize(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }
+
+    /**
+     * The lower-cased domain part (after the last {@code @}), or {@code null} when the
+     * address has no domain. Kept here so domain-based policies parse the address the
+     * same way the validator does.
+     */
+    static String domainOf(String email) {
+        if (email == null) {
+            return null;
+        }
+        int at = email.lastIndexOf('@');
+        return at < 0 ? null : email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+    }
 }
