@@ -34,6 +34,20 @@ final class Households {
         return members;
     }
 
+    /** How many existing owners already carry the given household id (0 when it is null). */
+    static int memberCount(OwnerRepository repository, String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner owner : repository.findAll()) {
+            if (householdId.equals(owner.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /**
      * A stable identifier for the household with the given last name and address. Derived
      * from the normalized key, so every member of the same household resolves to the same

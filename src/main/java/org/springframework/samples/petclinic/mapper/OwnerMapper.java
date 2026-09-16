@@ -37,10 +37,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: SILVER when they have no namesakes and a stored
-     * email address, otherwise BRONZE.
+     * The owner's membership tier: GOLD when their household had 3 or more members after
+     * they were created; otherwise SILVER when they have no namesakes and a stored email
+     * address, and BRONZE in every other case.
      */
     default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return OwnerDto.MembershipTierEnum.GOLD;
+        }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER
