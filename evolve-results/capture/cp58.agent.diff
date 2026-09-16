@@ -1,0 +1,193 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..92cf33f27
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+@@ -0,0 +1,94 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * The set of known disposable/throwaway email domains, and the rules for judging an email
++ * address against them. Owns this knowledge in one place so both the create/update
++ * validation (which rejects an outright disposable address) and the owner risk flag (which
++ * treats a merely disposable-<em>adjacent</em> address as a soft signal) read the same list.
++ */
++public final class DisposableEmailDomains {
++
++    /** Domains of disposable/throwaway email providers. */
++    private static final Set<String> DISPOSABLE_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomains() {
++    }
++
++    /**
++     * @param email an email value (typically already normalized)
++     * @return {@code true} if the email's domain is exactly one of the known disposable
++     *         domains
++     */
++    public static boolean isDisposable(String email) {
++        String domain = domainOf(email);
++        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Whether the email's domain is disposable-adjacent: either a known disposable domain,
++     * a subdomain of one, or a domain sharing its registrable base label (e.g. the same
++     * name under a different top-level domain). This catches the near-misses that slip past
++     * the exact {@link #isDisposable(String) disposable} blocklist.
++     *
++     * @param email an email value (typically already normalized)
++     * @return {@code true} if the email's domain is a known disposable domain or a close
++     *         relative of one
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null) {
++            return false;
++        }
++        String base = baseLabel(domain);
++        for (String disposable : DISPOSABLE_DOMAINS) {
++            if (domain.equals(disposable) || base.equals(baseLabel(disposable))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * The lower-cased domain part of an email address, or {@code null} when {@code email} is
++     * {@code null} or carries no {@code '@'}.
++     */
++    private static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return null;
++        }
++        return email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * The registrable base label of a domain: the label immediately before its top-level
++     * domain (e.g. {@code "mailinator"} for {@code "mail.mailinator.com"}), or the whole
++     * domain when it has no dot.
++     */
++    private static String baseLabel(String domain) {
++        String[] parts = domain.split("\\.");
++        return parts.length >= 2 ? parts[parts.length - 2] : domain;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3f6ee7440..de879d310 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -484,6 +484,21 @@ public class Owner extends Person {
+         return AgeBand.asOf(this.birthDate, this.registrationDate).name();
+     }
+ 
++    /**
++     * Whether this owner warrants a manual review: {@code true} when any risk signal holds,
++     * namely when it is a {@link #getPossibleDuplicate() possible duplicate}, its email
++     * domain is disposable-adjacent (see {@link DisposableEmailDomains}), or its city was
++     * over its soft capacity when it was created (see {@link #getCapacityWarning()});
++     * otherwise {@code false}. Derived from the owner's own fields, so it stays consistent
++     * with them.
++     */
++    @Transient
++    public Boolean getRiskFlag() {
++        return Boolean.TRUE.equals(this.possibleDuplicate)
++            || Boolean.TRUE.equals(this.capacityWarning)
++            || DisposableEmailDomains.isDisposableAdjacent(this.email);
++    }
++
+     /**
+      * Normalize the registration date before persisting: default it to the server's
+      * current date when none was supplied, then roll it forward onto a business day so
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+index ccb3549ea..7147fa1fa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+@@ -17,9 +17,9 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ import java.util.Locale;
+-import java.util.Set;
+ import java.util.regex.Pattern;
+ 
++import org.springframework.samples.petclinic.model.DisposableEmailDomains;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -33,13 +33,6 @@ public class EmailNormalizer {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+ 
+-    /**
+-     * Domains of disposable/throwaway email providers that are not accepted as an
+-     * owner's email address.
+-     */
+-    private static final Set<String> DISPOSABLE_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     /**
+      * Lower-case the given email, trimming surrounding whitespace.
+      *
+@@ -63,14 +56,6 @@ public class EmailNormalizer {
+      * @return {@code true} if the email's domain is on the disposable-domain blocklist
+      */
+     public boolean isDisposable(String email) {
+-        if (email == null) {
+-            return false;
+-        }
+-        int at = email.lastIndexOf('@');
+-        if (at < 0) {
+-            return false;
+-        }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        return DISPOSABLE_DOMAINS.contains(domain);
++        return DisposableEmailDomains.isDisposable(email);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4a2fb3a03..8ed5adebf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2358,6 +2358,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether this owner warrants a manual review: true when any risk signal
++                holds, namely when it is a possible duplicate, its email domain is
++                disposable-adjacent (a known disposable domain or a close relative of
++                one), or its city was over its soft capacity when it was created
++                (the capacity warning); false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
