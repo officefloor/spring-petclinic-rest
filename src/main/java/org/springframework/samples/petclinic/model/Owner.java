@@ -196,6 +196,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's preferred contact channel: {@code "EMAIL"} when an email address is on
+     * file, otherwise {@code "PHONE"}. Derived from the owner's own contact details, so it
+     * stays consistent with them.
+     */
+    @Transient
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
      * Normalize the registration date before persisting: default it to the server's
      * current date when none was supplied, then roll it forward onto a business day so
      * every newly persisted owner is registered on a weekday.
