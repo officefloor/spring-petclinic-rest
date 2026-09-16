@@ -51,4 +51,25 @@ public final class PostcodeRange {
         int value = Integer.parseInt(postcode);
         return value >= range[0] && value <= range[1];
     }
+
+    /**
+     * The region whose inclusive range contains the given postcode.
+     *
+     * @param postcode a postcode string; may be {@code null} or not 4 digits.
+     * @return the region string, or {@code null} when the postcode is absent, not a 4-digit
+     *         number, or falls in no region's range.
+     */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }

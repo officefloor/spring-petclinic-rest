@@ -47,13 +47,13 @@ public interface OwnerMapper {
         return ContactPreference.forOwner(owner).name();
     }
 
-    /** The canonical region derived from the owner's city via the fixed city-to-region table,
-     * or 'UNKNOWN' when the city is not in the table. */
+    /** The canonical region derived from the owner, preferring the postcode's region range and
+     * falling back to the fixed city-to-region table, or 'UNKNOWN' when neither is known. */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Locality.forCity(owner.getCity());
+        return Locality.forCityAndPostcode(owner.getCity(), owner.getPostcode());
     }
 
     /** Format the stored names as 'LastName, FirstName'. */

@@ -43,4 +43,21 @@ public final class Locality {
     public static String forCity(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * Derive the canonical region, preferring the postcode. The postcode's region range is
+     * consulted first (see {@link PostcodeRange#regionForPostcode(String)}); only when the
+     * postcode is absent or in no known range does this fall back to the city-to-region table.
+     * This yields the same region for the pinned cities but disambiguates cities that share a
+     * name.
+     *
+     * @param city     the city name (may be {@code null}).
+     * @param postcode the postcode (may be {@code null}).
+     * @return the region string, or {@link #UNKNOWN} when neither the postcode nor the city
+     *         resolves to a known region.
+     */
+    public static String forCityAndPostcode(String city, String postcode) {
+        String region = PostcodeRange.regionForPostcode(postcode);
+        return region != null ? region : forCity(city);
+    }
 }
