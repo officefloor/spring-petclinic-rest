@@ -49,6 +49,7 @@ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidato
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
 import org.springframework.samples.petclinic.rest.validation.OwnerIdentityUniquenessValidator;
+import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateOwnerDetector;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -80,6 +81,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerIdentityUniquenessValidator identityUniquenessValidator;
 
+    private final PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector;
+
     private final OwnerHouseholdRegistrar householdRegistrar;
 
     private final NamesakeCounter namesakeCounter;
@@ -95,6 +98,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerIdentityUniquenessValidator identityUniquenessValidator,
+                                 PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector,
                                  OwnerHouseholdRegistrar householdRegistrar,
                                  NamesakeCounter namesakeCounter,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
@@ -105,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.identityUniquenessValidator = identityUniquenessValidator;
+        this.possibleDuplicateOwnerDetector = possibleDuplicateOwnerDetector;
         this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
@@ -155,6 +160,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.householdRegistrar.assignHousehold(owner);
         }
         this.identityUniquenessValidator.validateUnique(owner);
+        this.possibleDuplicateOwnerDetector.findPossibleDuplicateOf(owner)
+            .ifPresent(owner::setPossibleDuplicateOf);
         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());

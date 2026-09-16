@@ -74,6 +74,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -175,6 +178,24 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Return whether this owner is a possible duplicate: true when it was created while an existing
+     * owner already shared its last name and postcode under a different telephone, i.e. when a
+     * {@link #getPossibleDuplicateOf() possible-duplicate-of} owner id is present.
+     */
+    @Transient
+    public boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     /**
