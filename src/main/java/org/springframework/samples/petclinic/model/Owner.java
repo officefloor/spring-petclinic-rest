@@ -287,15 +287,30 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
-     * is the last two digits of the registration date's year (e.g. {@code "NSW-1A2B3C4D-M26"}).
-     * Derived from the owner's own fields, so it stays consistent with them.
+     * is the last two digits of the registration date's fiscal year (see {@link FiscalYear};
+     * e.g. {@code "NSW-1A2B3C4D-M26"}). Derived from the owner's own fields, so it stays
+     * consistent with them, including its {@link #getFiscalYear() fiscal year}.
      */
     @Transient
     public String getMembershipNumber() {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, FiscalYear.shortYearOf(this.registrationDate));
+    }
+
+    /**
+     * The owner's fiscal year: the {@code 'FY<YY>'} label of the fiscal year (which starts
+     * on 1 July) that their business-day-adjusted registration date falls in (see
+     * {@link FiscalYear}). Derived from the owner's own registration date, so it stays
+     * consistent with it; null until a registration date is on file.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return FiscalYear.labelFor(this.registrationDate);
     }
 
     /**
@@ -314,9 +329,9 @@ public class Owner extends Person {
     /**
      * The owner's membership points, starting at zero: two points are added when an email is
      * on file, one more when the owner is unique (namesake count of zero), two more for a
-     * household of three or more, and three more when the owner has accrued more than a year of
-     * tenure (see {@link Tenure}). Derived from the owner's own fields, so it stays consistent
-     * with them.
+     * household of three or more, and three more when the owner has accrued more than a fiscal
+     * year of tenure (see {@link Tenure}). Derived from the owner's own fields, so it stays
+     * consistent with them.
      */
     @Transient
     public Integer getMembershipPoints() {
