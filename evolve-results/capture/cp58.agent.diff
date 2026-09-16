@@ -1,0 +1,195 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ab8fc801b..768212977 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -48,6 +48,8 @@ public interface OwnerMapper {
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     // Not derivable from a single owner; the responder sets it from the owner's city count.
+     @Mapping(target = "capacityWarning", ignore = true)
++    // Depends on the owner's city count, so the responder sets it (see OwnerRisk).
++    @Mapping(target = "riskFlag", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+index 58d4662c3..a155433bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+@@ -36,4 +36,13 @@ final class CityCapacity {
+         long count = Cities.countIn(repository, city);
+         return count >= WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
+     }
++
++    /**
++     * Whether the city is at or over its soft capacity (the {@link #WARNING_THRESHOLD}).
++     * Unlike {@link #warningRaised}, this stays true once the city reaches the hard limit,
++     * so it flags both a city nearing capacity and a full one.
++     */
++    static boolean overSoftCapacity(OwnerRepository repository, String city) {
++        return Cities.countIn(repository, city) >= WARNING_THRESHOLD;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+index 5cbf72604..a8fcd2f0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+@@ -19,4 +19,32 @@ final class DisposableEmailDomains {
+         String domain = EmailNormalizer.domainOf(email);
+         return domain != null && BLOCKED.contains(domain);
+     }
++
++    /**
++     * Whether the address is <em>disposable-adjacent</em>: related to a blocked throwaway
++     * domain without being exactly on the blocklist (an exact match is rejected outright by
++     * {@link RejectDisposableEmail}, so it never reaches here). A domain is adjacent when it
++     * is a subdomain of a blocked domain (e.g. {@code inbox.mailinator.com}) or shares a
++     * blocked domain's base label under a different suffix (e.g. {@code mailinator.net}).
++     * A soft signal only, used to raise the owner's risk flag.
++     */
++    static boolean isDisposableAdjacent(String email) {
++        String domain = EmailNormalizer.domainOf(email);
++        if (domain == null || BLOCKED.contains(domain)) {
++            return false;
++        }
++        for (String blocked : BLOCKED) {
++            if (domain.endsWith("." + blocked) || baseLabel(domain).equals(baseLabel(blocked))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /** The first (registrable) label of a domain, e.g. {@code mailinator} for both
++     *  {@code mailinator.com} and {@code mailinator.net}. */
++    private static String baseLabel(String domain) {
++        int dot = domain.indexOf('.');
++        return dot < 0 ? domain : domain.substring(0, dot);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+new file mode 100644
+index 000000000..95e943f0e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Builds the single-owner response DTO. Beyond the plain field mapping it stamps the
++ * derived flags a single owner cannot compute alone because they depend on the other
++ * owners — the bulk-signup and city-capacity warnings and the composite risk flag. Kept
++ * here so every single-owner responder ({@link RespondWithOwner},
++ * {@link RespondWithOwnerCreated}, {@link RespondWithOwnerUpdated}) agrees on the shape.
++ */
++final class OwnerResponses {
++
++    private OwnerResponses() {
++    }
++
++    static OwnerDto toDto(Owner owner, OwnerMapper mapper, OwnerRepository repository) {
++        OwnerDto dto = mapper.toOwnerDto(owner);
++        dto.setBulkSignupWarning(BulkSignup.warningRaised(repository));
++        dto.setCapacityWarning(CityCapacity.warningRaised(repository, owner.getCity()));
++        dto.setRiskFlag(OwnerRisk.of(owner, repository));
++        return dto;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java
+new file mode 100644
+index 000000000..5da73900f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The owner risk policy: whether a created owner warrants a manual review. It composes the
++ * three existing risk signals rather than re-deriving them — the owner is a possible
++ * duplicate ({@link AssignPossibleDuplicate}), its email domain is disposable-adjacent
++ * ({@link DisposableEmailDomains#isDisposableAdjacent}), or its city is at or over its soft
++ * capacity ({@link CityCapacity#overSoftCapacity}). The flag is true when any signal holds.
++ *
++ * <p>City capacity depends on the other owners, so this is computed at response time from
++ * the repository rather than stored on the owner (see the owner responders).
++ */
++final class OwnerRisk {
++
++    private OwnerRisk() {
++    }
++
++    static boolean of(Owner owner, OwnerRepository repository) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || DisposableEmailDomains.isDisposableAdjacent(owner.getEmail())
++            || CityCapacity.overSoftCapacity(repository, owner.getCity());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 108289d8f..5c7df099c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -11,9 +11,6 @@ public class RespondWithOwner {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setBulkSignupWarning(BulkSignup.warningRaised(ownerRepository));
+-        dto.setCapacityWarning(CityCapacity.warningRaised(ownerRepository, owner.getCity()));
+-        response.send(dto);
++        response.send(OwnerResponses.toDto(owner, ownerMapper, ownerRepository));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index b78ca6fe4..8762cb41f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,9 +14,7 @@ public class RespondWithOwnerCreated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setBulkSignupWarning(BulkSignup.warningRaised(ownerRepository));
+-        dto.setCapacityWarning(CityCapacity.warningRaised(ownerRepository, owner.getCity()));
++        OwnerDto dto = OwnerResponses.toDto(owner, ownerMapper, ownerRepository);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index da6e7bb37..7710260c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -13,9 +13,7 @@ public class RespondWithOwnerUpdated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setBulkSignupWarning(BulkSignup.warningRaised(ownerRepository));
+-        dto.setCapacityWarning(CityCapacity.warningRaised(ownerRepository, owner.getCity()));
++        OwnerDto dto = OwnerResponses.toDto(owner, ownerMapper, ownerRepository);
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d1e0c4da8..311e383ac 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2209,6 +2209,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when this owner warrants a manual review because any risk signal holds - it is a possible duplicate, its email domain is disposable-adjacent (related to a known throwaway-mail domain without being exactly blocked), or its city is at or over its soft capacity; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, derived on read - 'EMAIL' when an email address is present, otherwise 'PHONE'.
