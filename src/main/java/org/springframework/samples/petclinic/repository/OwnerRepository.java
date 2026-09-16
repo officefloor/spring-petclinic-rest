@@ -114,7 +114,7 @@ public interface OwnerRepository {
     /**
      * Count the <code>Owner</code>s that already belong to the given household, i.e. that
      * carry the given shared household id. Used to size a new owner's household when
-     * assigning its membership tier.
+     * recording its household size at registration.
      *
      * @param householdId the shared household id to match
      * @return the number of owners already sharing that household id

@@ -166,19 +166,23 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code "GOLD"} when the owner belongs to a household
-     * of three or more members, otherwise {@code "SILVER"} for a unique owner (namesake
-     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise. Derived
-     * from the owner's own fields, so it stays consistent with them.
+     * The owner's membership level, a number from 1 to 3. Every owner starts at level 1;
+     * one level is added when an email is on file and one more when the owner is unique
+     * (namesake count of zero). The level is capped at 3, leaving level 4 reserved for
+     * tenure. Derived from the owner's own fields, so it stays consistent with them.
      */
     @Transient
-    public String getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= 3) {
-            return "GOLD";
+    public Integer getMembershipLevel() {
+        int level = 1;
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        if (hasEmail) {
+            level++;
         }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
-        boolean hasEmail = this.email != null && !this.email.isEmpty();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
+        if (unique) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
