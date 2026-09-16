@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 21ba98235..388ba626f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -197,13 +197,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's locality: the canonical region derived from the city via the fixed
+-     * {@link CityRegionTable}, or {@code "UNKNOWN"} when the city is not in the table.
+-     * Derived from the owner's own city, so it stays consistent with it.
++     * The owner's locality: the canonical region. This prefers the postcode, resolving the
++     * region whose range contains it (see {@link RegionPostcodeTable}), and only falls back
++     * to the city via the fixed {@link CityRegionTable} when the postcode is absent or in no
++     * known range. Derived from the owner's own fields, so it stays consistent with them.
+      */
+     @Transient
+     public String getLocality() {
+-        return CityRegionTable.regionFor(this.city);
++        return RegionPostcodeTable.regionFor(this.postcode)
++            .orElseGet(() -> CityRegionTable.regionFor(this.city));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
+index 6c8ab8a1b..a4288d45c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
+@@ -16,9 +16,11 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import java.util.Map;
++import java.util.Optional;
+ 
+ /**
+- * The fixed region-to-postcode-range lookup used to validate an owner's postcode.
++ * The fixed region-to-postcode-range lookup used to validate an owner's postcode and to
++ * resolve the region a postcode belongs to.
+  *
+  * <p>Maps each known region (see {@link CityRegionTable}) to the inclusive range of
+  * 4-digit postcodes valid within it: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
+@@ -35,6 +37,24 @@ public final class RegionPostcodeTable {
+     private RegionPostcodeTable() {
+     }
+ 
++    /**
++     * Resolve the canonical region whose postcode range contains the given postcode.
++     *
++     * @param postcode a postcode value, which may be {@code null} or non-numeric
++     * @return the region owning the range that contains the postcode, or an empty
++     *         {@link Optional} when the postcode is absent, unparseable or in no known range
++     */
++    public static Optional<String> regionFor(String postcode) {
++        if (postcode == null || !postcode.chars().allMatch(Character::isDigit) || postcode.isEmpty()) {
++            return Optional.empty();
++        }
++        int value = Integer.parseInt(postcode);
++        return RANGE_BY_REGION.entrySet().stream()
++            .filter(e -> value >= e.getValue()[0] && value <= e.getValue()[1])
++            .map(Map.Entry::getKey)
++            .findFirst();
++    }
++
+     /**
+      * Whether the given postcode falls within the range valid for the region.
+      *
