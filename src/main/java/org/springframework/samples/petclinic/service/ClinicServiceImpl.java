@@ -238,11 +238,25 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), ownerRepository.count()));
+        if (owner.isNew()) {
+            if (owner.getCustomerCode() == null) {
+                owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), ownerRepository.count()));
+            }
+            owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Count the existing owners that already share the given first and last name,
+     * compared case-insensitively. Used to stamp a new owner's namesake count at
+     * registration, before it is itself persisted.
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .filter(existing -> existing.getFirstName().equalsIgnoreCase(firstName))
+            .count();
     }
 
     @Override
