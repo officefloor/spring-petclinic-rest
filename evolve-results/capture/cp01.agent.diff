@@ -1,0 +1,190 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a82ccaabf..a847f6fc4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,8 +30,10 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
++import org.springframework.validation.FieldError;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+@@ -136,6 +138,11 @@ public class ExceptionControllerAdvice {
+         BindingErrorsResponse errors = new BindingErrorsResponse();
+         BindingResult bindingResult = e.getBindingResult();
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        List<String> fieldNames = bindingResult.getFieldErrors().stream()
++            .map(FieldError::getField)
++            .distinct()
++            .toList();
++        detail.setProperty("errors", fieldNames);
+         if (bindingResult.hasErrors()) {
+             errors.addAllErrors(bindingResult);
+             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
+@@ -162,4 +169,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link MissingOwnerFieldsException} raised when an owner is created or updated with
++     * required fields that are missing or blank. Returns a 400 Bad Request whose body carries an
++     * {@code errors} array listing the name of each offending field.
++     *
++     * @param e The {@link MissingOwnerFieldsException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(MissingOwnerFieldsException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", e.getMissingFields());
++        logger.debug("Missing or blank required fields at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMissingFields());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e52..e36ec426a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -99,6 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        OwnerFieldsValidator.validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/MissingOwnerFieldsException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/MissingOwnerFieldsException.java
+new file mode 100644
+index 000000000..57a19f659
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/MissingOwnerFieldsException.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.List;
++
++/**
++ * Thrown when a request to create or update an owner omits or blanks one or more
++ * required fields. Carries the names of the offending fields so the REST layer can
++ * report them back to the client.
++ *
++ * @see OwnerFieldsValidator
++ */
++public class MissingOwnerFieldsException extends RuntimeException {
++
++    private final List<String> missingFields;
++
++    public MissingOwnerFieldsException(List<String> missingFields) {
++        super("Missing or blank required owner fields: " + missingFields);
++        this.missingFields = List.copyOf(missingFields);
++    }
++
++    /**
++     * @return the names of the required fields that were missing or blank, in declaration order
++     */
++    public List<String> getMissingFields() {
++        return missingFields;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java
+new file mode 100644
+index 000000000..eced5313a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerFieldsValidator.java
+@@ -0,0 +1,61 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Validates that an {@link OwnerFieldsDto} carries a non-blank value for every
++ * required owner field. This complements the schema-level Bean Validation
++ * constraints: {@code address} and {@code city} have no pattern, so a
++ * whitespace-only value would otherwise satisfy their {@code @Size(min = 1)}
++ * constraint and slip through.
++ */
++public final class OwnerFieldsValidator {
++
++    private OwnerFieldsValidator() {
++    }
++
++    /**
++     * Rejects an owner whose required fields are missing or blank.
++     *
++     * @param ownerFields the submitted owner fields
++     * @throws MissingOwnerFieldsException if any of {@code firstName}, {@code lastName},
++     *                                     {@code address}, {@code city} or {@code telephone}
++     *                                     is {@code null} or blank
++     */
++    public static void validateRequiredFields(OwnerFieldsDto ownerFields) {
++        List<String> missing = new ArrayList<>();
++        addIfBlank(missing, "firstName", ownerFields.getFirstName());
++        addIfBlank(missing, "lastName", ownerFields.getLastName());
++        addIfBlank(missing, "address", ownerFields.getAddress());
++        addIfBlank(missing, "city", ownerFields.getCity());
++        addIfBlank(missing, "telephone", ownerFields.getTelephone());
++        if (!missing.isEmpty()) {
++            throw new MissingOwnerFieldsException(missing);
++        }
++    }
++
++    private static void addIfBlank(List<String> missing, String fieldName, String value) {
++        if (value == null || value.isBlank()) {
++            missing.add(fieldName);
++        }
++    }
++}
