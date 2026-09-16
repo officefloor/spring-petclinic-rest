@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.CheckDigit;
 import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
+import org.springframework.samples.petclinic.model.Tenure;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -66,8 +67,9 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** The owner's membership level from 1 to 3: starts at 1, plus 1 when an email is present,
-     * plus 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure). */
+    /** The owner's membership level from 1 to 4: starts at 1, plus 1 when an email is present,
+     * plus 1 when namesakeCount is 0, plus 1 when tenure exceeds 365 days. The top level is thus
+     * tenure-gated: a newly created owner has zero tenure, so it never exceeds level 3. */
     default int membershipLevel(Owner owner) {
         int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
@@ -77,7 +79,10 @@ public interface OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        if (Tenure.days(owner.getRegistrationDate()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /** The owner's canonical region: the REGION segment of the customer code (see
