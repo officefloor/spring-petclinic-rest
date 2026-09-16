@@ -43,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     // Not derivable from a single owner; the responder sets it from the daily registration count.
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -155,6 +156,13 @@ public interface OwnerMapper {
 
     private static String firstInitial(String name) {
         return Character.toUpperCase(name.charAt(0)) + ".";
+    }
+
+    /**
+     * The owner's canonical URI: {@code /api/owners/} followed by its id.
+     */
+    default String selfLink(Owner owner) {
+        return "/api/owners/" + owner.getId();
     }
 
     Owner toOwner(OwnerDto ownerDto);
