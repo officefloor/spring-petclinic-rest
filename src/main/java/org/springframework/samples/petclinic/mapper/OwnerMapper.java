@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.model.Tenure;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerEmails;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
 
 import java.util.Collection;
@@ -40,6 +41,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -167,6 +169,16 @@ public interface OwnerMapper {
      * {@code possibleDuplicateOf} id. */
     default boolean possibleDuplicate(Owner owner) {
         return owner.getPossibleDuplicateOf() != null;
+    }
+
+    /** Whether the owner needs manual review: true when it is a {@link #possibleDuplicate
+     * possible duplicate}, its city was over its soft capacity at creation (its
+     * {@code capacityWarning} flag is set), or its email domain is
+     * {@link OwnerEmails#isDisposableAdjacent disposable-adjacent}; otherwise false. */
+    default boolean riskFlag(Owner owner) {
+        return possibleDuplicate(owner)
+                || Boolean.TRUE.equals(owner.getCapacityWarning())
+                || OwnerEmails.isDisposableAdjacent(owner.getEmail());
     }
 
     @Mapping(target = "id", ignore = true)
