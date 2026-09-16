@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fd0f6e071..54d77c351 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.model.Tenure;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.function.owner.OwnerEmails;
+ import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
+ 
+ import java.util.Collection;
+@@ -40,6 +41,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -169,6 +171,16 @@ public interface OwnerMapper {
+         return owner.getPossibleDuplicateOf() != null;
+     }
+ 
++    /** Whether the owner needs manual review: true when it is a {@link #possibleDuplicate
++     * possible duplicate}, its city was over its soft capacity at creation (its
++     * {@code capacityWarning} flag is set), or its email domain is
++     * {@link OwnerEmails#isDisposableAdjacent disposable-adjacent}; otherwise false. */
++    default boolean riskFlag(Owner owner) {
++        return possibleDuplicate(owner)
++                || Boolean.TRUE.equals(owner.getCapacityWarning())
++                || OwnerEmails.isDisposableAdjacent(owner.getEmail());
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "memberId", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmails.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmails.java
+index 9bd0b25df..6784207bb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmails.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmails.java
+@@ -3,13 +3,15 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.Locale;
+ import java.util.Set;
+ import java.util.regex.Pattern;
++import java.util.stream.Collectors;
+ 
+ /**
+  * The single rule set for owner email addresses: what counts as "present", what counts as
+- * a syntactically valid address, which domains are disposable, and how one is normalized for
+- * storage. Shared so every step that touches an owner email treats it the same way.
++ * a syntactically valid address, which domains are disposable (or disposable-adjacent), and
++ * how one is normalized for storage. Shared so every step that touches an owner email treats
++ * it the same way.
+  */
+-final class OwnerEmails {
++public final class OwnerEmails {
+ 
+     /** local-part {@code @} domain, no whitespace, and a dotted domain. */
+     private static final Pattern SYNTAX = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+@@ -18,6 +20,13 @@ final class OwnerEmails {
+     private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+             "mailinator.com", "tempmail.com", "guerrillamail.com");
+ 
++    /** The disposable providers' second-level labels — the label immediately before the final
++     *  dot of each disposable domain (e.g. "mailinator" from "mailinator.com"). Derived from
++     *  {@link #DISPOSABLE_DOMAINS} so the two stay in sync. */
++    private static final Set<String> DISPOSABLE_LABELS = DISPOSABLE_DOMAINS.stream()
++            .map(OwnerEmails::secondLevelLabel)
++            .collect(Collectors.toUnmodifiableSet());
++
+     private OwnerEmails() {
+     }
+ 
+@@ -53,4 +62,28 @@ final class OwnerEmails {
+     static boolean isDisposable(String email) {
+         return DISPOSABLE_DOMAINS.contains(domainOf(email));
+     }
++
++    /** Whether {@code email}'s domain is disposable-adjacent: it shares a known disposable
++     *  provider's second-level label (e.g. "mailinator" in "mailinator.net" or
++     *  "sub.mailinator.com") without being an outright {@link #isDisposable disposable} domain.
++     *  Such an address is accepted at create time but is a soft risk signal. */
++    public static boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null || DISPOSABLE_DOMAINS.contains(domain)) {
++            return false; // absent, or exactly disposable and so not merely adjacent
++        }
++        return DISPOSABLE_LABELS.contains(secondLevelLabel(domain));
++    }
++
++    /** The label immediately left of a domain's top-level label (e.g. "mailinator" from both
++     *  "mailinator.com" and "sub.mailinator.com"), or {@code null} when {@code domain} has no
++     *  dot to the left of a top-level label. */
++    private static String secondLevelLabel(String domain) {
++        int lastDot = domain.lastIndexOf('.');
++        if (lastDot <= 0) {
++            return null;
++        }
++        String withoutTld = domain.substring(0, lastDot);
++        return withoutTld.substring(withoutTld.lastIndexOf('.') + 1);
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bb0f820b5..e8af30913 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2208,6 +2208,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when this owner needs manual review — it is a possibleDuplicate,
++                its city was over its soft capacity (its capacityWarning is set) at the moment it
++                was created, or its email domain is disposable-adjacent (shares a known disposable
++                provider's second-level name, such as 'mailinator.net', without being an outright
++                disposable domain), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             fiscalYear:
+               title: Fiscal year
+               description: The owner's fiscal year, formatted 'FY<YY>', derived from the
