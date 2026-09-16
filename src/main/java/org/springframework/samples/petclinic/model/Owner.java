@@ -69,11 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -179,30 +176,22 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier. Today this is the {@link #getCustomerCode()
-     * customer code}; when the customer code is later unified into a member id, this single
-     * method changes to return that instead, so everything that reports the owner's primary
-     * identifier (such as the {@code OWNER_CREATED} audit event) follows automatically.
+     * The owner's primary identifier: its {@link #getMemberId() member id}. Reported by
+     * everything that names the owner's primary identifier (such as the
+     * {@code OWNER_CREATED} audit event), so a future change of identifier is a single
+     * change here.
      */
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
+        return getMemberId();
     }
 
     public String getHouseholdId() {

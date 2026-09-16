@@ -7,9 +7,8 @@ import java.time.Month;
  * Fiscal-year calendar for owner date-derived values. The fiscal year starts on 1 July
  * and is named after the calendar year in which it begins, so 1 July 2026 through 30 June
  * 2027 is fiscal year 2026 ("FY26"). This single primitive backs everything derived on a
- * fiscal-year basis: the owner's {@code fiscalYear} field, the membership number's year
- * segment ({@code -M<YY>}) and the tenure count in
- * {@link MembershipPoints}.
+ * fiscal-year basis: the owner's {@code fiscalYear} field, the member id's FY segment (see
+ * {@link MemberId}) and the tenure count in {@link MembershipPoints}.
  */
 public final class FiscalYear {
 
@@ -33,7 +32,12 @@ public final class FiscalYear {
 
     /** A date's fiscal year as an {@code FY<YY>} label (e.g. "FY26"). */
     public static String label(LocalDate date) {
-        return "FY" + shortLabel(date);
+        return label(shortLabel(date));
+    }
+
+    /** A 2-digit fiscal year (e.g. "26") as an {@code FY<YY>} label (e.g. "FY26"). */
+    public static String label(String shortLabel) {
+        return "FY" + shortLabel;
     }
 
     /** The whole fiscal years elapsed from {@code from} to {@code to} — the number of

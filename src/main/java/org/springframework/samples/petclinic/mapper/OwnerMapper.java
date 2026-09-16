@@ -10,10 +10,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.ContactPreference;
-import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.IdentityKey;
-import org.springframework.samples.petclinic.util.Luhn;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.OwnerSegment;
@@ -37,7 +36,6 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -53,12 +51,12 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * The owner's locality: the REGION segment of its customer-code identity (see
-     * {@link CustomerCode#regionOf(String)}), which is the region derived from the
-     * owner's postcode then city when the code was assigned.
+     * The owner's locality: the REGION segment of its {@code memberId} (see
+     * {@link MemberId#regionOf(String)}), which is the region derived from the owner's
+     * postcode then city when the id was assigned.
      */
     default String locality(Owner owner) {
-        return CustomerCode.regionOf(owner.getCustomerCode());
+        return MemberId.regionOf(owner.getMemberId());
     }
 
     /**
@@ -112,14 +110,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year, an {@code FY<YY>} label derived from its
-     * business-day-adjusted registration date; {@code null} when no date is present.
+     * The owner's fiscal year, an {@code FY<YY>} label built from the FY segment of its
+     * {@code memberId} (see {@link MemberId#fiscalYearShortOf(String)}); {@code null} when
+     * the owner has no member id.
      *
-     * @see FiscalYear#label(java.time.LocalDate)
+     * @see FiscalYear#label(String)
      */
     default String fiscalYear(Owner owner) {
-        return owner.getRegistrationDate() == null ? null
-                : FiscalYear.label(owner.getRegistrationDate());
+        String fy = MemberId.fiscalYearShortOf(owner.getMemberId());
+        return fy == null ? null : FiscalYear.label(fy);
     }
 
     /**
@@ -149,15 +148,6 @@ public interface OwnerMapper {
      */
     default String ownerSegment(Owner owner) {
         return OwnerSegment.of(membershipLevel(owner), locality(owner));
-    }
-
-    /**
-     * The Luhn check digit (0-9) over the digits of the owner's customer code.
-     *
-     * @see Luhn#checkDigit(String)
-     */
-    default Integer checkDigit(Owner owner) {
-        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /**

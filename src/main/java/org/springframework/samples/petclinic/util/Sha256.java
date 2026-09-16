@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Shared SHA-256 hex digest, so the several identity values derived from a hash (the
- * customer code's {@code HASH8} segment and the household id) all agree on the algorithm
+ * member id's {@code HASH8} segment and the household id) all agree on the algorithm
  * and encoding instead of each carrying their own copy.
  */
 public final class Sha256 {

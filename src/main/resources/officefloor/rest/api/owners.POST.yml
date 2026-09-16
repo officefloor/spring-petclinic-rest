@@ -98,21 +98,16 @@ build:
 applyRegistrationDate:
   class: org.springframework.samples.petclinic.rest.function.owner.ApplyRegistrationDate
   govern: [ transaction ]
-  next: assignCustomerCode
+  next: assignMemberId
 
-# Assign the '<REGION>-<HASH8>' customer code, where REGION is the owner's postcode-derived
-# region and HASH8 the first 8 upper-case hex chars of SHA-256(normalizedTelephone + lastName).
-# Runs after the telephone is normalized and before save, so the code is stored and returned.
-assignCustomerCode:
-  class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
-  govern: [ transaction ]
-  next: assignMembershipNumber
-
-# Assign the '<customerCode>-M<YY>' membership number, where YY is the last two digits
-# of the registration date year. Runs after the customer code and registration date are
-# set and before save, so the number is stored and returned with the owner.
-assignMembershipNumber:
-  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipNumber
+# Assign the unified '<REGION><FY><HASH8><CHK>' member id: REGION the owner's
+# postcode-derived region, FY the 2-digit fiscal year of the registration date, HASH8 the
+# first 8 upper-case hex chars of SHA-256(normalizedTelephone + lastName), and CHK a single
+# Luhn check digit over the digits of <REGION><FY><HASH8>. Runs after the telephone is
+# normalized and the registration date resolved, and before save, so the id is stored and
+# returned; a collision with an existing member id is de-duplicated by appending '-<n>'.
+assignMemberId:
+  class: org.springframework.samples.petclinic.rest.function.owner.AssignMemberId
   govern: [ transaction ]
   next: assignHousehold
 
@@ -172,7 +167,7 @@ recordIdempotency:
   next: audit
 
 # The save assigns the generated id, so audit here to log the created owner's id,
-# customerCode and registrationDate to the AUDIT logger before responding.
+# memberId and registrationDate to the AUDIT logger before responding.
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
   govern: [ transaction ]

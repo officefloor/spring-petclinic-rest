@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@link ResolveRegistrationDate}. Runs after {@link BuildOwner} and mutates the built
  * owner in place, overwriting whatever date the request body mapped in, so the owner is
  * stored and returned with the adjusted business day and later steps (e.g.
- * {@link AssignMembershipNumber}) derive their values from it.
+ * {@link AssignMemberId}) derive their values from it.
  */
 public class ApplyRegistrationDate {
 

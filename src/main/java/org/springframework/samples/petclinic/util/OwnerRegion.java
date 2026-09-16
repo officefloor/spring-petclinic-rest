@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * table when the postcode is absent or in no known range, or {@link CityRegion#UNKNOWN}
  * for a city not in the table.
  *
- * <p>This region is the {@code REGION} segment of the owner's customer-code identity (see
- * {@link CustomerCode}); the identity is built from it on creation and the locality read
- * back off it, so there is one region concept rather than two derivations that could drift.
+ * <p>This region is the {@code REGION} segment of the owner's {@code memberId} identity (see
+ * {@link MemberId}); the identity is built from it on creation and the locality read back
+ * off it, so there is one region concept rather than two derivations that could drift.
  */
 public final class OwnerRegion {
 
