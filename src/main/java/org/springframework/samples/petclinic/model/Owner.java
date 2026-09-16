@@ -71,13 +71,14 @@ public class Owner extends Person {
 
     /**
      * Default the registration date to the server's current date when none was
-     * supplied. Runs only on insert, so an explicitly provided date is kept.
+     * supplied, then roll the effective date forward onto a business day so a
+     * weekend registration date always lands on the following Monday. Runs only
+     * on insert.
      */
     @PrePersist
     private void defaultRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+        LocalDate effectiveDate = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
+        this.registrationDate = BusinessDayAdjuster.toBusinessDay(effectiveDate);
     }
 
     public String getAddress() {

@@ -40,12 +40,13 @@ public class DailyRegistrationCapacityValidator {
 
     /**
      * Rejects an owner registration once {@value #MAX_OWNERS_PER_DAY} or more owners have already
-     * been registered today.
+     * been registered on the given day.
      *
-     * @throws DailyRegistrationLimitExceededException if today is already at capacity
+     * @param day the (business) day the owner is being registered on
+     * @throws DailyRegistrationLimitExceededException if that day is already at capacity
      */
-    public void validateHasCapacity() {
-        if (this.dailyRegistrationCounter.count(LocalDate.now()) >= MAX_OWNERS_PER_DAY) {
+    public void validateHasCapacity(LocalDate day) {
+        if (this.dailyRegistrationCounter.count(day) >= MAX_OWNERS_PER_DAY) {
             throw new DailyRegistrationLimitExceededException(MAX_OWNERS_PER_DAY);
         }
     }
