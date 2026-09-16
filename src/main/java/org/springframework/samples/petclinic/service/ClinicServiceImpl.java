@@ -279,6 +279,12 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public long countOwnersByCity(String city) throws DataAccessException {
+        return ownerRepository.countByCity(city);
+    }
+
+    @Override
     @Transactional
     public String shareHousehold(Owner owner) throws DataAccessException {
         String householdId = householdIdGenerator.generate(owner.getLastName(), owner.getAddress());

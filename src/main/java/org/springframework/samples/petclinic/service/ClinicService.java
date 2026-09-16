@@ -73,6 +73,15 @@ public interface ClinicService {
 	boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException;
 
 	/**
+	 * Count the <code>Owner</code>s already registered in the given city, compared
+	 * case-insensitively.
+	 *
+	 * @param city the city to match (case-insensitively)
+	 * @return the number of owners already living in that city
+	 */
+	long countOwnersByCity(String city) throws DataAccessException;
+
+	/**
 	 * Join the given (not-yet-persisted) owner to its household, assigning the stable,
 	 * shared household id to the owner and backfilling it onto any existing members
 	 * that share the same last name and address (compared case-insensitively and with

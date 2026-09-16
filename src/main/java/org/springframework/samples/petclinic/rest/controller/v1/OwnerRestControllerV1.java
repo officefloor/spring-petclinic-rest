@@ -57,6 +57,12 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
 
+    /**
+     * Maximum number of owners allowed to be registered in a single city. A new owner
+     * whose city already holds this many owners is rejected as a conflict.
+     */
+    private static final long MAX_OWNERS_PER_CITY = 50;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -132,6 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         if (clinicService.existsOwnerByTelephone(telephone)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
