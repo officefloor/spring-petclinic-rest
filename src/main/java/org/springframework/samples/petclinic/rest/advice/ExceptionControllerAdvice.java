@@ -195,8 +195,8 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link InvalidTelephoneException} raised when an owner's telephone does not contain
-     * exactly 10 digits once every non-digit character has been stripped. Returns a 400 Bad Request
+     * Handles {@link InvalidTelephoneException} raised when an owner's telephone cannot be converted
+     * to a valid E.164 number ({@code '+'} followed by 8 to 15 digits). Returns a 400 Bad Request
      * whose body carries an {@code errors} array naming the {@code telephone} field.
      *
      * @param e The {@link InvalidTelephoneException} to be handled

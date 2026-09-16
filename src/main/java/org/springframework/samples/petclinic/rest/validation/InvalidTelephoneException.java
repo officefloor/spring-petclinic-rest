@@ -17,8 +17,8 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Thrown when an owner's submitted telephone does not contain exactly 10 digits once every
- * non-digit character has been stripped. The REST layer reports this as a 400 Bad Request.
+ * Thrown when an owner's submitted telephone cannot be converted to a valid E.164 number (a
+ * {@code '+'} followed by 8 to 15 digits). The REST layer reports this as a 400 Bad Request.
  *
  * @see TelephoneNormalizer
  */

@@ -17,30 +17,48 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Normalizes an owner's telephone to its canonical storage form: every non-digit character is
- * removed and the result must contain exactly 10 digits.
+ * Normalizes an owner's telephone to its canonical E.164 storage form. Spaces, dashes and
+ * brackets (and any other formatting) are stripped. A leading {@code '+'} and its country code are
+ * kept as given; otherwise the default country code {@code '+61'} is assumed and a single leading
+ * {@code '0'} is dropped from the national digits. The result is {@code '+'} followed by 8 to 15
+ * digits.
  */
 public final class TelephoneNormalizer {
 
-    private static final int REQUIRED_DIGITS = 10;
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    private static final int MIN_DIGITS = 8;
+
+    private static final int MAX_DIGITS = 15;
 
     private TelephoneNormalizer() {
     }
 
     /**
-     * Strips every non-digit character from the submitted telephone and returns the resulting
-     * 10-digit value.
+     * Converts the submitted telephone to its canonical E.164 storage form.
      *
      * @param telephone the submitted telephone, possibly containing formatting characters
-     * @return the normalized 10-digit telephone
-     * @throws InvalidTelephoneException if the value does not contain exactly 10 digits once stripped
+     * @return the normalized E.164 telephone: {@code '+'} followed by 8 to 15 digits
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public static String normalize(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != REQUIRED_DIGITS) {
-            throw new InvalidTelephoneException(
-                "Telephone must contain exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
+        String trimmed = telephone == null ? "" : telephone.trim();
+        boolean hasCountryCode = trimmed.startsWith("+");
+        String digits = trimmed.replaceAll("\\D", "");
+        String national;
+        if (hasCountryCode) {
+            national = digits;
+        } else {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            national = DEFAULT_COUNTRY_CODE + digits;
         }
-        return digits;
+        if (national.length() < MIN_DIGITS || national.length() > MAX_DIGITS) {
+            throw new InvalidTelephoneException(
+                "Telephone must form a valid E.164 number with " + MIN_DIGITS + " to " + MAX_DIGITS
+                    + " digits after the '+'");
+        }
+        return "+" + national;
     }
 }
