@@ -159,8 +159,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getPostcode() != null && !postcodeValidator.isValid(owner.getPostcode(), owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
+        if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         LocalDate registrationDate = BusinessDay.rollForward(
-            owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate());
+            suppliedRegistrationDate == null ? LocalDate.now() : suppliedRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
