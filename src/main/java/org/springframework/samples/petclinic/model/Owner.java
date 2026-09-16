@@ -250,30 +250,43 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. Every owner starts at level 1;
-     * one level is added when an email is on file, one more when the owner is unique
-     * (namesake count of zero), and one more when the owner has accrued more than a year of
-     * tenure (see {@link Tenure}). The level is capped at 4, so reaching it requires tenure
-     * and a brand-new owner (zero tenure) never exceeds level 3. Derived from the owner's own
-     * fields, so it stays consistent with them.
+     * The owner's membership points, starting at zero: two points are added when an email is
+     * on file, one more when the owner is unique (namesake count of zero), two more for a
+     * household of three or more, and three more when the owner has accrued more than a year of
+     * tenure (see {@link Tenure}). Derived from the owner's own fields, so it stays consistent
+     * with them.
      */
     @Transient
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         if (unique) {
-            level++;
+            points += 1;
+        }
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        if (largeHousehold) {
+            points += 2;
         }
         boolean tenured = this.registrationDate != null
             && Tenure.qualifiesForTopLevel(this.registrationDate, LocalDate.now());
         if (tenured) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4, derived from their
+     * {@link #getMembershipPoints() membership points} (see {@link MembershipLevel}). Derived
+     * from the owner's own fields, so it stays consistent with them.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        return MembershipLevel.forPoints(getMembershipPoints());
     }
 
     /**
