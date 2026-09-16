@@ -22,10 +22,14 @@ package org.springframework.samples.petclinic.rest.validation;
  * kept as given; otherwise the default country code {@code '+61'} is assumed and a single leading
  * {@code '0'} is dropped from the national digits. The result is {@code '+'} followed by 8 to 15
  * digits.
+ *
+ * <p>For a recognised country (see {@link E164Country}) the national number must additionally carry
+ * exactly the number of digits that country requires ({@code +61} needs 9, {@code +1} needs 10);
+ * otherwise the value is rejected.
  */
 public final class TelephoneNormalizer {
 
-    private static final String DEFAULT_COUNTRY_CODE = "61";
+    private static final E164Country DEFAULT_COUNTRY = E164Country.AUSTRALIA;
 
     private static final int MIN_DIGITS = 8;
 
@@ -39,26 +43,38 @@ public final class TelephoneNormalizer {
      *
      * @param telephone the submitted telephone, possibly containing formatting characters
      * @return the normalized E.164 telephone: {@code '+'} followed by 8 to 15 digits
-     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number, or its
+     *                                   national-number length is wrong for its country
      */
     public static String normalize(String telephone) {
         String trimmed = telephone == null ? "" : telephone.trim();
         boolean hasCountryCode = trimmed.startsWith("+");
         String digits = trimmed.replaceAll("\\D", "");
-        String national;
+        E164Country country;
+        String nationalNumber;
         if (hasCountryCode) {
-            national = digits;
+            country = E164Country.forDigits(digits).orElse(null);
+            nationalNumber = country == null ? digits : digits.substring(country.callingCode().length());
         } else {
             if (digits.startsWith("0")) {
                 digits = digits.substring(1);
             }
-            national = DEFAULT_COUNTRY_CODE + digits;
+            country = DEFAULT_COUNTRY;
+            nationalNumber = digits;
         }
-        if (national.length() < MIN_DIGITS || national.length() > MAX_DIGITS) {
+        String callingCode = country == null ? "" : country.callingCode();
+        String allDigits = callingCode + nationalNumber;
+        if (allDigits.length() < MIN_DIGITS || allDigits.length() > MAX_DIGITS) {
             throw new InvalidTelephoneException(
                 "Telephone must form a valid E.164 number with " + MIN_DIGITS + " to " + MAX_DIGITS
                     + " digits after the '+'");
         }
-        return "+" + national;
+        if (country != null && nationalNumber.length() != country.nationalNumberLength()) {
+            throw new InvalidTelephoneException(
+                "Telephone for country code '+" + callingCode + "' requires "
+                    + country.nationalNumberLength() + " national digits, but got "
+                    + nationalNumber.length());
+        }
+        return "+" + allDigits;
     }
 }
