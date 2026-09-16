@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.CheckDigit;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
@@ -27,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -83,6 +85,11 @@ public interface OwnerMapper {
     /** The owner's derived identity key (see {@link OwnerIdentity}). */
     default String identityKey(Owner owner) {
         return OwnerIdentity.of(owner);
+    }
+
+    /** The Luhn check digit over the digits of the owner's customer code, or null when unset. */
+    default Integer checkDigit(Owner owner) {
+        return owner.getCustomerCode() == null ? null : CheckDigit.luhn(owner.getCustomerCode());
     }
 
     @Mapping(target = "id", ignore = true)
