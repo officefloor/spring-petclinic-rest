@@ -1,0 +1,187 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+new file mode 100644
+index 000000000..00ba9294e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * A coarse life-stage classification of a person: {@code MINOR} when under 18,
++ * {@code ADULT} from 18 to 64, and {@code SENIOR} at 65 or older. Owns the age
++ * boundaries so they live in one place rather than being scattered across callers.
++ */
++public enum AgeBand {
++
++    MINOR, ADULT, SENIOR;
++
++    private static final int ADULT_AGE = 18;
++    private static final int SENIOR_AGE = 65;
++
++    /**
++     * Classify the band of someone born on {@code birthDate} as of {@code asOf},
++     * using their completed age in whole years.
++     */
++    public static AgeBand asOf(LocalDate birthDate, LocalDate asOf) {
++        int years = Period.between(birthDate, asOf).getYears();
++        if (years < ADULT_AGE) {
++            return MINOR;
++        }
++        if (years < SENIOR_AGE) {
++            return ADULT;
++        }
++        return SENIOR;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9f0d0e3d3..19ac70487 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -54,6 +54,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -115,6 +118,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+@@ -253,6 +264,20 @@ public class Owner extends Person {
+         return telephonePart + "|" + emailPart + "|" + householdPart;
+     }
+ 
++    /**
++     * The owner's age band relative to their registration date: {@code "MINOR"} when
++     * under 18, {@code "ADULT"} from 18 to 64, and {@code "SENIOR"} at 65 or older.
++     * Derived from the owner's own birth and registration dates, so it stays consistent
++     * with them; null until a birth date is on file. See {@link AgeBand}.
++     */
++    @Transient
++    public String getAgeBand() {
++        if (this.birthDate == null || this.registrationDate == null) {
++            return null;
++        }
++        return AgeBand.asOf(this.birthDate, this.registrationDate).name();
++    }
++
+     /**
+      * Normalize the registration date before persisting: default it to the server's
+      * current date when none was supplied, then roll it forward onto a business day so
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 23bf4e9d4..3e6731fab 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d5cfcf6f3..a2528e115 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e2544ca4..6b8586d89 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e2ee3a77f..ecc6abae2 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 901a9bd0f..b24945453 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2062,6 +2062,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: >-
++            The owner's date of birth. Optional; when supplied it is used to
++            derive the owner's 'ageBand' relative to their registration date.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2210,6 +2218,16 @@ components:
+               type: string
+               example: '+61412345678||HH-0A1B2C3D4E5F'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band, derived from their birth date relative to
++                their registration date: 'MINOR' when under 18, 'ADULT' from 18
++                to 64, and 'SENIOR' at 65 or older. Absent when no birth date is
++                on file.
++              type: string
++              example: 'ADULT'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
