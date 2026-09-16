@@ -177,6 +177,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's customer-code check digit: the single Luhn check digit (0-9) computed
+     * over the digits of the customer code. Derived from the owner's own customer code,
+     * so it stays consistent with it.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        return LuhnCheckDigit.of(this.customerCode);
+    }
+
+    /**
      * The owner's membership level, a number from 1 to 3. Every owner starts at level 1;
      * one level is added when an email is on file and one more when the owner is unique
      * (namesake count of zero). The level is capped at 3, leaving level 4 reserved for
