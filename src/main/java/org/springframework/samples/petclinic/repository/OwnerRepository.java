@@ -92,6 +92,16 @@ public interface OwnerRepository {
     long count() throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s already registered in the given city, compared
+     * case-insensitively. Used to assign the per-city sequence in a new owner's
+     * customer code.
+     *
+     * @param city the city to match (case-insensitively)
+     * @return the number of owners already living in that city
+     */
+    long countByCity(String city) throws DataAccessException;
+
+    /**
      * Retrieve <code>Owner</code>s from the data store, returning all owners 
      *
      * @return a <code>Collection</code> of <code>Owner</code>s (or an empty <code>Collection</code> if none

@@ -240,7 +240,8 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
             if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), ownerRepository.count()));
+                owner.setCustomerCode(customerCodeGenerator.generate(
+                    owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity())));
             }
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         }

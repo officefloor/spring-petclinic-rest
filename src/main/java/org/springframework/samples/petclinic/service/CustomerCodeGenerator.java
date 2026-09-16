@@ -18,9 +18,10 @@ package org.springframework.samples.petclinic.service;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'} where
- * LAST3 is the upper-cased first three letters of the last name and NNNN is a
- * global 4-digit zero-padded sequence.
+ * Builds an owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
+ * where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased
+ * first three letters of the last name and NNNN is a per-city 4-digit zero-padded
+ * sequence.
  */
 @Component
 public class CustomerCodeGenerator {
@@ -30,13 +31,17 @@ public class CustomerCodeGenerator {
     /**
      * Build the customer code for a new owner.
      *
-     * @param lastName           the owner's last name
-     * @param existingOwnerCount the number of owners already registered; the assigned
-     *                           sequence is one more than this value
-     * @return the formatted customer code, e.g. {@code "SMI-0007"}
+     * @param city                   the owner's city
+     * @param lastName               the owner's last name
+     * @param existingCityOwnerCount the number of owners already registered in that city;
+     *                               the assigned sequence is one more than this value
+     * @return the formatted customer code, e.g. {@code "LON-SMI-0007"}
      */
-    public String generate(String lastName, long existingOwnerCount) {
-        String prefix = lastName.substring(0, Math.min(PREFIX_LENGTH, lastName.length())).toUpperCase();
-        return String.format("%s-%04d", prefix, existingOwnerCount + 1);
+    public String generate(String city, String lastName, long existingCityOwnerCount) {
+        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), existingCityOwnerCount + 1);
+    }
+
+    private String prefix(String value) {
+        return value.substring(0, Math.min(PREFIX_LENGTH, value.length())).toUpperCase();
     }
 }
