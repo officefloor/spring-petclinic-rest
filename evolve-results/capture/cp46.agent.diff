@@ -1,0 +1,211 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c91a716c9..de395ed99 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -90,6 +90,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted", nullable = false)
++    private boolean deleted;
++
+     @Transient
+     private boolean declaredHouseholdMember;
+ 
+@@ -269,6 +272,19 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted. A newly created owner is {@code false};
++     * deleting the owner retains its row and flags it {@code true}. A deleted owner is
++     * still retrievable but is ignored by the create endpoint's duplicate/identity checks.
++     */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
+      * is the last two digits of the registration date's year (e.g. {@code "NSW-1A2B3C4D-M26"}).
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 528d87c3b..4f25f8477 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -154,7 +154,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName);
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName)",
++            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName) AND deleted = FALSE",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -282,7 +282,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("householdId", householdId);
+         Long total = this.namedParameterJdbcTemplate.queryForObject(
+-            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId",
++            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId AND deleted = FALSE",
+             params,
+             Long.class);
+         return total == null ? 0 : total;
+@@ -293,7 +293,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("customerCode", customerCode);
+         Long total = this.namedParameterJdbcTemplate.queryForObject(
+-            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
++            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode AND deleted = FALSE",
+             params,
+             Long.class);
+         return total != null && total > 0;
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index b92b2a68e..002b9632d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -93,7 +93,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     @Override
+     @SuppressWarnings("unchecked")
+     public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
+-        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName)");
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName) AND owner.deleted = false");
+         query.setParameter("lastName", lastName);
+         return query.getResultList();
+     }
+@@ -157,7 +157,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     @Override
+     public long countByHouseholdId(String householdId) throws DataAccessException {
+         Query query = this.em.createQuery(
+-            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId");
++            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false");
+         query.setParameter("householdId", householdId);
+         return (long) query.getSingleResult();
+     }
+@@ -165,7 +165,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     @Override
+     public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+         Query query = this.em.createQuery(
+-            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
++            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode AND owner.deleted = false");
+         query.setParameter("customerCode", customerCode);
+         return (long) query.getSingleResult() > 0;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 5f6ed9288..30641478e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -69,10 +69,18 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate")
+     long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
+ 
++    // Duplicate/identity checks below exclude soft-deleted owners: a deleted owner no
++    // longer occupies its household, counts as a namesake, or reserves its customer code.
++
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName) AND owner.deleted = false")
++    Collection<Owner> findByLastNameIgnoreCase(@Param("lastName") String lastName);
++
+     @Override
+-    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId")
++    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false")
+     long countByHouseholdId(@Param("householdId") String householdId);
+ 
+     @Override
++    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN true ELSE false END FROM Owner owner WHERE owner.customerCode = :customerCode AND owner.deleted = false")
+     boolean existsByCustomerCode(@Param("customerCode") String customerCode);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index d75624f44..22443d633 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -155,7 +155,10 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void deleteOwner(Owner owner) throws DataAccessException {
+-        ownerRepository.delete(owner);
++        // Soft delete: retain the row and flag it so the owner stays retrievable but is
++        // ignored by the create endpoint's duplicate/identity checks.
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ 
+     @Override
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2360f5e09..f4c35ce34 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a26f95548..a3ddf9355 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   postcode   VARCHAR(4),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ea30af926..411530983 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 204c6e6fa..55fc8d685 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       postcode   TEXT,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 95298aaa7..1ebd44854 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2322,6 +2322,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether this owner has been soft-deleted. A newly created owner is
++                false; deleting the owner via DELETE /owners/{ownerId} flags it true
++                while retaining the record. A deleted owner is still retrievable but
++                is ignored by the create endpoint's duplicate/identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
