@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -68,18 +69,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 EmailNormalizer emailNormalizer) {
+                                 EmailNormalizer emailNormalizer,
+                                 AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -112,6 +117,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String address = addressNormalizer.normalize(owner.getAddress());
+        if (addressNormalizer.isBlank(address)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         Optional<String> e164Telephone = telephoneNormalizer.toE164(owner.getTelephone());
         if (e164Telephone.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
