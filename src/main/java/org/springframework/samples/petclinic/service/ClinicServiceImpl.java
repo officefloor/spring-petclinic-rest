@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -252,6 +253,26 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean existsOwnerByTelephone(String telephone) throws DataAccessException {
         return ownerRepository.existsByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException {
+        String targetAddress = normalizeIdentity(address);
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .anyMatch(owner -> normalizeIdentity(owner.getAddress()).equals(targetAddress));
+    }
+
+    /**
+     * Normalize a household identity value for comparison: trim, collapse each run of
+     * whitespace to a single space and lower-case, so that differences in case or
+     * spacing do not defeat the duplicate-household check.
+     */
+    private static String normalizeIdentity(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @Override

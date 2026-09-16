@@ -124,6 +124,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (clinicService.existsOwnerByTelephone(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && clinicService.existsOwnerByLastNameAndAddress(owner.getLastName(), owner.getAddress())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setTelephone(telephone);
         owner.setEmail(email);
         this.clinicService.saveOwner(owner);

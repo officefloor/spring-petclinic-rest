@@ -64,6 +64,17 @@ public interface OwnerRepository {
      */
     boolean existsByTelephone(String telephone) throws DataAccessException;
 
+    /**
+     * Retrieve every <code>Owner</code> whose last name equals the given value, ignoring
+     * case. Used to narrow the candidates for the duplicate-household check before the
+     * address is compared.
+     *
+     * @param lastName the last name to match (case-insensitively)
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none found)
+     */
+    Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

@@ -61,6 +61,17 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
 
+	/**
+	 * Check whether another owner already shares the given household, i.e. has the same
+	 * last name and the same address, compared case-insensitively and with runs of
+	 * whitespace collapsed to a single space.
+	 *
+	 * @param lastName the last name to match
+	 * @param address  the address to match
+	 * @return <code>true</code> if at least one existing owner shares this household
+	 */
+	boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
