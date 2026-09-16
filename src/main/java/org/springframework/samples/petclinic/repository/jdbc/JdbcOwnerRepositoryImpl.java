@@ -154,7 +154,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName);
         List<Owner> owners = this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName)",
+            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName) AND deleted = FALSE",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );
@@ -282,7 +282,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("householdId", householdId);
         Long total = this.namedParameterJdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId",
+            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId AND deleted = FALSE",
             params,
             Long.class);
         return total == null ? 0 : total;
@@ -293,7 +293,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         Map<String, Object> params = new HashMap<>();
         params.put("customerCode", customerCode);
         Long total = this.namedParameterJdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
+            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode AND deleted = FALSE",
             params,
             Long.class);
         return total != null && total > 0;

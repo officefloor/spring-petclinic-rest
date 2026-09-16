@@ -69,10 +69,18 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate")
     long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
 
+    // Duplicate/identity checks below exclude soft-deleted owners: a deleted owner no
+    // longer occupies its household, counts as a namesake, or reserves its customer code.
+
     @Override
-    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId")
+    @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName) AND owner.deleted = false")
+    Collection<Owner> findByLastNameIgnoreCase(@Param("lastName") String lastName);
+
+    @Override
+    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false")
     long countByHouseholdId(@Param("householdId") String householdId);
 
     @Override
+    @Query("SELECT CASE WHEN COUNT(owner) > 0 THEN true ELSE false END FROM Owner owner WHERE owner.customerCode = :customerCode AND owner.deleted = false")
     boolean existsByCustomerCode(@Param("customerCode") String customerCode);
 }

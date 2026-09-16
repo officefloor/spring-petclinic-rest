@@ -155,7 +155,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        // Soft delete: retain the row and flag it so the owner stays retrievable but is
+        // ignored by the create endpoint's duplicate/identity checks.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override

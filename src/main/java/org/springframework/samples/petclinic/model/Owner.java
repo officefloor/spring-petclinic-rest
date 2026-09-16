@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @Transient
     private boolean declaredHouseholdMember;
 
@@ -267,6 +270,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted. A newly created owner is {@code false};
+     * deleting the owner retains its row and flags it {@code true}. A deleted owner is
+     * still retrievable but is ignored by the create endpoint's duplicate/identity checks.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**

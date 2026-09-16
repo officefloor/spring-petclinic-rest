@@ -93,7 +93,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     @Override
     @SuppressWarnings("unchecked")
     public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
-        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName)");
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName) AND owner.deleted = false");
         query.setParameter("lastName", lastName);
         return query.getResultList();
     }
@@ -157,7 +157,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     @Override
     public long countByHouseholdId(String householdId) throws DataAccessException {
         Query query = this.em.createQuery(
-            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId");
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false");
         query.setParameter("householdId", householdId);
         return (long) query.getSingleResult();
     }
@@ -165,7 +165,7 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     @Override
     public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
         Query query = this.em.createQuery(
-            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode AND owner.deleted = false");
         query.setParameter("customerCode", customerCode);
         return (long) query.getSingleResult() > 0;
     }
