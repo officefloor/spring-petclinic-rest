@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityEx
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.security.access.AccessDeniedException;
@@ -234,6 +235,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("email"));
         logger.debug("Invalid email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidPostcodeException} raised when an owner's supplied postcode is out of
+     * range for its city's region. Returns a 400 Bad Request whose body carries an {@code errors}
+     * array naming the {@code postcode} field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("postcode"));
+        logger.debug("Invalid postcode at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
