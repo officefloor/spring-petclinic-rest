@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.IdentityKey;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
     // Not derivable from a single owner; the responder sets it from the daily registration count.
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -52,6 +54,15 @@ public interface OwnerMapper {
      */
     default String contactPreference(Owner owner) {
         return ContactPreference.of(owner);
+    }
+
+    /**
+     * The owner's age band, derived from its birth date against its registration date.
+     *
+     * @see AgeBand#of(Owner)
+     */
+    default String ageBand(Owner owner) {
+        return AgeBand.of(owner);
     }
 
     /**
