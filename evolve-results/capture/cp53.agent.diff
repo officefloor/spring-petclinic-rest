@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cdcc1a513..8df5bcba7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -201,6 +201,17 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * Return this owner's primary identifier: the single value that currently identifies the owner
++     * to the outside world. Today that is the {@link #getCustomerCode() customer code}; when the
++     * customer code is later unified into the member id, this method returns the member id instead,
++     * so callers such as the audit trail always follow the current identifier without change.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return getCustomerCode();
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+index 6cb9f247c..d616b4a67 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+@@ -16,24 +16,36 @@
+ 
+ package org.springframework.samples.petclinic.rest.audit;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.stereotype.Component;
+ 
++import tools.jackson.databind.ObjectMapper;
++
+ /**
+  * Writes owner-lifecycle audit records to the dedicated {@code AUDIT} logger, keeping the
+  * audit trail decoupled from the application's diagnostic logging. Each successful owner
+- * creation produces a single line carrying the identifying facts of the new record.
++ * creation produces a human-readable line carrying the identifying facts of the new record,
++ * followed by an immutable structured {@link OwnerCreatedEvent} serialized as JSON.
+  */
+ @Component
+ public class OwnerAuditLogger {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private static final ObjectMapper MAPPER = new ObjectMapper();
++
++    /** Monotonically increasing sequence number stamped on each owner-creation event. */
++    private final AtomicLong sequence = new AtomicLong();
++
+     /**
+-     * Emits an audit line for a newly created owner, recording its id, customer code,
+-     * registration date, membership level and membership number.
++     * Emits the audit records for a newly created owner: a human-readable line recording its id,
++     * customer code, registration date, membership level and membership number, followed by an
++     * immutable structured {@link OwnerCreatedEvent} (as JSON) carrying the owner's id and current
++     * primary identifier.
+      *
+      * @param owner the persisted owner (must already have an assigned id)
+      */
+@@ -41,5 +53,8 @@ public class OwnerAuditLogger {
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+             owner.getMembershipNumber());
++        OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(), owner.getId(),
++            owner.getPrimaryIdentifier(), owner.getMembershipLevel(), OwnerCreatedEvent.TYPE);
++        AUDIT.info("{}", MAPPER.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..f5ae5f5d0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.audit;
++
++/**
++ * Immutable structured record of a successful owner creation, serialized as a JSON object to the
++ * {@code AUDIT} trail alongside the human-readable audit line. The declaration order of the
++ * components mirrors the emitted JSON: {@code {seq, ownerId, customerCode, membershipLevel, event}}.
++ *
++ * <p>The {@code customerCode} component carries the owner's <em>current</em> primary identifier at
++ * creation time (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()});
++ * it holds the customer code today and follows whatever replaces it later.
++ *
++ * @param seq             monotonically increasing sequence number across all owner creations
++ * @param ownerId         the persisted owner's id
++ * @param customerCode    the owner's current primary identifier at creation time
++ * @param membershipLevel the owner's membership level at creation time
++ * @param event           the event-type marker, always {@link #TYPE}
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel, String event) {
++
++    /** The event-type marker every owner-creation event carries. */
++    public static final String TYPE = "OWNER_CREATED";
++}
