@@ -1,0 +1,341 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c27e71ff9..06fcb8083 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,6 +44,7 @@ public interface OwnerMapper {
+     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    @Mapping(target = "membershipLevelCap", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     /** The owner's canonical API path: '/api/owners/' followed by the owner's id. */
+@@ -113,19 +114,23 @@ public interface OwnerMapper {
+     }
+ 
+     /** The owner's membership level from 1 to 4, derived from {@link #membershipPoints(Owner)}:
+-     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. */
++     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. When the owner carries a
++     * {@code membershipLevelCap} (set at creation from their household; see
++     * {@code AssignOwnerMembershipLevelCap}) the derived level is clamped to that ceiling. */
+     default int membershipLevel(Owner owner) {
+         int points = membershipPoints(owner);
++        int level;
+         if (points <= 1) {
+-            return 1;
++            level = 1;
++        } else if (points <= 3) {
++            level = 2;
++        } else if (points <= 5) {
++            level = 3;
++        } else {
++            level = 4;
+         }
+-        if (points <= 3) {
+-            return 2;
+-        }
+-        if (points <= 5) {
+-            return 3;
+-        }
+-        return 4;
++        Integer cap = owner.getMembershipLevelCap();
++        return cap == null ? level : Math.min(level, cap);
+     }
+ 
+     /** The owner's canonical region: the REGION segment of the customer code (see
+@@ -181,6 +186,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdSize", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
++    @Mapping(target = "membershipLevelCap", ignore = true)
+     @Mapping(target = "deleted", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 01fcbf9db..f4c911a96 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "deleted", nullable = false)
+     private boolean deleted;
+ 
+@@ -221,6 +224,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public boolean isDeleted() {
+         return this.deleted;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
+deleted file mode 100644
+index d47b9fb40..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-/**
+- * Thrown when a create-owner request would join an existing household (same last name and
+- * postcode) without opting in via {@code sharesHousehold}. Handled by
+- * {@link DuplicateOwnerExceptionHandler}, which responds 409.
+- */
+-public class DuplicateOwnerException extends Exception {
+-
+-    public DuplicateOwnerException(String householdId) {
+-        super("An owner in household " + householdId + " already exists");
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerExceptionHandler.java
+deleted file mode 100644
+index 77aaece3f..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerExceptionHandler.java
++++ /dev/null
+@@ -1,16 +0,0 @@
+-package org.springframework.samples.petclinic.rest.escalation;
+-
+-import net.officefloor.plugin.section.clazz.Parameter;
+-import net.officefloor.web.ObjectResponse;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.http.ProblemDetail;
+-import org.springframework.http.ResponseEntity;
+-
+-public class DuplicateOwnerExceptionHandler {
+-
+-    public void handle(@Parameter DuplicateOwnerException ex,
+-            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
+-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevelCap.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevelCap.java
+new file mode 100644
+index 000000000..c14cdb090
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevelCap.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Caps the built owner's membership level to at most one above the highest membership level
++ * among the existing members of its household — the owners with the same last name and
++ * postcode (see {@link OwnerHouseholds}). With no existing household member no cap applies.
++ *
++ * <p>Runs after the owner is built but before it is saved, so the household reflects the owners
++ * that existed before this create. Each member's current level is read through
++ * {@link OwnerMapper#membershipLevel(Owner)} so the ceiling is one above their effective level.
++ * The ceiling is stored on the built {@link Owner} (mutated in place) and later applied by the
++ * same mapper method when the owner's level is derived for a response.
++ */
++public class AssignOwnerMembershipLevelCap {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository, OwnerMapper ownerMapper) {
++        Integer cap = null;
++        for (Owner member : OwnerHouseholds.members(Owners.active(ownerRepository.findAll()),
++                owner.getLastName(), owner.getPostcode())) {
++            int ceiling = ownerMapper.membershipLevel(member) + 1;
++            if (cap == null || ceiling > cap) {
++                cap = ceiling;
++            }
++        }
++        owner.setMembershipLevelCap(cap);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+index 3468bfaaa..cfde96625 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+@@ -9,11 +9,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+- * Flags a soft duplicate: a create that is not a hard duplicate (see
+- * {@link RejectDuplicateOwnerHousehold}, which already let it through) but that shares an
+- * existing owner's last name and postcode while carrying a <em>different</em> telephone. The
+- * owner is still created; the response merely carries {@code possibleDuplicate}/
+- * {@code possibleDuplicateOf} pointing at the matched owner.
++ * Flags a soft duplicate: a create that shares an existing owner's last name and postcode
++ * while carrying a <em>different</em> telephone. The owner is still created; the response
++ * merely carries {@code possibleDuplicate}/{@code possibleDuplicateOf} pointing at the matched
++ * owner.
+  *
+  * <p>A declared household member — one created with {@code sharesHousehold} — deliberately
+  * shares an existing owner's last name and postcode, so it is <em>not</em> a suspected
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+index 868654963..9d77b99ed 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+  * Reads the create-owner body once and normalizes its address via {@link OwnerAddresses} before
+  * anything else, then publishes the request for later steps. Running first means the normalized
+  * address is what {@link ValidateRequiredOwnerFields} tests for blankness and what the
+- * household checks ({@link RejectDuplicateOwnerHousehold}, {@link AssignOwnerHousehold}) compare
++ * household steps ({@link AssignOwnerHousehold}, {@link AssignOwnerHouseholdSize}) compare
+  * and persist, so every use of the address sees the same normalized form.
+  *
+  * <p>The structured form wins: when {@code addressLine1} is supplied, it and the optional
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
+index cdc41ac56..bcda243c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
+@@ -12,11 +12,12 @@ import org.springframework.samples.petclinic.model.Sha256;
+  * postcode, compared case-insensitively with runs of whitespace collapsed to a single
+  * space. The {@code householdId} is derived deterministically from those two fields, so
+  * every owner with the same last name and postcode computes the same id automatically,
+- * regardless of creation order or whether they opted in with {@code sharesHousehold}.
++ * regardless of creation order.
+  *
+- * <p>Shared by {@link RejectDuplicateOwnerHousehold} (which forbids an unopted duplicate),
+- * {@link AssignOwnerHousehold} (which stamps the id) and {@link AssignOwnerHouseholdSize}
+- * (which counts members), so all decide membership identically.
++ * <p>Shared by {@link AssignOwnerHousehold} (which stamps the id),
++ * {@link AssignOwnerHouseholdSize} (which counts members) and
++ * {@link AssignOwnerMembershipLevelCap} (which caps a new member's level), so all decide
++ * membership identically.
+  */
+ final class OwnerHouseholds {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java
+deleted file mode 100644
+index c7b5b7071..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java
++++ /dev/null
+@@ -1,36 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import java.util.Collection;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
+-
+-/**
+- * Rejects a create-owner request that would join an existing household, responding 409. The
+- * household is keyed on last name and postcode (see {@link OwnerHouseholds}), so a second owner
+- * with the same last name and postcode is a duplicate. The request can opt out of the block by
+- * setting {@code sharesHousehold}: a declared household member is allowed through and is later
+- * created as such (and is not treated as a suspected duplicate, see
+- * {@link AssignOwnerPossibleDuplicate}).
+- *
+- * <p>Runs before {@link BuildOwner}, comparing the request's last name and postcode against the
+- * existing owners; these fields are stored unchanged, so this matches what
+- * {@link AssignOwnerHousehold} later stamps.
+- */
+-public class RejectDuplicateOwnerHousehold {
+-
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateOwnerException {
+-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+-            return; // a declared household member is allowed past the duplicate block
+-        }
+-        Collection<Owner> existing = Owners.active(ownerRepository.findAll());
+-        if (!OwnerHouseholds.members(existing, request.getLastName(), request.getPostcode()).isEmpty()) {
+-            throw new DuplicateOwnerException(
+-                    OwnerHouseholds.householdId(request.getLastName(), request.getPostcode()));
+-        }
+-    }
+-}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index b22b34d4d..bd01fd9d2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index fbc320182..5ec8492db 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,6 +55,7 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 763afc4a6..dab88548d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 4800f8599..81a180457 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      membership_level_cap INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException.yml
+deleted file mode 100644
+index 64f8c1375..000000000
+--- a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException.yml
++++ /dev/null
+@@ -1,2 +0,0 @@
+-handle:
+-  class: org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a29f5a8e9..54365b06c 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -63,11 +63,6 @@ normalizeEmail:
+ rejectDisposableEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableOwnerEmail
+   govern: [ transaction ]
+-  next: rejectDuplicateHousehold
+-
+-rejectDuplicateHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateOwnerHousehold
+-  govern: [ transaction ]
+   next: build
+ 
+ build:
+@@ -108,6 +103,11 @@ assignBulkSignupWarning:
+ assignPossibleDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerPossibleDuplicate
+   govern: [ transaction ]
++  next: assignMembershipLevelCap
++
++assignMembershipLevelCap:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipLevelCap
++  govern: [ transaction ]
+   next: save
+ 
+ save:
