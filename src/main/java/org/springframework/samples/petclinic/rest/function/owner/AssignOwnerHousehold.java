@@ -11,8 +11,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * normalized (see {@link OwnerHouseholds}) — the same stable {@code householdId}. A no-op
  * for a request that does not opt in.
  *
- * <p>Runs after {@link BuildOwner}, so it works with the built {@link Owner} entity and
- * relies on {@link RequireUniqueHousehold} having already allowed the shared household.
+ * <p>Runs after {@link BuildOwner}, so it works with the built {@link Owner} entity. The
+ * {@code householdId} it assigns matches the household component of the {@code identityKey}
+ * used by {@link RequireUniqueIdentity}.
  */
 public class AssignOwnerHousehold {
 

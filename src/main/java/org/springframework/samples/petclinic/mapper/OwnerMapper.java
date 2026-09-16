@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -27,7 +28,16 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's derived duplicate-detection key - see {@link OwnerIdentities}. */
+    default String identityKey(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return OwnerIdentities.of(owner);
+    }
 
     /** The owner's preferred contact channel - 'EMAIL' when an email is present, otherwise 'PHONE'. */
     default String contactPreference(Owner owner) {
