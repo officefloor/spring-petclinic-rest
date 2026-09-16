@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -188,6 +189,28 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getMissingFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidTelephoneException} raised when an owner's telephone does not contain
+     * exactly 10 digits once every non-digit character has been stripped. Returns a 400 Bad Request
+     * whose body carries an {@code errors} array naming the {@code telephone} field.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        logger.debug("Invalid telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
 
