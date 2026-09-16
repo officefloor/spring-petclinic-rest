@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.RegionTimezone;
+import org.springframework.samples.petclinic.util.Salutation;
 import org.springframework.samples.petclinic.util.Telephone;
 
 import java.util.Collection;
@@ -27,6 +28,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class, imports = IdentityKey.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -70,6 +72,16 @@ public interface OwnerMapper {
      */
     default String contactPreference(Owner owner) {
         return ContactPreference.of(owner);
+    }
+
+    /**
+     * The owner's salutation: the title and last name separated by a space, or just the
+     * last name when no title is present.
+     *
+     * @see Salutation#of(Owner)
+     */
+    default String salutation(Owner owner) {
+        return Salutation.of(owner);
     }
 
     /**
