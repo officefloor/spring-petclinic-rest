@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.Telephone;
 
 import java.util.Collection;
@@ -28,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -79,7 +81,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership level from 1 to 4; level 4 requires tenure.
+     * The owner's membership points, scored from email, unique name, household size and
+     * tenure.
+     *
+     * @see MembershipPoints#of(Owner)
+     */
+    default Integer membershipPoints(Owner owner) {
+        return MembershipPoints.of(owner);
+    }
+
+    /**
+     * The owner's membership level from 1 to 4, derived from its membership points.
      *
      * @see MembershipLevel#of(Owner)
      */
