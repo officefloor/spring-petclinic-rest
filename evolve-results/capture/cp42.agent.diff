@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 51acd3775..b28ffd0be 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
++import org.springframework.samples.petclinic.util.RegionTimezone;
+ import org.springframework.samples.petclinic.util.Telephone;
+ 
+ import java.util.Collection;
+@@ -33,6 +34,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -50,6 +52,16 @@ public interface OwnerMapper {
+         return CustomerCode.regionOf(owner.getCustomerCode());
+     }
+ 
++    /**
++     * The owner's timezone: the IANA name for its locality, from the pinned
++     * region-to-timezone table, or {@code null} when the locality has no entry.
++     *
++     * @see RegionTimezone#of(String)
++     */
++    default String timezone(Owner owner) {
++        return RegionTimezone.of(locality(owner));
++    }
++
+     /**
+      * The owner's preferred contact channel: "EMAIL" when an email address is present,
+      * otherwise "PHONE".
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+new file mode 100644
+index 000000000..458585f63
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Fixed lookup from an owner's region (its "locality", see {@link OwnerRegion}) to its
++ * IANA timezone name. The table is pinned; a region with no entry — including
++ * {@link CityRegion#UNKNOWN} — has no known timezone and returns {@code null}.
++ */
++public final class RegionTimezone {
++
++    /** Region to its IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    private RegionTimezone() {
++    }
++
++    /**
++     * The IANA timezone name for the given region, or {@code null} when the region has no
++     * entry in the pinned table.
++     *
++     * @param region the owner's region (its locality)
++     * @return the IANA timezone name, or {@code null} when none applies
++     */
++    public static String of(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 263c2cbed..f1d8eea1f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,6 +2099,12 @@ components:
+               type: string
+               example: NSW
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's IANA timezone name, derived from its locality via the pinned region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). Null when the locality has no entry.
++              type: string
++              example: Australia/Sydney
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: The owner's customer code, formatted '<REGION>-<HASH8>' where REGION is the owner's region and HASH8 is the first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with lastName.
