@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -61,14 +62,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final TelephoneNormalizer telephoneNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 TelephoneNormalizer telephoneNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.telephoneNormalizer = telephoneNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -101,6 +106,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String telephone = telephoneNormalizer.normalize(owner.getTelephone());
+        if (!telephoneNormalizer.hasRequiredDigits(telephone)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
