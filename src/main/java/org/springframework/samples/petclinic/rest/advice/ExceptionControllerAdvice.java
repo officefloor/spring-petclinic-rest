@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -278,6 +279,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("lastName", "address"));
         logger.debug("Duplicate owner household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityOwnerCapacityExceededException} raised when an owner is created in a city
+     * that has already reached its maximum number of owners. Returns a 409 Conflict whose body
+     * carries an {@code errors} array naming the offending {@code city} field.
+     *
+     * @param e The {@link CityOwnerCapacityExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityOwnerCapacityExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityOwnerCapacityExceededException(CityOwnerCapacityExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("city"));
+        logger.debug("City owner capacity exceeded at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

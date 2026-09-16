@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCounter;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -82,6 +83,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CityOwnerCounter cityOwnerCounter;
 
+    private final CityOwnerCapacityValidator cityOwnerCapacityValidator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -90,7 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerHouseholdUniquenessValidator householdUniquenessValidator,
                                  OwnerHouseholdRegistrar householdRegistrar,
                                  NamesakeCounter namesakeCounter,
-                                 CityOwnerCounter cityOwnerCounter) {
+                                 CityOwnerCounter cityOwnerCounter,
+                                 CityOwnerCapacityValidator cityOwnerCapacityValidator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
         this.cityOwnerCounter = cityOwnerCounter;
+        this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -137,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
+        this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
         } else {
