@@ -15,7 +15,7 @@ public class NormalizeOwnerTelephone {
     private static final int REQUIRED_DIGITS = 10;
 
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
-        String digits = request.getTelephone().replaceAll("\\D", "");
+        String digits = OwnerTelephones.normalize(request.getTelephone());
         if (digits.length() != REQUIRED_DIGITS) {
             throw new InvalidTelephoneException(
                     "Telephone must be exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
