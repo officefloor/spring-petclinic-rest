@@ -1,0 +1,140 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c9518eea1..570099196 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form: '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index c29bab1ab..143c87c77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -195,8 +195,8 @@ public class ExceptionControllerAdvice {
+     }
+ 
+     /**
+-     * Handles {@link InvalidTelephoneException} raised when an owner's telephone does not contain
+-     * exactly 10 digits once every non-digit character has been stripped. Returns a 400 Bad Request
++     * Handles {@link InvalidTelephoneException} raised when an owner's telephone cannot be converted
++     * to a valid E.164 number ({@code '+'} followed by 8 to 15 digits). Returns a 400 Bad Request
+      * whose body carries an {@code errors} array naming the {@code telephone} field.
+      *
+      * @param e The {@link InvalidTelephoneException} to be handled
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+index 044233039..65e16fcc2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+@@ -17,8 +17,8 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ /**
+- * Thrown when an owner's submitted telephone does not contain exactly 10 digits once every
+- * non-digit character has been stripped. The REST layer reports this as a 400 Bad Request.
++ * Thrown when an owner's submitted telephone cannot be converted to a valid E.164 number (a
++ * {@code '+'} followed by 8 to 15 digits). The REST layer reports this as a 400 Bad Request.
+  *
+  * @see TelephoneNormalizer
+  */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index bc1782c18..b812d86b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -17,30 +17,48 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ /**
+- * Normalizes an owner's telephone to its canonical storage form: every non-digit character is
+- * removed and the result must contain exactly 10 digits.
++ * Normalizes an owner's telephone to its canonical E.164 storage form. Spaces, dashes and
++ * brackets (and any other formatting) are stripped. A leading {@code '+'} and its country code are
++ * kept as given; otherwise the default country code {@code '+61'} is assumed and a single leading
++ * {@code '0'} is dropped from the national digits. The result is {@code '+'} followed by 8 to 15
++ * digits.
+  */
+ public final class TelephoneNormalizer {
+ 
+-    private static final int REQUIRED_DIGITS = 10;
++    private static final String DEFAULT_COUNTRY_CODE = "61";
++
++    private static final int MIN_DIGITS = 8;
++
++    private static final int MAX_DIGITS = 15;
+ 
+     private TelephoneNormalizer() {
+     }
+ 
+     /**
+-     * Strips every non-digit character from the submitted telephone and returns the resulting
+-     * 10-digit value.
++     * Converts the submitted telephone to its canonical E.164 storage form.
+      *
+      * @param telephone the submitted telephone, possibly containing formatting characters
+-     * @return the normalized 10-digit telephone
+-     * @throws InvalidTelephoneException if the value does not contain exactly 10 digits once stripped
++     * @return the normalized E.164 telephone: {@code '+'} followed by 8 to 15 digits
++     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
+      */
+     public static String normalize(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        if (digits.length() != REQUIRED_DIGITS) {
++        String trimmed = telephone == null ? "" : telephone.trim();
++        boolean hasCountryCode = trimmed.startsWith("+");
++        String digits = trimmed.replaceAll("\\D", "");
++        String national;
++        if (hasCountryCode) {
++            national = digits;
++        } else {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            national = DEFAULT_COUNTRY_CODE + digits;
++        }
++        if (national.length() < MIN_DIGITS || national.length() > MAX_DIGITS) {
+             throw new InvalidTelephoneException(
+-                "Telephone must contain exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
++                "Telephone must form a valid E.164 number with " + MIN_DIGITS + " to " + MAX_DIGITS
++                    + " digits after the '+'");
+         }
+-        return digits;
++        return "+" + national;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0f815004c..1460e307b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,13 +2027,15 @@ components:
+           title: Telephone number
+           description: >-
+             The telephone number of the pet owner. On create the value is
+-            normalized by removing every non-digit character and must contain
+-            exactly 10 digits once stripped; the normalized 10-digit value is
+-            stored and returned.
++            normalized to E.164 form: a leading '+' and country code are kept,
++            otherwise country code '+61' is assumed and a single leading '0' is
++            dropped from the national digits; spaces, dashes and brackets are
++            stripped. The result must be '+' followed by 8 to 15 digits, and this
++            E.164 value is stored and returned.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: >-
