@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CheckDigit;
 import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.model.Tenure;
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -107,6 +109,13 @@ public interface OwnerMapper {
      * {@link CustomerCode}), or null when the customer code is unset. */
     default String locality(Owner owner) {
         return CustomerCode.region(owner.getCustomerCode());
+    }
+
+    /** The owner's IANA timezone, derived from the locality/region via the pinned
+     * region-to-timezone table (see {@link Locality#timezoneForRegion}), or null when the
+     * region is not in the table. */
+    default String timezone(Owner owner) {
+        return Locality.timezoneForRegion(locality(owner));
     }
 
     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */
