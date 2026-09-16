@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format the stored names as 'LastName, FirstName'. */
@@ -43,6 +44,18 @@ public interface OwnerMapper {
             return "";
         }
         return Character.toUpperCase(name.charAt(0)) + ".";
+    }
+
+    /**
+     * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
+     * last two digits of the registrationDate year (e.g. 'SMI-0007-M26'). Derived from the owner's
+     * own fields; null until both the customer code and registration date are assigned.
+     */
+    default String membershipNumber(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
