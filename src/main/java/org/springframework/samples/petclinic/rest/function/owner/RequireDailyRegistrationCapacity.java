@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.LocalDate;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -20,11 +18,7 @@ public class RequireDailyRegistrationCapacity {
     static final int DAILY_LIMIT = 100;
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyRegistrationLimitException {
-        LocalDate registrationDate = owner.getRegistrationDate();
-        long registeredThatDay = ownerRepository.findAll().stream()
-            .map(Owner::getRegistrationDate)
-            .filter(registrationDate::equals)
-            .count();
+        long registeredThatDay = OwnerRegistrations.countOn(ownerRepository, owner.getRegistrationDate());
         if (registeredThatDay >= DAILY_LIMIT) {
             throw new DailyRegistrationLimitException(DAILY_LIMIT);
         }
