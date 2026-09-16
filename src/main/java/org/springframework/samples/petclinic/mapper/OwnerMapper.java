@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegion;
+import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 import java.util.Collection;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     // Not derivable from a single owner; the responder sets it from the daily registration count.
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -35,6 +37,16 @@ public interface OwnerMapper {
      */
     default String locality(Owner owner) {
         return CityRegion.localityOf(owner.getCity());
+    }
+
+    /**
+     * The owner's preferred contact channel: "EMAIL" when an email address is present,
+     * otherwise "PHONE".
+     *
+     * @see ContactPreference#of(Owner)
+     */
+    default String contactPreference(Owner owner) {
+        return ContactPreference.of(owner);
     }
 
     /**
