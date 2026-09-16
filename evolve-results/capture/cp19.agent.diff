@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitException.java
+new file mode 100644
+index 000000000..bf3bd8ef2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request arrives after the maximum number of owners (100) have
++ * already been registered on the current date. Handled by
++ * {@link DailyRegistrationLimitExceptionHandler}, which responds 429.
++ */
++public class DailyRegistrationLimitException extends Exception {
++
++    public DailyRegistrationLimitException(int limit) {
++        super("The maximum number of owners for today has already been reached (" + limit + ").");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitExceptionHandler.java
+new file mode 100644
+index 000000000..a3649d2db
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DailyRegistrationLimitExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DailyRegistrationLimitExceptionHandler {
++
++    public void handle(@Parameter DailyRegistrationLimitException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java
+new file mode 100644
+index 000000000..0e695050d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DailyRegistrationLimitException;
++
++/**
++ * Rejects a create-owner request once the maximum number of owners ({@value #DAILY_LIMIT})
++ * have already been registered on the current date, responding 429 via
++ * {@link DailyRegistrationLimitException}. Owners are counted by their
++ * {@link Owner#getRegistrationDate() registrationDate} matching today.
++ */
++public class RequireDailyRegistrationCapacity {
++
++    /** Maximum owners that may be registered on a single date; the request is rejected once reached. */
++    static final int DAILY_LIMIT = 100;
++
++    public void service(OwnerRepository ownerRepository) throws DailyRegistrationLimitException {
++        LocalDate today = LocalDate.now();
++        long registeredToday = ownerRepository.findAll().stream()
++            .map(Owner::getRegistrationDate)
++            .filter(today::equals)
++            .count();
++        if (registeredToday >= DAILY_LIMIT) {
++            throw new DailyRegistrationLimitException(DAILY_LIMIT);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyRegistrationLimitException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyRegistrationLimitException.yml
+new file mode 100644
+index 000000000..4ac1e9db8
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DailyRegistrationLimitException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DailyRegistrationLimitExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 5293bbeda..37429bd2f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -34,6 +34,11 @@ requireUniqueHousehold:
+ requireCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireCityCapacity
+   govern: [ transaction ]
++  next: requireDailyCapacity
++
++requireDailyCapacity:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireDailyRegistrationCapacity
++  govern: [ transaction ]
+   next: build
+ 
+ build:
