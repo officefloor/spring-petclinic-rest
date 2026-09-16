@@ -53,6 +53,10 @@ public class Owner extends Person {
     @Email
     private String email;
 
+    @Column(name = "postcode")
+    @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
+    private String postcode;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -104,6 +108,14 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public LocalDate getRegistrationDate() {
