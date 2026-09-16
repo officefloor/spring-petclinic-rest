@@ -1,0 +1,434 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 768212977..995432e66 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -7,14 +7,17 @@ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.AgeBand;
+ import org.springframework.samples.petclinic.util.ContactPreference;
+ import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.samples.petclinic.util.IdentityKey;
++import org.springframework.samples.petclinic.util.IdentityVersion;
+ import org.springframework.samples.petclinic.util.MemberId;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
++import org.springframework.samples.petclinic.util.OwnerLocality;
+ import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
+ import org.springframework.samples.petclinic.util.Salutation;
+@@ -26,9 +29,11 @@ import java.util.List;
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+-@Mapper(uses = PetMapper.class, imports = IdentityKey.class)
++@Mapper(uses = PetMapper.class, imports = {IdentityKey.class, IdentityVersion.class})
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "apiVersion", expression = "java(IdentityVersion.CURRENT)")
++    @Mapping(target = "identity", expression = "java(identity(owner))")
+     @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+@@ -42,7 +47,6 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+-    @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     // Not derivable from a single owner; the responder sets it from the daily registration count.
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+@@ -53,12 +57,25 @@ public interface OwnerMapper {
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+-     * The owner's locality: the REGION segment of its {@code memberId} (see
+-     * {@link MemberId#regionOf(String)}), which is the region derived from the owner's
+-     * postcode then city when the id was assigned.
++     * The owner's version-2 identity block: the member id, household id and identity key
++     * grouped together (see {@link IdentityVersion}). The member id and household id are the
++     * stored values; the identity key is derived on read from the owner's stored fields.
++     */
++    default OwnerIdentityDto identity(Owner owner) {
++        OwnerIdentityDto identity = new OwnerIdentityDto();
++        identity.setMemberId(owner.getMemberId());
++        identity.setHouseholdId(owner.getHouseholdId());
++        identity.setIdentityKey(IdentityKey.of(owner));
++        return identity;
++    }
++
++    /**
++     * The owner's locality: the plain region recovered from the REGION segment of its
++     * {@code memberId} (see {@link OwnerLocality}). The version tag stored inside the
++     * identifier is stripped, so the locality stays the plain region code (e.g. "NSW").
+      */
+     default String locality(Owner owner) {
+-        return MemberId.regionOf(owner.getMemberId());
++        return OwnerLocality.of(owner);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+index ff078c38e..38f93aafe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+@@ -7,16 +7,18 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.util.FiscalYear;
++import org.springframework.samples.petclinic.util.IdentityVersion;
+ import org.springframework.samples.petclinic.util.MemberId;
+ import org.springframework.samples.petclinic.util.OwnerRegion;
+ 
+ /**
+  * Assigns a newly built owner its unified {@code memberId}, formatted
+- * {@code <REGION><FY><HASH8><CHK>} where REGION is the owner's region (see
+- * {@link OwnerRegion}), FY the 2-digit fiscal year of its registration date, HASH8 the
++ * {@code <REGION><FY><HASH8><CHK>} where REGION is the version-2 region code — the fixed
++ * {@code V2} tag followed by the owner's region (see {@link IdentityVersion} and
++ * {@link OwnerRegion}) — FY the 2-digit fiscal year of its registration date, HASH8 the
+  * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated
+  * with the last name, and CHK a single Luhn check digit over the digits of
+- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D5}; see {@link MemberId}). Runs
++ * {@code <REGION><FY><HASH8>} (e.g. {@code V2NSW261A2B3C4D5}; see {@link MemberId}). Runs
+  * after {@link NormalizeOwnerTelephone} (so the telephone is canonical) and
+  * {@link ApplyRegistrationDate} (so the fiscal year uses the adjusted business day) and
+  * before {@link SaveOwner}, mutating the built owner in place so the id is stored and
+@@ -27,9 +29,9 @@ import org.springframework.samples.petclinic.util.OwnerRegion;
+ public class AssignMemberId {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String region = OwnerRegion.of(owner);
++        String regionCode = IdentityVersion.regionCode(OwnerRegion.of(owner));
+         String fiscalYear = FiscalYear.shortLabel(owner.getRegistrationDate());
+-        String memberId = MemberId.of(region, fiscalYear, owner.getTelephone(), owner.getLastName());
++        String memberId = MemberId.of(regionCode, fiscalYear, owner.getTelephone(), owner.getLastName());
+         owner.setMemberId(MemberId.deduplicate(memberId, takenIds(ownerRepository)::contains));
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+index 3f3d21fe2..005131181 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+@@ -5,6 +5,7 @@ import java.util.OptionalInt;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.IdentityVersion;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.Sha256;
+ 
+@@ -24,14 +25,15 @@ final class Households {
+ 
+     /**
+      * The household id for the given last name and postcode: the first 12 hex characters of
+-     * SHA-256 over the normalized last name and postcode. Returns null when the postcode is
+-     * blank, since without a postcode there is no household key.
++     * SHA-256 over the fixed version-2 tag, the normalized last name and the postcode (see
++     * {@link IdentityVersion}). Returns null when the postcode is blank, since without a
++     * postcode there is no household key.
+      */
+     static String householdId(String lastName, String postcode) {
+         if (postcode == null || postcode.isBlank()) {
+             return null;
+         }
+-        return Sha256.hex(normalizeName(lastName) + '|' + postcode).substring(0, 12);
++        return Sha256.hex(IdentityVersion.TAG + '|' + normalizeName(lastName) + '|' + postcode).substring(0, 12);
+     }
+ 
+     /** How many existing owners already carry the given household id (0 when it is null). */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+index 2b9b69c80..6e9f4a3f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -6,17 +6,24 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  *
+  * <p>{@code memberId} carries the owner's <em>primary identifier</em>
+  * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}),
+- * so it follows the identifier automatically if it is later changed.
++ * so it follows the identifier automatically if it is later changed. As of schema version
++ * {@link #SCHEMA_VERSION 2} the event also carries the owner segment, recomputed from the
++ * version-2 identity, and the {@code schemaVersion} marker itself.
+  *
+  * @param seq             monotonically increasing sequence, unique across creates
+  * @param ownerId         the created owner's generated id
+  * @param memberId        the owner's primary identifier at creation time
+  * @param membershipLevel the owner's computed membership level at creation time
++ * @param ownerSegment    the owner's segment, recomputed from the version-2 identity
++ * @param schemaVersion   the audit event schema version, always {@link #SCHEMA_VERSION}
+  * @param event           the event type, always {@link #EVENT_TYPE}
+  */
+ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel,
+-        String event) {
++        String ownerSegment, int schemaVersion, String event) {
+ 
+     /** The {@code event} discriminator for an owner-created event. */
+     public static final String EVENT_TYPE = "OWNER_CREATED";
++
++    /** The current audit event schema version. */
++    public static final int SCHEMA_VERSION = 2;
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEventPublisher.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEventPublisher.java
+index 8aa89ae42..153c4d87a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEventPublisher.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEventPublisher.java
+@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.OwnerLocality;
++import org.springframework.samples.petclinic.util.OwnerSegment;
+ 
+ import tools.jackson.databind.ObjectMapper;
+ 
+@@ -35,9 +37,11 @@ public class OwnerEventPublisher {
+ 
+     /** Emit an {@code OWNER_CREATED} event for a freshly created (and saved) owner. */
+     public void ownerCreated(Owner owner) {
++        int membershipLevel = MembershipLevel.of(owner);
+         OwnerCreatedEvent event = new OwnerCreatedEvent(this.sequence.incrementAndGet(),
+-                owner.getId(), owner.getPrimaryIdentifier(), MembershipLevel.of(owner),
+-                OwnerCreatedEvent.EVENT_TYPE);
++                owner.getId(), owner.getPrimaryIdentifier(), membershipLevel,
++                OwnerSegment.of(membershipLevel, OwnerLocality.of(owner)),
++                OwnerCreatedEvent.SCHEMA_VERSION, OwnerCreatedEvent.EVENT_TYPE);
+         AUDIT.info(this.objectMapper.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+index 5e6336139..4cf92b810 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+@@ -28,12 +28,15 @@ public final class IdentityKey {
+ 
+     /**
+      * The identity key for the given parts: the SHA-256 hex digest of
+-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A null or
+-     * blank telephone or email contributes an empty segment and a blank last name an empty
+-     * Soundex, so an owner missing one still has a well-formed 64-hex key.
++     * {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
++     * where {@code V2} is the fixed version tag mixed into every version-2 identifier (see
++     * {@link IdentityVersion}). A null or blank telephone or email contributes an empty
++     * segment and a blank last name an empty Soundex, so an owner missing one still has a
++     * well-formed 64-hex key.
+      */
+     public static String of(String telephone, String email, String lastName) {
+-        return Sha256.hex(orEmpty(telephone) + '|' + lowerEmail(email) + '|' + Soundex.of(lastName));
++        return Sha256.hex(IdentityVersion.TAG + '|' + orEmpty(telephone) + '|' + lowerEmail(email)
++            + '|' + Soundex.of(lastName));
+     }
+ 
+     private static String lowerEmail(String email) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityVersion.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityVersion.java
+new file mode 100644
+index 000000000..03e6d734b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityVersion.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * The version of the owner identity scheme. Version 2 mixes a fixed {@value #TAG} version
++ * tag into every derived identifier — the {@link MemberId member id}, the
++ * {@link IdentityKey identity key} and the household id — so every identifier differs from
++ * its version-1 form and no value produced under version 1 is produced again.
++ *
++ * <p>The tag lives <em>inside</em> the identifiers only. The user-facing region ("locality")
++ * is the plain region code (e.g. {@code NSW}), recovered from a version-2 region code with
++ * {@link #plainRegion(String)}; it, the timezone and the owner segment's derived region
++ * never carry the tag.
++ */
++public final class IdentityVersion {
++
++    /** The current identity scheme version, reported as the response {@code apiVersion}. */
++    public static final int CURRENT = 2;
++
++    /** The fixed version tag mixed into every version-2 identifier. */
++    public static final String TAG = "V2";
++
++    private IdentityVersion() {
++    }
++
++    /**
++     * The region code embedded inside version-2 identifiers: the version {@link #TAG} tag
++     * followed by the plain region (e.g. {@code NSW} becomes {@code V2NSW}).
++     */
++    public static String regionCode(String region) {
++        return TAG + region;
++    }
++
++    /**
++     * The plain region recovered from a version-2 region code by stripping the version
++     * {@link #TAG} tag (e.g. {@code V2NSW} becomes {@code NSW}); {@code null} when the code
++     * is null, and returned unchanged when it carries no tag.
++     */
++    public static String plainRegion(String regionCode) {
++        if (regionCode == null) {
++            return null;
++        }
++        return regionCode.startsWith(TAG) ? regionCode.substring(TAG.length()) : regionCode;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MemberId.java b/src/main/java/org/springframework/samples/petclinic/util/MemberId.java
+index 92e31acda..19f3be743 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MemberId.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MemberId.java
+@@ -9,12 +9,14 @@ import java.util.function.Predicate;
+  * {@link FiscalYear#shortLabel(java.time.LocalDate)}), the first 8 upper-case hex
+  * characters of SHA-256 over the normalized telephone concatenated with the last name (the
+  * region-and-hash identity's HASH8), and a single Luhn check digit over the digits of
+- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D5}).
++ * {@code <REGION><FY><HASH8>} (e.g. {@code V2NSW261A2B3C4D5}). The REGION segment is the
++ * version-2 region <em>code</em> (see {@link IdentityVersion}); its plain region is the
++ * locality.
+  *
+  * <p>This is the single source of an owner's identity: the audit record is built from it,
+- * and both the locality (the REGION read back out) and the fiscal year (the FY read back
+- * out) are derived from it, so there is one identity concept rather than several
+- * derivations that could drift.
++ * and both the locality (the plain region decoded from REGION, see {@link OwnerLocality})
++ * and the fiscal year (the FY read back out) are derived from it, so there is one identity
++ * concept rather than several derivations that could drift.
+  */
+ public final class MemberId {
+ 
+@@ -40,7 +42,9 @@ public final class MemberId {
+      * The {@code <REGION><FY><HASH8><CHK>} member id for the given region, fiscal year and
+      * identity inputs.
+      *
+-     * @param region         the owner's region, used verbatim as the REGION segment
++     * @param region         the region code, used verbatim as the REGION segment (the
++     *                        version-2 region code carries the {@code V2} tag; see
++     *                        {@link IdentityVersion})
+      * @param fiscalYearShort the 2-digit fiscal year of the registration date (e.g. "26")
+      * @param telephone      the owner's normalized (E.164) telephone
+      * @param lastName       the owner's last name
+@@ -73,7 +77,9 @@ public final class MemberId {
+     /**
+      * The REGION segment of a member id: the leading characters before the fixed-width
+      * {@code <FY><HASH8><CHK>} tail (any de-duplication suffix stripped first), or
+-     * {@code null} when the owner has no member id.
++     * {@code null} when the owner has no member id. This is the version-2 region <em>code</em>
++     * (carrying the {@code V2} tag); the plain region is recovered with
++     * {@link IdentityVersion#plainRegion(String)} (see {@link OwnerLocality}).
+      */
+     public static String regionOf(String memberId) {
+         String base = base(memberId);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerLocality.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerLocality.java
+new file mode 100644
+index 000000000..9c51e0e54
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerLocality.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The owner's plain locality region, read back from the REGION segment of its
++ * {@link MemberId member id} and decoded from the identity version tag (see
++ * {@link IdentityVersion#plainRegion(String)}), so the version tag stored inside the
++ * identifier never surfaces in the locality; {@code null} when the owner has no member id.
++ *
++ * <p>Single source of the derived locality: both the response mapper and the owner-created
++ * audit event read it here, so the locality and everything derived from it (the timezone,
++ * the owner segment) stay consistent rather than re-deriving the region separately.
++ */
++public final class OwnerLocality {
++
++    private OwnerLocality() {
++    }
++
++    /** The plain locality region for the given owner. */
++    public static String of(Owner owner) {
++        return IdentityVersion.plainRegion(MemberId.regionOf(owner.getMemberId()));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 311e383ac..4497c0660 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2083,6 +2083,29 @@ components:
+         - lastName
+         - city
+         - telephone
++    OwnerIdentity:
++      title: Owner identity
++      description: The owner's version-2 derived identifiers.
++      type: object
++      properties:
++        memberId:
++          title: Member ID
++          description: The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>'. The REGION segment is the version-2 region code (the fixed 'V2' tag followed by the owner's region), so every id differs from a version-1 id. FY is the 2-digit fiscal year of the registration date, HASH8 the first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with lastName, and CHK a single Luhn check digit over the digits of <REGION><FY><HASH8>. A collision with an existing member id is de-duplicated by appending '-<n>'.
++          type: string
++          example: V2NSW261A2B3C4D5
++          readOnly: true
++        householdId:
++          title: Household ID
++          description: A deterministic shared identifier for the owner's household, the first 12 hex characters of SHA-256 over the fixed 'V2' version tag, the normalized last name and the postcode. Owners with the same last name and postcode share it automatically; null for owners without a postcode.
++          type: string
++          example: 3f2504e04f89
++          readOnly: true
++        identityKey:
++          title: Identity key
++          description: The owner's version-2 derived identity, the SHA-256 hex digest over the fixed 'V2' version tag, the normalized telephone, the lower-cased email and the Soundex of the last name.
++          type: string
++          example: 9b74c9897bac770ffc029102a200c5de
++          readOnly: true
+     Owner:
+       title: Owner
+       description: A pet owner.
+@@ -2098,6 +2121,19 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            apiVersion:
++              title: API version
++              description: The version of the owner representation. Always 2 for the version-2 identity release.
++              type: integer
++              format: int32
++              example: 2
++              readOnly: true
++            identity:
++              title: Identity
++              description: The owner's version-2 derived identifiers, grouped together.
++              readOnly: true
++              allOf:
++                - $ref: '#/components/schemas/OwnerIdentity'
+             salutation:
+               title: Salutation
+               description: The owner's salutation, derived on read - the title and last name separated by a single space (e.g. 'DR Franklin'), or just the last name when no title is present.
+@@ -2128,30 +2164,12 @@ components:
+               type: string
+               example: Australia/Sydney
+               readOnly: true
+-            memberId:
+-              title: Member ID
+-              description: The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>' - the owner's region, the 2-digit fiscal year of the registration date, the first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with lastName, and a single Luhn check digit computed over the digits of <REGION><FY><HASH8>. A collision with an existing member id is de-duplicated by appending '-<n>'.
+-              type: string
+-              example: NSW261A2B3C4D5
+-              readOnly: true
+             fiscalYear:
+               title: Fiscal year
+               description: The fiscal year of the owner's business-day-adjusted registration date, formatted 'FY<YY>', read back from the FY segment of its memberId. The fiscal year starts on 1 July and is named after the calendar year in which it begins (1 July 2026 to 30 June 2027 is FY26).
+               type: string
+               example: FY26
+               readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: A deterministic shared identifier for the owner's household, the first 12 hex characters of SHA-256 over the normalized last name and postcode. Owners with the same last name and postcode share it automatically; null for owners without a postcode.
+-              type: string
+-              example: 3f2504e04f89
+-              readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: The owner's derived identity, formatted 'normalizedTelephone|email|householdId' (email and householdId contribute an empty segment when absent). Duplicate detection itself keys off the householdId (the household is rejected as a duplicate when already occupied, unless the create sets 'sharesHousehold').
+-              type: string
+-              example: '+61412345678||3f2504e04f89'
+-              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners who shared this owner's first and last name (compared case-insensitively) at the time this owner was created.
