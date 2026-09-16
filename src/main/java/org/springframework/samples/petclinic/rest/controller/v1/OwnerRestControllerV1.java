@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -111,10 +112,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = telephoneNormalizer.normalize(owner.getTelephone());
-        if (!telephoneNormalizer.hasRequiredDigits(telephone)) {
+        Optional<String> e164Telephone = telephoneNormalizer.toE164(owner.getTelephone());
+        if (e164Telephone.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String telephone = e164Telephone.get();
         String email = emailNormalizer.normalize(owner.getEmail());
         if (email != null && !emailNormalizer.isValid(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -138,6 +140,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        Optional<String> e164Telephone = telephoneNormalizer.toE164(ownerFieldsDto.getTelephone());
+        if (e164Telephone.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
         if (email != null && !emailNormalizer.isValid(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -146,7 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(e164Telephone.get());
         currentOwner.setEmail(email);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
