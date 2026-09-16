@@ -12,7 +12,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.BulkSignupWarningEvaluator;
-import org.springframework.samples.petclinic.rest.validation.HouseholdMembershipTierEvaluator;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,9 +24,6 @@ public abstract class OwnerMapper {
 
     @Autowired
     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
-
-    @Autowired
-    protected HouseholdMembershipTierEvaluator householdMembershipTierEvaluator;
 
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -58,18 +54,5 @@ public abstract class OwnerMapper {
     @AfterMapping
     protected void applyBulkSignupWarning(@MappingTarget OwnerDto ownerDto) {
         ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isWarranted());
-    }
-
-    /**
-     * Upgrade the owner's membership tier to {@code GOLD} when its household is large enough,
-     * superseding the individual {@code BRONZE}/{@code SILVER} tier already mapped from the entity.
-     * The household size depends on how many owners currently share the household id, so it is
-     * evaluated per response rather than stored on the owner.
-     */
-    @AfterMapping
-    protected void applyHouseholdMembershipTier(@MappingTarget OwnerDto ownerDto) {
-        if (this.householdMembershipTierEvaluator.qualifiesForGold(ownerDto.getHouseholdId())) {
-            ownerDto.setMembershipTier(HouseholdMembershipTierEvaluator.GOLD_TIER);
-        }
     }
 }

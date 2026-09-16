@@ -172,15 +172,23 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's membership tier: {@code SILVER} for a uniquely-named
-     * owner (a {@link #getNamesakeCount() namesakeCount} of 0) that has an
-     * email, otherwise {@code BRONZE}.
+     * Return this owner's membership level: starting at 1, plus 1 when the owner
+     * has an email, plus 1 when the owner is uniquely named (a
+     * {@link #getNamesakeCount() namesakeCount} of 0), capped at 3. Level 4 is
+     * reserved for tenure.
      */
     @Transient
-    public String getMembershipTier() {
-        boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
+    public int getMembershipLevel() {
+        int level = 1;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
-        return uniquelyNamed && hasEmail ? "SILVER" : "BRONZE";
+        if (hasEmail) {
+            level++;
+        }
+        boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
+        if (uniquelyNamed) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     protected Set<Pet> getPetsInternal() {
