@@ -13,9 +13,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * after the {@code +}, and — for a recognised country code — exactly the national-number
  * length that country requires ({@code +61} → 9 national digits, {@code +1} → 10). Shared
  * by {@link NormalizeOwnerTelephone} (which stores the E.164 value on the request) so
- * every telephone is stored and compared the same way.
+ * every telephone is stored and compared the same way, and by the owner mapper's
+ * {@link #toDisplay} for the human-readable {@code telephoneDisplay}.
  */
-final class OwnerTelephones {
+public final class OwnerTelephones {
 
     private static final String DEFAULT_COUNTRY_CODE = "61";
     private static final int MIN_DIGITS = 8;
@@ -59,6 +60,35 @@ final class OwnerTelephones {
         }
         requireCountryNationalLength(digits);
         return "+" + digits;
+    }
+
+    /**
+     * The human-readable form of a stored E.164 {@code telephone}: the {@code +} country code,
+     * a space, then the national digits grouped in threes (e.g. {@code +61412345678} →
+     * {@code +61 412 345 678}). The country code is split off using the same recognised calling
+     * codes as {@link #toE164}; an unrecognised number is grouped without a country-code split.
+     */
+    public static String toDisplay(String e164) {
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        for (Map.Entry<String, Integer> country : NATIONAL_LENGTHS.entrySet()) {
+            String code = country.getKey();
+            if (digits.startsWith(code) && digits.length() - code.length() == country.getValue()) {
+                return "+" + code + " " + groupInThrees(digits.substring(code.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /** The digits split into space-separated groups of three, left to right. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
     }
 
     /**

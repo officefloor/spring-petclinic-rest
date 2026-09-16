@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
 
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +25,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -44,6 +46,11 @@ public interface OwnerMapper {
     /** The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
     default String initials(Owner owner) {
         return initial(owner.getFirstName()) + initial(owner.getLastName());
+    }
+
+    /** The stored E.164 telephone formatted for humans (see {@link OwnerTelephones#toDisplay}). */
+    default String telephoneDisplay(Owner owner) {
+        return OwnerTelephones.toDisplay(owner.getTelephone());
     }
 
     private static String initial(String name) {
