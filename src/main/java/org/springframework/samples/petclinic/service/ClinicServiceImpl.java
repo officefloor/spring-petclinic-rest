@@ -27,7 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -255,6 +257,9 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setBulkSignupWarning(
                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
             owner.setHouseholdSize(householdSizeIncluding(owner));
+            Optional<Owner> possibleDuplicate = findPossibleDuplicate(owner);
+            owner.setPossibleDuplicate(possibleDuplicate.isPresent());
+            owner.setPossibleDuplicateOf(possibleDuplicate.map(Owner::getId).orElse(null));
         }
         ownerRepository.save(owner);
 
@@ -281,6 +286,22 @@ public class ClinicServiceImpl implements ClinicService {
         return (int) ownerRepository.findByLastNameIgnoreCase(lastName).stream()
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(firstName))
             .count();
+    }
+
+    /**
+     * Find the existing owner, if any, that this new owner is a possible (soft) duplicate
+     * of: one that shares its last name (case-insensitively) and postcode but carries a
+     * different telephone, so it is not a hard duplicate. When several match, the earliest
+     * (lowest id) is chosen. An owner with no postcode can share none, so never matches.
+     */
+    private Optional<Owner> findPossibleDuplicate(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return Optional.empty();
+        }
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .min(Comparator.comparing(Owner::getId));
     }
 
     @Override
