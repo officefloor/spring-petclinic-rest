@@ -166,14 +166,16 @@ public class Owner extends Person {
     }
 
     /**
-     * Default the registration date to the server's current date when none was
-     * supplied, so every newly persisted owner has a registration date.
+     * Normalize the registration date before persisting: default it to the server's
+     * current date when none was supplied, then roll it forward onto a business day so
+     * every newly persisted owner is registered on a weekday.
      */
     @PrePersist
-    void defaultRegistrationDate() {
+    void normalizeRegistrationDate() {
         if (this.registrationDate == null) {
             this.registrationDate = LocalDate.now();
         }
+        this.registrationDate = BusinessDay.rollForward(this.registrationDate);
     }
 
     protected Set<Pet> getPetsInternal() {

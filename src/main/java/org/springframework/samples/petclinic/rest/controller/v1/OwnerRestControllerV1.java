@@ -27,6 +27,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -145,7 +146,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null && !emailNormalizer.isValid(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        if (clinicService.countOwnersByRegistrationDate(LocalDate.now()) >= MAX_OWNERS_PER_DAY) {
+        LocalDate registrationDate = BusinessDay.rollForward(
+            owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate());
+        owner.setRegistrationDate(registrationDate);
+        if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (clinicService.existsOwnerByTelephone(telephone)) {
