@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
@@ -147,6 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        DisposableEmailDomainValidator.validate(owner.getEmail());
         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
         RegistrationDateValidator.validateNotFuture(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();

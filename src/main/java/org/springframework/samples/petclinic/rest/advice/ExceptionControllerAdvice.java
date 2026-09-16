@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -236,6 +237,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("email"));
         logger.debug("Invalid email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException} raised when an owner's submitted email is
+     * syntactically valid but its domain is on the disposable-domain blocklist. Returns a 400 Bad
+     * Request whose body carries an {@code errors} array naming the {@code email} field.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        logger.debug("Disposable email domain at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
