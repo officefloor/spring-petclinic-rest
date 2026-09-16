@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.OwnerAuditLogger;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -86,13 +87,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -169,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             clinicService.shareHousehold(owner);
         }
         this.clinicService.saveOwner(owner);
+        this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
