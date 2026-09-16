@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5127ba19f..020e3d976 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -231,6 +234,19 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this owner's city already held enough owners, when this owner was created,
++     * to be approaching its hard capacity limit (between 40 and 49 owners, one short of
++     * the limit of 50). Stamped at creation, it flags a city filling towards capacity.
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index beb4baa1f..45defd412 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -49,6 +49,13 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
+ 
++    /**
++     * Number of owners a city must already hold before a further owner registered in it
++     * is flagged with a capacity warning, signalling the city is approaching (but has not
++     * yet reached) the hard per-city capacity limit enforced by the create endpoint.
++     */
++    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40;
++
+     private final PetRepository petRepository;
+     private final VetRepository vetRepository;
+     private final OwnerRepository ownerRepository;
+@@ -260,6 +267,8 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+             owner.setBulkSignupWarning(
+                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
++            owner.setCapacityWarning(
++                ownerRepository.countByCity(owner.getCity()) >= CITY_CAPACITY_WARNING_THRESHOLD);
+             owner.setHouseholdId(householdIdFor(owner));
+             owner.setHouseholdSize(householdSizeIncluding(owner));
+             owner.setMembershipLevelCap(membershipLevelCapFor(owner));
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c483a1f6b..fe1cc5a55 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0a5fc3991..093aefe6d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   postcode   VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e3789f9d8..ecea997ec 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 64780ef17..81d4f15f3 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       postcode   TEXT,
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3cbf523c1..fb6032365 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2295,6 +2295,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether this owner's city already held between 40 and 49 owners when
++                this owner was registered, flagging that the city is approaching its
++                hard capacity limit of 50.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
