@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3ecc2daed..bacb53c40 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -24,6 +25,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+@@ -46,6 +48,11 @@ public interface OwnerMapper {
+         return initial(owner.getFirstName()) + initial(owner.getLastName());
+     }
+ 
++    /** The stored E.164 telephone formatted for humans (see {@link OwnerTelephones#toDisplay}). */
++    default String telephoneDisplay(Owner owner) {
++        return OwnerTelephones.toDisplay(owner.getTelephone());
++    }
++
+     private static String initial(String name) {
+         return Character.toUpperCase(name.charAt(0)) + ".";
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+index 17caa1e67..2e0f93762 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephones.java
+@@ -13,9 +13,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * after the {@code +}, and — for a recognised country code — exactly the national-number
+  * length that country requires ({@code +61} → 9 national digits, {@code +1} → 10). Shared
+  * by {@link NormalizeOwnerTelephone} (which stores the E.164 value on the request) so
+- * every telephone is stored and compared the same way.
++ * every telephone is stored and compared the same way, and by the owner mapper's
++ * {@link #toDisplay} for the human-readable {@code telephoneDisplay}.
+  */
+-final class OwnerTelephones {
++public final class OwnerTelephones {
+ 
+     private static final String DEFAULT_COUNTRY_CODE = "61";
+     private static final int MIN_DIGITS = 8;
+@@ -61,6 +62,35 @@ final class OwnerTelephones {
+         return "+" + digits;
+     }
+ 
++    /**
++     * The human-readable form of a stored E.164 {@code telephone}: the {@code +} country code,
++     * a space, then the national digits grouped in threes (e.g. {@code +61412345678} →
++     * {@code +61 412 345 678}). The country code is split off using the same recognised calling
++     * codes as {@link #toE164}; an unrecognised number is grouped without a country-code split.
++     */
++    public static String toDisplay(String e164) {
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        for (Map.Entry<String, Integer> country : NATIONAL_LENGTHS.entrySet()) {
++            String code = country.getKey();
++            if (digits.startsWith(code) && digits.length() - code.length() == country.getValue()) {
++                return "+" + code + " " + groupInThrees(digits.substring(code.length()));
++            }
++        }
++        return "+" + groupInThrees(digits);
++    }
++
++    /** The digits split into space-separated groups of three, left to right. */
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
++
+     /**
+      * For a recognised country calling code, rejects a number whose national part is not the
+      * exact length that country requires. Unrecognised codes keep the generic length check only.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4fd2f0e4e..d66d1b3ed 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2106,6 +2106,13 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 'telephone' formatted for humans — the '+' country
++                code, a space, then the national digits grouped in threes.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: The owner's customer code, formatted '<REGION>-<HASH8>' where REGION
