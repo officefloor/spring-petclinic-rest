@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Fixed lookup of a city to its canonical region (locality).
@@ -30,6 +31,9 @@ public final class CityRegions {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    /** The canonical regions (NSW, VIC, QLD); anything else is {@link #UNKNOWN}. */
+    private static final Set<String> KNOWN_REGIONS = Set.copyOf(CITY_TO_REGION.values());
+
     private CityRegions() {
     }
 
@@ -39,5 +43,13 @@ public final class CityRegions {
      */
     public static String regionOf(String city) {
         return CITY_TO_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * Return whether the given region is a known canonical region (NSW, VIC or QLD)
+     * rather than {@link #UNKNOWN} or an unrecognised value.
+     */
+    public static boolean isKnownRegion(String region) {
+        return KNOWN_REGIONS.contains(region);
     }
 }

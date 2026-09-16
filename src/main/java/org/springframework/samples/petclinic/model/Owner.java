@@ -366,6 +366,17 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's marketing segment, formatted {@code <TIER>_<AREA>}: the TIER is
+     * {@code PREMIUM} when the owner's {@link #getMembershipLevel() membership level} is 3 or more,
+     * otherwise {@code STANDARD}; the AREA is {@code METRO} when the owner's {@link #getLocality()
+     * locality} is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerSegment.of(getMembershipLevel(), getLocality());
+    }
+
+    /**
      * Return this owner's membership points: starting at 0, plus 2 when the owner has an email,
      * plus 1 when the owner is uniquely named (a {@link #getNamesakeCount() namesakeCount} of 0),
      * plus 2 for a household of three or more ({@link #getHouseholdSize() household size}), plus 3
