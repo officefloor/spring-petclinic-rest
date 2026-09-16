@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
+import org.springframework.samples.petclinic.rest.validation.CustomerCodeDeduplicator;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final CustomerCodeDeduplicator customerCodeDeduplicator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -105,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdSizeCounter householdSizeCounter,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 CustomerCodeDeduplicator customerCodeDeduplicator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -117,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.customerCodeDeduplicator = customerCodeDeduplicator;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -171,7 +176,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
-        owner.setCustomerCode(CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
+        String customerCode = CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
+        owner.setCustomerCode(this.customerCodeDeduplicator.deduplicate(customerCode));
         this.clinicService.saveOwner(owner);
         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.ownerAuditLogger.logCreated(owner);
