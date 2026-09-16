@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.model;
 
+import java.util.function.Predicate;
+
 /**
  * The single definition of an owner's customer code: {@code <REGION>-<HASH8>} where REGION is
  * the region derived from the owner's postcode and HASH8 is the first 8 upper-case hex
@@ -27,6 +29,27 @@ public final class CustomerCode {
         String region = Locality.regionForPostcode(owner.getPostcode());
         String hash = Sha256.upperHex(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
         return region + SEPARATOR + hash;
+    }
+
+    /**
+     * De-duplicates a customer code against the codes already in use. Returns {@code customerCode}
+     * unchanged when it is not taken; otherwise appends {@code -<n>} with the smallest {@code n} of
+     * 2 or more that yields a code not reported as taken.
+     *
+     * @param customerCode the base {@code <REGION>-<HASH8>} code
+     * @param taken tells whether a candidate code is already in use
+     * @return a code not reported as taken by {@code taken}
+     */
+    public static String deduplicate(String customerCode, Predicate<String> taken) {
+        if (!taken.test(customerCode)) {
+            return customerCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = customerCode + SEPARATOR + n;
+            if (!taken.test(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**
