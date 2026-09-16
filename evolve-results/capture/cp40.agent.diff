@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+new file mode 100644
+index 000000000..24bb74d3c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The mapping from an owner's membership points to their membership level. Owns the
++ * level boundaries so they live in one place rather than being scattered across callers:
++ * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++ */
++public final class MembershipLevel {
++
++    private MembershipLevel() {
++    }
++
++    /**
++     * The membership level (1 to 4) earned by the given number of membership points.
++     */
++    public static int forPoints(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 78cba113b..316f96e4c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -250,30 +250,43 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership level, a number from 1 to 4. Every owner starts at level 1;
+-     * one level is added when an email is on file, one more when the owner is unique
+-     * (namesake count of zero), and one more when the owner has accrued more than a year of
+-     * tenure (see {@link Tenure}). The level is capped at 4, so reaching it requires tenure
+-     * and a brand-new owner (zero tenure) never exceeds level 3. Derived from the owner's own
+-     * fields, so it stays consistent with them.
++     * The owner's membership points, starting at zero: two points are added when an email is
++     * on file, one more when the owner is unique (namesake count of zero), two more for a
++     * household of three or more, and three more when the owner has accrued more than a year of
++     * tenure (see {@link Tenure}). Derived from the owner's own fields, so it stays consistent
++     * with them.
+      */
+     @Transient
+-    public Integer getMembershipLevel() {
+-        int level = 1;
++    public Integer getMembershipPoints() {
++        int points = 0;
+         boolean hasEmail = this.email != null && !this.email.isEmpty();
+         if (hasEmail) {
+-            level++;
++            points += 2;
+         }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+         if (unique) {
+-            level++;
++            points += 1;
++        }
++        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
++        if (largeHousehold) {
++            points += 2;
+         }
+         boolean tenured = this.registrationDate != null
+             && Tenure.qualifiesForTopLevel(this.registrationDate, LocalDate.now());
+         if (tenured) {
+-            level++;
++            points += 3;
+         }
+-        return Math.min(level, 4);
++        return points;
++    }
++
++    /**
++     * The owner's membership level, a number from 1 to 4, derived from their
++     * {@link #getMembershipPoints() membership points} (see {@link MembershipLevel}). Derived
++     * from the owner's own fields, so it stays consistent with them.
++     */
++    @Transient
++    public Integer getMembershipLevel() {
++        return MembershipLevel.forPoints(getMembershipPoints());
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 454d27bf2..201412fda 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2173,17 +2173,28 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, starting at zero: two points for an
++                email on file, one more when the owner is unique (namesake count of
++                zero), two more for a household of three or more, and three more for
++                tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 5
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3. Every owner
+-                starts at level 1; one level is added when an email is on file and
+-                one more when the owner is unique (namesake count of zero). Capped
+-                at 3, leaving level 4 reserved for tenure.
++                The owner's membership level, a number from 1 to 4, derived from their
++                membership points: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for
++                6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
