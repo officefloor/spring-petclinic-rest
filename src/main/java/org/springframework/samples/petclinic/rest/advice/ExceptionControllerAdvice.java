@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -257,6 +258,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("telephone"));
         logger.debug("Duplicate owner telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerEmailException} raised when an owner is created with a
+     * normalized (lower-cased) email that is already used by another owner. Returns a 409 Conflict
+     * whose body carries an {@code errors} array naming the {@code email} field.
+     *
+     * @param e The {@link DuplicateOwnerEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerEmailException(DuplicateOwnerEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        logger.debug("Duplicate owner email at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerat
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
+import org.springframework.samples.petclinic.rest.validation.OwnerEmailUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
@@ -79,6 +80,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerTelephoneUniquenessValidator telephoneUniquenessValidator;
 
+    private final OwnerEmailUniquenessValidator emailUniquenessValidator;
+
     private final OwnerHouseholdUniquenessValidator householdUniquenessValidator;
 
     private final OwnerHouseholdRegistrar householdRegistrar;
@@ -98,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
+                                 OwnerEmailUniquenessValidator emailUniquenessValidator,
                                  OwnerHouseholdUniquenessValidator householdUniquenessValidator,
                                  OwnerHouseholdRegistrar householdRegistrar,
                                  NamesakeCounter namesakeCounter,
@@ -110,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneUniquenessValidator = telephoneUniquenessValidator;
+        this.emailUniquenessValidator = emailUniquenessValidator;
         this.householdUniquenessValidator = householdUniquenessValidator;
         this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
@@ -157,6 +162,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
         this.dailyRegistrationCapacityValidator.validateHasCapacity(owner.getRegistrationDate());
         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
+        this.emailUniquenessValidator.validateUnique(owner.getEmail());
         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
