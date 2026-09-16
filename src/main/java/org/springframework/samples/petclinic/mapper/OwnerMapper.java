@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegion;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.IdentityKey;
+import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.PostcodeRange;
 
@@ -27,6 +28,7 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
@@ -62,6 +64,15 @@ public interface OwnerMapper {
      */
     default Integer membershipLevel(Owner owner) {
         return MembershipLevel.of(owner);
+    }
+
+    /**
+     * The Luhn check digit (0-9) over the digits of the owner's customer code.
+     *
+     * @see Luhn#checkDigit(String)
+     */
+    default Integer checkDigit(Owner owner) {
+        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /**
