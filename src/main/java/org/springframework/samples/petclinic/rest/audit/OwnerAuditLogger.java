@@ -16,24 +16,36 @@
 
 package org.springframework.samples.petclinic.rest.audit;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
+import tools.jackson.databind.ObjectMapper;
+
 /**
  * Writes owner-lifecycle audit records to the dedicated {@code AUDIT} logger, keeping the
  * audit trail decoupled from the application's diagnostic logging. Each successful owner
- * creation produces a single line carrying the identifying facts of the new record.
+ * creation produces a human-readable line carrying the identifying facts of the new record,
+ * followed by an immutable structured {@link OwnerCreatedEvent} serialized as JSON.
  */
 @Component
 public class OwnerAuditLogger {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Monotonically increasing sequence number stamped on each owner-creation event. */
+    private final AtomicLong sequence = new AtomicLong();
+
     /**
-     * Emits an audit line for a newly created owner, recording its id, customer code,
-     * registration date, membership level and membership number.
+     * Emits the audit records for a newly created owner: a human-readable line recording its id,
+     * customer code, registration date, membership level and membership number, followed by an
+     * immutable structured {@link OwnerCreatedEvent} (as JSON) carrying the owner's id and current
+     * primary identifier.
      *
      * @param owner the persisted owner (must already have an assigned id)
      */
@@ -41,5 +53,8 @@ public class OwnerAuditLogger {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(), owner.getId(),
+            owner.getPrimaryIdentifier(), owner.getMembershipLevel(), OwnerCreatedEvent.TYPE);
+        AUDIT.info("{}", MAPPER.writeValueAsString(event));
     }
 }
