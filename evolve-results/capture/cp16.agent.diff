@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 99be586e9..ce82f00c8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.CityOwnerCounter;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
+@@ -79,6 +80,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final NamesakeCounter namesakeCounter;
+ 
++    private final CityOwnerCounter cityOwnerCounter;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -86,7 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
+                                  OwnerHouseholdUniquenessValidator householdUniquenessValidator,
+                                  OwnerHouseholdRegistrar householdRegistrar,
+-                                 NamesakeCounter namesakeCounter) {
++                                 NamesakeCounter namesakeCounter,
++                                 CityOwnerCounter cityOwnerCounter) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -95,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.householdUniquenessValidator = householdUniquenessValidator;
+         this.householdRegistrar = householdRegistrar;
+         this.namesakeCounter = namesakeCounter;
++        this.cityOwnerCounter = cityOwnerCounter;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -138,7 +143,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             this.householdRegistrar.assignHousehold(owner);
+         }
+         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
+-        owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
++        owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getCity(), owner.getLastName(),
++            this.cityOwnerCounter.count(owner.getCity())));
+         this.clinicService.saveOwner(owner);
+         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCounter.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCounter.java
+new file mode 100644
+index 000000000..b606bd7be
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCounter.java
+@@ -0,0 +1,48 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Counts how many existing owners live in a given city, compared case-insensitively. The
++ * comparison is done in memory because the stored cities are not kept in a normalized form,
++ * mirroring {@link NamesakeCounter}. Used to drive the per-city sequence of an owner's
++ * {@link CustomerCodeGenerator customer code}.
++ */
++@Component
++public class CityOwnerCounter {
++
++    private final ClinicService clinicService;
++
++    public CityOwnerCounter(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * Counts the existing owners whose city matches the given one, case-insensitively.
++     *
++     * @param city the city of the owner being created
++     * @return the number of existing owners in that city
++     */
++    public long count(String city) {
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
++            .count();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeGenerator.java
+index 0d0f97687..abbb3dc37 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeGenerator.java
+@@ -17,10 +17,10 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+ /**
+- * Derives an owner's customer code, formatted {@code <LAST3>-<NNNN>} where LAST3 is the
+- * upper-cased first three letters of the last name and NNNN is a global 4-digit,
+- * zero-padded sequence equal to one more than the current number of owners
+- * (e.g. {@code SMI-0007}).
++ * Derives an owner's customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is the
++ * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
++ * last name and NNNN is a per-city 4-digit, zero-padded sequence equal to one more than the
++ * number of owners already in that city (e.g. {@code LON-SMI-0007}).
+  */
+ public final class CustomerCodeGenerator {
+ 
+@@ -30,12 +30,18 @@ public final class CustomerCodeGenerator {
+     /**
+      * Builds the customer code for a new owner.
+      *
+-     * @param lastName          the owner's last name
+-     * @param currentOwnerCount the number of owners currently stored
+-     * @return the customer code, e.g. {@code "SMI-0007"}
++     * @param city           the owner's city
++     * @param lastName       the owner's last name
++     * @param cityOwnerCount the number of owners already in that city
++     * @return the customer code, e.g. {@code "LON-SMI-0007"}
+      */
+-    public static String generate(String lastName, long currentOwnerCount) {
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        return String.format("%s-%04d", last3, currentOwnerCount + 1);
++    public static String generate(String city, String lastName, long cityOwnerCount) {
++        String city3 = prefix(city);
++        String last3 = prefix(lastName);
++        return String.format("%s-%s-%04d", city3, last3, cityOwnerCount + 1);
++    }
++
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+     }
+ }
