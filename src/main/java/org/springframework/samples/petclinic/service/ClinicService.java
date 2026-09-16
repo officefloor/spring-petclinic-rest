@@ -63,6 +63,15 @@ public interface ClinicService {
 	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
+	 * Check whether another owner already uses the given email, compared
+	 * case-insensitively (i.e. by its lower-cased form).
+	 *
+	 * @param email the email to match (case-insensitively)
+	 * @return <code>true</code> if at least one existing owner already uses this email
+	 */
+	boolean existsOwnerByEmail(String email) throws DataAccessException;
+
+	/**
 	 * Check whether another owner already shares the given household, i.e. has the same
 	 * last name and the same address, compared case-insensitively and with runs of
 	 * whitespace collapsed to a single space.

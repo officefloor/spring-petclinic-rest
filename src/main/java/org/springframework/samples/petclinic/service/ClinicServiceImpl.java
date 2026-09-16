@@ -296,6 +296,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean existsOwnerByEmail(String email) throws DataAccessException {
+        return ownerRepository.existsByEmailIgnoreCase(email);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException {
         return !householdMembers(lastName, address).isEmpty();
     }

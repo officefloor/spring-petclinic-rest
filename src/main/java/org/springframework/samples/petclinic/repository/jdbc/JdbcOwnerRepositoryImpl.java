@@ -162,6 +162,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("email", email);
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE LOWER(email) = LOWER(:email)",
+            params,
+            Long.class
+        );
+        return count != null && count > 0;
+    }
+
+    @Override
     public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
         Map<String, Object> params = new HashMap<>();
         params.put("lastName", lastName);
