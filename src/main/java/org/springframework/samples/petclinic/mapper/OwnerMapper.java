@@ -26,6 +26,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -44,6 +45,11 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /** The owner's canonical API path: '/api/owners/' followed by the owner's id. */
+    default String selfLink(Owner owner) {
+        return "/api/owners/" + owner.getId();
+    }
 
     /** The owner's salutation: '&lt;title&gt; &lt;lastName&gt;' when a title was supplied,
      * otherwise just the last name. */
