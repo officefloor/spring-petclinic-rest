@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CheckDigit;
 import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
@@ -32,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -70,16 +72,23 @@ public interface OwnerMapper {
     }
 
     /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registrationDate year. */
+     * last two digits of the fiscal year of the registrationDate (see {@link FiscalYear}). */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(), FiscalYear.of(owner.getRegistrationDate()) % 100);
+    }
+
+    /** The owner's 'FY&lt;YY&gt;' fiscal year, derived from the business-day-adjusted
+     * registrationDate (see {@link FiscalYear}), or null when the date is unknown. */
+    default String fiscalYear(Owner owner) {
+        return FiscalYear.label(owner.getRegistrationDate());
     }
 
     /** The owner's membership points: starts at 0, plus 2 when an email is present, plus 1 when
-     * namesakeCount is 0, plus 2 for a household of 3 or more, plus 3 when tenure exceeds 365 days. */
+     * namesakeCount is 0, plus 2 for a household of 3 or more, plus 3 when tenure is at least one
+     * elapsed fiscal year. */
     default int membershipPoints(Owner owner) {
         int points = 0;
         if (hasEmail(owner)) {
@@ -91,7 +100,7 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
             points += 2;
         }
-        if (Tenure.days(owner.getRegistrationDate()) > 365) {
+        if (Tenure.fiscalYears(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
