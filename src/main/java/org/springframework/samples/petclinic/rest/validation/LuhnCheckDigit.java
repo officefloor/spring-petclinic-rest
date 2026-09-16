@@ -18,7 +18,7 @@ package org.springframework.samples.petclinic.rest.validation;
 
 /**
  * Computes the Luhn check digit over the digits contained in a string. Non-digit
- * characters are ignored, so a formatted code such as {@code LON-SMI-0007} is scored
+ * characters are ignored, so a formatted code such as {@code NSW-1A2B3C4D} is scored
  * over its digits alone.
  */
 public final class LuhnCheckDigit {

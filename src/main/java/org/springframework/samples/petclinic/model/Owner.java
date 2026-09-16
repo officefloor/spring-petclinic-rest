@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.LuhnCheckDigit;
 
 import jakarta.persistence.*;
@@ -191,15 +192,17 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's locality: the canonical region derived by looking up the
-     * {@link #getPostcode() postcode} against the known region ranges first, falling
-     * back to the {@link #getCity() city}-to-region table when the postcode is absent
-     * or in no known range, or {@code UNKNOWN} when the city is not in the table either.
+     * Return this owner's locality: the REGION segment of the owner's
+     * {@link #getCustomerCode() customer code}, which is the region the identity was minted for.
+     * When no customer code has been assigned yet the region is resolved directly from the
+     * {@link #getPostcode() postcode} and {@link #getCity() city} via {@link RegionResolver}.
      */
     @Transient
     public String getLocality() {
-        String region = RegionPostcodes.regionForPostcode(this.postcode);
-        return region != null ? region : CityRegions.regionOf(this.city);
+        if (this.customerCode != null && !this.customerCode.isBlank()) {
+            return CustomerCodeGenerator.regionOf(this.customerCode);
+        }
+        return RegionResolver.regionFor(this.postcode, this.city);
     }
 
     /**

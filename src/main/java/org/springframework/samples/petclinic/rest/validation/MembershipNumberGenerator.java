@@ -21,7 +21,7 @@ import java.time.LocalDate;
 /**
  * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is
  * the last two digits, zero-padded, of the registration date year
- * (e.g. {@code SMI-0007-M26}).
+ * (e.g. {@code NSW-1A2B3C4D-M26}).
  */
 public final class MembershipNumberGenerator {
 
@@ -33,7 +33,7 @@ public final class MembershipNumberGenerator {
      *
      * @param customerCode     the owner's customer code
      * @param registrationDate the owner's registration date
-     * @return the membership number, e.g. {@code "SMI-0007-M26"}
+     * @return the membership number, e.g. {@code "NSW-1A2B3C4D-M26"}
      */
     public static String generate(String customerCode, LocalDate registrationDate) {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);

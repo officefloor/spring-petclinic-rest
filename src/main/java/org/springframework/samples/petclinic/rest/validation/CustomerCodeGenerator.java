@@ -16,13 +16,22 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.util.Locale;
+
 /**
- * Derives an owner's customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is the
- * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
- * last name and NNNN is a per-city 4-digit, zero-padded sequence equal to one more than the
- * number of owners already in that city (e.g. {@code LON-SMI-0007}).
+ * Derives an owner's customer code, formatted {@code <REGION>-<HASH8>} where REGION is the owner's
+ * region code (derived from the postcode, see
+ * {@link org.springframework.samples.petclinic.model.RegionResolver RegionResolver}) and HASH8 is
+ * the first eight upper-case hexadecimal characters of the SHA-256 digest of the owner's normalized
+ * telephone concatenated with the last name (e.g. {@code NSW-1A2B3C4D}). The code carries no
+ * sequence number, so it is stable for a given region and (telephone, last name) pair.
  */
 public final class CustomerCodeGenerator {
+
+    /** Number of leading hex characters of the SHA-256 digest kept as the code's hash segment. */
+    private static final int HASH_LENGTH = 8;
+
+    private static final char SEPARATOR = '-';
 
     private CustomerCodeGenerator() {
     }
@@ -30,18 +39,29 @@ public final class CustomerCodeGenerator {
     /**
      * Builds the customer code for a new owner.
      *
-     * @param city           the owner's city
-     * @param lastName       the owner's last name
-     * @param cityOwnerCount the number of owners already in that city
-     * @return the customer code, e.g. {@code "LON-SMI-0007"}
+     * @param region              the owner's region code
+     * @param normalizedTelephone the owner's telephone in its normalized storage form
+     * @param lastName            the owner's last name
+     * @return the customer code, e.g. {@code "NSW-1A2B3C4D"}
      */
-    public static String generate(String city, String lastName, long cityOwnerCount) {
-        String city3 = prefix(city);
-        String last3 = prefix(lastName);
-        return String.format("%s-%s-%04d", city3, last3, cityOwnerCount + 1);
+    public static String generate(String region, String normalizedTelephone, String lastName) {
+        String hash8 = Sha256.hex(orEmpty(normalizedTelephone) + orEmpty(lastName))
+            .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+        return region + SEPARATOR + hash8;
     }
 
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    /**
+     * Return the REGION segment of a customer code (the text before the separator).
+     *
+     * @param customerCode a customer code produced by {@link #generate}
+     * @return the region segment
+     */
+    public static String regionOf(String customerCode) {
+        int separator = customerCode.indexOf(SEPARATOR);
+        return separator < 0 ? customerCode : customerCode.substring(0, separator);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }
