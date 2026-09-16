@@ -79,7 +79,7 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership level from 1 to 3, assigned on creation.
+     * The owner's membership level from 1 to 4; level 4 requires tenure.
      *
      * @see MembershipLevel#of(Owner)
      */
