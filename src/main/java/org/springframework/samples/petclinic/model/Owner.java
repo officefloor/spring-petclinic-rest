@@ -249,6 +249,15 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's self link: the canonical API path of this owner, {@code /api/owners/}
+     * followed by its {@link #getId() id}.
+     */
+    @Transient
+    public String getSelfLink() {
+        return "/api/owners/" + this.getId();
+    }
+
+    /**
      * Return whether this owner is a possible duplicate: true when it was created while an existing
      * owner already shared its last name and postcode under a different telephone, i.e. when a
      * {@link #getPossibleDuplicateOf() possible-duplicate-of} owner id is present.
