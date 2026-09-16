@@ -161,4 +161,12 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
         return (long) query.getSingleResult();
     }
 
+    @Override
+    public long countByHouseholdId(String householdId) throws DataAccessException {
+        Query query = this.em.createQuery(
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId");
+        query.setParameter("householdId", householdId);
+        return (long) query.getSingleResult();
+    }
+
 }

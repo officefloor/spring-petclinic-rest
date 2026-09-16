@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -141,6 +144,14 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
      * is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
@@ -155,12 +166,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code "SILVER"} for a unique owner (namesake
-     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise.
-     * Derived from the owner's own fields, so it stays consistent with them.
+     * The owner's membership tier: {@code "GOLD"} when the owner belongs to a household
+     * of three or more members, otherwise {@code "SILVER"} for a unique owner (namesake
+     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise. Derived
+     * from the owner's own fields, so it stays consistent with them.
      */
     @Transient
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         return unique && hasEmail ? "SILVER" : "BRONZE";

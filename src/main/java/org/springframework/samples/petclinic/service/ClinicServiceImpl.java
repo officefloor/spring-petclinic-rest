@@ -253,9 +253,22 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(
                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
+            owner.setHouseholdSize(householdSizeIncluding(owner));
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Size of the household this new owner will belong to once persisted: the owners
+     * already sharing its household id, plus the owner itself. An owner with no shared
+     * household id stands alone, so its household size is one.
+     */
+    private int householdSizeIncluding(Owner owner) {
+        if (owner.getHouseholdId() == null) {
+            return 1;
+        }
+        return (int) ownerRepository.countByHouseholdId(owner.getHouseholdId()) + 1;
     }
 
     /**

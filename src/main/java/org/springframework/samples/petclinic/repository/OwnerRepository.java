@@ -112,7 +112,17 @@ public interface OwnerRepository {
     long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 
     /**
-     * Retrieve <code>Owner</code>s from the data store, returning all owners 
+     * Count the <code>Owner</code>s that already belong to the given household, i.e. that
+     * carry the given shared household id. Used to size a new owner's household when
+     * assigning its membership tier.
+     *
+     * @param householdId the shared household id to match
+     * @return the number of owners already sharing that household id
+     */
+    long countByHouseholdId(String householdId) throws DataAccessException;
+
+    /**
+     * Retrieve <code>Owner</code>s from the data store, returning all owners
      *
      * @return a <code>Collection</code> of <code>Owner</code>s (or an empty <code>Collection</code> if none
      * found)

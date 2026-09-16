@@ -289,4 +289,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return total == null ? 0 : total;
     }
 
+    @Override
+    public long countByHouseholdId(String householdId) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("householdId", householdId);
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId",
+            params,
+            Long.class);
+        return total == null ? 0 : total;
+    }
+
 }
