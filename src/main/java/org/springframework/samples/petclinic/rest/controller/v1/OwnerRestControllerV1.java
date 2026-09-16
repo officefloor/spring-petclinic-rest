@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerAuditLogger;
+import org.springframework.samples.petclinic.service.OwnerCreationIdempotencyStore;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final OwnerCreationIdempotencyStore idempotencyStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -100,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  PostcodeValidator postcodeValidator,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 OwnerCreationIdempotencyStore idempotencyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -110,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.postcodeValidator = postcodeValidator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.idempotencyStore = idempotencyStore;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -168,7 +173,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        Owner replay = replayIdempotentCreate(idempotencyKey);
+        if (replay != null) {
+            return new ResponseEntity<>(ownerMapper.toOwnerDto(replay), HttpStatus.OK);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!normalizeAddress(owner)) {
@@ -211,10 +220,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setDeclaredHouseholdMember(sharesHousehold);
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
+        if (idempotencyKey != null) {
+            this.idempotencyStore.remember(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Look up the owner already created under the given {@code Idempotency-Key}, if any.
+     * A repeated create carrying a key that has already produced an owner replays that
+     * original owner instead of creating a duplicate.
+     *
+     * @param idempotencyKey the client-supplied idempotency key, or {@code null} when the
+     *                       request carries no {@code Idempotency-Key} header
+     * @return the originally created owner to replay, or {@code null} when the key is
+     * absent, unseen, or its owner no longer exists
+     */
+    private Owner replayIdempotentCreate(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        return idempotencyStore.findOwnerId(idempotencyKey)
+            .map(clinicService::findOwnerById)
+            .orElse(null);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
