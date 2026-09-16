@@ -1,10 +1,20 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Comparator;
+import java.util.Map;
+
 /**
  * Shared telephone canonicalization for the create-owner pipeline: reduces a telephone to
  * its E.164 form so validation, uniqueness checks and storage all compare the same value.
  */
 final class OwnerTelephones {
+
+    /**
+     * Country calling code (E.164 digits after the {@code '+'}) mapped to the exact number
+     * of national digits a valid number for that country carries. Codes not listed here
+     * carry no per-country length rule.
+     */
+    private static final Map<String, Integer> NATIONAL_DIGITS = Map.of("1", 10, "61", 9);
 
     private OwnerTelephones() {
     }
@@ -35,5 +45,28 @@ final class OwnerTelephones {
             return null;
         }
         return "+" + digits;
+    }
+
+    /**
+     * Whether the E.164 {@code telephone}'s national-number length is correct for its
+     * country calling code (e.g. {@code +61} requires 9 national digits, {@code +1}
+     * requires 10). A country code with no known length rule is accepted.
+     *
+     * @param telephone an E.164 number (as produced by {@link #toE164(String)}).
+     */
+    static boolean hasValidNationalLength(String telephone) {
+        if (telephone == null || !telephone.startsWith("+")) {
+            return false;
+        }
+        String digits = telephone.substring(1);
+        // Longest code first so "+61" is not matched as "+6"/"+1".
+        String code = NATIONAL_DIGITS.keySet().stream()
+                .filter(digits::startsWith)
+                .max(Comparator.comparingInt(String::length))
+                .orElse(null);
+        if (code == null) {
+            return true; // no per-country length rule
+        }
+        return digits.length() - code.length() == NATIONAL_DIGITS.get(code);
     }
 }
