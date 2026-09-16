@@ -73,6 +73,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @Column(name = "membership_number")
     private String membershipNumber;
 
@@ -174,6 +177,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     public String getMembershipNumber() {
         return this.membershipNumber;
     }
@@ -249,28 +260,27 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's membership level: starting at 1, plus 1 when the owner
-     * has an email, plus 1 when the owner is uniquely named (a
-     * {@link #getNamesakeCount() namesakeCount} of 0), plus 1 for long tenure
-     * ({@link #getTenureDays() tenure} of more than 365 days), capped at 4. The
-     * pre-tenure factors max out at level 3, so only tenure reaches level 4.
+     * Return this owner's membership points: starting at 0, plus 2 when the owner has an email,
+     * plus 1 when the owner is uniquely named (a {@link #getNamesakeCount() namesakeCount} of 0),
+     * plus 2 for a household of three or more ({@link #getHouseholdSize() household size}), plus 3
+     * for long tenure ({@link #getTenureDays() tenure} of more than 365 days).
+     */
+    @Transient
+    public int getMembershipPoints() {
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        boolean longTenure = getTenureDays() > 365;
+        return MembershipPoints.of(hasEmail, uniquelyNamed, largeHousehold, longTenure);
+    }
+
+    /**
+     * Return this owner's membership level: the band their {@link #getMembershipPoints() membership
+     * points} fall into — 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
      */
     @Transient
     public int getMembershipLevel() {
-        int level = 1;
-        boolean hasEmail = this.email != null && !this.email.isEmpty();
-        if (hasEmail) {
-            level++;
-        }
-        boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
-        if (uniquelyNamed) {
-            level++;
-        }
-        boolean tenured = getTenureDays() > 365;
-        if (tenured) {
-            level++;
-        }
-        return Math.min(level, 4);
+        return MembershipPoints.levelFor(getMembershipPoints());
     }
 
     /**

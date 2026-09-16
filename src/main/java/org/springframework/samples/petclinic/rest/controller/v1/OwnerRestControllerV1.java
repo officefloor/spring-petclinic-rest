@@ -47,6 +47,7 @@ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDoma
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
+import org.springframework.samples.petclinic.rest.validation.HouseholdSizeCounter;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
@@ -86,6 +87,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final NamesakeCounter namesakeCounter;
 
+    private final HouseholdSizeCounter householdSizeCounter;
+
     private final CityOwnerCapacityValidator cityOwnerCapacityValidator;
 
     private final DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator;
@@ -99,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector,
                                  NamesakeCounter namesakeCounter,
+                                 HouseholdSizeCounter householdSizeCounter,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
                                  OwnerAuditLogger ownerAuditLogger) {
@@ -109,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.possibleDuplicateOwnerDetector = possibleDuplicateOwnerDetector;
         this.namesakeCounter = namesakeCounter;
+        this.householdSizeCounter = householdSizeCounter;
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
         this.ownerAuditLogger = ownerAuditLogger;
@@ -164,6 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
         owner.setCustomerCode(CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
