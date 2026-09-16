@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Locality;
+import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -22,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -71,20 +72,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier, derived from the owner's own fields: 'GOLD' when the owner's
-     * household has 3 or more members (householdSize is 3+); otherwise 'SILVER' when the owner has
-     * no namesakes (namesakeCount is 0) and an email is present, and 'BRONZE' in all other cases.
+     * The owner's numeric membership level, derived from the owner's own fields; null when there
+     * is no owner.
+     *
+     * @see MembershipLevel
      */
-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+    default Integer membershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return OwnerDto.MembershipTierEnum.GOLD;
-        }
-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        return MembershipLevel.of(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);
