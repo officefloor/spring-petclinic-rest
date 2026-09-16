@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 75a700638..880bfad16 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.CityRegion;
+ import org.springframework.samples.petclinic.util.ContactPreference;
+ import org.springframework.samples.petclinic.util.IdentityKey;
++import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.PostcodeRange;
+ 
+@@ -27,6 +28,7 @@ public interface OwnerMapper {
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
+@@ -64,6 +66,15 @@ public interface OwnerMapper {
+         return MembershipLevel.of(owner);
+     }
+ 
++    /**
++     * The Luhn check digit (0-9) over the digits of the owner's customer code.
++     *
++     * @see Luhn#checkDigit(String)
++     */
++    default Integer checkDigit(Owner owner) {
++        return Luhn.checkDigit(owner.getCustomerCode());
++    }
++
+     /**
+      * The upper-cased first letters of firstName and lastName, dot-separated with a
+      * trailing dot (e.g. "J.S.").
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Luhn.java b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+new file mode 100644
+index 000000000..7df6dd8f7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the Luhn check digit over the digits contained in a string. Non-digit
++ * characters are ignored, so a formatted code such as {@code LON-SMI-0007} is checked on
++ * its digits alone. The rightmost digit is doubled first, each doubled value above 9 has 9
++ * subtracted, and the check digit is the amount that rounds the running total up to the
++ * next multiple of ten.
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /** The Luhn check digit (0-9) over the digits contained in {@code value}. */
++    public static int checkDigit(String value) {
++        int sum = 0;
++        boolean doubleDigit = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (doubleDigit) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            doubleDigit = !doubleDigit;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7166d3027..c97144135 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2105,6 +2105,15 @@ components:
+               type: string
+               example: FRA-0007-M20
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn check digit (0-9) computed over the digits of the owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable shared identifier for owners who knowingly share a household (same last name and address, created with 'sharesHousehold'). Assigned to every member of the household; null for owners who do not share one.
