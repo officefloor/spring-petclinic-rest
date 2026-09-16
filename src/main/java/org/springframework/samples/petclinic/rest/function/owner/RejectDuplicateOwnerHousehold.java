@@ -27,7 +27,7 @@ public class RejectDuplicateOwnerHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // a declared household member is allowed past the duplicate block
         }
-        Collection<Owner> existing = ownerRepository.findAll();
+        Collection<Owner> existing = Owners.active(ownerRepository.findAll());
         if (!OwnerHouseholds.members(existing, request.getLastName(), request.getPostcode()).isEmpty()) {
             throw new DuplicateOwnerException(
                     OwnerHouseholds.householdId(request.getLastName(), request.getPostcode()));

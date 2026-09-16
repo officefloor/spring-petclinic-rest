@@ -13,7 +13,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignOwnerHouseholdSize {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        int size = 1 + OwnerHouseholds.members(ownerRepository.findAll(),
+        int size = 1 + OwnerHouseholds.members(Owners.active(ownerRepository.findAll()),
                 owner.getLastName(), owner.getPostcode()).size();
         owner.setHouseholdSize(size);
     }

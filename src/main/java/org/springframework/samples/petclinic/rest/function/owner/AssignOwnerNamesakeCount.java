@@ -18,7 +18,7 @@ public class AssignOwnerNamesakeCount {
         String firstName = canonical(owner.getFirstName());
         String lastName = canonical(owner.getLastName());
         int namesakes = 0;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : Owners.active(ownerRepository.findAll())) {
             if (firstName.equals(canonical(existing.getFirstName()))
                     && lastName.equals(canonical(existing.getLastName()))) {
                 namesakes++;

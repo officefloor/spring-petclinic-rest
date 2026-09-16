@@ -39,7 +39,7 @@ public class AssignOwnerPossibleDuplicate {
             return; // no postcode to share, so no soft match
         }
         Owner match = null;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : Owners.active(ownerRepository.findAll())) {
             if (lastName.equals(canonical(existing.getLastName()))
                     && postcode.equals(trimmed(existing.getPostcode()))
                     && !Objects.equals(telephone, trimmed(existing.getTelephone()))
