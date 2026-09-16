@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.LuhnCheckDigit;
+import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -204,6 +205,16 @@ public class Owner extends Person {
     @Transient
     public String getDisplayName() {
         return this.getLastName() + ", " + this.getFirstName();
+    }
+
+    /**
+     * Return this owner's telephone formatted for human display: the country code, a space, then
+     * the national digits grouped in threes (e.g. {@code '+61 412 345 678'}). The raw
+     * {@link #getTelephone() telephone} remains in canonical E.164 form.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return TelephoneFormatter.format(this.telephone);
     }
 
     /**
