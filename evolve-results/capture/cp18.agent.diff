@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 186efe841..5eddb3909 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+@@ -284,4 +285,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityOwnerCapacityExceededException} raised when an owner is created in a city
++     * that has already reached its maximum number of owners. Returns a 409 Conflict whose body
++     * carries an {@code errors} array naming the offending {@code city} field.
++     *
++     * @param e The {@link CityOwnerCapacityExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(CityOwnerCapacityExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityOwnerCapacityExceededException(CityOwnerCapacityExceededException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("city"));
++        logger.debug("City owner capacity exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ce82f00c8..ee8f42fd9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerCounter;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+@@ -82,6 +83,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final CityOwnerCounter cityOwnerCounter;
+ 
++    private final CityOwnerCapacityValidator cityOwnerCapacityValidator;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -90,7 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  OwnerHouseholdUniquenessValidator householdUniquenessValidator,
+                                  OwnerHouseholdRegistrar householdRegistrar,
+                                  NamesakeCounter namesakeCounter,
+-                                 CityOwnerCounter cityOwnerCounter) {
++                                 CityOwnerCounter cityOwnerCounter,
++                                 CityOwnerCapacityValidator cityOwnerCapacityValidator) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.householdRegistrar = householdRegistrar;
+         this.namesakeCounter = namesakeCounter;
+         this.cityOwnerCounter = cityOwnerCounter;
++        this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -137,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
+         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
++        this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
+         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
+         } else {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityExceededException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityExceededException.java
+new file mode 100644
+index 000000000..3101bb117
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityExceededException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner is created in a city that has already reached its maximum number of owners.
++ * The REST layer reports this as a 409 Conflict.
++ *
++ * @see CityOwnerCapacityValidator
++ */
++public class CityOwnerCapacityExceededException extends RuntimeException {
++
++    public CityOwnerCapacityExceededException(String city, long maxOwners) {
++        super("City '" + city + "' has reached its capacity of " + maxOwners + " owners");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityValidator.java
+new file mode 100644
+index 000000000..c5c62367d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityOwnerCapacityValidator.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Enforces that a city cannot grow beyond {@value #MAX_OWNERS_PER_CITY} owners. The existing owners
++ * in the city are counted case-insensitively via {@link CityOwnerCounter}; once that count reaches
++ * the cap, no further owner may be created there.
++ */
++@Component
++public class CityOwnerCapacityValidator {
++
++    /** The maximum number of owners allowed in a single city. */
++    public static final long MAX_OWNERS_PER_CITY = 50;
++
++    private final CityOwnerCounter cityOwnerCounter;
++
++    public CityOwnerCapacityValidator(CityOwnerCounter cityOwnerCounter) {
++        this.cityOwnerCounter = cityOwnerCounter;
++    }
++
++    /**
++     * Rejects an owner whose city already holds {@value #MAX_OWNERS_PER_CITY} or more owners.
++     *
++     * @param city the city of the owner being created
++     * @throws CityOwnerCapacityExceededException if the city is already at capacity
++     */
++    public void validateHasCapacity(String city) {
++        if (this.cityOwnerCounter.count(city) >= MAX_OWNERS_PER_CITY) {
++            throw new CityOwnerCapacityExceededException(city, MAX_OWNERS_PER_CITY);
++        }
++    }
++}
