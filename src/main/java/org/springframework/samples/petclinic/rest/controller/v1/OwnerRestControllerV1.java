@@ -157,24 +157,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (clinicService.existsOwnerByTelephone(telephone)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (email != null && clinicService.existsOwnerByEmail(email)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        owner.setTelephone(telephone);
+        owner.setEmail(email);
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            clinicService.shareHousehold(owner);
         }
         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold
-            && clinicService.existsOwnerByLastNameAndAddress(owner.getLastName(), owner.getAddress())) {
+        // A single derived identity key now captures the telephone, email and household
+        // duplicate checks: only an exact whole-key match with an existing owner is a
+        // duplicate, so two household members with different telephones both remain valid.
+        if (clinicService.existsOwnerByIdentityKey(owner.getIdentityKey())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        owner.setTelephone(telephone);
-        owner.setEmail(email);
-        if (sharesHousehold) {
-            clinicService.shareHousehold(owner);
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);

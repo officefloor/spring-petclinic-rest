@@ -207,6 +207,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's identity key: the single derived value used to detect duplicate owners,
+     * formed as {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
+     * Two owners are duplicates only when their whole identity keys are equal, so members
+     * of one household (sharing a household id) but with different telephones stay distinct.
+     * Derived from the owner's own fields, so it stays consistent with them.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = this.email == null ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
+    /**
      * Normalize the registration date before persisting: default it to the server's
      * current date when none was supplied, then roll it forward onto a business day so
      * every newly persisted owner is registered on a weekday.

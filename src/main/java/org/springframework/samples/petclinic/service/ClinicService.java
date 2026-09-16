@@ -60,27 +60,16 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
-	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
-	 * Check whether another owner already uses the given email, compared
-	 * case-insensitively (i.e. by its lower-cased form).
+	 * Check whether another owner already carries the given identity key, the single
+	 * derived value ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId})
+	 * used to detect duplicate owners. Only an exact whole-key match counts as a duplicate.
 	 *
-	 * @param email the email to match (case-insensitively)
-	 * @return <code>true</code> if at least one existing owner already uses this email
+	 * @param identityKey the identity key to match
+	 * @return <code>true</code> if at least one existing owner has the same identity key
 	 */
-	boolean existsOwnerByEmail(String email) throws DataAccessException;
-
-	/**
-	 * Check whether another owner already shares the given household, i.e. has the same
-	 * last name and the same address, compared case-insensitively and with runs of
-	 * whitespace collapsed to a single space.
-	 *
-	 * @param lastName the last name to match
-	 * @param address  the address to match
-	 * @return <code>true</code> if at least one existing owner shares this household
-	 */
-	boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException;
+	boolean existsOwnerByIdentityKey(String identityKey) throws DataAccessException;
 
 	/**
 	 * Count the <code>Owner</code>s already registered in the given city, compared

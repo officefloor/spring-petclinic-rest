@@ -290,20 +290,9 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerByTelephone(String telephone) throws DataAccessException {
-        return ownerRepository.existsByTelephone(telephone);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerByEmail(String email) throws DataAccessException {
-        return ownerRepository.existsByEmailIgnoreCase(email);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException {
-        return !householdMembers(lastName, address).isEmpty();
+    public boolean existsOwnerByIdentityKey(String identityKey) throws DataAccessException {
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     @Override

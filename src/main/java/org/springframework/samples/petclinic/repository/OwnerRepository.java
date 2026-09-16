@@ -58,23 +58,6 @@ public interface OwnerRepository {
     Owner findById(int id) throws DataAccessException;
 
     /**
-     * Check whether an <code>Owner</code> with the given (already normalized) telephone exists in the data store.
-     *
-     * @param telephone the normalized telephone to search for
-     * @return <code>true</code> if at least one owner already uses this telephone
-     */
-    boolean existsByTelephone(String telephone) throws DataAccessException;
-
-    /**
-     * Check whether an <code>Owner</code> with the given email exists in the data store,
-     * comparing the email case-insensitively (i.e. by its lower-cased form).
-     *
-     * @param email the email to search for
-     * @return <code>true</code> if at least one owner already uses this email
-     */
-    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
-
-    /**
      * Retrieve every <code>Owner</code> whose last name equals the given value, ignoring
      * case. Used to narrow the candidates for the duplicate-household check before the
      * address is compared.
