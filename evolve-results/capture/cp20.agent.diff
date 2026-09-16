@@ -1,0 +1,100 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+new file mode 100644
+index 000000000..59f8f9657
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+@@ -0,0 +1,46 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++
++/**
++ * Business-day rules for registration dates.
++ *
++ * <p>A registration date must fall on a business day: a Saturday or Sunday rolls
++ * forward to the following Monday, while a weekday is left unchanged. This is the
++ * single source of truth for that adjustment, so callers never repeat it.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    /**
++     * Roll a date forward onto a business day.
++     *
++     * @param date the date to adjust
++     * @return the following Monday when {@code date} is a Saturday or Sunday, otherwise
++     *         {@code date} unchanged
++     */
++    public static LocalDate rollForward(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2f9d06036..2d8fdb207 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -166,14 +166,16 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Default the registration date to the server's current date when none was
+-     * supplied, so every newly persisted owner has a registration date.
++     * Normalize the registration date before persisting: default it to the server's
++     * current date when none was supplied, then roll it forward onto a business day so
++     * every newly persisted owner is registered on a weekday.
+      */
+     @PrePersist
+-    void defaultRegistrationDate() {
++    void normalizeRegistrationDate() {
+         if (this.registrationDate == null) {
+             this.registrationDate = LocalDate.now();
+         }
++        this.registrationDate = BusinessDay.rollForward(this.registrationDate);
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2a1dcddf0..e5c52d729 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,6 +27,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
++import org.springframework.samples.petclinic.model.BusinessDay;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+@@ -145,7 +146,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (email != null && !emailNormalizer.isValid(email)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+-        if (clinicService.countOwnersByRegistrationDate(LocalDate.now()) >= MAX_OWNERS_PER_DAY) {
++        LocalDate registrationDate = BusinessDay.rollForward(
++            owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate());
++        owner.setRegistrationDate(registrationDate);
++        if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (clinicService.existsOwnerByTelephone(telephone)) {
