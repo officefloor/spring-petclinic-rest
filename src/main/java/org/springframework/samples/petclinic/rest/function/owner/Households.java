@@ -9,17 +9,34 @@ import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Identifies the owners that make up a household — those sharing a last name (compared
  * case-insensitively with collapsed whitespace) and a normalized address (see
- * {@link AddressNormalizer}). Used both to guard against accidental duplicates
- * ({@link EnsureUniqueHousehold}) and to group knowing house-mates under a shared,
- * stable household id ({@link AssignHousehold}).
+ * {@link AddressNormalizer}). Used both to derive an owner's identity key
+ * ({@link EnsureUniqueIdentity}) and to group knowing house-mates under a shared, stable
+ * household id ({@link AssignHousehold}).
  */
 final class Households {
 
     private Households() {
+    }
+
+    /**
+     * The household id a create request would resolve to: the shared id for its last name
+     * and address when it opts in with {@code sharesHousehold=true} and existing owners are
+     * already at that household, otherwise null. Mirrors what {@link AssignHousehold} would
+     * assign, so the identity check compares the candidate against the same id.
+     */
+    static String resolveHouseholdId(OwnerRepository repository, OwnerFieldsDto request) {
+        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return null;
+        }
+        if (membersAt(repository, request.getLastName(), request.getAddress()).isEmpty()) {
+            return null;
+        }
+        return householdId(request.getLastName(), request.getAddress());
     }
 
     /** Existing owners whose last name and address match the given household. */

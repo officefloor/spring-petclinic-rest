@@ -13,9 +13,9 @@ import java.util.Map;
  * (Australia) requires 9 national digits and {@code '+1'} (NANP) requires 10. A number
  * whose national part is the wrong length for its country is not valid E.164 here.
  *
- * <p>Used by {@link NormalizeOwnerTelephone} (which rejects a number that cannot form
- * valid E.164) and by {@link EnsureUniqueTelephone} (which normalizes each stored
- * telephone before comparing), so the two steps agree on what "normalized" means.
+ * <p>Used by {@link NormalizeOwnerTelephone}, which rejects a number that cannot form
+ * valid E.164 and stores the normalized value, so every owner's telephone is canonical
+ * before it becomes part of the owner's identity key.
  */
 final class TelephoneNormalizer {
 
