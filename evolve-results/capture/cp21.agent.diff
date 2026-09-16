@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+new file mode 100644
+index 000000000..172e4d50b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.audit;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Writes owner-lifecycle audit records to the dedicated {@code AUDIT} logger, keeping the
++ * audit trail decoupled from the application's diagnostic logging. Each successful owner
++ * creation produces a single line carrying the identifying facts of the new record.
++ */
++@Component
++public class OwnerAuditLogger {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    /**
++     * Emits an audit line for a newly created owner, recording its id, customer code and
++     * registration date.
++     *
++     * @param owner the persisted owner (must already have an assigned id)
++     */
++    public void logCreated(Owner owner) {
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f916d727e..1cb6d5cc5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.model.BusinessDayAdjuster;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
++import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.PetDto;
+@@ -90,6 +91,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator;
+ 
++    private final OwnerAuditLogger ownerAuditLogger;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -100,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  NamesakeCounter namesakeCounter,
+                                  CityOwnerCounter cityOwnerCounter,
+                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
+-                                 DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator) {
++                                 DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
++                                 OwnerAuditLogger ownerAuditLogger) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -112,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.cityOwnerCounter = cityOwnerCounter;
+         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
+         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
++        this.ownerAuditLogger = ownerAuditLogger;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -163,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             this.cityOwnerCounter.count(owner.getCity())));
+         this.clinicService.saveOwner(owner);
+         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
++        this.ownerAuditLogger.logCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
