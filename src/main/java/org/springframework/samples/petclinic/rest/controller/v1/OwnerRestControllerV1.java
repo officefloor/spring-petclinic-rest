@@ -153,7 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephone = e164Telephone.get();
         String email = emailNormalizer.normalize(owner.getEmail());
-        if (email != null && !emailNormalizer.isValid(email)) {
+        if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         if (owner.getPostcode() != null && !postcodeValidator.isValid(owner.getPostcode(), owner.getCity())) {
@@ -202,7 +202,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
-        if (email != null && !emailNormalizer.isValid(email)) {
+        if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         String postcode = ownerFieldsDto.getPostcode();
