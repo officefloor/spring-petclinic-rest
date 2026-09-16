@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDoma
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
+import org.springframework.samples.petclinic.rest.validation.HouseholdMembershipLevelCap;
 import org.springframework.samples.petclinic.rest.validation.HouseholdSizeCounter;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdSizeCounter householdSizeCounter;
 
+    private final HouseholdMembershipLevelCap householdMembershipLevelCap;
+
     private final CityOwnerCapacityValidator cityOwnerCapacityValidator;
 
     private final DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator;
@@ -110,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector,
                                  NamesakeCounter namesakeCounter,
                                  HouseholdSizeCounter householdSizeCounter,
+                                 HouseholdMembershipLevelCap householdMembershipLevelCap,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
                                  OwnerAuditLogger ownerAuditLogger,
@@ -123,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.possibleDuplicateOwnerDetector = possibleDuplicateOwnerDetector;
         this.namesakeCounter = namesakeCounter;
         this.householdSizeCounter = householdSizeCounter;
+        this.householdMembershipLevelCap = householdMembershipLevelCap;
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
         this.ownerAuditLogger = ownerAuditLogger;
@@ -186,15 +191,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.dailyRegistrationCapacityValidator.validateHasCapacity(owner.getRegistrationDate());
         owner.setHouseholdId(HouseholdKey.idFor(owner.getLastName(), owner.getPostcode()));
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            // An owner sharing a household (same last name and postcode) is otherwise a household
-            // duplicate. A declared member bypasses this block, and is not a suspected duplicate.
-            this.householdDuplicateValidator.rejectIfHouseholdExists(owner);
+            // Reject only a true duplicate (an owner identical to one already on file); a distinct
+            // new household member is allowed but flagged as a possible duplicate. A declared member
+            // bypasses this block, and is not a suspected duplicate.
+            this.householdDuplicateValidator.rejectIfDuplicate(owner);
             this.possibleDuplicateOwnerDetector.findPossibleDuplicateOf(owner)
                 .ifPresent(owner::setPossibleDuplicateOf);
         }
         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
+        owner.setMembershipLevelCap(this.householdMembershipLevelCap.ceilingFor(owner.getHouseholdId()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
         String customerCode = CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
         owner.setCustomerCode(this.customerCodeDeduplicator.deduplicate(customerCode));

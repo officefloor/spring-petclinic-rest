@@ -21,11 +21,13 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Rejects an owner that would silently join an existing household. Because a household is keyed on
- * (last name, postcode) through its {@link HouseholdKey#idFor(String, String) household id}, two
- * owners sharing that id belong to the same household; the second one is a household duplicate. The
- * caller bypasses this block only when the new owner explicitly opts in via {@code sharesHousehold},
- * declaring itself a member rather than a duplicate.
+ * Rejects an owner that duplicates one already on file. Members of the same household share a
+ * {@link HouseholdKey#idFor(String, String) household id} but, having different telephones, keep
+ * distinct {@link Owner#getIdentityKey() identity keys}; a genuinely new household member is
+ * therefore allowed (and merely flagged as a {@link PossibleDuplicateOwnerDetector possible
+ * duplicate}). Only an owner whose identity key matches an existing one — the same person submitted
+ * again — is a true duplicate and rejected. The caller bypasses this block when the new owner
+ * explicitly opts in via {@code sharesHousehold}.
  */
 @Component
 public class HouseholdDuplicateValidator {
@@ -37,22 +39,20 @@ public class HouseholdDuplicateValidator {
     }
 
     /**
-     * Rejects an owner whose household id already belongs to an existing owner. The owner's
-     * household id must already be assigned when this runs.
+     * Rejects an owner whose {@link Owner#getIdentityKey() identity key} already belongs to an
+     * existing owner. The owner's telephone, email and household id must already be assigned when
+     * this runs, since the identity key is derived from them.
      *
      * @param owner the owner being created
-     * @throws DuplicateHouseholdException if another owner already belongs to this household
+     * @throws DuplicateHouseholdException if another owner shares this owner's identity key
      */
-    public void rejectIfHouseholdExists(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return;
-        }
+    public void rejectIfDuplicate(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (duplicate) {
-            throw new DuplicateHouseholdException(householdId);
+            throw new DuplicateHouseholdException(owner.getHouseholdId());
         }
     }
 }

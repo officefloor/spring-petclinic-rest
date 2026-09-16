@@ -87,6 +87,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -228,6 +231,14 @@ public class Owner extends Person {
         this.membershipNumber = membershipNumber;
     }
 
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
     }
@@ -354,11 +365,15 @@ public class Owner extends Person {
 
     /**
      * Return this owner's membership level: the band their {@link #getMembershipPoints() membership
-     * points} fall into — 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+     * points} fall into — 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more — capped so it
+     * never exceeds one above the highest level among the household members present when this owner
+     * was created (see {@link #getMembershipLevelCap() membership level cap}). No cap applies to an
+     * owner created without any existing household member.
      */
     @Transient
     public int getMembershipLevel() {
-        return MembershipPoints.levelFor(getMembershipPoints());
+        int level = MembershipPoints.levelFor(getMembershipPoints());
+        return this.membershipLevelCap == null ? level : Math.min(level, this.membershipLevelCap);
     }
 
     /**
