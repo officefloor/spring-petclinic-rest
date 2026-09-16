@@ -22,8 +22,8 @@ import org.springframework.stereotype.Component;
 /**
  * Counts how many existing owners share a given owner's name, i.e. have the same first name and
  * last name compared case-insensitively. The comparison is done in memory because the stored names
- * are not kept in a normalized form, done in memory for the same reason as the household matching
- * in {@link OwnerHouseholdRegistrar}.
+ * are not kept in a normalized form, for the same reason as the possible-duplicate matching in
+ * {@link PossibleDuplicateOwnerDetector}.
  */
 @Component
 public class NamesakeCounter {

@@ -32,7 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
@@ -287,22 +287,22 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateOwnerIdentityException} raised when an owner is created whose whole
-     * identity key (normalized telephone, email and household id) already belongs to another owner.
-     * Returns a 409 Conflict whose body carries an {@code errors} array naming the
-     * {@code identityKey}.
+     * Handles {@link DuplicateHouseholdException} raised when an owner is created whose household —
+     * its (last name, postcode) derived household id — already belongs to another owner, without the
+     * owner declaring itself a member via {@code sharesHousehold}. Returns a 409 Conflict whose body
+     * carries an {@code errors} array naming the {@code householdId}.
      *
-     * @param e The {@link DuplicateOwnerIdentityException} to be handled
+     * @param e The {@link DuplicateHouseholdException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateOwnerIdentityException.class)
+    @ExceptionHandler(DuplicateHouseholdException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateOwnerIdentityException(DuplicateOwnerIdentityException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("identityKey"));
-        logger.debug("Duplicate owner identity at {} {}: {}",
+        detail.setProperty("errors", List.of("householdId"));
+        logger.debug("Duplicate owner household at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

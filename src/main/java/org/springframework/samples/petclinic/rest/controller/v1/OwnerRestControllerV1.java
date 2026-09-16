@@ -44,11 +44,11 @@ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityVa
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
-import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
-import org.springframework.samples.petclinic.rest.validation.OwnerIdentityUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateOwnerDetector;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
@@ -79,11 +79,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
-    private final OwnerIdentityUniquenessValidator identityUniquenessValidator;
+    private final HouseholdDuplicateValidator householdDuplicateValidator;
 
     private final PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector;
-
-    private final OwnerHouseholdRegistrar householdRegistrar;
 
     private final NamesakeCounter namesakeCounter;
 
@@ -97,9 +95,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerIdentityUniquenessValidator identityUniquenessValidator,
+                                 HouseholdDuplicateValidator householdDuplicateValidator,
                                  PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector,
-                                 OwnerHouseholdRegistrar householdRegistrar,
                                  NamesakeCounter namesakeCounter,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
@@ -108,9 +105,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
-        this.identityUniquenessValidator = identityUniquenessValidator;
+        this.householdDuplicateValidator = householdDuplicateValidator;
         this.possibleDuplicateOwnerDetector = possibleDuplicateOwnerDetector;
-        this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
@@ -156,12 +152,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
         this.dailyRegistrationCapacityValidator.validateHasCapacity(owner.getRegistrationDate());
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            this.householdRegistrar.assignHousehold(owner);
+        owner.setHouseholdId(HouseholdKey.idFor(owner.getLastName(), owner.getPostcode()));
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            // An owner sharing a household (same last name and postcode) is otherwise a household
+            // duplicate. A declared member bypasses this block, and is not a suspected duplicate.
+            this.householdDuplicateValidator.rejectIfHouseholdExists(owner);
+            this.possibleDuplicateOwnerDetector.findPossibleDuplicateOf(owner)
+                .ifPresent(owner::setPossibleDuplicateOf);
         }
-        this.identityUniquenessValidator.validateUnique(owner);
-        this.possibleDuplicateOwnerDetector.findPossibleDuplicateOf(owner)
-            .ifPresent(owner::setPossibleDuplicateOf);
         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());

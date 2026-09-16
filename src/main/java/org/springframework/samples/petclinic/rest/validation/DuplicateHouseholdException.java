@@ -17,15 +17,16 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Thrown when an owner is created whose whole identity key
- * ({@code normalizedTelephone + '|' + email + '|' + householdId}) already belongs to another owner.
- * The REST layer reports this as a 409 Conflict.
+ * Thrown when an owner is created whose household — its (last name, postcode) derived
+ * {@link HouseholdKey#idFor(String, String) household id} — already belongs to another owner and it
+ * did not declare itself a member via {@code sharesHousehold}. The REST layer reports this as a 409
+ * Conflict.
  *
- * @see OwnerIdentityUniquenessValidator
+ * @see HouseholdDuplicateValidator
  */
-public class DuplicateOwnerIdentityException extends RuntimeException {
+public class DuplicateHouseholdException extends RuntimeException {
 
-    public DuplicateOwnerIdentityException(String identityKey) {
-        super("An owner with identity key '" + identityKey + "' already exists");
+    public DuplicateHouseholdException(String householdId) {
+        super("An owner in household '" + householdId + "' already exists");
     }
 }

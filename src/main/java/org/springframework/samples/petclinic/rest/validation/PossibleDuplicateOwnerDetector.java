@@ -25,12 +25,11 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Detects "possible duplicate" owners: a new owner that is not a hard duplicate (see
- * {@link OwnerIdentityUniquenessValidator}) but still shares an existing owner's last name
- * (compared case-insensitively) and postcode under a <em>different</em> telephone. The comparison is
- * done in memory because the stored last names are not kept in a normalized form, for the same
- * reason as the name matching in {@link NamesakeCounter} and the household matching in
- * {@link OwnerHouseholdRegistrar}.
+ * Detects "possible duplicate" owners: a new owner that is not a household duplicate (see
+ * {@link HouseholdDuplicateValidator}) but still shares an existing owner's last name (compared
+ * case-insensitively) and postcode under a <em>different</em> telephone. The comparison is done in
+ * memory because the stored last names are not kept in a normalized form, for the same reason as the
+ * name matching in {@link NamesakeCounter}.
  */
 @Component
 public class PossibleDuplicateOwnerDetector {

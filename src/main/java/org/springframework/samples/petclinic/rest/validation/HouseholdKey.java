@@ -19,11 +19,12 @@ package org.springframework.samples.petclinic.rest.validation;
 import java.util.Locale;
 
 /**
- * The canonical identity of a household: an owner's last name together with the address they live
- * at. Two owners belong to the same household when their keys are equal. Both parts are normalized
- * (trimmed, internal whitespace runs collapsed to a single space, lower-cased) so values that differ
- * only in letter case or spacing match. This shared definition keeps household matching consistent
- * between the uniqueness check and the shared-identifier assignment.
+ * The canonical identity of a household: an owner's last name together with the postcode they live
+ * at. Two owners belong to the same household when their keys are equal, and therefore derive the
+ * same stable {@link #idFor(String, String) household id}. The last name is normalized (trimmed,
+ * internal whitespace runs collapsed to a single space, lower-cased) so values that differ only in
+ * letter case or spacing match; the postcode is used verbatim. This shared definition keeps
+ * household matching consistent across every feature that keys off the household.
  */
 public final class HouseholdKey {
 
@@ -31,18 +32,20 @@ public final class HouseholdKey {
     }
 
     /**
-     * The comparison key for the household an owner with this last name and address belongs to.
+     * The canonical key for the household an owner with this last name and postcode belongs to,
+     * formed as {@code normalizedLastName + '|' + postcode}.
      */
-    public static String of(String lastName, String address) {
-        return normalize(lastName) + "\n" + normalize(address);
+    public static String of(String lastName, String postcode) {
+        return normalize(lastName) + "|" + orEmpty(postcode);
     }
 
     /**
-     * A stable identifier for a household key: the first 12 upper-case hex characters of its
-     * SHA-256 digest. Deterministic, so every member of a household derives the same value.
+     * The stable identifier for the household an owner with this last name and postcode belongs to:
+     * the first 12 upper-case hex characters of the SHA-256 digest of its {@link #of(String, String)
+     * key}. Deterministic, so every owner sharing a last name and postcode derives the same value.
      */
-    public static String idFor(String key) {
-        return Sha256.hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    public static String idFor(String lastName, String postcode) {
+        return Sha256.hex(of(lastName, postcode)).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 
     private static String normalize(String value) {
@@ -50,5 +53,9 @@ public final class HouseholdKey {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

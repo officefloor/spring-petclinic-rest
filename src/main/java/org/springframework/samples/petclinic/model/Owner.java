@@ -207,12 +207,11 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's identity key: the single value all duplicate detection is based on,
-     * formed as {@code normalizedTelephone + '|' + email + '|' + householdId} (an absent email or
-     * household id contributes an empty segment). Two owners are duplicates only when their whole
-     * identity keys are equal, so members of the same household with different telephones — and thus
-     * different keys — are distinct. The telephone and email are expected to already be in their
-     * normalized storage form.
+     * Return this owner's identity key: the derived value formed as
+     * {@code normalizedTelephone + '|' + email + '|' + householdId} (an absent email or household id
+     * contributes an empty segment). Members of the same household share a household id but, having
+     * different telephones, still have distinct identity keys. The telephone and email are expected
+     * to already be in their normalized storage form.
      */
     @Transient
     public String getIdentityKey() {
