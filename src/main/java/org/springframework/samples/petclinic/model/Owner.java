@@ -260,6 +260,16 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's timezone: the IANA name mapped from the owner's
+     * {@link #getLocality() locality/region} via the fixed region-to-timezone table. Null when the
+     * region has no known timezone.
+     */
+    @Transient
+    public String getTimezone() {
+        return RegionTimezones.timezoneOf(getLocality());
+    }
+
+    /**
      * Return this owner's membership points: starting at 0, plus 2 when the owner has an email,
      * plus 1 when the owner is uniquely named (a {@link #getNamesakeCount() namesakeCount} of 0),
      * plus 2 for a household of three or more ({@link #getHouseholdSize() household size}), plus 3
