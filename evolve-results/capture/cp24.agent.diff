@@ -1,0 +1,81 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 903440fcc..bb01929c4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -166,19 +166,23 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "GOLD"} when the owner belongs to a household
+-     * of three or more members, otherwise {@code "SILVER"} for a unique owner (namesake
+-     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise. Derived
+-     * from the owner's own fields, so it stays consistent with them.
++     * The owner's membership level, a number from 1 to 3. Every owner starts at level 1;
++     * one level is added when an email is on file and one more when the owner is unique
++     * (namesake count of zero). The level is capped at 3, leaving level 4 reserved for
++     * tenure. Derived from the owner's own fields, so it stays consistent with them.
+      */
+     @Transient
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
++    public Integer getMembershipLevel() {
++        int level = 1;
++        boolean hasEmail = this.email != null && !this.email.isEmpty();
++        if (hasEmail) {
++            level++;
+         }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+-        boolean hasEmail = this.email != null && !this.email.isEmpty();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 15abcd3d6..40d4d5a93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -114,7 +114,7 @@ public interface OwnerRepository {
+     /**
+      * Count the <code>Owner</code>s that already belong to the given household, i.e. that
+      * carry the given shared household id. Used to size a new owner's household when
+-     * assigning its membership tier.
++     * recording its household size at registration.
+      *
+      * @param householdId the shared household id to match
+      * @return the number of owners already sharing that household id
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 37df59ab4..add5a7d27 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2143,15 +2143,18 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner belongs to a
+-                household of three or more members, otherwise 'SILVER' for a unique
+-                owner (namesake count of zero) who has an email on file, and 'BRONZE'
+-                otherwise.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3. Every owner
++                starts at level 1; one level is added when an email is on file and
++                one more when the owner is unique (namesake count of zero). Capped
++                at 3, leaving level 4 reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
