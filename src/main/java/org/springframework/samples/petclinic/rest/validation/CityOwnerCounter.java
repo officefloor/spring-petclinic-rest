@@ -22,8 +22,7 @@ import org.springframework.stereotype.Component;
 /**
  * Counts how many existing owners live in a given city, compared case-insensitively. The
  * comparison is done in memory because the stored cities are not kept in a normalized form,
- * mirroring {@link NamesakeCounter}. Used to drive the per-city sequence of an owner's
- * {@link CustomerCodeGenerator customer code}.
+ * mirroring {@link NamesakeCounter}.
  */
 @Component
 public class CityOwnerCounter {

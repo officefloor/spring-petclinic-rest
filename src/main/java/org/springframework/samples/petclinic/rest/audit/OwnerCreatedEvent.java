@@ -19,19 +19,18 @@ package org.springframework.samples.petclinic.rest.audit;
 /**
  * Immutable structured record of a successful owner creation, serialized as a JSON object to the
  * {@code AUDIT} trail alongside the human-readable audit line. The declaration order of the
- * components mirrors the emitted JSON: {@code {seq, ownerId, customerCode, membershipLevel, event}}.
+ * components mirrors the emitted JSON: {@code {seq, ownerId, memberId, membershipLevel, event}}.
  *
- * <p>The {@code customerCode} component carries the owner's <em>current</em> primary identifier at
- * creation time (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()});
- * it holds the customer code today and follows whatever replaces it later.
+ * <p>The {@code memberId} component carries the owner's primary identifier at creation time
+ * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}).
  *
  * @param seq             monotonically increasing sequence number across all owner creations
  * @param ownerId         the persisted owner's id
- * @param customerCode    the owner's current primary identifier at creation time
+ * @param memberId        the owner's primary identifier at creation time
  * @param membershipLevel the owner's membership level at creation time
  * @param event           the event-type marker, always {@link #TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel, String event) {
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel, String event) {
 
     /** The event-type marker every owner-creation event carries. */
     public static final String TYPE = "OWNER_CREATED";

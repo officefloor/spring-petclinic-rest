@@ -37,11 +37,10 @@ CREATE TABLE IF NOT EXISTS owners (
                                       postcode   TEXT,
                                       registration_date DATE,
                                       birth_date DATE,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
                                       household_size INTEGER,
-                                      membership_number TEXT,
                                       membership_level_cap INTEGER,
                                       possible_duplicate_of INTEGER,
                                       deleted BOOLEAN DEFAULT FALSE NOT NULL

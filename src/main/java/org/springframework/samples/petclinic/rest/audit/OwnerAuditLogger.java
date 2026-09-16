@@ -43,16 +43,14 @@ public class OwnerAuditLogger {
 
     /**
      * Emits the audit records for a newly created owner: a human-readable line recording its id,
-     * customer code, registration date, membership level and membership number, followed by an
-     * immutable structured {@link OwnerCreatedEvent} (as JSON) carrying the owner's id and current
-     * primary identifier.
+     * member id, registration date and membership level, followed by an immutable structured
+     * {@link OwnerCreatedEvent} (as JSON) carrying the owner's id and primary identifier.
      *
      * @param owner the persisted owner (must already have an assigned id)
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(), owner.getId(),
             owner.getPrimaryIdentifier(), owner.getMembershipLevel(), OwnerCreatedEvent.TYPE);
         AUDIT.info("{}", MAPPER.writeValueAsString(event));

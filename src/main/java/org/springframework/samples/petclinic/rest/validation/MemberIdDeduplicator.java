@@ -24,32 +24,32 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Ensures a newly generated {@link CustomerCodeGenerator customer code} is unique across existing
- * owners. When the candidate collides with an existing owner's customer code, {@code -<n>} is
- * appended with the smallest {@code n} of 2 or more that yields an unused code.
+ * Ensures a newly generated {@link MemberIdGenerator member id} is unique across existing owners.
+ * When the candidate collides with an existing owner's member id, {@code -<n>} is appended with the
+ * smallest {@code n} of 2 or more that yields an unused id.
  */
 @Component
-public class CustomerCodeDeduplicator {
+public class MemberIdDeduplicator {
 
     private static final char SEPARATOR = '-';
 
     private final ClinicService clinicService;
 
-    public CustomerCodeDeduplicator(ClinicService clinicService) {
+    public MemberIdDeduplicator(ClinicService clinicService) {
         this.clinicService = clinicService;
     }
 
     /**
-     * Returns the candidate customer code, or a de-duplicated variant if it collides with an
-     * existing owner's customer code.
+     * Returns the candidate member id, or a de-duplicated variant if it collides with an existing
+     * owner's member id.
      *
-     * @param candidate the freshly generated customer code
-     * @return a customer code that no existing owner already holds
+     * @param candidate the freshly generated member id
+     * @return a member id that no existing owner already holds
      */
     public String deduplicate(String candidate) {
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(Collectors.toSet());
         if (!existing.contains(candidate)) {
             return candidate;

@@ -16,8 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
-import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
-import org.springframework.samples.petclinic.rest.validation.LuhnCheckDigit;
+import org.springframework.samples.petclinic.rest.validation.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.Sha256;
 import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
@@ -74,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -85,9 +84,6 @@ public class Owner extends Person {
 
     @Column(name = "household_size")
     private Integer householdSize;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "membership_level_cap")
     private Integer membershipLevelCap;
@@ -193,23 +189,22 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * Return this owner's primary identifier: the single value that currently identifies the owner
-     * to the outside world. Today that is the {@link #getCustomerCode() customer code}; when the
-     * customer code is later unified into the member id, this method returns the member id instead,
-     * so callers such as the audit trail always follow the current identifier without change.
+     * Return this owner's primary identifier: the single value that identifies the owner to the
+     * outside world, the {@link #getMemberId() member id}. Callers such as the audit trail follow
+     * this method so they always reference the current identifier.
      */
     @Transient
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {
@@ -234,14 +229,6 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Integer getMembershipLevelCap() {
@@ -343,14 +330,14 @@ public class Owner extends Person {
 
     /**
      * Return this owner's locality: the REGION segment of the owner's
-     * {@link #getCustomerCode() customer code}, which is the region the identity was minted for.
-     * When no customer code has been assigned yet the region is resolved directly from the
+     * {@link #getMemberId() member id}, which is the region the identity was minted for. When no
+     * member id has been assigned yet the region is resolved directly from the
      * {@link #getPostcode() postcode} and {@link #getCity() city} via {@link RegionResolver}.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode != null && !this.customerCode.isBlank()) {
-            return CustomerCodeGenerator.regionOf(this.customerCode);
+        if (this.memberId != null && !this.memberId.isBlank()) {
+            return MemberIdGenerator.regionOf(this.memberId);
         }
         return RegionResolver.regionFor(this.postcode, this.city);
     }
@@ -426,15 +413,6 @@ public class Owner extends Person {
             return 0;
         }
         return FiscalYear.elapsedBetween(this.registrationDate, LocalDate.now());
-    }
-
-    /**
-     * Return this owner's check digit: the single Luhn check digit computed over the
-     * digits of the {@link #getCustomerCode() customer code}.
-     */
-    @Transient
-    public int getCheckDigit() {
-        return LuhnCheckDigit.of(this.customerCode);
     }
 
     /**

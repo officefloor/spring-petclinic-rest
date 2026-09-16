@@ -43,8 +43,6 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.idempotency.IdempotentOwnerCreationStore;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
-import org.springframework.samples.petclinic.rest.validation.CustomerCodeDeduplicator;
-import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -52,7 +50,8 @@ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateV
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.samples.petclinic.rest.validation.HouseholdMembershipLevelCap;
 import org.springframework.samples.petclinic.rest.validation.HouseholdSizeCounter;
-import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
+import org.springframework.samples.petclinic.rest.validation.MemberIdDeduplicator;
+import org.springframework.samples.petclinic.rest.validation.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateOwnerDetector;
@@ -101,7 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
-    private final CustomerCodeDeduplicator customerCodeDeduplicator;
+    private final MemberIdDeduplicator memberIdDeduplicator;
 
     private final IdempotentOwnerCreationStore idempotentOwnerCreationStore;
 
@@ -117,7 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
                                  OwnerAuditLogger ownerAuditLogger,
-                                 CustomerCodeDeduplicator customerCodeDeduplicator,
+                                 MemberIdDeduplicator memberIdDeduplicator,
                                  IdempotentOwnerCreationStore idempotentOwnerCreationStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -131,7 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
         this.ownerAuditLogger = ownerAuditLogger;
-        this.customerCodeDeduplicator = customerCodeDeduplicator;
+        this.memberIdDeduplicator = memberIdDeduplicator;
         this.idempotentOwnerCreationStore = idempotentOwnerCreationStore;
     }
 
@@ -203,10 +202,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
         owner.setMembershipLevelCap(this.householdMembershipLevelCap.ceilingFor(owner.getHouseholdId()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
-        String customerCode = CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
-        owner.setCustomerCode(this.customerCodeDeduplicator.deduplicate(customerCode));
+        String memberId = MemberIdGenerator.generate(region, owner.getTelephone(), owner.getLastName(),
+            owner.getRegistrationDate());
+        owner.setMemberId(this.memberIdDeduplicator.deduplicate(memberId));
         this.clinicService.saveOwner(owner);
-        owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.ownerAuditLogger.logCreated(owner);
         return owner;
     }
