@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1e44b41fc..756032e42 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+@@ -118,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+         OwnerFieldsValidator.validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+new file mode 100644
+index 000000000..ef727563c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+@@ -0,0 +1,64 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Normalizes an owner's address to its canonical storage form. Surrounding whitespace is trimmed,
++ * internal whitespace runs are collapsed to a single space, and the value is upper-cased. Common
++ * street-type abbreviations occurring as whole words are expanded ({@code ST -> STREET},
++ * {@code RD -> ROAD}, {@code AVE -> AVENUE}). The normalized value is what gets stored, returned and
++ * compared, so addresses that differ only in spacing, letter case or abbreviation are treated alike.
++ */
++public final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Returns the canonical form of the submitted address: trimmed, with internal whitespace runs
++     * collapsed to a single space, upper-cased, and with common street-type abbreviations expanded.
++     *
++     * @param address the submitted address, or {@code null} if none was provided
++     * @return the normalized address, or {@code null} if the input was {@code null}
++     */
++    public static String normalize(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
+index dcc5e7452..bb3752c77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
+@@ -23,8 +23,8 @@ import org.springframework.stereotype.Component;
+  * Enforces that no two owners share a household, i.e. have the same last name and the same address.
+  * Both fields are compared case-insensitively and with runs of whitespace collapsed to a single
+  * space (and surrounding whitespace trimmed), so values that differ only in letter case or spacing
+- * are still treated as the same. The comparison is done in memory because the stored address is not
+- * kept in a normalized form, so it cannot be matched reliably with a database query.
++ * are still treated as the same. The comparison is done in memory because the stored last name is
++ * not kept in a normalized form, so a household cannot be matched reliably with a database query.
+  */
+ @Component
+ public class OwnerHouseholdUniquenessValidator {
