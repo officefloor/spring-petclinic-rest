@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.BulkSignupWarningEvaluator;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityWarningEvaluator;
 
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +25,9 @@ public abstract class OwnerMapper {
 
     @Autowired
     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+
+    @Autowired
+    protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
 
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -54,5 +58,14 @@ public abstract class OwnerMapper {
     @AfterMapping
     protected void applyBulkSignupWarning(@MappingTarget OwnerDto ownerDto) {
         ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isWarranted());
+    }
+
+    /**
+     * Stamp the response-only capacity warning onto every mapped owner, since it reflects the
+     * current owner count of the owner's city rather than any stored owner field.
+     */
+    @AfterMapping
+    protected void applyCapacityWarning(@MappingTarget OwnerDto ownerDto) {
+        ownerDto.setCapacityWarning(this.cityCapacityWarningEvaluator.isWarranted(ownerDto.getCity()));
     }
 }
