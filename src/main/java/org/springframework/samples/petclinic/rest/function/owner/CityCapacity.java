@@ -36,4 +36,13 @@ final class CityCapacity {
         long count = Cities.countIn(repository, city);
         return count >= WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
+
+    /**
+     * Whether the city is at or over its soft capacity (the {@link #WARNING_THRESHOLD}).
+     * Unlike {@link #warningRaised}, this stays true once the city reaches the hard limit,
+     * so it flags both a city nearing capacity and a full one.
+     */
+    static boolean overSoftCapacity(OwnerRepository repository, String city) {
+        return Cities.countIn(repository, city) >= WARNING_THRESHOLD;
+    }
 }

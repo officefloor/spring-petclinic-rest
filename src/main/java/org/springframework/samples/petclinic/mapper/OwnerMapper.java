@@ -48,6 +48,8 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", ignore = true)
     // Not derivable from a single owner; the responder sets it from the owner's city count.
     @Mapping(target = "capacityWarning", ignore = true)
+    // Depends on the owner's city count, so the responder sets it (see OwnerRisk).
+    @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

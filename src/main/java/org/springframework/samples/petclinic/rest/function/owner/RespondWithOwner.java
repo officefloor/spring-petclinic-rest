@@ -11,9 +11,6 @@ public class RespondWithOwner {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setBulkSignupWarning(BulkSignup.warningRaised(ownerRepository));
-        dto.setCapacityWarning(CityCapacity.warningRaised(ownerRepository, owner.getCity()));
-        response.send(dto);
+        response.send(OwnerResponses.toDto(owner, ownerMapper, ownerRepository));
     }
 }
