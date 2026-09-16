@@ -49,7 +49,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registrationDate year (e.g. 'SMI-0007-M26'). Derived from the owner's
+     * last two digits of the registrationDate year (e.g. 'LON-SMI-0007-M26'). Derived from the owner's
      * own fields; null until both the customer code and registration date are assigned.
      */
     default String membershipNumber(Owner owner) {
