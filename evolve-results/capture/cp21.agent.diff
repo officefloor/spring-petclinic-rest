@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e5c52d729..aa699f61f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.OwnerAuditLogger;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -86,13 +87,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final AddressNormalizer addressNormalizer;
+ 
++    private final OwnerAuditLogger ownerAuditLogger;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+-                                 AddressNormalizer addressNormalizer) {
++                                 AddressNormalizer addressNormalizer,
++                                 OwnerAuditLogger ownerAuditLogger) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.addressNormalizer = addressNormalizer;
++        this.ownerAuditLogger = ownerAuditLogger;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -169,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             clinicService.shareHousehold(owner);
+         }
+         this.clinicService.saveOwner(owner);
++        this.ownerAuditLogger.logCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java
+new file mode 100644
+index 000000000..1595ee564
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Emits audit-trail entries for owner lifecycle events to the dedicated {@code AUDIT}
++ * logger, keeping audit side-effects out of the request-handling and persistence code.
++ */
++@Component
++public class OwnerAuditLogger {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    /**
++     * Record the successful registration of a new owner, capturing its id, customer
++     * code and registration date.
++     */
++    public void logCreated(Owner owner) {
++        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++}
