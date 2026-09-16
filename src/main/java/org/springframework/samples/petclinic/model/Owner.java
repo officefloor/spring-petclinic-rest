@@ -87,6 +87,14 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /**
+     * Return this owner's name formatted as {@code LastName, FirstName}.
+     */
+    @Transient
+    public String getDisplayName() {
+        return this.getLastName() + ", " + this.getFirstName();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
