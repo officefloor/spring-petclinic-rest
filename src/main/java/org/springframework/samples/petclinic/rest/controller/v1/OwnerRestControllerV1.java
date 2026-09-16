@@ -210,14 +210,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // The household is keyed on (last name, postcode): a second owner sharing both is a
-        // household duplicate and is rejected, unless it declares 'sharesHousehold', which
-        // bypasses this block and creates it as a (non-suspected) declared household member.
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold && clinicService.isHouseholdOccupied(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        owner.setDeclaredHouseholdMember(sharesHousehold);
+        // The household is keyed on (last name, postcode): a second owner sharing both joins
+        // the existing household. Unless it declares 'sharesHousehold', it is recorded as a
+        // possible duplicate of the sitting member (see saveOwner); a declared member joins as
+        // a (non-suspected) household member instead. Either way its membership level is capped
+        // relative to the household's existing members.
+        owner.setDeclaredHouseholdMember(Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
         if (idempotencyKey != null) {

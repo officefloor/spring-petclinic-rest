@@ -62,17 +62,6 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	/**
-	 * Check whether an existing owner already occupies the given owner's household, i.e.
-	 * whether another owner shares its last name and postcode (its computed household id).
-	 * Used to reject a new owner as a household duplicate unless it declares it shares the
-	 * household.
-	 *
-	 * @param owner the owner about to be created
-	 * @return <code>true</code> if at least one existing owner already occupies that household
-	 */
-	boolean isHouseholdOccupied(Owner owner) throws DataAccessException;
-
-	/**
 	 * Count the <code>Owner</code>s already registered in the given city, compared
 	 * case-insensitively.
 	 *

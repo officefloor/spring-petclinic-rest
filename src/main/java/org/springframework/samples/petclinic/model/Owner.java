@@ -93,6 +93,9 @@ public class Owner extends Person {
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Transient
     private boolean declaredHouseholdMember;
 
@@ -286,6 +289,20 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling on this owner's {@link #getMembershipLevel() membership level}, stamped
+     * when the owner is created as one above the highest membership level then held by an
+     * existing member of its household, or null when the owner had no existing household
+     * member and so is subject to no ceiling. See {@link #getMembershipLevel()}.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
      * is the last two digits of the registration date's fiscal year (see {@link FiscalYear};
      * e.g. {@code "NSW-1A2B3C4D-M26"}). Derived from the owner's own fields, so it stays
@@ -358,12 +375,17 @@ public class Owner extends Person {
 
     /**
      * The owner's membership level, a number from 1 to 4, derived from their
-     * {@link #getMembershipPoints() membership points} (see {@link MembershipLevel}). Derived
-     * from the owner's own fields, so it stays consistent with them.
+     * {@link #getMembershipPoints() membership points} (see {@link MembershipLevel}), then
+     * held down to its {@link #getMembershipLevelCap() household ceiling} when one applies.
+     * Derived from the owner's own fields, so it stays consistent with them.
      */
     @Transient
     public Integer getMembershipLevel() {
-        return MembershipLevel.forPoints(getMembershipPoints());
+        int level = MembershipLevel.forPoints(getMembershipPoints());
+        if (this.membershipLevelCap != null && this.membershipLevelCap < level) {
+            return this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**

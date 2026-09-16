@@ -262,6 +262,7 @@ public class ClinicServiceImpl implements ClinicService {
                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
             owner.setHouseholdId(householdIdFor(owner));
             owner.setHouseholdSize(householdSizeIncluding(owner));
+            owner.setMembershipLevelCap(membershipLevelCapFor(owner));
             Optional<Owner> possibleDuplicate = findPossibleDuplicate(owner);
             owner.setPossibleDuplicate(possibleDuplicate.isPresent());
             owner.setPossibleDuplicateOf(possibleDuplicate.map(Owner::getId).orElse(null));
@@ -302,6 +303,36 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * The existing owners that already belong to this owner's household, i.e. the persisted
+     * owners sharing its computed household id. An owner with no household id (that maps to no
+     * shared household) has no existing household members. As the household id is derived from
+     * the last name, the candidates are narrowed by last name before the id is matched.
+     */
+    private List<Owner> existingHouseholdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return List.of();
+        }
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    /**
+     * The ceiling to stamp on a new owner's membership level: one above the highest membership
+     * level currently held by an existing member of its household, so the new owner's level
+     * cannot exceed one above the household maximum. Null when the owner has no existing
+     * household member, in which case no ceiling applies. See {@link Owner#getMembershipLevel()}.
+     */
+    private Integer membershipLevelCapFor(Owner owner) {
+        return existingHouseholdMembers(owner).stream()
+            .map(Owner::getMembershipLevel)
+            .max(Comparator.naturalOrder())
+            .map(max -> max + 1)
+            .orElse(null);
+    }
+
+    /**
      * Find the existing owner, if any, that this new owner is a possible (soft) duplicate
      * of: one that occupies the same household (the same computed household id) but carries
      * a different telephone, so it is not a hard duplicate. When several match, the earliest
@@ -309,12 +340,10 @@ public class ClinicServiceImpl implements ClinicService {
      * that deliberately declared it shares a household, is never a suspected duplicate.
      */
     private Optional<Owner> findPossibleDuplicate(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || owner.isDeclaredHouseholdMember()) {
+        if (owner.isDeclaredHouseholdMember()) {
             return Optional.empty();
         }
-        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+        return existingHouseholdMembers(owner).stream()
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
             .min(Comparator.comparing(Owner::getId));
     }
@@ -323,13 +352,6 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isHouseholdOccupied(Owner owner) throws DataAccessException {
-        String householdId = householdIdFor(owner);
-        return householdId != null && ownerRepository.countByHouseholdId(householdId) > 0;
     }
 
     @Override
