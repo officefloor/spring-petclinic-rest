@@ -156,6 +156,16 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's locality: the canonical region derived from the city via the fixed
+     * {@link CityRegionTable}, or {@code "UNKNOWN"} when the city is not in the table.
+     * Derived from the owner's own city, so it stays consistent with it.
+     */
+    @Transient
+    public String getLocality() {
+        return CityRegionTable.regionFor(this.city);
+    }
+
+    /**
      * Default the registration date to the server's current date when none was
      * supplied, so every newly persisted owner has a registration date.
      */
