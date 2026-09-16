@@ -6,8 +6,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * The single definition of how owners are grouped by city: compared case-insensitively.
- * Used by {@link RejectFullOwnerCity} (which caps a city's population) to count a city's
- * members.
+ * Used by {@link RejectFullOwnerCity} (which caps a city's population) and
+ * {@link AssignOwnerCapacityWarning} (which warns as that cap is approached) to count a
+ * city's members.
  */
 final class OwnerCities {
 
