@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
@@ -40,6 +41,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner))")
     // Not derivable from a single owner; the responder sets it from the daily registration count.
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -102,6 +104,17 @@ public interface OwnerMapper {
      */
     default String ageBand(Owner owner) {
         return AgeBand.of(owner);
+    }
+
+    /**
+     * The owner's fiscal year, an {@code FY<YY>} label derived from its
+     * business-day-adjusted registration date; {@code null} when no date is present.
+     *
+     * @see FiscalYear#label(java.time.LocalDate)
+     */
+    default String fiscalYear(Owner owner) {
+        return owner.getRegistrationDate() == null ? null
+                : FiscalYear.label(owner.getRegistrationDate());
     }
 
     /**
