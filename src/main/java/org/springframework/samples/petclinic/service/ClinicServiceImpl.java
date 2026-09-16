@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -282,6 +283,12 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countOwnersByCity(String city) throws DataAccessException {
         return ownerRepository.countByCity(city);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(registrationDate);
     }
 
     @Override
