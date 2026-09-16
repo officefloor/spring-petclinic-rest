@@ -137,16 +137,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
+    /**
+     * Normalize the owner's supplied address into its canonical stored form, preferring
+     * the structured fields over the flat address. When a non-blank {@code addressLine1}
+     * is supplied it wins: both structured lines are normalized and the stored
+     * {@code address} becomes their composed value; otherwise the flat {@code address} is
+     * normalized and used. The owner is left with a normalized structured/flat address.
+     *
+     * @param owner the owner whose address fields are normalized in place
+     * @return {@code true} if the owner supplies an address in either form, {@code false}
+     * when neither a structured nor a flat address was given
+     */
+    private boolean normalizeAddress(Owner owner) {
+        String addressLine1 = addressNormalizer.normalize(owner.getAddressLine1());
+        String addressLine2 = addressNormalizer.normalize(owner.getAddressLine2());
+        String flatAddress = addressNormalizer.normalize(owner.getAddress());
+        owner.setAddressLine2(addressNormalizer.isBlank(addressLine2) ? null : addressLine2);
+        if (!addressNormalizer.isBlank(addressLine1)) {
+            owner.setAddressLine1(addressLine1);
+            owner.setAddress(addressNormalizer.compose(addressLine1, addressLine2));
+            return true;
+        }
+        owner.setAddressLine1(null);
+        if (!addressNormalizer.isBlank(flatAddress)) {
+            owner.setAddress(flatAddress);
+            return true;
+        }
+        return false;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String address = addressNormalizer.normalize(owner.getAddress());
-        if (addressNormalizer.isBlank(address)) {
+        if (!normalizeAddress(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        owner.setAddress(address);
         Optional<String> e164Telephone = telephoneNormalizer.toE164(owner.getTelephone());
         if (e164Telephone.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);

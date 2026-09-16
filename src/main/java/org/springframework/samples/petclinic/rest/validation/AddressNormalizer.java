@@ -69,4 +69,22 @@ public class AddressNormalizer {
     public boolean isBlank(String address) {
         return address == null || address.isBlank();
     }
+
+    /**
+     * Compose the canonical single-line address from the structured lines: the
+     * normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended only when a second line is present.
+     *
+     * @param addressLine1 the first (required) structured address line
+     * @param addressLine2 the optional second structured address line (may be {@code null})
+     * @return the composed, normalized address
+     */
+    public String compose(String addressLine1, String addressLine2) {
+        String line1 = normalize(addressLine1);
+        String line2 = normalize(addressLine2);
+        if (isBlank(line2)) {
+            return line1;
+        }
+        return line1 + " " + line2;
+    }
 }
