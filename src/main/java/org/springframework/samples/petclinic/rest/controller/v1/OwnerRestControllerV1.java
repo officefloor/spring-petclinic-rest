@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerAuditLogger;
@@ -87,6 +88,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final PostcodeValidator postcodeValidator;
+
     private final OwnerAuditLogger ownerAuditLogger;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -96,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
+                                 PostcodeValidator postcodeValidator,
                                  OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -104,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.postcodeValidator = postcodeValidator;
         this.ownerAuditLogger = ownerAuditLogger;
     }
 
@@ -151,6 +156,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null && !emailNormalizer.isValid(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (owner.getPostcode() != null && !postcodeValidator.isValid(owner.getPostcode(), owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         LocalDate registrationDate = BusinessDay.rollForward(
             owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate());
         owner.setRegistrationDate(registrationDate);
@@ -194,12 +202,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null && !emailNormalizer.isValid(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode != null && !postcodeValidator.isValid(postcode, ownerFieldsDto.getCity())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(e164Telephone.get());
         currentOwner.setEmail(email);
+        currentOwner.setPostcode(postcode);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
