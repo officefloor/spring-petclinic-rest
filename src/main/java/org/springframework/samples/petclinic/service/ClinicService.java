@@ -58,6 +58,7 @@ public interface ClinicService {
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
+	long countOwners() throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 

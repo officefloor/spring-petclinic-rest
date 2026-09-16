@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephoneUniquenessValidator;
@@ -113,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
+        owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
