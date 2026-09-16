@@ -20,9 +20,10 @@ import java.time.LocalDate;
 /**
  * Business-day rules for registration dates.
  *
- * <p>A registration date must fall on a business day: a Saturday or Sunday rolls
- * forward to the following Monday, while a weekday is left unchanged. This is the
- * single source of truth for that adjustment, so callers never repeat it.
+ * <p>A registration date must fall on a business day: any Saturday, Sunday, or
+ * {@link PublicHolidays public holiday} rolls forward to the next date that is none of
+ * those, while an ordinary weekday is left unchanged. This is the single source of truth
+ * for that adjustment, so callers never repeat it.
  */
 public final class BusinessDay {
 
@@ -33,14 +34,21 @@ public final class BusinessDay {
      * Roll a date forward onto a business day.
      *
      * @param date the date to adjust
-     * @return the following Monday when {@code date} is a Saturday or Sunday, otherwise
-     *         {@code date} unchanged
+     * @return the earliest date on or after {@code date} that is neither a weekend nor a
+     *         public holiday
      */
     public static LocalDate rollForward(LocalDate date) {
+        LocalDate adjusted = date;
+        while (!isBusinessDay(adjusted)) {
+            adjusted = adjusted.plusDays(1);
+        }
+        return adjusted;
+    }
+
+    private static boolean isBusinessDay(LocalDate date) {
         return switch (date.getDayOfWeek()) {
-            case SATURDAY -> date.plusDays(2);
-            case SUNDAY -> date.plusDays(1);
-            default -> date;
+            case SATURDAY, SUNDAY -> false;
+            default -> !PublicHolidays.contains(date);
         };
     }
 }
