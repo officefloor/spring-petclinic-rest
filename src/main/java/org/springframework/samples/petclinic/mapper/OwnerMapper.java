@@ -51,9 +51,12 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** The owner's membership tier: 'SILVER' when namesakeCount is 0 and an email is present,
-     * otherwise 'BRONZE'. */
+    /** The owner's membership tier: 'GOLD' when the owner's household has 3 or more members,
+     * otherwise 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'. */
     default String membershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return unique && hasEmail ? "SILVER" : "BRONZE";
@@ -70,6 +73,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
