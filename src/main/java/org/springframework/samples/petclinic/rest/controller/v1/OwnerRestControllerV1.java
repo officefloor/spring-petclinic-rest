@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerTelephoneUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -68,16 +69,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerTelephoneUniquenessValidator telephoneUniquenessValidator;
 
+    private final OwnerHouseholdUniquenessValidator householdUniquenessValidator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerTelephoneUniquenessValidator telephoneUniquenessValidator) {
+                                 OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
+                                 OwnerHouseholdUniquenessValidator householdUniquenessValidator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneUniquenessValidator = telephoneUniquenessValidator;
+        this.householdUniquenessValidator = householdUniquenessValidator;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -114,6 +119,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
+        }
         owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
