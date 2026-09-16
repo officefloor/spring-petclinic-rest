@@ -1,0 +1,347 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index aa0bf9b89..34a7e2889 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -119,6 +122,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     /**
+      * Return this owner's name formatted as {@code LastName, FirstName}.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 793395d0e..1e44b41fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
++import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
+ import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdUniquenessValidator;
+ import org.springframework.samples.petclinic.rest.validation.OwnerTelephoneUniquenessValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+@@ -71,18 +72,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerHouseholdUniquenessValidator householdUniquenessValidator;
+ 
++    private final OwnerHouseholdRegistrar householdRegistrar;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
+-                                 OwnerHouseholdUniquenessValidator householdUniquenessValidator) {
++                                 OwnerHouseholdUniquenessValidator householdUniquenessValidator,
++                                 OwnerHouseholdRegistrar householdRegistrar) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.telephoneUniquenessValidator = telephoneUniquenessValidator;
+         this.householdUniquenessValidator = householdUniquenessValidator;
++        this.householdRegistrar = householdRegistrar;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -121,6 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
+         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
++        } else {
++            this.householdRegistrar.assignHousehold(owner);
+         }
+         owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdKey.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdKey.java
+new file mode 100644
+index 000000000..2c1f0f796
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdKey.java
+@@ -0,0 +1,72 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++/**
++ * The canonical identity of a household: an owner's last name together with the address they live
++ * at. Two owners belong to the same household when their keys are equal. Both parts are normalized
++ * (trimmed, internal whitespace runs collapsed to a single space, lower-cased) so values that differ
++ * only in letter case or spacing match. This shared definition keeps household matching consistent
++ * between the uniqueness check and the shared-identifier assignment.
++ */
++public final class HouseholdKey {
++
++    private HouseholdKey() {
++    }
++
++    /**
++     * The comparison key for the household an owner with this last name and address belongs to.
++     */
++    public static String of(String lastName, String address) {
++        return normalize(lastName) + "\n" + normalize(address);
++    }
++
++    /**
++     * A stable identifier for a household key: the first 12 upper-case hex characters of its
++     * SHA-256 digest. Deterministic, so every member of a household derives the same value.
++     */
++    public static String idFor(String key) {
++        return sha256hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
++    }
++
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++
++    private static String sha256hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdRegistrar.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdRegistrar.java
+new file mode 100644
+index 000000000..783ee32ac
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdRegistrar.java
+@@ -0,0 +1,72 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.List;
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Assigns the shared household identifier when an owner opts in via {@code sharesHousehold}. When
++ * the new owner joins an existing household (an owner with the same last name and address already
++ * exists), every member of that household — the existing owners and the joining one — is given the
++ * same stable {@link HouseholdKey#idFor(String) household id}. If no such household exists yet the
++ * new owner is left without one.
++ *
++ * @see OwnerHouseholdUniquenessValidator
++ */
++@Component
++public class OwnerHouseholdRegistrar {
++
++    private final ClinicService clinicService;
++
++    public OwnerHouseholdRegistrar(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * Places the given (not-yet-saved) owner into its household, sharing a single identifier with
++     * any existing owners at the same last name and address and backfilling that identifier onto
++     * members that lack it.
++     *
++     * @param owner the owner being created with {@code sharesHousehold} set
++     */
++    public void assignHousehold(Owner owner) {
++        String key = HouseholdKey.of(owner.getLastName(), owner.getAddress());
++        List<Owner> members = this.clinicService.findAllOwners().stream()
++            .filter(existing -> HouseholdKey.of(existing.getLastName(), existing.getAddress()).equals(key))
++            .toList();
++        if (members.isEmpty()) {
++            return;
++        }
++        String householdId = members.stream()
++            .map(Owner::getHouseholdId)
++            .filter(Objects::nonNull)
++            .findFirst()
++            .orElseGet(() -> HouseholdKey.idFor(key));
++        for (Owner member : members) {
++            if (!householdId.equals(member.getHouseholdId())) {
++                member.setHouseholdId(householdId);
++                this.clinicService.saveOwner(member);
++            }
++        }
++        owner.setHouseholdId(householdId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
+index 1754cd530..dcc5e7452 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerHouseholdUniquenessValidator.java
+@@ -16,9 +16,6 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+-import java.util.Locale;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+@@ -47,24 +44,11 @@ public class OwnerHouseholdUniquenessValidator {
+      *                                          address
+      */
+     public void validateUnique(String lastName, String address) {
+-        String normalizedLastName = normalize(lastName);
+-        String normalizedAddress = normalize(address);
++        String key = HouseholdKey.of(lastName, address);
+         boolean duplicate = this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> normalize(existing.getLastName()).equals(normalizedLastName)
+-                && normalize(existing.getAddress()).equals(normalizedAddress));
++            .anyMatch(existing -> HouseholdKey.of(existing.getLastName(), existing.getAddress()).equals(key));
+         if (duplicate) {
+             throw new DuplicateOwnerHouseholdException(lastName, address);
+         }
+     }
+-
+-    /**
+-     * Reduces a value to its comparison form: trimmed, with internal whitespace runs collapsed to a
+-     * single space and lower-cased.
+-     */
+-    private static String normalize(String value) {
+-        if (value == null) {
+-            return "";
+-        }
+-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+-    }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..a3ba7e5a4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..82270213a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 318961436..381949c86 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,6 +2108,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: >-
++                A stable identifier shared by all owners of the same household
++                (same last name and address). Assigned when an owner is created
++                with 'sharesHousehold' set to true and an existing owner already
++                lives at that address; the existing and joining owners then share
++                this value. Absent for owners that do not share a household.
++              type: string
++              example: 'A1B2C3D4E5F6'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
