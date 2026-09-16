@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
+import java.util.function.Predicate;
 
 import org.springframework.stereotype.Component;
 
@@ -42,6 +43,28 @@ public class CustomerCodeGenerator {
      */
     public String generate(String region, String normalizedTelephone, String lastName) {
         return region + "-" + hash8(normalizedTelephone, lastName);
+    }
+
+    /**
+     * Build a customer code that does not collide with any already in use. The code is
+     * derived exactly as {@link #generate(String, String, String)}; when that value is
+     * already taken, {@code '-<n>'} is appended with the smallest {@code n} of two or more
+     * that yields an unused code.
+     *
+     * @param region              the owner's canonical region
+     * @param normalizedTelephone the owner's normalized (E.164) telephone
+     * @param lastName            the owner's last name
+     * @param isTaken             tests whether a candidate code is already in use
+     * @return a customer code not reported as taken by {@code isTaken}
+     */
+    public String generateUnique(String region, String normalizedTelephone, String lastName,
+            Predicate<String> isTaken) {
+        String base = generate(region, normalizedTelephone, lastName);
+        String candidate = base;
+        for (int n = 2; isTaken.test(candidate); n++) {
+            candidate = base + "-" + n;
+        }
+        return candidate;
     }
 
     private String hash8(String normalizedTelephone, String lastName) {

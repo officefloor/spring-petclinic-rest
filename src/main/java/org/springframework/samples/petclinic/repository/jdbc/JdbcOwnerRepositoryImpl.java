@@ -288,4 +288,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return total == null ? 0 : total;
     }
 
+    @Override
+    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("customerCode", customerCode);
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
+            params,
+            Long.class);
+        return total != null && total > 0;
+    }
+
 }

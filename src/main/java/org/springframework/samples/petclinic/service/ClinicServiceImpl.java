@@ -249,9 +249,10 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
             if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(customerCodeGenerator.generate(
+                owner.setCustomerCode(customerCodeGenerator.generateUnique(
                     RegionResolver.regionFor(owner.getPostcode(), owner.getCity()),
-                    owner.getTelephone(), owner.getLastName()));
+                    owner.getTelephone(), owner.getLastName(),
+                    ownerRepository::existsByCustomerCode));
             }
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(
