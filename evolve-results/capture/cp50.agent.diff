@@ -1,0 +1,178 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ce0aaafe0..3bb196118 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.OwnerAuditLogger;
++import org.springframework.samples.petclinic.service.OwnerCreationIdempotencyStore;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerAuditLogger ownerAuditLogger;
+ 
++    private final OwnerCreationIdempotencyStore idempotencyStore;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -100,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  EmailNormalizer emailNormalizer,
+                                  AddressNormalizer addressNormalizer,
+                                  PostcodeValidator postcodeValidator,
+-                                 OwnerAuditLogger ownerAuditLogger) {
++                                 OwnerAuditLogger ownerAuditLogger,
++                                 OwnerCreationIdempotencyStore idempotencyStore) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -110,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.addressNormalizer = addressNormalizer;
+         this.postcodeValidator = postcodeValidator;
+         this.ownerAuditLogger = ownerAuditLogger;
++        this.idempotencyStore = idempotencyStore;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -168,7 +173,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
++        Owner replay = replayIdempotentCreate(idempotencyKey);
++        if (replay != null) {
++            return new ResponseEntity<>(ownerMapper.toOwnerDto(replay), HttpStatus.OK);
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (!normalizeAddress(owner)) {
+@@ -211,12 +220,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setDeclaredHouseholdMember(sharesHousehold);
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditLogger.logCreated(owner);
++        if (idempotencyKey != null) {
++            this.idempotencyStore.remember(idempotencyKey, owner.getId());
++        }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Look up the owner already created under the given {@code Idempotency-Key}, if any.
++     * A repeated create carrying a key that has already produced an owner replays that
++     * original owner instead of creating a duplicate.
++     *
++     * @param idempotencyKey the client-supplied idempotency key, or {@code null} when the
++     *                       request carries no {@code Idempotency-Key} header
++     * @return the originally created owner to replay, or {@code null} when the key is
++     * absent, unseen, or its owner no longer exists
++     */
++    private Owner replayIdempotentCreate(String idempotencyKey) {
++        if (idempotencyKey == null) {
++            return null;
++        }
++        return idempotencyStore.findOwnerId(idempotencyKey)
++            .map(clinicService::findOwnerById)
++            .orElse(null);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCreationIdempotencyStore.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreationIdempotencyStore.java
+new file mode 100644
+index 000000000..b895463df
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreationIdempotencyStore.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Map;
++import java.util.Optional;
++import java.util.concurrent.ConcurrentHashMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers which owner was created for each client-supplied {@code Idempotency-Key},
++ * so a create that repeats with an already-seen key can return the originally created
++ * owner instead of creating a duplicate.
++ */
++@Component
++public class OwnerCreationIdempotencyStore {
++
++    private final Map<String, Integer> ownerIdsByKey = new ConcurrentHashMap<>();
++
++    /**
++     * The id of the owner previously created under {@code key}, or empty if the key has
++     * not been seen.
++     */
++    public Optional<Integer> findOwnerId(String key) {
++        return Optional.ofNullable(ownerIdsByKey.get(key));
++    }
++
++    /**
++     * Remember that the owner with {@code ownerId} was the one created under {@code key}.
++     * The first owner recorded for a key wins, so concurrent repeats stay consistent.
++     */
++    public void remember(String key, Integer ownerId) {
++        ownerIdsByKey.putIfAbsent(key, ownerId);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 58abca35e..92b498eb9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -69,6 +69,16 @@ paths:
+       operationId: addOwner
+       summary: Adds a pet owner
+       description: Records the details of a new pet owner.
++      parameters:
++        - name: Idempotency-Key
++          in: header
++          description: >-
++            Optional client-supplied key that makes the create idempotent. When a
++            create repeats with a key already seen, the originally created owner is
++            returned with 200 instead of creating a duplicate.
++          required: false
++          schema:
++            type: string
+       requestBody:
+         description: The pet owner
+         content:
+@@ -77,6 +87,14 @@ paths:
+               $ref: '#/components/schemas/OwnerFields'
+         required: true
+       responses:
++        200:
++          description: >-
++            The create repeated an already-seen idempotency key; the originally
++            created pet owner is returned.
++          content:
++            application/json:
++              schema:
++                $ref: '#/components/schemas/Owner'
+         201:
+           description: The pet owner was successfully added.
+           content:
