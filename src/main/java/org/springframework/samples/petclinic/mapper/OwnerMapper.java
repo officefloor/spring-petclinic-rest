@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipPoints;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 import org.springframework.samples.petclinic.util.Salutation;
 import org.springframework.samples.petclinic.util.Telephone;
@@ -35,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -137,6 +139,16 @@ public interface OwnerMapper {
      */
     default Integer membershipLevel(Owner owner) {
         return MembershipLevel.of(owner);
+    }
+
+    /**
+     * The owner's segment, formatted {@code <TIER>_<AREA>}, derived from its membership
+     * level and locality.
+     *
+     * @see OwnerSegment#of(int, String)
+     */
+    default String ownerSegment(Owner owner) {
+        return OwnerSegment.of(membershipLevel(owner), locality(owner));
     }
 
     /**
