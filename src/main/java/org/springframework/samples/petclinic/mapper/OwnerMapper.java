@@ -46,6 +46,8 @@ public interface OwnerMapper {
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     // Not derivable from a single owner; the responder sets it from the daily registration count.
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    // Not derivable from a single owner; the responder sets it from the owner's city count.
+    @Mapping(target = "capacityWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**

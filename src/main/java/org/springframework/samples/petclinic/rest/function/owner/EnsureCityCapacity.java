@@ -8,18 +8,15 @@ import org.springframework.samples.petclinic.rest.escalation.CityCapacityExceede
 /**
  * Rejects a create request whose city already holds the maximum number of owners. Runs
  * before {@link BuildOwner}, so a full city is a 409 via
- * {@link CityCapacityExceededException} before any owner is built or saved. Cities are
- * counted case-insensitively (see {@link Cities}).
+ * {@link CityCapacityExceededException} before any owner is built or saved. The capacity
+ * policy lives in {@link CityCapacity}.
  */
 public class EnsureCityCapacity {
 
-    /** Maximum owners a single city may hold; the next create is rejected. */
-    static final long MAX_OWNERS_PER_CITY = 50;
-
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws CityCapacityExceededException {
-        if (Cities.countIn(ownerRepository, request.getCity()) >= MAX_OWNERS_PER_CITY) {
-            throw new CityCapacityExceededException(request.getCity(), MAX_OWNERS_PER_CITY);
+        if (CityCapacity.isFull(ownerRepository, request.getCity())) {
+            throw new CityCapacityExceededException(request.getCity(), CityCapacity.MAX_OWNERS_PER_CITY);
         }
     }
 }
