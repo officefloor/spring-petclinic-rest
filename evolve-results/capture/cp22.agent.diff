@@ -1,0 +1,203 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e11606d82..2946883ed 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -132,6 +135,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerBulkSignup.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerBulkSignup.java
+new file mode 100644
+index 000000000..25dd3d830
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerBulkSignup.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a high-volume signup day: sets {@link Owner#getBulkSignupWarning() bulkSignupWarning}
++ * true when more than {@value #BULK_SIGNUP_THRESHOLD} owners have already been registered on
++ * the new owner's (adjusted, business-day) {@link Owner#getRegistrationDate() registrationDate},
++ * otherwise false. Runs after the registration date has been resolved so it buckets by the same
++ * day the new owner would be stored under.
++ */
++public class FlagOwnerBulkSignup {
++
++    /** Owners already registered on the day above which the warning is raised. */
++    static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        long registeredThatDay = OwnerRegistrations.countOn(ownerRepository, owner.getRegistrationDate());
++        owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_THRESHOLD);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegistrations.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegistrations.java
+new file mode 100644
+index 000000000..b1a77068f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegistrations.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Shared counting over the owners already registered on a given (adjusted, business-day)
++ * {@link Owner#getRegistrationDate() registrationDate}. Both the per-day capacity limit and
++ * the bulk-signup warning bucket owners by the same day, so they share this count.
++ */
++final class OwnerRegistrations {
++
++    private OwnerRegistrations() {
++    }
++
++    /** The number of stored owners whose registrationDate equals {@code date}. */
++    static long countOn(OwnerRepository ownerRepository, LocalDate date) {
++        return ownerRepository.findAll().stream()
++            .map(Owner::getRegistrationDate)
++            .filter(date::equals)
++            .count();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java
+index 1a81e5a92..a1601af31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireDailyRegistrationCapacity.java
+@@ -1,7 +1,5 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.time.LocalDate;
+-
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -20,11 +18,7 @@ public class RequireDailyRegistrationCapacity {
+     static final int DAILY_LIMIT = 100;
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyRegistrationLimitException {
+-        LocalDate registrationDate = owner.getRegistrationDate();
+-        long registeredThatDay = ownerRepository.findAll().stream()
+-            .map(Owner::getRegistrationDate)
+-            .filter(registrationDate::equals)
+-            .count();
++        long registeredThatDay = OwnerRegistrations.countOn(ownerRepository, owner.getRegistrationDate());
+         if (registeredThatDay >= DAILY_LIMIT) {
+             throw new DailyRegistrationLimitException(DAILY_LIMIT);
+         }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index aa945722d..d8967f5d0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 893aa49a8..cd143661b 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c0161d411..3c3c79dec 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..9d354cb21 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 6b1c9c89d..eee56ceea 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -54,6 +54,11 @@ resolveRegistrationDate:
+ requireDailyCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireDailyRegistrationCapacity
+   govern: [ transaction ]
++  next: flagBulkSignup
++
++flagBulkSignup:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagOwnerBulkSignup
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a0ec43824..ce9a65f2f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2131,6 +2131,14 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when, at the moment this owner was created, more than 80 owners had
++                already been registered on the same day; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
