@@ -252,8 +252,9 @@ public class Owner extends Person {
 
     /**
      * Whether this owner, when created, was found to be a possible (soft) duplicate of an
-     * existing owner: not a hard duplicate, but sharing that owner's last name and postcode
-     * while carrying a different telephone. See {@link #getPossibleDuplicateOf()}.
+     * existing owner: not a hard duplicate, but sharing that owner's phonetic last name
+     * (see {@link Soundex}) and postcode while its {@link #getIdentityKey() identity key}
+     * differs. See {@link #getPossibleDuplicateOf()}.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -441,17 +442,17 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used to detect duplicate owners,
-     * formed as {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
-     * Two owners are duplicates only when their whole identity keys are equal, so members
-     * of one household (sharing a household id) but with different telephones stay distinct.
-     * Derived from the owner's own fields, so it stays consistent with them.
+     * the SHA-256 hex digest of {@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * soundex(lastName)} (see {@link Soundex}). Two owners are hard duplicates only when
+     * their identity keys are equal; because the telephone is part of the key, members of
+     * one household with different telephones stay distinct. Derived from the owner's own
+     * fields, so it stays consistent with them.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        return Sha256.hex(telephonePart + "|" + emailPart + "|" + Soundex.of(this.getLastName()));
     }
 
     /**

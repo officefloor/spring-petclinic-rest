@@ -62,6 +62,16 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	/**
+	 * Report whether the given owner is a hard duplicate of an existing, non-deleted owner:
+	 * one that shares its {@link Owner#getIdentityKey() identity key}. Used by the create
+	 * endpoint to reject a duplicate registration before it is persisted.
+	 *
+	 * @param owner the prospective owner, with its telephone and email already normalized
+	 * @return {@code true} if a live owner already carries the same identity key
+	 */
+	boolean isDuplicateOwner(Owner owner) throws DataAccessException;
+
+	/**
 	 * Count the <code>Owner</code>s already registered in the given city, compared
 	 * case-insensitively.
 	 *

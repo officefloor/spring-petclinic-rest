@@ -210,6 +210,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Reject a hard duplicate: an existing live owner sharing this owner's identity key
+        // (its normalized telephone, email and phonetic last name). The email-domain blocklist
+        // above is applied first, so a disposable-email duplicate is a 400, not a 409.
+        if (clinicService.isDuplicateOwner(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         // The household is keyed on (last name, postcode): a second owner sharing both joins
         // the existing household. Unless it declares 'sharesHousehold', it is recorded as a
         // possible duplicate of the sitting member (see saveOwner); a declared member joins as

@@ -77,6 +77,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByLastNameIgnoreCase(@Param("lastName") String lastName);
 
     @Override
+    @Query("SELECT owner FROM Owner owner WHERE owner.deleted = false")
+    Collection<Owner> findByDeletedFalse();
+
+    @Override
     @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId AND owner.deleted = false")
     long countByHouseholdId(@Param("householdId") String householdId);
 

@@ -68,6 +68,16 @@ public interface OwnerRepository {
      */
     Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
 
+    /**
+     * Retrieve every <code>Owner</code> that has not been soft-deleted. Used to scan the
+     * live owners when detecting duplicate identities and soft matches, which group owners
+     * by the phonetic sound of their last name rather than by an exact-match query.
+     *
+     * @return a <code>Collection</code> of the non-deleted <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none exist)
+     */
+    Collection<Owner> findByDeletedFalse() throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

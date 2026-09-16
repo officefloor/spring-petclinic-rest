@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.samples.petclinic.service;
+package org.springframework.samples.petclinic.model;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,9 +21,9 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Computes the SHA-256 digest of a string as lower-case hexadecimal. Shared by the
- * owner identity generators so the hashing is written in exactly one place.
+ * owner identity derivations so the hashing is written in exactly one place.
  */
-final class Sha256 {
+public final class Sha256 {
 
     private Sha256() {
     }
@@ -31,7 +31,7 @@ final class Sha256 {
     /**
      * The lower-case hexadecimal SHA-256 digest of the UTF-8 bytes of {@code value}.
      */
-    static String hex(String value) {
+    public static String hex(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);

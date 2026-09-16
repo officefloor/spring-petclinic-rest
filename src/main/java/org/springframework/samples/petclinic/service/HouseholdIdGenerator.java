@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.stereotype.Component;
 
 /**

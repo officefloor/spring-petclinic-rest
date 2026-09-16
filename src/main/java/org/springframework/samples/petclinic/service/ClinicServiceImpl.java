@@ -333,19 +333,44 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find the existing owner, if any, that this new owner is a possible (soft) duplicate
-     * of: one that occupies the same household (the same computed household id) but carries
-     * a different telephone, so it is not a hard duplicate. When several match, the earliest
-     * (lowest id) is chosen. An owner that belongs to no household (no household id), or one
-     * that deliberately declared it shares a household, is never a suspected duplicate.
+     * Find the existing owner, if any, that this new owner is a possible (soft) duplicate of:
+     * a live owner that is not a hard duplicate (its {@link Owner#getIdentityKey() identity
+     * key} differs) yet shares the new owner's phonetic last name (see {@link Soundex}) and
+     * postcode. When several match, the earliest (lowest id) is chosen. An owner with no
+     * postcode belongs to no such group, and one that deliberately declared it shares a
+     * household is never a suspected duplicate.
      */
     private Optional<Owner> findPossibleDuplicate(Owner owner) {
-        if (owner.isDeclaredHouseholdMember()) {
+        String postcode = owner.getPostcode();
+        if (owner.isDeclaredHouseholdMember() || postcode == null || postcode.isBlank()) {
             return Optional.empty();
         }
-        return existingHouseholdMembers(owner).stream()
-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+        String identityKey = owner.getIdentityKey();
+        return liveOwnersSoundingLike(owner).stream()
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .min(Comparator.comparing(Owner::getId));
+    }
+
+    /**
+     * The live (non-deleted) owners whose last name sounds like this owner's, i.e. shares its
+     * Soundex code. This is the shared candidate set for both hard-duplicate detection and the
+     * soft match, which group owners by the phonetic sound of the last name (as the identity
+     * key does) rather than by an exact last-name match.
+     */
+    private List<Owner> liveOwnersSoundingLike(Owner owner) {
+        String soundex = Soundex.of(owner.getLastName());
+        return ownerRepository.findByDeletedFalse().stream()
+            .filter(existing -> soundex.equals(Soundex.of(existing.getLastName())))
+            .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isDuplicateOwner(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
+        return liveOwnersSoundingLike(owner).stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     @Override
