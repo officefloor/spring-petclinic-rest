@@ -18,6 +18,9 @@ package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.CityRegions;
+import org.springframework.samples.petclinic.model.RegionPostcodes;
+
 /**
  * The canonical identity of a household: an owner's last name together with the postcode they live
  * at. Two owners belong to the same household when their keys are equal, and therefore derive the
@@ -42,10 +45,19 @@ public final class HouseholdKey {
     /**
      * The stable identifier for the household an owner with this last name and postcode belongs to:
      * the first 12 upper-case hex characters of the SHA-256 digest of its {@link #of(String, String)
-     * key}. Deterministic, so every owner sharing a last name and postcode derives the same value.
+     * key} concatenated with '|' and the {@link IdentityRegion version-2 region code} the postcode
+     * resolves to. Deterministic, so every owner sharing a last name and postcode derives the same
+     * value; the version tag mixed into the region code makes it differ from its version-1 form.
      */
     public static String idFor(String lastName, String postcode) {
-        return Sha256.hex(of(lastName, postcode)).substring(0, 12).toUpperCase(Locale.ROOT);
+        String raw = of(lastName, postcode) + "|" + IdentityRegion.of(regionOf(postcode));
+        return Sha256.hex(raw).substring(0, 12).toUpperCase(Locale.ROOT);
+    }
+
+    /** The plain region a postcode resolves to, or {@link CityRegions#UNKNOWN} when it maps to none. */
+    private static String regionOf(String postcode) {
+        String region = RegionPostcodes.regionForPostcode(postcode);
+        return region != null ? region : CityRegions.UNKNOWN;
     }
 
     private static String normalize(String value) {

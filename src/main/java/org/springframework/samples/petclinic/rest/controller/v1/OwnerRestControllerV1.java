@@ -51,6 +51,7 @@ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateV
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.samples.petclinic.rest.validation.HouseholdMembershipLevelCap;
 import org.springframework.samples.petclinic.rest.validation.HouseholdSizeCounter;
+import org.springframework.samples.petclinic.rest.validation.IdentityRegion;
 import org.springframework.samples.petclinic.rest.validation.MemberIdDeduplicator;
 import org.springframework.samples.petclinic.rest.validation.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -207,8 +208,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
         owner.setMembershipLevelCap(this.householdMembershipLevelCap.ceilingFor(owner.getHouseholdId()));
         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
-        String memberId = MemberIdGenerator.generate(region, owner.getTelephone(), owner.getLastName(),
-            owner.getRegistrationDate());
+        String memberId = MemberIdGenerator.generate(IdentityRegion.of(region), owner.getTelephone(),
+            owner.getLastName(), owner.getRegistrationDate());
         owner.setMemberId(this.memberIdDeduplicator.deduplicate(memberId));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);

@@ -19,19 +19,28 @@ package org.springframework.samples.petclinic.rest.audit;
 /**
  * Immutable structured record of a successful owner creation, serialized as a JSON object to the
  * {@code AUDIT} trail alongside the human-readable audit line. The declaration order of the
- * components mirrors the emitted JSON: {@code {seq, ownerId, memberId, membershipLevel, event}}.
+ * components mirrors the emitted JSON:
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment, event}}.
  *
- * <p>The {@code memberId} component carries the owner's primary identifier at creation time
+ * <p>This is schema version {@value #SCHEMA_VERSION}: it carries the explicit {@code schemaVersion}
+ * marker and the owner's {@code ownerSegment}, both recomputed from the owner's version-2 identity.
+ * The {@code memberId} component carries the owner's primary identifier at creation time
  * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}).
  *
+ * @param schemaVersion   the audit-event schema version, always {@link #SCHEMA_VERSION}
  * @param seq             monotonically increasing sequence number across all owner creations
  * @param ownerId         the persisted owner's id
  * @param memberId        the owner's primary identifier at creation time
  * @param membershipLevel the owner's membership level at creation time
+ * @param ownerSegment    the owner's marketing segment at creation time
  * @param event           the event-type marker, always {@link #TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel, String event) {
+public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+                                int membershipLevel, String ownerSegment, String event) {
 
     /** The event-type marker every owner-creation event carries. */
     public static final String TYPE = "OWNER_CREATED";
+
+    /** The current audit-event schema version. */
+    public static final int SCHEMA_VERSION = 2;
 }

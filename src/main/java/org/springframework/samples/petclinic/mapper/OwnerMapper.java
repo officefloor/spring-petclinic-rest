@@ -8,6 +8,7 @@ import org.mapstruct.MappingTarget;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -24,6 +25,9 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public abstract class OwnerMapper {
 
+    /** The version of the owner identity contract every response is shaped by. */
+    private static final int API_VERSION = 2;
+
     @Autowired
     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
 
@@ -33,8 +37,12 @@ public abstract class OwnerMapper {
     @Autowired
     protected RiskFlagEvaluator riskFlagEvaluator;
 
+    @Mapping(target = "identity", ignore = true)
+    @Mapping(target = "apiVersion", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     public abstract Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
@@ -53,6 +61,21 @@ public abstract class OwnerMapper {
         ownerPageDto.setTotalElements(ownerPage.getTotalElements());
         ownerPageDto.setTotalPages(ownerPage.getTotalPages());
         return ownerPageDto;
+    }
+
+    /**
+     * Group the owner's derived identifiers under the response's nested {@code identity} object and
+     * stamp the {@code apiVersion}. These are the version-2 identity fields, no longer exposed at the
+     * top level.
+     */
+    @AfterMapping
+    protected void applyIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        ownerDto.setIdentity(identity);
+        ownerDto.setApiVersion(API_VERSION);
     }
 
     /**

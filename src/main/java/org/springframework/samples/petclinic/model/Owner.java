@@ -16,7 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
-import org.springframework.samples.petclinic.rest.validation.MemberIdGenerator;
+import org.springframework.samples.petclinic.rest.validation.IdentityRegion;
 import org.springframework.samples.petclinic.rest.validation.Sha256;
 import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
@@ -311,16 +311,19 @@ public class Owner extends Person {
 
     /**
      * Return this owner's identity key: the lower-case SHA-256 hex digest of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (an absent email
-     * contributes an empty segment). Two owners are the same person — a hard duplicate — exactly
-     * when their identity keys match; owners who merely share a household (same last name and
-     * postcode) but differ in telephone, email or surname sound derive distinct keys. The telephone
-     * and email are expected to already be in their normalized storage form.
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName) + '|' + v2Region}
+     * (an absent email contributes an empty segment), where {@code v2Region} is the
+     * {@link IdentityRegion version-2 region code} of the owner's region. Two owners are the same
+     * person — a hard duplicate — exactly when their identity keys match; owners who merely share a
+     * household (same last name and postcode) but differ in telephone, email or surname sound derive
+     * distinct keys. The telephone and email are expected to already be in their normalized storage
+     * form.
      */
     @Transient
     public String getIdentityKey() {
+        String v2Region = IdentityRegion.of(RegionResolver.regionFor(this.postcode, this.city));
         String raw = orEmpty(this.telephone) + "|" + orEmpty(this.email).toLowerCase(Locale.ROOT)
-            + "|" + Soundex.encode(this.getLastName());
+            + "|" + Soundex.encode(this.getLastName()) + "|" + v2Region;
         return Sha256.hex(raw);
     }
 
@@ -329,16 +332,13 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's locality: the REGION segment of the owner's
-     * {@link #getMemberId() member id}, which is the region the identity was minted for. When no
-     * member id has been assigned yet the region is resolved directly from the
-     * {@link #getPostcode() postcode} and {@link #getCity() city} via {@link RegionResolver}.
+     * Return this owner's locality: the plain region code the owner belongs to, resolved from the
+     * {@link #getPostcode() postcode} and {@link #getCity() city} via {@link RegionResolver}. This
+     * is the user-facing region (e.g. {@code "NSW"}) and never carries the version tag mixed into
+     * the {@link IdentityRegion identifiers}.
      */
     @Transient
     public String getLocality() {
-        if (this.memberId != null && !this.memberId.isBlank()) {
-            return MemberIdGenerator.regionOf(this.memberId);
-        }
         return RegionResolver.regionFor(this.postcode, this.city);
     }
 
