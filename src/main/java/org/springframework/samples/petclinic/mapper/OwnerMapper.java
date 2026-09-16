@@ -25,6 +25,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -41,6 +42,13 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /** The owner's salutation: '&lt;title&gt; &lt;lastName&gt;' when a title was supplied,
+     * otherwise just the last name. */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        return (title == null || title.isBlank()) ? owner.getLastName() : title + " " + owner.getLastName();
+    }
 
     /** Format an owner's name as 'LastName, FirstName' for display. */
     default String displayName(Owner owner) {
