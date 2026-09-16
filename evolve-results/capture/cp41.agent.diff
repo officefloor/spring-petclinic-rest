@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1ce9f5b92..a6e5cb25e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
++import org.springframework.samples.petclinic.rest.validation.CustomerCodeDeduplicator;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
+ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
+@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerAuditLogger ownerAuditLogger;
+ 
++    private final CustomerCodeDeduplicator customerCodeDeduplicator;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -105,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  HouseholdSizeCounter householdSizeCounter,
+                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
+                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
+-                                 OwnerAuditLogger ownerAuditLogger) {
++                                 OwnerAuditLogger ownerAuditLogger,
++                                 CustomerCodeDeduplicator customerCodeDeduplicator) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -117,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
+         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
+         this.ownerAuditLogger = ownerAuditLogger;
++        this.customerCodeDeduplicator = customerCodeDeduplicator;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -171,7 +176,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
+         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
+-        owner.setCustomerCode(CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
++        String customerCode = CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
++        owner.setCustomerCode(this.customerCodeDeduplicator.deduplicate(customerCode));
+         this.clinicService.saveOwner(owner);
+         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
+         this.ownerAuditLogger.logCreated(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeDeduplicator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeDeduplicator.java
+new file mode 100644
+index 000000000..4d1ff4eae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CustomerCodeDeduplicator.java
+@@ -0,0 +1,63 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Set;
++import java.util.stream.Collectors;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Ensures a newly generated {@link CustomerCodeGenerator customer code} is unique across existing
++ * owners. When the candidate collides with an existing owner's customer code, {@code -<n>} is
++ * appended with the smallest {@code n} of 2 or more that yields an unused code.
++ */
++@Component
++public class CustomerCodeDeduplicator {
++
++    private static final char SEPARATOR = '-';
++
++    private final ClinicService clinicService;
++
++    public CustomerCodeDeduplicator(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * Returns the candidate customer code, or a de-duplicated variant if it collides with an
++     * existing owner's customer code.
++     *
++     * @param candidate the freshly generated customer code
++     * @return a customer code that no existing owner already holds
++     */
++    public String deduplicate(String candidate) {
++        Set<String> existing = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(code -> code != null)
++            .collect(Collectors.toSet());
++        if (!existing.contains(candidate)) {
++            return candidate;
++        }
++        int suffix = 2;
++        while (existing.contains(candidate + SEPARATOR + suffix)) {
++            suffix++;
++        }
++        return candidate + SEPARATOR + suffix;
++    }
++}
