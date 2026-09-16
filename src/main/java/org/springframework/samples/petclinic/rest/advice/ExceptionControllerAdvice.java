@@ -103,6 +103,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link RejectedRequestException} raised by controllers when a business rule rejects a
+     * request with a client-error status (e.g. 400, 409 or 429). The exception carries the intended
+     * status and detail, which are rendered as an RFC7807 {@code application/problem+json} response.
+     *
+     * @param e The {@link RejectedRequestException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} whose status matches the rejection and whose body is the problem detail
+     */
+    @ExceptionHandler(RejectedRequestException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRejectedRequestException(RejectedRequestException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.debug("Request rejected at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
      * method returns a 404 Not Found status if an entity does not exist.
      *

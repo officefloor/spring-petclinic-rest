@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RejectedRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -186,40 +187,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!normalizeAddress(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "An address must be supplied, either as a flat address or a structured address line 1");
         }
         Optional<String> e164Telephone = telephoneNormalizer.toE164(owner.getTelephone());
         if (e164Telephone.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied telephone number is not a valid phone number");
         }
         String telephone = e164Telephone.get();
         String email = emailNormalizer.normalize(owner.getEmail());
         if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied email address is invalid or from a disallowed domain");
         }
         if (owner.getPostcode() != null && !postcodeValidator.isValid(owner.getPostcode(), owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied postcode is not valid for the owner's city");
         }
         LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
         if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The registration date cannot be in the future");
         }
         LocalDate registrationDate = BusinessDay.rollForward(
             suppliedRegistrationDate == null ? LocalDate.now() : suppliedRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS,
+                "The maximum number of owner registrations for this day has been reached");
         }
         owner.setTelephone(telephone);
         owner.setEmail(email);
         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT,
+                "The maximum number of owners for this city has been reached");
         }
         // Reject a hard duplicate: an existing live owner sharing this owner's identity key
         // (its normalized telephone, email and phonetic last name). The email-domain blocklist
         // above is applied first, so a disposable-email duplicate is a 400, not a 409.
         if (clinicService.isDuplicateOwner(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RejectedRequestException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         // The household is keyed on (last name, postcode): a second owner sharing both joins
         // the existing household. Unless it declares 'sharesHousehold', it is recorded as a
@@ -267,15 +276,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         Optional<String> e164Telephone = telephoneNormalizer.toE164(ownerFieldsDto.getTelephone());
         if (e164Telephone.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied telephone number is not a valid phone number");
         }
         String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
         if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied email address is invalid or from a disallowed domain");
         }
         String postcode = ownerFieldsDto.getPostcode();
         if (postcode != null && !postcodeValidator.isValid(postcode, ownerFieldsDto.getCity())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
+                "The supplied postcode is not valid for the owner's city");
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
