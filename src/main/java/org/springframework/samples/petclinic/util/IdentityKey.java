@@ -28,12 +28,15 @@ public final class IdentityKey {
 
     /**
      * The identity key for the given parts: the SHA-256 hex digest of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A null or
-     * blank telephone or email contributes an empty segment and a blank last name an empty
-     * Soundex, so an owner missing one still has a well-formed 64-hex key.
+     * {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+     * where {@code V2} is the fixed version tag mixed into every version-2 identifier (see
+     * {@link IdentityVersion}). A null or blank telephone or email contributes an empty
+     * segment and a blank last name an empty Soundex, so an owner missing one still has a
+     * well-formed 64-hex key.
      */
     public static String of(String telephone, String email, String lastName) {
-        return Sha256.hex(orEmpty(telephone) + '|' + lowerEmail(email) + '|' + Soundex.of(lastName));
+        return Sha256.hex(IdentityVersion.TAG + '|' + orEmpty(telephone) + '|' + lowerEmail(email)
+            + '|' + Soundex.of(lastName));
     }
 
     private static String lowerEmail(String email) {

@@ -5,6 +5,7 @@ import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.Sha256;
 
@@ -24,14 +25,15 @@ final class Households {
 
     /**
      * The household id for the given last name and postcode: the first 12 hex characters of
-     * SHA-256 over the normalized last name and postcode. Returns null when the postcode is
-     * blank, since without a postcode there is no household key.
+     * SHA-256 over the fixed version-2 tag, the normalized last name and the postcode (see
+     * {@link IdentityVersion}). Returns null when the postcode is blank, since without a
+     * postcode there is no household key.
      */
     static String householdId(String lastName, String postcode) {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        return Sha256.hex(normalizeName(lastName) + '|' + postcode).substring(0, 12);
+        return Sha256.hex(IdentityVersion.TAG + '|' + normalizeName(lastName) + '|' + postcode).substring(0, 12);
     }
 
     /** How many existing owners already carry the given household id (0 when it is null). */

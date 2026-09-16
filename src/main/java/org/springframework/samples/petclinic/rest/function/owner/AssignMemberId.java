@@ -7,16 +7,18 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.util.FiscalYear;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.OwnerRegion;
 
 /**
  * Assigns a newly built owner its unified {@code memberId}, formatted
- * {@code <REGION><FY><HASH8><CHK>} where REGION is the owner's region (see
- * {@link OwnerRegion}), FY the 2-digit fiscal year of its registration date, HASH8 the
+ * {@code <REGION><FY><HASH8><CHK>} where REGION is the version-2 region code — the fixed
+ * {@code V2} tag followed by the owner's region (see {@link IdentityVersion} and
+ * {@link OwnerRegion}) — FY the 2-digit fiscal year of its registration date, HASH8 the
  * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated
  * with the last name, and CHK a single Luhn check digit over the digits of
- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D5}; see {@link MemberId}). Runs
+ * {@code <REGION><FY><HASH8>} (e.g. {@code V2NSW261A2B3C4D5}; see {@link MemberId}). Runs
  * after {@link NormalizeOwnerTelephone} (so the telephone is canonical) and
  * {@link ApplyRegistrationDate} (so the fiscal year uses the adjusted business day) and
  * before {@link SaveOwner}, mutating the built owner in place so the id is stored and
@@ -27,9 +29,9 @@ import org.springframework.samples.petclinic.util.OwnerRegion;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = OwnerRegion.of(owner);
+        String regionCode = IdentityVersion.regionCode(OwnerRegion.of(owner));
         String fiscalYear = FiscalYear.shortLabel(owner.getRegistrationDate());
-        String memberId = MemberId.of(region, fiscalYear, owner.getTelephone(), owner.getLastName());
+        String memberId = MemberId.of(regionCode, fiscalYear, owner.getTelephone(), owner.getLastName());
         owner.setMemberId(MemberId.deduplicate(memberId, takenIds(ownerRepository)::contains));
     }
 

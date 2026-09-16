@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.OwnerLocality;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -35,9 +37,11 @@ public class OwnerEventPublisher {
 
     /** Emit an {@code OWNER_CREATED} event for a freshly created (and saved) owner. */
     public void ownerCreated(Owner owner) {
+        int membershipLevel = MembershipLevel.of(owner);
         OwnerCreatedEvent event = new OwnerCreatedEvent(this.sequence.incrementAndGet(),
-                owner.getId(), owner.getPrimaryIdentifier(), MembershipLevel.of(owner),
-                OwnerCreatedEvent.EVENT_TYPE);
+                owner.getId(), owner.getPrimaryIdentifier(), membershipLevel,
+                OwnerSegment.of(membershipLevel, OwnerLocality.of(owner)),
+                OwnerCreatedEvent.SCHEMA_VERSION, OwnerCreatedEvent.EVENT_TYPE);
         AUDIT.info(this.objectMapper.writeValueAsString(event));
     }
 }

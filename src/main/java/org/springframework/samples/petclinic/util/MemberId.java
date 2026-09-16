@@ -9,12 +9,14 @@ import java.util.function.Predicate;
  * {@link FiscalYear#shortLabel(java.time.LocalDate)}), the first 8 upper-case hex
  * characters of SHA-256 over the normalized telephone concatenated with the last name (the
  * region-and-hash identity's HASH8), and a single Luhn check digit over the digits of
- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D5}).
+ * {@code <REGION><FY><HASH8>} (e.g. {@code V2NSW261A2B3C4D5}). The REGION segment is the
+ * version-2 region <em>code</em> (see {@link IdentityVersion}); its plain region is the
+ * locality.
  *
  * <p>This is the single source of an owner's identity: the audit record is built from it,
- * and both the locality (the REGION read back out) and the fiscal year (the FY read back
- * out) are derived from it, so there is one identity concept rather than several
- * derivations that could drift.
+ * and both the locality (the plain region decoded from REGION, see {@link OwnerLocality})
+ * and the fiscal year (the FY read back out) are derived from it, so there is one identity
+ * concept rather than several derivations that could drift.
  */
 public final class MemberId {
 
@@ -40,7 +42,9 @@ public final class MemberId {
      * The {@code <REGION><FY><HASH8><CHK>} member id for the given region, fiscal year and
      * identity inputs.
      *
-     * @param region         the owner's region, used verbatim as the REGION segment
+     * @param region         the region code, used verbatim as the REGION segment (the
+     *                        version-2 region code carries the {@code V2} tag; see
+     *                        {@link IdentityVersion})
      * @param fiscalYearShort the 2-digit fiscal year of the registration date (e.g. "26")
      * @param telephone      the owner's normalized (E.164) telephone
      * @param lastName       the owner's last name
@@ -73,7 +77,9 @@ public final class MemberId {
     /**
      * The REGION segment of a member id: the leading characters before the fixed-width
      * {@code <FY><HASH8><CHK>} tail (any de-duplication suffix stripped first), or
-     * {@code null} when the owner has no member id.
+     * {@code null} when the owner has no member id. This is the version-2 region <em>code</em>
+     * (carrying the {@code V2} tag); the plain region is recovered with
+     * {@link IdentityVersion#plainRegion(String)} (see {@link OwnerLocality}).
      */
     public static String regionOf(String memberId) {
         String base = base(memberId);
