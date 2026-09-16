@@ -250,10 +250,12 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3. Every owner starts at level 1;
-     * one level is added when an email is on file and one more when the owner is unique
-     * (namesake count of zero). The level is capped at 3, leaving level 4 reserved for
-     * tenure. Derived from the owner's own fields, so it stays consistent with them.
+     * The owner's membership level, a number from 1 to 4. Every owner starts at level 1;
+     * one level is added when an email is on file, one more when the owner is unique
+     * (namesake count of zero), and one more when the owner has accrued more than a year of
+     * tenure (see {@link Tenure}). The level is capped at 4, so reaching it requires tenure
+     * and a brand-new owner (zero tenure) never exceeds level 3. Derived from the owner's own
+     * fields, so it stays consistent with them.
      */
     @Transient
     public Integer getMembershipLevel() {
@@ -266,7 +268,12 @@ public class Owner extends Person {
         if (unique) {
             level++;
         }
-        return Math.min(level, 3);
+        boolean tenured = this.registrationDate != null
+            && Tenure.qualifiesForTopLevel(this.registrationDate, LocalDate.now());
+        if (tenured) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
