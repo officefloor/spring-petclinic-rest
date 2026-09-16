@@ -1,0 +1,351 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipPoints.java
+new file mode 100644
+index 000000000..6129b01da
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipPoints.java
+@@ -0,0 +1,79 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The membership scoring rule: an owner earns points for the loyalty factors they satisfy, and the
++ * accumulated points map onto a membership level. Points start at 0 and add up as follows: 2 for
++ * having an email, 1 for being uniquely named, 2 for belonging to a household of three or more, and
++ * 3 for tenure of more than a year. The level is a coarser banding of that score: 1 for 0-1 points,
++ * 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
++ */
++public final class MembershipPoints {
++
++    private static final int EMAIL_POINTS = 2;
++    private static final int UNIQUE_NAME_POINTS = 1;
++    private static final int LARGE_HOUSEHOLD_POINTS = 2;
++    private static final int LONG_TENURE_POINTS = 3;
++
++    private MembershipPoints() {
++    }
++
++    /**
++     * The membership points earned for the given loyalty factors.
++     *
++     * @param hasEmail        whether the owner has an email
++     * @param uniquelyNamed   whether the owner is uniquely named (no namesakes)
++     * @param largeHousehold  whether the owner belongs to a household of three or more
++     * @param longTenure      whether the owner's tenure exceeds a year
++     * @return the total points, starting at 0
++     */
++    public static int of(boolean hasEmail, boolean uniquelyNamed, boolean largeHousehold, boolean longTenure) {
++        int points = 0;
++        if (hasEmail) {
++            points += EMAIL_POINTS;
++        }
++        if (uniquelyNamed) {
++            points += UNIQUE_NAME_POINTS;
++        }
++        if (largeHousehold) {
++            points += LARGE_HOUSEHOLD_POINTS;
++        }
++        if (longTenure) {
++            points += LONG_TENURE_POINTS;
++        }
++        return points;
++    }
++
++    /**
++     * The membership level the given points fall into: 1 for 0-1, 2 for 2-3, 3 for 4-5, 4 for 6+.
++     *
++     * @param points the membership points
++     * @return the membership level, from 1 to 4
++     */
++    public static int levelFor(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 91f170e1e..abc83adfd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -73,6 +73,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
+@@ -174,6 +177,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public String getMembershipNumber() {
+         return this.membershipNumber;
+     }
+@@ -249,28 +260,27 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Return this owner's membership level: starting at 1, plus 1 when the owner
+-     * has an email, plus 1 when the owner is uniquely named (a
+-     * {@link #getNamesakeCount() namesakeCount} of 0), plus 1 for long tenure
+-     * ({@link #getTenureDays() tenure} of more than 365 days), capped at 4. The
+-     * pre-tenure factors max out at level 3, so only tenure reaches level 4.
++     * Return this owner's membership points: starting at 0, plus 2 when the owner has an email,
++     * plus 1 when the owner is uniquely named (a {@link #getNamesakeCount() namesakeCount} of 0),
++     * plus 2 for a household of three or more ({@link #getHouseholdSize() household size}), plus 3
++     * for long tenure ({@link #getTenureDays() tenure} of more than 365 days).
+      */
+     @Transient
+-    public int getMembershipLevel() {
+-        int level = 1;
++    public int getMembershipPoints() {
+         boolean hasEmail = this.email != null && !this.email.isEmpty();
+-        if (hasEmail) {
+-            level++;
+-        }
+         boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
+-        if (uniquelyNamed) {
+-            level++;
+-        }
+-        boolean tenured = getTenureDays() > 365;
+-        if (tenured) {
+-            level++;
+-        }
+-        return Math.min(level, 4);
++        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
++        boolean longTenure = getTenureDays() > 365;
++        return MembershipPoints.of(hasEmail, uniquelyNamed, largeHousehold, longTenure);
++    }
++
++    /**
++     * Return this owner's membership level: the band their {@link #getMembershipPoints() membership
++     * points} fall into — 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
++     */
++    @Transient
++    public int getMembershipLevel() {
++        return MembershipPoints.levelFor(getMembershipPoints());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 976609ae7..1ce9f5b92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -47,6 +47,7 @@ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDoma
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
++import org.springframework.samples.petclinic.rest.validation.HouseholdSizeCounter;
+ import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
+@@ -86,6 +87,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final NamesakeCounter namesakeCounter;
+ 
++    private final HouseholdSizeCounter householdSizeCounter;
++
+     private final CityOwnerCapacityValidator cityOwnerCapacityValidator;
+ 
+     private final DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator;
+@@ -99,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                  PossibleDuplicateOwnerDetector possibleDuplicateOwnerDetector,
+                                  NamesakeCounter namesakeCounter,
++                                 HouseholdSizeCounter householdSizeCounter,
+                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
+                                  DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
+                                  OwnerAuditLogger ownerAuditLogger) {
+@@ -109,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.householdDuplicateValidator = householdDuplicateValidator;
+         this.possibleDuplicateOwnerDetector = possibleDuplicateOwnerDetector;
+         this.namesakeCounter = namesakeCounter;
++        this.householdSizeCounter = householdSizeCounter;
+         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
+         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
+         this.ownerAuditLogger = ownerAuditLogger;
+@@ -164,6 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
+         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
++        owner.setHouseholdSize(this.householdSizeCounter.count(owner.getHouseholdId()));
+         String region = RegionResolver.regionFor(owner.getPostcode(), owner.getCity());
+         owner.setCustomerCode(CustomerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdSizeCounter.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdSizeCounter.java
+new file mode 100644
+index 000000000..8bb6e492f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/HouseholdSizeCounter.java
+@@ -0,0 +1,53 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Counts how many owners belong to a household, i.e. share a given {@link HouseholdKey household id},
++ * including the owner being created. Owners with the same last name and postcode derive the same
++ * household id (see {@link HouseholdKey}), so this size is the number of existing members plus the
++ * new one.
++ */
++@Component
++public class HouseholdSizeCounter {
++
++    private final ClinicService clinicService;
++
++    public HouseholdSizeCounter(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * Counts the members of the household identified by {@code householdId}, including the owner
++     * being created. Returns 1 when no household id is known, since the owner then stands alone.
++     *
++     * @param householdId the household id of the owner being created
++     * @return the number of existing owners sharing that household id, plus one for the new owner
++     */
++    public int count(String householdId) {
++        if (householdId == null) {
++            return 1;
++        }
++        long existing = this.clinicService.findAllOwners().stream()
++            .filter(owner -> householdId.equals(owner.getHouseholdId()))
++            .count();
++        return (int) existing + 1;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 487e2e95e..781d9900c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   membership_number VARCHAR(32),
+   possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a0e81e8f7..5cd6de0dc 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   membership_number VARCHAR(32),
+   possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 206b99cc7..cbdbb73f6 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   membership_number VARCHAR(32),
+   possible_duplicate_of INTEGER,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 30fa7ca4e..0c7137319 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
++                                      household_size INTEGER,
+                                       membership_number TEXT,
+                                       possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e3d77ec38..7b45e1588 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2204,18 +2204,29 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points: starting at 0, plus 2 when the
++                owner has an email, plus 1 when the owner is uniquely named (a
++                namesakeCount of 0), plus 2 for a household of three or more,
++                plus 3 for tenure of more than 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, assigned on create: starting at 1,
+-                plus 1 when the owner has an email, plus 1 when the owner is
+-                uniquely named (a namesakeCount of 0), capped at 3. Level 4 is
+-                reserved for tenure.
++                The owner's membership level, the band their membershipPoints
++                fall into: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or
++                more.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             checkDigit:
+               title: Check digit
