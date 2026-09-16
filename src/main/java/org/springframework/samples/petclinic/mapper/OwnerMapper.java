@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -100,6 +101,12 @@ public interface OwnerMapper {
         return AgeBand.on(owner.getBirthDate(), owner.getRegistrationDate());
     }
 
+    /** Whether the owner soft-matched an existing owner at creation, i.e. it has a
+     * {@code possibleDuplicateOf} id. */
+    default boolean possibleDuplicate(Owner owner) {
+        return owner.getPossibleDuplicateOf() != null;
+    }
+
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "customerCode", ignore = true)
@@ -107,6 +114,7 @@ public interface OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
