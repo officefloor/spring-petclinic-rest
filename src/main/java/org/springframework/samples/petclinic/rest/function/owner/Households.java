@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -10,6 +7,7 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.util.Sha256;
 
 /**
  * Identifies the owners that make up a household — those sharing a last name (compared
@@ -71,7 +69,7 @@ final class Households {
      * value regardless of when they are created.
      */
     static String householdId(String lastName, String address) {
-        return "HH-" + sha256Hex(key(lastName, address)).substring(0, 24).toUpperCase(Locale.ROOT);
+        return "HH-" + Sha256.hex(key(lastName, address)).substring(0, 24).toUpperCase(Locale.ROOT);
     }
 
     /** The normalized last name and address joined into a single household key. */
@@ -82,19 +80,5 @@ final class Households {
     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
     private static String normalizeName(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
     }
 }

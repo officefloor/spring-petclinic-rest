@@ -8,12 +8,11 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.util.CityRegion;
 import org.springframework.samples.petclinic.util.ContactPreference;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevel;
-import org.springframework.samples.petclinic.util.PostcodeRange;
 
 import java.util.Collection;
 import java.util.List;
@@ -37,14 +36,12 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * The owner's locality: the canonical region derived by the postcode range first
-     * (see {@link PostcodeRange#regionOf(String)}), falling back to the city-to-region
-     * table when the postcode is absent or in no known range, or "UNKNOWN" for a city
-     * not in the table.
+     * The owner's locality: the REGION segment of its customer-code identity (see
+     * {@link CustomerCode#regionOf(String)}), which is the region derived from the
+     * owner's postcode then city when the code was assigned.
      */
     default String locality(Owner owner) {
-        String byPostcode = PostcodeRange.regionOf(owner.getPostcode());
-        return byPostcode != null ? byPostcode : CityRegion.localityOf(owner.getCity());
+        return CustomerCode.regionOf(owner.getCustomerCode());
     }
 
     /**

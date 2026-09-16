@@ -6,8 +6,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Groups owners by city, comparing city names case-insensitively. Used both to size a
- * city's per-city customer-code sequence ({@link AssignCustomerCode}) and to enforce the
+ * Groups owners by city, comparing city names case-insensitively. Used to enforce the
  * per-city capacity limit ({@link EnsureCityCapacity}).
  */
 final class Cities {
