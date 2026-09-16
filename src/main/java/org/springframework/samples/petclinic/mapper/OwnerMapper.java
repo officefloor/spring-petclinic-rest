@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.Luhn;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -89,6 +91,14 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
+    default Integer checkDigit(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null) {
+            return null;
+        }
+        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /**
