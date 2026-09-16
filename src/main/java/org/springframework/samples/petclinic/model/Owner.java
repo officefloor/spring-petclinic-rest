@@ -436,6 +436,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's marketing segment, formatted {@code '<TIER>_<AREA>'} (see
+     * {@link OwnerSegment}): the tier from their {@link #getMembershipLevel() membership
+     * level} and the area from whether their {@link #getLocality() locality} is a known
+     * region. Derived from the owner's own fields, so it stays consistent with them.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerSegment.of(getMembershipLevel(), getLocality());
+    }
+
+    /**
      * The owner's timezone: the IANA timezone name for their {@link #getLocality() locality},
      * taken from the fixed region-to-timezone table (see {@link RegionTimezoneTable}), so it
      * stays consistent with the owner's region. Null when the locality has no known timezone.

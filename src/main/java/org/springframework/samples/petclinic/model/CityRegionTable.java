@@ -46,4 +46,15 @@ public final class CityRegionTable {
     public static String regionFor(String city) {
         return CITY_TO_REGION.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * Whether the given region is a known canonical region (NSW, VIC or QLD) rather
+     * than the {@link #UNKNOWN} sentinel returned for unrecognised localities.
+     *
+     * @param region a region string, as returned by {@link #regionFor(String)}
+     * @return {@code true} for a known region, {@code false} for {@link #UNKNOWN} or null
+     */
+    public static boolean isKnown(String region) {
+        return region != null && !UNKNOWN.equals(region);
+    }
 }
