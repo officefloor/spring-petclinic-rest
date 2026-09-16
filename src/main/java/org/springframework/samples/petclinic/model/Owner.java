@@ -39,6 +39,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -101,6 +104,14 @@ public class Owner extends Person {
     private void defaultRegistrationDate() {
         LocalDate effectiveDate = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
         this.registrationDate = BusinessDayAdjuster.toBusinessDay(effectiveDate);
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getAddress() {
@@ -239,6 +250,18 @@ public class Owner extends Person {
     @Transient
     public String getDisplayName() {
         return this.getLastName() + ", " + this.getFirstName();
+    }
+
+    /**
+     * Return this owner's salutation: the {@link #getTitle() title} followed by a space and the
+     * last name (e.g. {@code DR Franklin}), or just the last name when no title was supplied.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
     }
 
     /**
