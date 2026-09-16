@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.CityOwnerCounter;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
@@ -79,6 +80,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final NamesakeCounter namesakeCounter;
 
+    private final CityOwnerCounter cityOwnerCounter;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -86,7 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
                                  OwnerHouseholdUniquenessValidator householdUniquenessValidator,
                                  OwnerHouseholdRegistrar householdRegistrar,
-                                 NamesakeCounter namesakeCounter) {
+                                 NamesakeCounter namesakeCounter,
+                                 CityOwnerCounter cityOwnerCounter) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -95,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdUniquenessValidator = householdUniquenessValidator;
         this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
+        this.cityOwnerCounter = cityOwnerCounter;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -138,7 +143,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.householdRegistrar.assignHousehold(owner);
         }
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
-        owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
+        owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getCity(), owner.getLastName(),
+            this.cityOwnerCounter.count(owner.getCity())));
         this.clinicService.saveOwner(owner);
         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
