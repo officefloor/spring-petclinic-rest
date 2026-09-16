@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
+import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
@@ -301,6 +302,27 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("city"));
         logger.debug("City owner capacity exceeded at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyRegistrationLimitExceededException} raised when an owner is created after
+     * the maximum number of owners allowed for the current day has already been reached. Returns a
+     * 429 Too Many Requests.
+     *
+     * @param e The {@link DailyRegistrationLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyRegistrationLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyRegistrationLimitExceededException(DailyRegistrationLimitExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        logger.debug("Daily registration limit exceeded at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
