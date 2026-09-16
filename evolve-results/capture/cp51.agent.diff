@@ -1,0 +1,256 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6e7bc5a2a..937b76aaf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -216,6 +219,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+new file mode 100644
+index 000000000..d92a1500f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.OptionalInt;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records on a newly built owner its household level ceiling: a new member's membership
++ * level may not exceed one above the current maximum level among the existing members of
++ * its household, so the cap is stored as {@code max + 1}. Runs after {@link AssignHousehold}
++ * (so the {@code householdId} is set) and before {@link SaveOwner} (so the new owner is not
++ * yet persisted and thus not counted among the existing members). When the household has no
++ * existing member the cap is left unset and no ceiling applies.
++ */
++public class AssignMembershipLevelCap {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        OptionalInt maxMemberLevel = Households.maxMemberLevel(ownerRepository, owner.getHouseholdId());
++        if (maxMemberLevel.isPresent()) {
++            owner.setMembershipLevelCap(maxMemberLevel.getAsInt() + 1);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+index 18648188f..cc0f70d6c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Objects;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -7,19 +9,21 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
+ 
+ /**
+- * The duplicate block: rejects a create whose {@code (lastName, postcode)} household —
+- * identified by its deterministic {@code householdId} (see {@link Households#householdId})
+- * — is already occupied by an existing owner, as a 409 via
+- * {@link DuplicateIdentityException}. Because the household is keyed on last name and
+- * postcode, a second owner at the same one is a household duplicate.
++ * The duplicate block: rejects a create that re-registers the same person as an existing
++ * owner, as a 409 via {@link DuplicateIdentityException}. A person is identified by their
++ * {@code (lastName, postcode)} household — its deterministic {@code householdId} (see
++ * {@link Households#householdId}) — together with their telephone; a request matching an
++ * existing owner on both is the same person registering twice.
+  *
+- * <p>A request that opts in with {@code sharesHousehold=true} bypasses the block: it is a
+- * declared member of that household and is created (see {@link AssignPossibleDuplicate},
+- * which also leaves a declared member unflagged). A request with no postcode has no
++ * <p>A second owner in the same household with a <em>different</em> telephone is a distinct
++ * person and is allowed through, to be created and flagged as a soft duplicate (see
++ * {@link AssignPossibleDuplicate}); this is how a household comes to have more than one
++ * member. A request that opts in with {@code sharesHousehold=true} is a declared household
++ * member and bypasses the block (and is left unflagged). A request with no postcode has no
+  * household key and cannot collide.
+  *
+- * <p>Runs before {@link BuildOwner}, so a collision is caught before any owner is built or
+- * saved.
++ * <p>Runs after the telephone is normalized to E.164 (matching the stored form) and before
++ * {@link BuildOwner}, so a collision is caught before any owner is built or saved.
+  */
+ public class EnsureUniqueIdentity {
+ 
+@@ -36,7 +40,8 @@ public class EnsureUniqueIdentity {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // a soft-deleted owner no longer occupies its household
+             }
+-            if (householdId.equals(existing.getHouseholdId())) {
++            if (householdId.equals(existing.getHouseholdId())
++                    && Objects.equals(request.getTelephone(), existing.getTelephone())) {
+                 throw new DuplicateIdentityException(householdId);
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+index 881972a94..3f3d21fe2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Households.java
+@@ -1,9 +1,11 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Locale;
++import java.util.OptionalInt;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.Sha256;
+ 
+ /**
+@@ -46,6 +48,24 @@ final class Households {
+         return count;
+     }
+ 
++    /**
++     * The highest membership level among the existing owners already carrying the given
++     * household id, or empty when the household has no existing members (id null or
++     * unmatched). Used to cap a new member's level ({@link AssignMembershipLevelCap}).
++     */
++    static OptionalInt maxMemberLevel(OwnerRepository repository, String householdId) {
++        if (householdId == null) {
++            return OptionalInt.empty();
++        }
++        int max = Integer.MIN_VALUE;
++        for (Owner owner : repository.findAll()) {
++            if (householdId.equals(owner.getHouseholdId())) {
++                max = Math.max(max, MembershipLevel.of(owner));
++            }
++        }
++        return max == Integer.MIN_VALUE ? OptionalInt.empty() : OptionalInt.of(max);
++    }
++
+     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
+     private static String normalizeName(String value) {
+         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index 75f95b90e..6eb3b130d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -7,6 +7,10 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Maps an owner's {@link MembershipPoints} score to a numeric membership level: level 1
+  * for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or more points.
++ *
++ * <p>An owner may carry a household level ceiling ({@link Owner#getMembershipLevelCap()});
++ * when present it caps the effective level, so a new owner never outranks the highest of
++ * their existing household members by more than one.
+  */
+ public final class MembershipLevel {
+ 
+@@ -24,9 +28,15 @@ public final class MembershipLevel {
+         return of(owner, LocalDate.now());
+     }
+ 
+-    /** The membership level for the given owner, with tenure measured as of {@code asOf}. */
++    /** The membership level for the given owner, with tenure measured as of {@code asOf}.
++     *  Limited by the owner's stored household level ceiling when one is set. */
+     public static int of(Owner owner, LocalDate asOf) {
+-        return forPoints(MembershipPoints.of(owner, asOf));
++        return capped(forPoints(MembershipPoints.of(owner, asOf)), owner.getMembershipLevelCap());
++    }
++
++    /** Apply a household level ceiling: {@code cap} (when non-null) limits {@code level}. */
++    private static int capped(int level, Integer cap) {
++        return cap == null ? level : Math.min(level, cap);
+     }
+ 
+     /** The membership level for a given membership points score. */
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 3f3def0b8..e2358d611 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a326ffd38..b2c105bf8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,6 +54,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 51de00d0d..b64bdc6fe 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(36),
+   namesake_count INT(4),
+   household_size INT(4),
++  membership_level_cap INT(4),
+   possible_duplicate BIT,
+   possible_duplicate_of INT(4),
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 7d5ec42c7..8ebaf4c04 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 22dc6f5de..44799f1e5 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -122,6 +122,15 @@ assignMembershipNumber:
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
++  next: assignMembershipLevelCap
++
++# Cap the new owner's membership level at one above the current maximum level among the
++# existing members of its household, storing the ceiling so the responder returns the
++# capped level. Runs after the householdId is assigned and before save, so the new owner
++# is not yet a member of its own household.
++assignMembershipLevelCap:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap
++  govern: [ transaction ]
+   next: assignHouseholdSize
+ 
+ # Record the household's size after this create (members sharing the householdId plus the
