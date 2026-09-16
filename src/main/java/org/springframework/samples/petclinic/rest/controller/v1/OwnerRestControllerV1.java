@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.model.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -90,6 +91,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -100,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  NamesakeCounter namesakeCounter,
                                  CityOwnerCounter cityOwnerCounter,
                                  CityOwnerCapacityValidator cityOwnerCapacityValidator,
-                                 DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator) {
+                                 DailyRegistrationCapacityValidator dailyRegistrationCapacityValidator,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -112,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityOwnerCounter = cityOwnerCounter;
         this.cityOwnerCapacityValidator = cityOwnerCapacityValidator;
         this.dailyRegistrationCapacityValidator = dailyRegistrationCapacityValidator;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -163,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.cityOwnerCounter.count(owner.getCity())));
         this.clinicService.saveOwner(owner);
         owner.setMembershipNumber(MembershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
+        this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
