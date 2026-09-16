@@ -1,6 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.List;
+import java.util.Collection;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
@@ -17,17 +17,14 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 public class AssignOwnerHousehold {
 
     public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+        Collection<Owner> existing = ownerRepository.findAll();
+        String householdId = OwnerHouseholds.assignedId(Boolean.TRUE.equals(request.getSharesHousehold()),
+                owner.getLastName(), owner.getAddress(), existing);
+        if (householdId == null) {
             return;
         }
-        List<Owner> members = OwnerHouseholds.members(ownerRepository.findAll(),
-                owner.getLastName(), owner.getAddress());
-        if (members.isEmpty()) {
-            return;
-        }
-        String householdId = OwnerHouseholds.householdId(owner.getLastName(), owner.getAddress());
         owner.setHouseholdId(householdId);
-        for (Owner member : members) {
+        for (Owner member : OwnerHouseholds.members(existing, owner.getLastName(), owner.getAddress())) {
             if (!householdId.equals(member.getHouseholdId())) {
                 member.setHouseholdId(householdId);
                 ownerRepository.save(member);

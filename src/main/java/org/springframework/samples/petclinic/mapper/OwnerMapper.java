@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -76,6 +78,11 @@ public interface OwnerMapper {
     default String contactPreference(Owner owner) {
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /** The owner's derived identity key (see {@link OwnerIdentity}). */
+    default String identityKey(Owner owner) {
+        return OwnerIdentity.of(owner);
     }
 
     @Mapping(target = "id", ignore = true)

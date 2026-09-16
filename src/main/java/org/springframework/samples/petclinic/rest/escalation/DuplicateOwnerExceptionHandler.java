@@ -6,9 +6,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateOwnerExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateOwnerException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
