@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -257,6 +258,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("postcode"));
         logger.debug("Invalid postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when an owner's supplied registration
+     * date is later than the server's current date. Returns a 400 Bad Request whose body carries an
+     * {@code errors} array naming the {@code registrationDate} field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        logger.debug("Future registration date at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
