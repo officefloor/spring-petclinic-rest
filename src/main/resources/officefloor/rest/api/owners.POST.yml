@@ -1,6 +1,20 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# An 'Idempotency-Key' already seen returns the original owner (200) via 'existing';
+# otherwise 'proceed' runs the normal create pipeline. First so a repeat short-circuits
+# before body validation and before the duplicate-household check (which would be 409).
+idempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdempotency
+  govern: [ transaction ]
+  outputs:
+    existing: respondExisting
+    proceed: normalizeAddress
+
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ transaction ]
+
 normalizeAddress:
   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
   govern: [ transaction ]
@@ -103,6 +117,11 @@ save:
 
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+  govern: [ transaction ]
+  next: record
+
+record:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordOwnerIdempotency
   govern: [ transaction ]
   next: respond
 
