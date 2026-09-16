@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityWarningEvaluator;
+import org.springframework.samples.petclinic.rest.validation.RiskFlagEvaluator;
 
 import java.util.Collection;
 import java.util.List;
@@ -28,6 +29,9 @@ public abstract class OwnerMapper {
 
     @Autowired
     protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+
+    @Autowired
+    protected RiskFlagEvaluator riskFlagEvaluator;
 
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -67,5 +71,15 @@ public abstract class OwnerMapper {
     @AfterMapping
     protected void applyCapacityWarning(@MappingTarget OwnerDto ownerDto) {
         ownerDto.setCapacityWarning(this.cityCapacityWarningEvaluator.isWarranted(ownerDto.getCity()));
+    }
+
+    /**
+     * Stamp the response-only risk flag onto every mapped owner. It combines the owner's stored
+     * possible-duplicate state with the per-response disposable-adjacent and capacity signals, so it
+     * is evaluated from the source owner rather than any single stored field.
+     */
+    @AfterMapping
+    protected void applyRiskFlag(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setRiskFlag(this.riskFlagEvaluator.isFlagged(owner));
     }
 }

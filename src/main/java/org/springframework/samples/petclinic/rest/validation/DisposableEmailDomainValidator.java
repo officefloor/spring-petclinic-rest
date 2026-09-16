@@ -51,4 +51,21 @@ public final class DisposableEmailDomainValidator {
                 "Email domain '" + domain + "' is a disposable-domain and is not allowed");
         }
     }
+
+    /**
+     * Reports whether a normalized email's domain is <em>disposable-adjacent</em>: a subdomain of one
+     * of the blocked disposable domains (e.g. {@code inbox.mailinator.com}). Such an address slips
+     * past {@link #validate(String)} — which only rejects an exact blocklist match — yet still points
+     * at a throw-away mail provider, so it is worth flagging for review.
+     *
+     * @param email the normalized (lower-cased, syntactically valid) email, or {@code null} if none
+     * @return {@code true} when the email's domain is a subdomain of a blocked disposable domain
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        if (email == null) {
+            return false;
+        }
+        String domain = email.substring(email.indexOf('@') + 1);
+        return BLOCKED_DOMAINS.stream().anyMatch(blocked -> domain.endsWith("." + blocked));
+    }
 }
