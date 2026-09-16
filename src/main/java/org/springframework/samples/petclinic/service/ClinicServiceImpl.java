@@ -244,6 +244,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
+        return ownerRepository.findByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Visit> findVisitsByPetId(int petId) {
         return visitRepository.findByPetId(petId);
     }

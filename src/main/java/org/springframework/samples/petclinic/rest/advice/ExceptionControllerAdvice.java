@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.security.access.AccessDeniedException;
@@ -208,6 +209,28 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("telephone"));
         logger.debug("Invalid telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerTelephoneException} raised when an owner is created with a
+     * normalized telephone that is already used by another owner. Returns a 409 Conflict whose
+     * body carries an {@code errors} array naming the {@code telephone} field.
+     *
+     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        logger.debug("Duplicate owner telephone at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
