@@ -18,17 +18,11 @@ public class AssignOwnerCustomerCode {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String cityPrefix = prefix(owner.getCity());
         String lastNamePrefix = prefix(owner.getLastName());
-        int sequence = citySize(ownerRepository, owner.getCity()) + 1;
+        int sequence = OwnerCities.size(ownerRepository.findAll(), owner.getCity()) + 1;
         owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence));
     }
 
     private static String prefix(String value) {
         return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
-    }
-
-    private static int citySize(OwnerRepository ownerRepository, String city) {
-        return (int) ownerRepository.findAll().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count();
     }
 }
