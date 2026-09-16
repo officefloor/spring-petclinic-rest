@@ -1,0 +1,179 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwnerRegistrationDate.java
+new file mode 100644
+index 000000000..62dda09f3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwnerRegistrationDate.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Stamps the built owner with the business-day registration date resolved earlier by
++ * {@link ResolveOwnerRegistrationDate}, replacing whatever raw date the request carried. Runs
++ * after {@link BuildOwner} and before the owner is saved, so the persisted date — and every value
++ * derived from it, such as the membership number's year segment — uses the adjusted date.
++ */
++public class ApplyOwnerRegistrationDate {
++
++    public void service(@Val Owner owner, @Val LocalDate registrationDate) {
++        owner.setRegistrationDate(registrationDate);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+new file mode 100644
+index 000000000..94ee2d7b1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * The single definition of how an owner registration date is moved onto a business day.
++ * Shared by {@link ResolveOwnerRegistrationDate} (which stamps the new owner) and, through the
++ * resolved date it publishes, by {@link RejectDailyOwnerLimit}, so a date and the day it is
++ * counted against are rolled identically.
++ */
++final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Rolls a date that falls on a Saturday or Sunday forward to the next Monday; a date that
++     * already falls on a weekday is returned unchanged. */
++    static LocalDate rollForward(LocalDate date) {
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
+deleted file mode 100644
+index 721092598..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
++++ /dev/null
+@@ -1,19 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import java.time.LocalDate;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-
+-/**
+- * Defaults an owner's registration date to the server's current date when the create
+- * request did not supply one. Mutates the built {@link Owner} in place before it is saved.
+- */
+-public class DefaultOwnerRegistrationDate {
+-
+-    public void service(@Val Owner owner) {
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDailyOwnerLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDailyOwnerLimit.java
+index 30963deda..3c1bf6a87 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDailyOwnerLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDailyOwnerLimit.java
+@@ -2,26 +2,27 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
+ 
+ /**
+- * Rejects a create-owner request once {@link #DAILY_LIMIT} or more owners have already
+- * been registered on the current day (by {@link Owner#getRegistrationDate()}), responding
+- * 429. Counted the same way {@link DefaultOwnerRegistrationDate} dates a new owner: the
+- * server's current date.
++ * Rejects a create-owner request once {@link #DAILY_LIMIT} or more owners have already been
++ * registered on the new owner's business day, responding 429. Counts against the effective
++ * registration date resolved by {@link ResolveOwnerRegistrationDate} — the supplied-or-defaulted
++ * date already rolled onto a business day — so the count and the new owner share one day.
+  */
+ public class RejectDailyOwnerLimit {
+ 
+     /** Maximum number of owners that may be registered in a single day. */
+     static final int DAILY_LIMIT = 100;
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
+-        LocalDate today = LocalDate.now();
++    public void service(@Val LocalDate registrationDate, OwnerRepository ownerRepository)
++            throws DailyOwnerLimitException {
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (today.equals(existing.getRegistrationDate())) {
++            if (registrationDate.equals(existing.getRegistrationDate())) {
+                 count++;
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveOwnerRegistrationDate.java
+new file mode 100644
+index 000000000..b1d224989
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveOwnerRegistrationDate.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Resolves the effective registration date for a new owner — the date supplied in the request, or
++ * the server's current date when the request omitted one — and rolls a weekend onto the next
++ * business day via {@link BusinessDays}. Runs before {@link RejectDailyOwnerLimit} so the daily
++ * cap counts against this same business day, and publishes the date once so
++ * {@link ApplyOwnerRegistrationDate} stamps the owner with exactly the value that was counted.
++ */
++public class ResolveOwnerRegistrationDate {
++
++    public void service(@Val OwnerFieldsDto request, Out<LocalDate> registrationDate) {
++        LocalDate effective = request.getRegistrationDate() != null
++                ? request.getRegistrationDate() : LocalDate.now();
++        registrationDate.set(BusinessDays.rollForward(effective));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 5f0629303..c61ddb25d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ normalizeAddress:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateRequiredOwnerFields
+   govern: [ transaction ]
++  next: resolveRegistrationDate
++
++resolveRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ResolveOwnerRegistrationDate
++  govern: [ transaction ]
+   next: rejectDailyLimit
+ 
+ rejectDailyLimit:
+@@ -49,10 +54,10 @@ build:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerNamesakeCount
+   govern: [ transaction ]
+-  next: defaultRegistrationDate
++  next: applyRegistrationDate
+ 
+-defaultRegistrationDate:
+-  class: org.springframework.samples.petclinic.rest.function.owner.DefaultOwnerRegistrationDate
++applyRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ApplyOwnerRegistrationDate
+   govern: [ transaction ]
+   next: assignCustomerCode
+ 
