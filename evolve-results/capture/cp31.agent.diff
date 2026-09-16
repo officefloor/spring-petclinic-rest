@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java b/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java
+new file mode 100644
+index 000000000..414e7fa11
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java
+@@ -0,0 +1,56 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The Luhn check-digit algorithm.
++ *
++ * <p>Computes the single check digit (0-9) over the decimal digits contained in a
++ * string, ignoring any non-digit characters. This is the single source of truth for
++ * that computation, so callers never repeat it.
++ */
++public final class LuhnCheckDigit {
++
++    private LuhnCheckDigit() {
++    }
++
++    /**
++     * Compute the Luhn check digit over the digits contained in {@code value}.
++     *
++     * @param value the string whose digits are checked; non-digit characters are ignored
++     * @return the check digit (0-9) that, appended to the digits, makes them Luhn-valid
++     */
++    public static int of(String value) {
++        int sum = 0;
++        boolean doubling = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (doubling) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            doubling = !doubling;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 388ba626f..b49d1ea63 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -176,6 +176,19 @@ public class Owner extends Person {
+         return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+     }
+ 
++    /**
++     * The owner's customer-code check digit: the single Luhn check digit (0-9) computed
++     * over the digits of the customer code. Derived from the owner's own customer code,
++     * so it stays consistent with it.
++     */
++    @Transient
++    public Integer getCheckDigit() {
++        if (this.customerCode == null) {
++            return null;
++        }
++        return LuhnCheckDigit.of(this.customerCode);
++    }
++
+     /**
+      * The owner's membership level, a number from 1 to 3. Every owner starts at level 1;
+      * one level is added when an email is on file and one more when the owner is unique
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7e538e949..901a9bd0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,6 +2123,17 @@ components:
+               type: string
+               example: 'LON-FRA-0001'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                The customer code's check digit: a single Luhn check digit (0-9)
++                computed over the digits of the customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
