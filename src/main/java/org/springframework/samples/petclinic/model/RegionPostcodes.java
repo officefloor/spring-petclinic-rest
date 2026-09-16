@@ -31,6 +31,32 @@ public final class RegionPostcodes {
     }
 
     /**
+     * Return the region whose inclusive postcode range contains the given postcode, or
+     * {@code null} when the postcode is absent, not a number, or in no known range.
+     *
+     * @param postcode the 4-digit postcode as text, or {@code null} if none was provided
+     * @return the matching region, or {@code null} when no known range contains the postcode
+     */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_TO_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Return whether the given postcode is acceptable for the given region: {@code true} when the
      * region has no known range (any 4-digit postcode is allowed) or the postcode falls within the
      * region's inclusive range.
