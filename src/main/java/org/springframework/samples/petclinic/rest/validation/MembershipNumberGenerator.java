@@ -18,9 +18,11 @@ package org.springframework.samples.petclinic.rest.validation;
 
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.FiscalYear;
+
 /**
  * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is
- * the last two digits, zero-padded, of the registration date year
+ * the last two digits, zero-padded, of the fiscal year of the registration date
  * (e.g. {@code NSW-1A2B3C4D-M26}).
  */
 public final class MembershipNumberGenerator {
@@ -36,6 +38,6 @@ public final class MembershipNumberGenerator {
      * @return the membership number, e.g. {@code "NSW-1A2B3C4D-M26"}
      */
     public static String generate(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.of(registrationDate) % 100);
     }
 }

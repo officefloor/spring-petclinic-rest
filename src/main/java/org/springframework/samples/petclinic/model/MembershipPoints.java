@@ -19,7 +19,7 @@ package org.springframework.samples.petclinic.model;
  * The membership scoring rule: an owner earns points for the loyalty factors they satisfy, and the
  * accumulated points map onto a membership level. Points start at 0 and add up as follows: 2 for
  * having an email, 1 for being uniquely named, 2 for belonging to a household of three or more, and
- * 3 for tenure of more than a year. The level is a coarser banding of that score: 1 for 0-1 points,
+ * 3 for tenure of more than one fiscal year. The level is a coarser banding of that score: 1 for 0-1 points,
  * 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
  */
 public final class MembershipPoints {
@@ -38,7 +38,7 @@ public final class MembershipPoints {
      * @param hasEmail        whether the owner has an email
      * @param uniquelyNamed   whether the owner is uniquely named (no namesakes)
      * @param largeHousehold  whether the owner belongs to a household of three or more
-     * @param longTenure      whether the owner's tenure exceeds a year
+     * @param longTenure      whether the owner's tenure exceeds one fiscal year
      * @return the total points, starting at 0
      */
     public static int of(boolean hasEmail, boolean uniquelyNamed, boolean largeHousehold, boolean longTenure) {

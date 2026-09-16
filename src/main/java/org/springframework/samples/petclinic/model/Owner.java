@@ -25,7 +25,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -333,14 +332,14 @@ public class Owner extends Person {
      * Return this owner's membership points: starting at 0, plus 2 when the owner has an email,
      * plus 1 when the owner is uniquely named (a {@link #getNamesakeCount() namesakeCount} of 0),
      * plus 2 for a household of three or more ({@link #getHouseholdSize() household size}), plus 3
-     * for long tenure ({@link #getTenureDays() tenure} of more than 365 days).
+     * for long tenure ({@link #getTenureFiscalYears() tenure} of more than one fiscal year).
      */
     @Transient
     public int getMembershipPoints() {
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
         boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
-        boolean longTenure = getTenureDays() > 365;
+        boolean longTenure = getTenureFiscalYears() > 1;
         return MembershipPoints.of(hasEmail, uniquelyNamed, largeHousehold, longTenure);
     }
 
@@ -354,17 +353,27 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's tenure in whole days: the number of days elapsed from the
-     * {@link #getRegistrationDate() registration date} to today. A newly created owner
-     * whose registration date is today has zero tenure. Zero when no registration date
-     * is known.
+     * Return this owner's fiscal year: the fiscal year of the business-day-adjusted
+     * {@link #getRegistrationDate() registration date}, formatted {@code FY<YY>}. The fiscal year
+     * starts on 1 July. Null when no registration date is known.
      */
     @Transient
-    public long getTenureDays() {
+    public String getFiscalYear() {
+        return this.registrationDate == null ? null : FiscalYear.labelOf(this.registrationDate);
+    }
+
+    /**
+     * Return this owner's tenure in whole fiscal years: the number of fiscal years elapsed from the
+     * {@link #getRegistrationDate() registration date} to today, i.e. the count of 1 July
+     * fiscal-year boundaries crossed. A newly created owner registered in the current fiscal year
+     * has zero tenure. Zero when no registration date is known.
+     */
+    @Transient
+    public int getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return FiscalYear.elapsedBetween(this.registrationDate, LocalDate.now());
     }
 
     /**
