@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256;
 
@@ -29,11 +30,12 @@ final class OwnerHouseholds {
     /**
      * A stable identifier for the household of an owner with this {@code lastName} and
      * {@code postcode}: the first {@value #ID_HEX_LENGTH} hex characters of SHA-256 over
-     * {@code normalizedLastName + '|' + postcode}. Every member computes the same value, so
-     * it is deterministic and independent of creation order.
+     * {@code V2 + '|' + normalizedLastName + '|' + postcode}, where {@code V2} is the
+     * {@link IdentityVersion#TAG} version tag. Every member computes the same value, so it is
+     * deterministic and independent of creation order.
      */
     static String householdId(String lastName, String postcode) {
-        String key = canonical(lastName) + "|" + trimmed(postcode);
+        String key = IdentityVersion.TAG + "|" + canonical(lastName) + "|" + trimmed(postcode);
         return Sha256.upperHex(key, ID_HEX_LENGTH);
     }
 

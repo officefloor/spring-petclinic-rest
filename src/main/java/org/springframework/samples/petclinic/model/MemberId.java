@@ -4,7 +4,8 @@ import java.util.function.Predicate;
 
 /**
  * The single definition of an owner's member id: {@code <REGION><FY><HASH8><CHK>} where REGION is
- * the region derived from the owner's postcode, FY the two-digit fiscal year of the owner's
+ * the version-2 region — the region derived from the owner's postcode prefixed with the
+ * {@link IdentityVersion#TAG} version tag — FY the two-digit fiscal year of the owner's
  * registration date (see {@link FiscalYear}), HASH8 the first 8 upper-case hex characters of
  * SHA-256 over the owner's normalized telephone plus last name (the same digest used by the
  * region-and-hash identity), and CHK a single Luhn check digit (see {@link CheckDigit}) over the
@@ -33,7 +34,7 @@ public final class MemberId {
      * @return the {@code <REGION><FY><HASH8><CHK>} member id
      */
     public static String forOwner(Owner owner) {
-        String region = Locality.regionForPostcode(owner.getPostcode());
+        String region = IdentityVersion.TAG + Locality.regionForPostcode(owner.getPostcode());
         String hash = Sha256.upperHex(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
         String base = String.format("%s%02d%s", region, FiscalYear.of(owner.getRegistrationDate()) % 100, hash);
         return base + CheckDigit.luhn(base);

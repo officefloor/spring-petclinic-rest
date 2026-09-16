@@ -6,12 +6,13 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.FiscalYear;
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Locality;
-import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.model.Tenure;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -38,7 +39,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
@@ -125,10 +127,11 @@ public interface OwnerMapper {
         return cap == null ? level : Math.min(level, cap);
     }
 
-    /** The owner's canonical region: the REGION segment of the member id (see
-     * {@link MemberId}), or null when the member id is unset. */
+    /** The owner's canonical region: the plain region code derived from the postcode range (see
+     * {@link Locality#regionForPostcode}), or 'UNKNOWN' when the postcode is absent or in no known
+     * range. This is not an identifier, so it never carries the identifiers' 'V2' version tag. */
     default String locality(Owner owner) {
-        return MemberId.region(owner.getMemberId());
+        return Locality.regionForPostcode(owner.getPostcode());
     }
 
     /** The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;', derived from the owner's
@@ -154,9 +157,20 @@ public interface OwnerMapper {
         return owner.getEmail() != null && !owner.getEmail().isBlank();
     }
 
-    /** The owner's derived identity key (see {@link OwnerIdentity}). */
-    default String identityKey(Owner owner) {
-        return OwnerIdentity.of(owner);
+    /** The owner-identity contract version this response follows: always 2 since the version-2
+     * identity release. */
+    default int apiVersion() {
+        return IdentityVersion.NUMBER;
+    }
+
+    /** The owner's version-2 identifiers — memberId, householdId and identityKey — grouped under
+     * a single nested object. */
+    default IdentityDto identity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentity.of(owner));
+        return identity;
     }
 
     /** The owner's age band on their registration date, derived from their birth date (see
