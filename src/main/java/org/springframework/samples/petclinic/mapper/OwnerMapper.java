@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
@@ -25,7 +26,16 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's preferred contact channel - 'EMAIL' when an email is present, otherwise 'PHONE'. */
+    default String contactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return ContactPreference.forOwner(owner).name();
+    }
 
     /** The canonical region derived from the owner's city via the fixed city-to-region table,
      * or 'UNKNOWN' when the city is not in the table. */
