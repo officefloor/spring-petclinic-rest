@@ -54,6 +54,7 @@ public class PossibleDuplicateOwnerDetector {
             return Optional.empty();
         }
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName()))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !Objects.equals(existing.getTelephone(), owner.getTelephone()))

@@ -49,6 +49,7 @@ public class HouseholdDuplicateValidator {
             return;
         }
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (duplicate) {
             throw new DuplicateHouseholdException(householdId);
