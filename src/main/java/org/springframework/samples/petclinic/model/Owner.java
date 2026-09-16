@@ -299,6 +299,18 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's telephone formatted for human display: the stored E.164 number
+     * rendered as its country calling code, a space and the national digits grouped
+     * in threes (e.g. {@code "+61 412 345 678"}). The raw {@link #getTelephone()}
+     * stays in E.164 form. Derived from the owner's own telephone, so it stays
+     * consistent with it. See {@link TelephoneFormatter}.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return TelephoneFormatter.toDisplay(this.telephone);
+    }
+
+    /**
      * The owner's identity key: the single derived value used to detect duplicate owners,
      * formed as {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
      * Two owners are duplicates only when their whole identity keys are equal, so members

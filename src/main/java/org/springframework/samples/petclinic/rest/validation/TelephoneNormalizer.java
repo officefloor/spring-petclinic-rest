@@ -16,10 +16,10 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+import org.springframework.samples.petclinic.model.CountryCallingCode;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  * brackets are stripped. The result is only accepted when it carries between
  * {@link #MIN_DIGITS} and {@link #MAX_DIGITS} digits after the {@code '+'} and,
  * for a recognised country code, exactly as many national digits as that
- * country requires (see {@link #NATIONAL_DIGITS_BY_COUNTRY_CODE}).
+ * country requires (see {@link CountryCallingCode}).
  */
 @Component
 public class TelephoneNormalizer {
@@ -44,15 +44,6 @@ public class TelephoneNormalizer {
 
     /** The most digits a valid E.164 number may have after the {@code '+'}. */
     public static final int MAX_DIGITS = 15;
-
-    /**
-     * Exact national-number length required for each recognised E.164 country
-     * calling code. Country codes form a prefix-free set, so at most one entry
-     * matches a given number; codes not listed here are subject only to the
-     * generic {@link #MIN_DIGITS}/{@link #MAX_DIGITS} bounds.
-     */
-    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY_CODE =
-        Map.of("1", 10, "61", 9);
 
     /** Separators that carry no numeric meaning and are stripped before parsing. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-]");
@@ -99,10 +90,8 @@ public class TelephoneNormalizer {
      * @return {@code true} if the national-number length matches the country code
      */
     private boolean hasValidNationalLength(String digits) {
-        return NATIONAL_DIGITS_BY_COUNTRY_CODE.entrySet().stream()
-            .filter(entry -> digits.startsWith(entry.getKey()))
-            .findFirst()
-            .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
+        return CountryCallingCode.of(digits)
+            .map(code -> digits.length() - code.length() == CountryCallingCode.nationalDigits(code).orElseThrow())
             .orElse(true);
     }
 }
