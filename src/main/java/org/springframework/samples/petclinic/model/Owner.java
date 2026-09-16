@@ -160,6 +160,18 @@ public class Owner extends Person {
         return this.getLastName() + ", " + this.getFirstName();
     }
 
+    /**
+     * Return this owner's membership tier: {@code SILVER} for a uniquely-named
+     * owner (a {@link #getNamesakeCount() namesakeCount} of 0) that has an
+     * email, otherwise {@code BRONZE}.
+     */
+    @Transient
+    public String getMembershipTier() {
+        boolean uniquelyNamed = Integer.valueOf(0).equals(this.namesakeCount);
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        return uniquelyNamed && hasEmail ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
