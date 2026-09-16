@@ -1,0 +1,225 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ef357d2af..3ecc2daed 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
++    @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+@@ -100,6 +101,12 @@ public interface OwnerMapper {
+         return AgeBand.on(owner.getBirthDate(), owner.getRegistrationDate());
+     }
+ 
++    /** Whether the owner soft-matched an existing owner at creation, i.e. it has a
++     * {@code possibleDuplicateOf} id. */
++    default boolean possibleDuplicate(Owner owner) {
++        return owner.getPossibleDuplicateOf() != null;
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
+@@ -107,6 +114,7 @@ public interface OwnerMapper {
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "householdSize", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "possibleDuplicateOf", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 05052851a..c98224e33 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -174,6 +177,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+new file mode 100644
+index 000000000..08140158b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerPossibleDuplicate.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Objects;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a soft duplicate: a create that is not a hard duplicate (see
++ * {@link RejectDuplicateOwnerIdentity}, which already let it through) but that shares an
++ * existing owner's last name and postcode while carrying a <em>different</em> telephone. The
++ * owner is still created; the response merely carries {@code possibleDuplicate}/
++ * {@code possibleDuplicateOf} pointing at the matched owner.
++ *
++ * <p>Runs after {@link BuildOwner} but before the owner is saved, so it compares against the
++ * owners that existed before this create (and so never matches the owner being built), and
++ * mutates the built {@link Owner} in place. When several owners match, the one with the lowest
++ * id is reported, so the result is deterministic. Last names are compared case-insensitively
++ * (as elsewhere, e.g. {@link AssignOwnerNamesakeCount}); postcode and telephone are compared in
++ * their stored, normalized form.
++ */
++public class AssignOwnerPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String lastName = canonical(owner.getLastName());
++        String postcode = trimmed(owner.getPostcode());
++        String telephone = trimmed(owner.getTelephone());
++        if (postcode == null) {
++            return; // no postcode to share, so no soft match
++        }
++        Owner match = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (lastName.equals(canonical(existing.getLastName()))
++                    && postcode.equals(trimmed(existing.getPostcode()))
++                    && !Objects.equals(telephone, trimmed(existing.getTelephone()))
++                    && (match == null || existing.getId() < match.getId())) {
++                match = existing;
++            }
++        }
++        if (match != null) {
++            owner.setPossibleDuplicateOf(match.getId());
++        }
++    }
++
++    private static String canonical(String value) {
++        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
++    }
++
++    private static String trimmed(String value) {
++        if (value == null) {
++            return null;
++        }
++        String trimmed = value.trim();
++        return trimmed.isEmpty() ? null : trimmed;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a9e2089ae..e13a8d60d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 94fb2dc12..39fd9a14b 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,7 +50,8 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index cec924fef..bca7eb47e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c24fcf77f..cd53f8e6f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 980097a47..d5ea95b0e 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -84,6 +84,11 @@ assignHouseholdSize:
+ assignBulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerBulkSignupWarning
+   govern: [ transaction ]
++  next: assignPossibleDuplicate
++
++assignPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f8bb25e2a..292d223d5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2138,6 +2138,24 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when, at the moment this owner was created, an existing owner
++                shared its last name and postcode but had a different telephone (a soft match
++                that is not a hard duplicate), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this one soft-matched on last name and
++                postcode at the moment it was created (see 'possibleDuplicate'). Absent when
++                there was no such match.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where
