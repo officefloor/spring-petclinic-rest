@@ -1,20 +1,19 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
- * Identifies the owners that make up a household — those sharing a last name (compared
- * case-insensitively with collapsed whitespace) and a normalized address (see
- * {@link AddressNormalizer}). Used both to derive an owner's identity key
- * ({@link EnsureUniqueIdentity}) and to group knowing house-mates under a shared, stable
- * household id ({@link AssignHousehold}).
+ * Derives the household an owner belongs to. A household is keyed on
+ * {@code (lastName, postcode)}: its {@code householdId} is the first 12 hex characters of
+ * SHA-256 over {@code normalizedLastName + '|' + postcode}, so two owners with the same
+ * last name and postcode deterministically resolve to the same id without any explicit
+ * linking. Used to detect household duplicates ({@link EnsureUniqueIdentity}), to stamp
+ * each owner with its id ({@link AssignHousehold}) and to size the household
+ * ({@link AssignHouseholdSize}).
  */
 final class Households {
 
@@ -22,31 +21,15 @@ final class Households {
     }
 
     /**
-     * The household id a create request would resolve to: the shared id for its last name
-     * and address when it opts in with {@code sharesHousehold=true} and existing owners are
-     * already at that household, otherwise null. Mirrors what {@link AssignHousehold} would
-     * assign, so the identity check compares the candidate against the same id.
+     * The household id for the given last name and postcode: the first 12 hex characters of
+     * SHA-256 over the normalized last name and postcode. Returns null when the postcode is
+     * blank, since without a postcode there is no household key.
      */
-    static String resolveHouseholdId(OwnerRepository repository, OwnerFieldsDto request) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+    static String householdId(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        if (membersAt(repository, request.getLastName(), request.getAddress()).isEmpty()) {
-            return null;
-        }
-        return householdId(request.getLastName(), request.getAddress());
-    }
-
-    /** Existing owners whose last name and address match the given household. */
-    static List<Owner> membersAt(OwnerRepository repository, String lastName, String address) {
-        String key = key(lastName, address);
-        List<Owner> members = new ArrayList<>();
-        for (Owner owner : repository.findAll()) {
-            if (key.equals(key(owner.getLastName(), owner.getAddress()))) {
-                members.add(owner);
-            }
-        }
-        return members;
+        return Sha256.hex(normalizeName(lastName) + '|' + postcode).substring(0, 12);
     }
 
     /** How many existing owners already carry the given household id (0 when it is null). */
@@ -61,20 +44,6 @@ final class Households {
             }
         }
         return count;
-    }
-
-    /**
-     * A stable identifier for the household with the given last name and address. Derived
-     * from the normalized key, so every member of the same household resolves to the same
-     * value regardless of when they are created.
-     */
-    static String householdId(String lastName, String address) {
-        return "HH-" + Sha256.hex(key(lastName, address)).substring(0, 24).toUpperCase(Locale.ROOT);
-    }
-
-    /** The normalized last name and address joined into a single household key. */
-    private static String key(String lastName, String address) {
-        return normalizeName(lastName) + '\n' + AddressNormalizer.normalize(address);
     }
 
     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */

@@ -32,10 +32,10 @@ validateRegistrationDate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateRegistrationDate
   next: ensureUniqueIdentity
 
-# The single duplicate check: reject a request whose whole identity key (normalized
-# telephone, email and household id) equals an existing owner's, as a 409, before any
-# owner is built or saved. Because the telephone is part of the key, house-mates with
-# different telephones have different keys and are both allowed.
+# The duplicate block: reject a request whose (lastName, postcode) household is already
+# occupied by an existing owner, as a 409, before any owner is built or saved. A request
+# that opts in with 'sharesHousehold' bypasses the block and is created as a declared
+# household member.
 ensureUniqueIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueIdentity
   govern: [ transaction ]
@@ -90,9 +90,9 @@ assignMembershipNumber:
   govern: [ transaction ]
   next: assignHousehold
 
-# When the request opted in with 'sharesHousehold' and existing owners share this last
-# name and address, assign the new owner and those members the same stable 'householdId'.
-# Runs before save so the id is stored and returned with the owner.
+# Stamp the new owner with its deterministic 'householdId' (first 12 hex of SHA-256 over
+# its normalized last name and postcode), so owners with the same last name and postcode
+# share it automatically. Runs before save so the id is stored and returned with the owner.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
   govern: [ transaction ]
@@ -115,10 +115,10 @@ countNamesakes:
   next: flagPossibleDuplicate
 
 # Flag a soft duplicate: when an existing owner shares this new owner's last name and
-# postcode but has a different telephone (so it is not a hard duplicate), stamp
-# 'possibleDuplicate' true and 'possibleDuplicateOf' with the matching owner id. Runs
-# before save so the new owner is not yet persisted and cannot match itself, and the flag
-# is stored and returned with it.
+# postcode but has a different telephone, stamp 'possibleDuplicate' true and
+# 'possibleDuplicateOf' with the matching owner id. A declared household member
+# ('sharesHousehold') is never flagged. Runs before save so the new owner is not yet
+# persisted and cannot match itself, and the flag is stored and returned with it.
 flagPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
   govern: [ transaction ]

@@ -10,9 +10,8 @@ import java.util.regex.Pattern;
  *
  * <p>Used by {@link ValidateOwnerFields} so a created owner is stored and returned
  * with the canonical address (and the required-field check rejects an address that is
- * blank once normalized), and by {@link Households} so duplicate detection and the
- * shared household id compare addresses in that same canonical form. The transform is
- * idempotent, so re-normalizing an already-normalized address is a no-op.
+ * blank once normalized). The transform is idempotent, so re-normalizing an
+ * already-normalized address is a no-op.
  */
 final class AddressNormalizer {
 

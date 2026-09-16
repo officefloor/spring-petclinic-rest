@@ -6,15 +6,19 @@ import java.util.Objects;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Flags a newly built owner as a soft duplicate of an existing owner. Unlike the hard
- * {@link EnsureUniqueIdentity} check (which rejects an exact identity-key collision as a
- * 409), a soft match still creates the owner: it fires when the new owner shares an
- * existing owner's last name (case-insensitive) and postcode but has a different
- * telephone. The new owner is stamped with {@code possibleDuplicate=true} and
- * {@code possibleDuplicateOf} set to the matching owner's id; when no match exists the
- * flag is false and the id null.
+ * {@link EnsureUniqueIdentity} check (which rejects an occupied household as a 409), a
+ * soft match still creates the owner: it fires when the new owner shares an existing
+ * owner's last name (case-insensitive) and postcode but has a different telephone. The new
+ * owner is stamped with {@code possibleDuplicate=true} and {@code possibleDuplicateOf} set
+ * to the matching owner's id; when no match exists the flag is false and the id null.
+ *
+ * <p>An owner created as a declared household member ({@code sharesHousehold=true}, which
+ * bypassed the duplicate block) is never flagged: a declared member is not a suspected
+ * duplicate.
  *
  * <p>Runs after {@link BuildOwner} (so the owner's normalized fields are set) and before
  * {@link SaveOwner} (so the new owner is not yet persisted and cannot match itself), and
@@ -23,7 +27,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return;
+        }
         for (Owner existing : ownerRepository.findAll()) {
             if (isPossibleDuplicate(owner, existing)) {
                 owner.setPossibleDuplicate(true);

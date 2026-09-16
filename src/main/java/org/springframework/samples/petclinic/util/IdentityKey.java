@@ -3,16 +3,15 @@ package org.springframework.samples.petclinic.util;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The single derived identity of an owner used for duplicate detection: the normalized
- * telephone, the (optional) email and the household id joined by {@code '|'}. Two owners
- * are duplicates exactly when their whole identity keys are equal, so the previously
- * separate telephone, email and household checks are all expressed through this one value.
+ * The single derived identity of an owner surfaced on the response: the normalized
+ * telephone, the (optional) email and the household id joined by {@code '|'}. The
+ * telephone and email are already canonical by the time a key is built — the create steps
+ * normalize them, and stored owners hold the normalized values — so this class only joins
+ * them.
  *
- * <p>Both the create pipeline (which compares a candidate's key against every existing
- * owner) and the response mapper (which returns the key) derive it here, so they agree on
- * what an owner's identity is. The telephone and email are already canonical by the time a
- * key is built — the create steps normalize them before the check, and stored owners hold
- * the normalized values — so this class only joins them.
+ * <p>Household duplicate detection itself keys directly off the {@code householdId} (see
+ * {@link org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueIdentity});
+ * this value is exposed on the response mapper for callers.
  */
 public final class IdentityKey {
 

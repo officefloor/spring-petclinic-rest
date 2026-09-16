@@ -5,31 +5,36 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
-import org.springframework.samples.petclinic.util.IdentityKey;
 
 /**
- * Rejects a create request whose whole {@link IdentityKey} — normalized telephone, email
- * and household id — equals an existing owner's, as a 409 via
- * {@link DuplicateIdentityException}. This is the single duplicate check: because the
- * telephone is part of the key, two members of the same household with different
- * telephones have different keys and are both allowed; only an exact full-key match is a
- * duplicate.
+ * The duplicate block: rejects a create whose {@code (lastName, postcode)} household —
+ * identified by its deterministic {@code householdId} (see {@link Households#householdId})
+ * — is already occupied by an existing owner, as a 409 via
+ * {@link DuplicateIdentityException}. Because the household is keyed on last name and
+ * postcode, a second owner at the same one is a household duplicate.
  *
- * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail} (so the
- * request's telephone and email are canonical) and before {@link BuildOwner}, so a
- * collision is caught before any owner is built or saved. The candidate's household id is
- * resolved the same way {@link AssignHousehold} would assign it, so an owner that would
- * join an existing household is compared with that household's id.
+ * <p>A request that opts in with {@code sharesHousehold=true} bypasses the block: it is a
+ * declared member of that household and is created (see {@link AssignPossibleDuplicate},
+ * which also leaves a declared member unflagged). A request with no postcode has no
+ * household key and cannot collide.
+ *
+ * <p>Runs before {@link BuildOwner}, so a collision is caught before any owner is built or
+ * saved.
  */
 public class EnsureUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String householdId = Households.resolveHouseholdId(ownerRepository, request);
-        String identityKey = IdentityKey.of(request.getTelephone(), request.getEmail(), householdId);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return;
+        }
+        String householdId = Households.householdId(request.getLastName(), request.getPostcode());
+        if (householdId == null) {
+            return;
+        }
         for (Owner existing : ownerRepository.findAll()) {
-            if (identityKey.equals(IdentityKey.of(existing))) {
-                throw new DuplicateIdentityException(identityKey);
+            if (householdId.equals(existing.getHouseholdId())) {
+                throw new DuplicateIdentityException(householdId);
             }
         }
     }

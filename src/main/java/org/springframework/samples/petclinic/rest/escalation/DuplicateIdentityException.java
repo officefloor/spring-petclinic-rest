@@ -1,20 +1,22 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request has the same derived identity key (normalized
- * telephone, email and household id) as an existing owner, i.e. a whole-key match.
- * Handled by {@link DuplicateIdentityExceptionHandler}, which responds 409.
+ * Thrown when a create-owner request targets a {@code (lastName, postcode)} household —
+ * identified by its {@code householdId} — that an existing owner already occupies, i.e. a
+ * household duplicate. Handled by {@link DuplicateIdentityExceptionHandler}, which responds
+ * 409. A request that opts in with {@code sharesHousehold} is a declared member and does
+ * not trigger this.
  */
 public class DuplicateIdentityException extends Exception {
 
-    private final String identityKey;
+    private final String householdId;
 
-    public DuplicateIdentityException(String identityKey) {
-        super("Owner identity already in use: " + identityKey);
-        this.identityKey = identityKey;
+    public DuplicateIdentityException(String householdId) {
+        super("Household already registered: " + householdId);
+        this.householdId = householdId;
     }
 
-    public String getIdentityKey() {
-        return this.identityKey;
+    public String getHouseholdId() {
+        return this.householdId;
     }
 }
