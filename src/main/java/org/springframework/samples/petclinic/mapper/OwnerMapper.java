@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.util.CityRegion;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.PostcodeRange;
 
 import java.util.Collection;
 import java.util.List;
@@ -34,11 +35,14 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * The owner's locality: the canonical region derived from its city via the pinned
-     * city-to-region table, or "UNKNOWN" for any city not in the table.
+     * The owner's locality: the canonical region derived by the postcode range first
+     * (see {@link PostcodeRange#regionOf(String)}), falling back to the city-to-region
+     * table when the postcode is absent or in no known range, or "UNKNOWN" for a city
+     * not in the table.
      */
     default String locality(Owner owner) {
-        return CityRegion.localityOf(owner.getCity());
+        String byPostcode = PostcodeRange.regionOf(owner.getPostcode());
+        return byPostcode != null ? byPostcode : CityRegion.localityOf(owner.getCity());
     }
 
     /**
