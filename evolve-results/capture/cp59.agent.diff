@@ -1,0 +1,174 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index e05e8c78a..bbbf3e8bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -102,6 +102,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link RejectedRequestException} raised by controllers when a business rule rejects a
++     * request with a client-error status (e.g. 400, 409 or 429). The exception carries the intended
++     * status and detail, which are rendered as an RFC7807 {@code application/problem+json} response.
++     *
++     * @param e The {@link RejectedRequestException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} whose status matches the rejection and whose body is the problem detail
++     */
++    @ExceptionHandler(RejectedRequestException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRejectedRequestException(RejectedRequestException e, HttpServletRequest request) {
++        HttpStatus status = e.getStatus();
++        logger.debug("Request rejected at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestException.java
+new file mode 100644
+index 000000000..9fbc81ac8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/RejectedRequestException.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Signals that a request was rejected by a business rule with a client-error status
++ * (e.g. {@code 400}, {@code 409} or {@code 429}). Carrying the intended {@link HttpStatus}
++ * and a human-readable detail lets {@link ExceptionControllerAdvice} render every such
++ * rejection as a single, uniform RFC7807 {@code application/problem+json} response.
++ *
++ * @author Vitaliy Fedoriv
++ */
++public class RejectedRequestException extends RuntimeException {
++
++    private final HttpStatus status;
++
++    /**
++     * @param status the HTTP status to report for this rejection
++     * @param detail a human-readable explanation used as the problem detail
++     */
++    public RejectedRequestException(HttpStatus status, String detail) {
++        super(detail);
++        this.status = status;
++    }
++
++    public HttpStatus getStatus() {
++        return this.status;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3c6f02e29..e0d83edf6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.BusinessDay;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.RejectedRequestException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -186,40 +187,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (!normalizeAddress(owner)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "An address must be supplied, either as a flat address or a structured address line 1");
+         }
+         Optional<String> e164Telephone = telephoneNormalizer.toE164(owner.getTelephone());
+         if (e164Telephone.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied telephone number is not a valid phone number");
+         }
+         String telephone = e164Telephone.get();
+         String email = emailNormalizer.normalize(owner.getEmail());
+         if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied email address is invalid or from a disallowed domain");
+         }
+         if (owner.getPostcode() != null && !postcodeValidator.isValid(owner.getPostcode(), owner.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied postcode is not valid for the owner's city");
+         }
+         LocalDate suppliedRegistrationDate = owner.getRegistrationDate();
+         if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The registration date cannot be in the future");
+         }
+         LocalDate registrationDate = BusinessDay.rollForward(
+             suppliedRegistrationDate == null ? LocalDate.now() : suppliedRegistrationDate);
+         owner.setRegistrationDate(registrationDate);
+         if (clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS,
++                "The maximum number of owner registrations for this day has been reached");
+         }
+         owner.setTelephone(telephone);
+         owner.setEmail(email);
+         if (clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new RejectedRequestException(HttpStatus.CONFLICT,
++                "The maximum number of owners for this city has been reached");
+         }
+         // Reject a hard duplicate: an existing live owner sharing this owner's identity key
+         // (its normalized telephone, email and phonetic last name). The email-domain blocklist
+         // above is applied first, so a disposable-email duplicate is a 400, not a 409.
+         if (clinicService.isDuplicateOwner(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new RejectedRequestException(HttpStatus.CONFLICT,
++                "An owner with the same identity already exists");
+         }
+         // The household is keyed on (last name, postcode): a second owner sharing both joins
+         // the existing household. Unless it declares 'sharesHousehold', it is recorded as a
+@@ -267,15 +276,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         Optional<String> e164Telephone = telephoneNormalizer.toE164(ownerFieldsDto.getTelephone());
+         if (e164Telephone.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied telephone number is not a valid phone number");
+         }
+         String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
+         if (email != null && (!emailNormalizer.isValid(email) || emailNormalizer.isDisposable(email))) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied email address is invalid or from a disallowed domain");
+         }
+         String postcode = ownerFieldsDto.getPostcode();
+         if (postcode != null && !postcodeValidator.isValid(postcode, ownerFieldsDto.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RejectedRequestException(HttpStatus.BAD_REQUEST,
++                "The supplied postcode is not valid for the owner's city");
+         }
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
