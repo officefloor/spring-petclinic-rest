@@ -1,0 +1,152 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0ef396a6d..e11606d82 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -62,6 +62,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -121,6 +124,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerNamesakeCount.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerNamesakeCount.java
+new file mode 100644
+index 000000000..b597362bb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerNamesakeCount.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records how many existing owners already shared this owner's name at creation time:
++ * the count of owners with the same firstName and lastName (compared case-insensitively).
++ * Computed before the new owner is saved, so it never counts itself.
++ */
++public class AssignOwnerNamesakeCount {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (sameName(existing.getFirstName(), owner.getFirstName())
++                    && sameName(existing.getLastName(), owner.getLastName())) {
++                count++;
++            }
++        }
++        owner.setNamesakeCount(count);
++    }
++
++    private static boolean sameName(String a, String b) {
++        return a == null ? b == null : a.equalsIgnoreCase(b);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index dcc28baa6..aa945722d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(40)
++  household_id VARCHAR(40),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7870c1e30..893aa49a8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(40)
++  household_id VARCHAR(40),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a4bee52c7..c0161d411 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
++  namesake_count INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 91eec0f11..d450831ac 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+-                                      household_id TEXT
++                                      household_id TEXT,
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 5b79d930f..319143b61 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -49,6 +49,11 @@ defaultRegistrationDate:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCustomerCode
+   govern: [ transaction ]
++  next: assignNamesakeCount
++
++assignNamesakeCount:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerNamesakeCount
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 88c6593a9..e178f3aa4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2097,6 +2097,14 @@ components:
+               type: string
+               example: 'HH-1A2B3C4D5E6F'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of existing owners that, at the moment this owner was created, already shared the same firstName and lastName (compared case-insensitively).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
