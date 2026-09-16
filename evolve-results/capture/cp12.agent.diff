@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+new file mode 100644
+index 000000000..c1578eff9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Out;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * Canonicalizes the create-owner address to its normalized form (see {@link OwnerAddresses})
++ * and publishes the request body for the rest of the pipeline. Runs first so the normalized
++ * address flows into the required-field check, the household comparisons, storage and the
++ * response.
++ *
++ * <p>Binds the request body once for the pipeline; later steps read it via {@code @Val}.
++ */
++public class NormalizeOwnerAddress {
++
++    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> body) {
++        request.setAddress(OwnerAddresses.normalize(request.getAddress()));
++        body.set(request);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddresses.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddresses.java
+new file mode 100644
+index 000000000..1b0243b83
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddresses.java
+@@ -0,0 +1,50 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Shared address canonicalization for the owner pipelines: reduces an address to a single
++ * normalized form so the required-field check, household comparisons and storage all use
++ * the same value.
++ *
++ * <p>Normalization trims surrounding whitespace, collapses each internal run of whitespace
++ * to a single space, upper-cases, and expands common street-type abbreviations
++ * ({@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}) as whole words. It is
++ * idempotent: normalizing an already-normalized address returns it unchanged.
++ */
++final class OwnerAddresses {
++
++    /** Whole-word abbreviation expansions, keyed by their upper-cased form. */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET",
++            "RD", "ROAD",
++            "AVE", "AVENUE");
++
++    private OwnerAddresses() {
++    }
++
++    /**
++     * Canonical form of {@code address}: trimmed, internal whitespace collapsed to single
++     * spaces, upper-cased, with each abbreviation token expanded. A {@code null} address, or
++     * one that is empty once trimmed, normalizes to {@code ""} (which the required-field check
++     * then rejects as blank).
++     */
++    static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        StringBuilder normalized = new StringBuilder(collapsed.length());
++        for (String token : collapsed.split(" ")) {
++            if (normalized.length() > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ABBREVIATIONS.getOrDefault(token, token));
++        }
++        return normalized.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
+index 3199c1819..0c77e2d5d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
+@@ -9,9 +9,9 @@ import java.util.Locale;
+  * Shared household identity for the create-owner pipeline: derives a canonical key from an
+  * owner's last name and address so the duplicate-household check compares the same value.
+  *
+- * <p>Two owners share a household when their last name and address match once
+- * case-insensitively normalized with collapsed whitespace (surrounding whitespace trimmed
+- * and any internal run of whitespace reduced to a single space).
++ * <p>Two owners share a household when their last names match case-insensitively (with
++ * collapsed whitespace) and their addresses match once put through the shared
++ * {@link OwnerAddresses#normalize(String) address normalization}.
+  */
+ final class OwnerHouseholds {
+ 
+@@ -25,7 +25,7 @@ final class OwnerHouseholds {
+     static String key(String lastName, String address) {
+         // '\n' separates the fields so "a b" + "c" cannot collide with "a" + "b c"
+         // (a newline never survives whitespace collapsing).
+-        return normalize(lastName) + "\n" + normalize(address);
++        return normalizeLastName(lastName) + "\n" + OwnerAddresses.normalize(address);
+     }
+ 
+     /**
+@@ -54,7 +54,7 @@ final class OwnerHouseholds {
+     }
+ 
+     /** Trim, collapse internal whitespace runs to a single space, and lower-case. */
+-    private static String normalize(String value) {
++    private static String normalizeLastName(String value) {
+         if (value == null) {
+             return "";
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index 9c542ae36..d92606de0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -3,20 +3,19 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+-import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
+-import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /**
+  * Rejects a create-owner request that is missing or blank in any required field
+- * (firstName, lastName, address, city, telephone) before {@link BuildOwner} runs,
+- * publishing the body for later steps. Binds the request body once for the pipeline.
++ * (firstName, lastName, address, city, telephone) before {@link BuildOwner} runs. Reads the
++ * body published by {@link NormalizeOwnerAddress}, so the address is checked in its
++ * normalized form — an address that is blank once normalized is rejected.
+  */
+ public class RequireOwnerFields {
+ 
+-    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+-            throws MissingOwnerFieldsException {
++    public void service(@Val OwnerFieldsDto request) throws MissingOwnerFieldsException {
+         List<String> missing = new ArrayList<>();
+         if (isBlank(request.getFirstName())) {
+             missing.add("firstName");
+@@ -36,7 +35,6 @@ public class RequireOwnerFields {
+         if (!missing.isEmpty()) {
+             throw new MissingOwnerFieldsException(missing);
+         }
+-        validated.set(request);
+     }
+ 
+     private static boolean isBlank(String value) {
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 61dd1dc29..5b79d930f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,11 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++normalizeAddress:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
++  govern: [ transaction ]
++  next: require
++
+ require:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireOwnerFields
+   govern: [ transaction ]
