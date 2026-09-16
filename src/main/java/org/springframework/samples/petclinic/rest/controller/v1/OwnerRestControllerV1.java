@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -64,16 +65,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -110,10 +115,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!telephoneNormalizer.hasRequiredDigits(telephone)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String email = emailNormalizer.normalize(owner.getEmail());
+        if (email != null && !emailNormalizer.isValid(email)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (clinicService.existsOwnerByTelephone(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setTelephone(telephone);
+        owner.setEmail(email);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -128,11 +138,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        String email = emailNormalizer.normalize(ownerFieldsDto.getEmail());
+        if (email != null && !emailNormalizer.isValid(email)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(email);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
