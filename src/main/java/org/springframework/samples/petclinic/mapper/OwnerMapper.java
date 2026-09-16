@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
+import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.model.Tenure;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -42,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     @Mapping(target = "membershipLevelCap", ignore = true)
@@ -137,6 +139,12 @@ public interface OwnerMapper {
      * {@link CustomerCode}), or null when the customer code is unset. */
     default String locality(Owner owner) {
         return CustomerCode.region(owner.getCustomerCode());
+    }
+
+    /** The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;', derived from the owner's
+     * {@link #membershipLevel(Owner)} and {@link #locality(Owner)} (see {@link OwnerSegment}). */
+    default String ownerSegment(Owner owner) {
+        return OwnerSegment.of(membershipLevel(owner), locality(owner));
     }
 
     /** The owner's IANA timezone, derived from the locality/region via the pinned

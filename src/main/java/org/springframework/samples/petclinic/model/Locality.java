@@ -69,6 +69,16 @@ public final class Locality {
     }
 
     /**
+     * Whether the given region is one of the pinned known regions (NSW, VIC or QLD).
+     *
+     * @param region the canonical region (may be {@code null} or {@link #UNKNOWN})
+     * @return {@code true} when the region is in the pinned reference data
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_POSTCODES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for the given region, via the pinned region-to-timezone table.
      *
      * @param region the canonical region (e.g. {@code "NSW"}, may be {@code null})
