@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7e5ef4fef..79a11f3d7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+@@ -67,22 +68,39 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
+-    /** The owner's membership level from 1 to 4: starts at 1, plus 1 when an email is present,
+-     * plus 1 when namesakeCount is 0, plus 1 when tenure exceeds 365 days. The top level is thus
+-     * tenure-gated: a newly created owner has zero tenure, so it never exceeds level 3. */
+-    default int membershipLevel(Owner owner) {
+-        int level = 1;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        if (hasEmail) {
+-            level++;
++    /** The owner's membership points: starts at 0, plus 2 when an email is present, plus 1 when
++     * namesakeCount is 0, plus 2 for a household of 3 or more, plus 3 when tenure exceeds 365 days. */
++    default int membershipPoints(Owner owner) {
++        int points = 0;
++        if (hasEmail(owner)) {
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
+         }
+         if (Tenure.days(owner.getRegistrationDate()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /** The owner's membership level from 1 to 4, derived from {@link #membershipPoints(Owner)}:
++     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. */
++    default int membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        return Math.min(level, 4);
++        return 4;
+     }
+ 
+     /** The owner's canonical region: the REGION segment of the customer code (see
+@@ -93,8 +111,12 @@ public interface OwnerMapper {
+ 
+     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */
+     default String contactPreference(Owner owner) {
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return hasEmail ? "EMAIL" : "PHONE";
++        return hasEmail(owner) ? "EMAIL" : "PHONE";
++    }
++
++    /** Whether the owner has a non-blank email. */
++    private static boolean hasEmail(Owner owner) {
++        return owner.getEmail() != null && !owner.getEmail().isBlank();
+     }
+ 
+     /** The owner's derived identity key (see {@link OwnerIdentity}). */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b97258698..a5c385866 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2170,16 +2170,25 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points — starts at 0, plus 2 when an email is
++                present, plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more, plus
++                3 when tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's membership level from 1 to 4 — starts at 1, plus 1 when an
+-                email is present, plus 1 when namesakeCount is 0, plus 1 when tenure exceeds 365
+-                days. Level 4 is tenure-gated, so a newly created owner never exceeds level 3.
++              description: The owner's membership level from 1 to 4, derived from membershipPoints —
++                1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
