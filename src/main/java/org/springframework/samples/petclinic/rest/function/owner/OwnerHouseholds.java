@@ -9,9 +9,9 @@ import java.util.Locale;
  * Shared household identity for the create-owner pipeline: derives a canonical key from an
  * owner's last name and address so the duplicate-household check compares the same value.
  *
- * <p>Two owners share a household when their last name and address match once
- * case-insensitively normalized with collapsed whitespace (surrounding whitespace trimmed
- * and any internal run of whitespace reduced to a single space).
+ * <p>Two owners share a household when their last names match case-insensitively (with
+ * collapsed whitespace) and their addresses match once put through the shared
+ * {@link OwnerAddresses#normalize(String) address normalization}.
  */
 final class OwnerHouseholds {
 
@@ -25,7 +25,7 @@ final class OwnerHouseholds {
     static String key(String lastName, String address) {
         // '\n' separates the fields so "a b" + "c" cannot collide with "a" + "b c"
         // (a newline never survives whitespace collapsing).
-        return normalize(lastName) + "\n" + normalize(address);
+        return normalizeLastName(lastName) + "\n" + OwnerAddresses.normalize(address);
     }
 
     /**
@@ -54,7 +54,7 @@ final class OwnerHouseholds {
     }
 
     /** Trim, collapse internal whitespace runs to a single space, and lower-case. */
-    private static String normalize(String value) {
+    private static String normalizeLastName(String value) {
         if (value == null) {
             return "";
         }
