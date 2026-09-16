@@ -59,6 +59,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -132,6 +135,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -242,6 +253,17 @@ public class Owner extends Person {
     public String getContactPreference() {
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Return this owner's age band as of the {@link #getRegistrationDate() registration date},
+     * derived from the {@link #getBirthDate() birth date}: {@code MINOR} under 18, {@code ADULT}
+     * from 18 to 64, {@code SENIOR} at 65 or older. Null when no birth date is known.
+     */
+    @Transient
+    public String getAgeBand() {
+        AgeBand ageBand = AgeBand.asOf(this.birthDate, this.registrationDate);
+        return ageBand == null ? null : ageBand.name();
     }
 
     protected Set<Pet> getPetsInternal() {
