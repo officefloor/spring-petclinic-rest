@@ -262,7 +262,7 @@ public class ClinicServiceImpl implements ClinicService {
                 LocalDate registrationDate = BusinessDay.rollForward(
                     owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
                 owner.setMemberId(memberIdGenerator.generateUnique(
-                    RegionResolver.regionFor(owner.getPostcode(), owner.getCity()),
+                    RegionResolver.identityRegionFor(owner.getPostcode(), owner.getCity()),
                     FiscalYear.shortYearOf(registrationDate),
                     owner.getTelephone(), owner.getLastName(),
                     ownerRepository::existsByMemberId));

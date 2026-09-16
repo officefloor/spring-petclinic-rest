@@ -331,17 +331,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year: the {@code 'FY<YY>'} label of the fiscal year carried by
-     * their {@link #getMemberId() member id}, so the fiscal year stays consistent with the
-     * owner's identity (see {@link FiscalYear}). Until a member id has been assigned it
-     * falls back to the fiscal year of the owner's business-day-adjusted registration
-     * date, the same value the member id itself is built from; null until then.
+     * The owner's fiscal year: the {@code 'FY<YY>'} label of the fiscal year their
+     * business-day-adjusted registration date falls in (see {@link FiscalYear}), the same
+     * value the member id itself is built from. Derived from the owner's own registration
+     * date rather than from the opaque, version-tagged member id, so the version-2 tag never
+     * leaks into it; null until a registration date is on file.
      */
     @Transient
     public String getFiscalYear() {
-        if (this.memberId != null) {
-            return String.format("FY%02d", MemberId.fiscalYearShortOf(this.memberId));
-        }
         if (this.registrationDate == null) {
             return null;
         }
@@ -394,20 +391,13 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region, taken as the region segment of the
-     * {@link #getMemberId() member id} (formatted {@code '<REGION><FY><HASH8><CHK>'}), so
-     * the locality stays consistent with the owner's identity. When no member id has been
-     * assigned yet it falls back to resolving the region directly from the postcode and
-     * city (see {@link RegionResolver}), the same rule the member id itself is built from.
+     * The owner's locality: the plain canonical region resolved from their postcode and
+     * city (see {@link RegionResolver}), the same rule the member id's region is built from.
+     * This is a user-facing field, not an identifier, so it stays the plain region code
+     * (e.g. {@code "NSW"}) and never carries the version-2 tag that the identifiers embed.
      */
     @Transient
     public String getLocality() {
-        if (this.memberId != null) {
-            String region = MemberId.regionOf(this.memberId);
-            if (!region.isEmpty()) {
-                return region;
-            }
-        }
         return RegionResolver.regionFor(this.postcode, this.city);
     }
 
@@ -457,17 +447,20 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used to detect duplicate owners,
-     * the SHA-256 hex digest of {@code normalizedTelephone + '|' + (email or empty) + '|' +
-     * soundex(lastName)} (see {@link Soundex}). Two owners are hard duplicates only when
-     * their identity keys are equal; because the telephone is part of the key, members of
-     * one household with different telephones stay distinct. Derived from the owner's own
-     * fields, so it stays consistent with them.
+     * the version-2 SHA-256 hex digest of {@code 'V2' + '|' + normalizedTelephone + '|' +
+     * (email or empty) + '|' + soundex(lastName)} (see {@link IdentityVersion} and
+     * {@link Soundex}). Two owners are hard duplicates only when their identity keys are
+     * equal; because the telephone is part of the key, members of one household with
+     * different telephones stay distinct. Mixing in the fixed version tag makes every
+     * version-2 key differ from its version-1 value. Derived from the owner's own fields,
+     * so it stays consistent with them.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
-        return Sha256.hex(telephonePart + "|" + emailPart + "|" + Soundex.of(this.getLastName()));
+        return Sha256.hex(IdentityVersion.TAG + "|" + telephonePart + "|" + emailPart + "|"
+            + Soundex.of(this.getLastName()));
     }
 
     /**

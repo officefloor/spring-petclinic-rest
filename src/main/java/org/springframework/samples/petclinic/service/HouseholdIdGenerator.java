@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.stereotype.Component;
 
@@ -36,8 +37,11 @@ public class HouseholdIdGenerator {
 
     /**
      * Build the shared household identifier for the household identified by the given
-     * last name and postcode: the first {@value #ID_LENGTH} hex characters of the
-     * SHA-256 digest of {@code normalizedLastName + '|' + postcode}.
+     * last name and postcode: the first {@value #ID_LENGTH} hex characters of the version-2
+     * SHA-256 digest of {@code 'V2' + '|' + normalizedLastName + '|' + postcode} (see
+     * {@link IdentityVersion}). Mixing in the fixed version tag makes every version-2
+     * household id differ from its version-1 value, while owners still share it purely on
+     * last name and postcode.
      *
      * <p>An owner without a postcode belongs to no shared household, so this returns
      * {@code null} in that case.
@@ -51,7 +55,7 @@ public class HouseholdIdGenerator {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String identity = normalize(lastName) + "|" + postcode;
+        String identity = IdentityVersion.TAG + "|" + normalize(lastName) + "|" + postcode;
         return Sha256.hex(identity).substring(0, ID_LENGTH);
     }
 

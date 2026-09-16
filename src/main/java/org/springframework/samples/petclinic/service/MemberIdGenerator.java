@@ -24,12 +24,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Builds an owner's {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'} (see
- * {@link MemberId}) where REGION is the owner's canonical region (see
- * {@link org.springframework.samples.petclinic.model.RegionResolver}), FY is the two-digit
- * fiscal year, HASH8 is the first eight upper-case hexadecimal characters of the SHA-256
- * hash over the owner's normalized telephone followed by its last name, and CHK is the
- * member id's Luhn check digit. The identity is derived purely from the owner's own fields,
- * carrying no sequence number.
+ * {@link MemberId}) where REGION is the region code carried by the owner's identity (the
+ * version-2 code from
+ * {@link org.springframework.samples.petclinic.model.RegionResolver#identityRegionFor}),
+ * FY is the two-digit fiscal year, HASH8 is the first eight upper-case hexadecimal
+ * characters of the SHA-256 hash over the owner's normalized telephone followed by its last
+ * name, and CHK is the member id's Luhn check digit. The identity is derived purely from
+ * the owner's own fields, carrying no sequence number.
  */
 @Component
 public class MemberIdGenerator {

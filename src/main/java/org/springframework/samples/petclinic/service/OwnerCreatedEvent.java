@@ -15,19 +15,26 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
+
 /**
  * Immutable structured audit event recording the creation of an owner. It captures the
  * create's monotonic {@code seq}, the owner's id, its current primary identifier (the
- * {@code memberId}) and its membership level, and is serialized to JSON on the
- * {@code AUDIT} trail alongside the human-readable audit line.
+ * version-2 {@code memberId}), its membership level and its recomputed owner segment, and
+ * is serialized to JSON on the {@code AUDIT} trail alongside the human-readable audit line.
+ *
+ * <p>This is schema version 2 of the event: it carries a {@code schemaVersion} of
+ * {@value org.springframework.samples.petclinic.model.IdentityVersion#NUMBER} and the owner
+ * segment recomputed from the version-2 identity.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-        String event) {
+        String ownerSegment, int schemaVersion, String event) {
 
     /** The fixed discriminator identifying this kind of audit event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
-        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
+            String ownerSegment) {
+        this(seq, ownerId, memberId, membershipLevel, ownerSegment, IdentityVersion.NUMBER, EVENT_TYPE);
     }
 }

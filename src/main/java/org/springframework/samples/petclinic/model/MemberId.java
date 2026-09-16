@@ -22,10 +22,10 @@ package org.springframework.samples.petclinic.model;
  * identity, and a single Luhn check digit (see {@link LuhnCheckDigit}) computed over the
  * digits of the preceding {@code <REGION><FY><HASH8>}.
  *
- * <p>Single source of truth for the member-id format, so callers build and read its
- * segments the same way and never repeat the layout. The region is a run of letters and
- * the fiscal year the two digits immediately after it, so the leading segments can be
- * read back even when a collision suffix is appended to the id.
+ * <p>Single source of truth for the member-id format, so callers build its segments the
+ * same way and never repeat the layout. The member id is an opaque identifier: its
+ * user-facing counterparts (locality, fiscal year) are derived from the owner's own fields
+ * rather than parsed back out, so the region may carry the version tag without ambiguity.
  */
 public final class MemberId {
 
@@ -36,34 +36,13 @@ public final class MemberId {
      * Build a member id from its parts: the {@code <REGION><FY><HASH8>} body followed by
      * the Luhn check digit computed over that body's digits.
      *
-     * @param region          the owner's canonical region
+     * @param region          the region code carried by the owner's identity
      * @param fiscalYearShort the two-digit fiscal year
      * @param hash8           the eight upper-case hex characters of the region-and-hash identity
-     * @return the formatted member id, e.g. {@code "NSW261A2B3C4D5"}
+     * @return the formatted member id, e.g. {@code "V2NSW261A2B3C4D5"}
      */
     public static String format(String region, int fiscalYearShort, String hash8) {
         String body = region + String.format("%02d", fiscalYearShort) + hash8;
         return body + LuhnCheckDigit.of(body);
-    }
-
-    /**
-     * The region segment of a member id: its leading run of letters, which ends where the
-     * two-digit fiscal year begins.
-     */
-    public static String regionOf(String memberId) {
-        int end = 0;
-        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
-            end++;
-        }
-        return memberId.substring(0, end);
-    }
-
-    /**
-     * The two-digit fiscal-year segment of a member id: the two digits immediately
-     * following its {@link #regionOf(String) region}.
-     */
-    public static int fiscalYearShortOf(String memberId) {
-        int start = regionOf(memberId).length();
-        return Integer.parseInt(memberId.substring(start, start + 2));
     }
 }

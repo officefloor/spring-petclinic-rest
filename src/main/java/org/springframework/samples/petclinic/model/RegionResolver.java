@@ -40,4 +40,19 @@ public final class RegionResolver {
         return RegionPostcodeTable.regionFor(postcode)
             .orElseGet(() -> CityRegionTable.regionFor(city));
     }
+
+    /**
+     * The region code embedded inside the version-2 identifiers: the canonical
+     * {@link #regionFor(String, String) region} with the fixed {@link IdentityVersion#TAG}
+     * version tag mixed in, so the region carried by an owner's identity differs from its
+     * version-1 value. This is used only inside the identifiers; the user-facing locality
+     * keeps the plain {@link #regionFor(String, String) region}.
+     *
+     * @param postcode the owner's postcode, which may be {@code null} or non-numeric
+     * @param city     the owner's city, used when the postcode resolves to no region
+     * @return the version-tagged region code for the owner's identifiers
+     */
+    public static String identityRegionFor(String postcode, String city) {
+        return IdentityVersion.TAG + regionFor(postcode, city);
+    }
 }
