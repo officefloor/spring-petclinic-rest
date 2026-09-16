@@ -25,6 +25,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -250,8 +251,9 @@ public class Owner extends Person {
     /**
      * Return this owner's membership level: starting at 1, plus 1 when the owner
      * has an email, plus 1 when the owner is uniquely named (a
-     * {@link #getNamesakeCount() namesakeCount} of 0), capped at 3. Level 4 is
-     * reserved for tenure.
+     * {@link #getNamesakeCount() namesakeCount} of 0), plus 1 for long tenure
+     * ({@link #getTenureDays() tenure} of more than 365 days), capped at 4. The
+     * pre-tenure factors max out at level 3, so only tenure reaches level 4.
      */
     @Transient
     public int getMembershipLevel() {
@@ -264,7 +266,25 @@ public class Owner extends Person {
         if (uniquelyNamed) {
             level++;
         }
-        return Math.min(level, 3);
+        boolean tenured = getTenureDays() > 365;
+        if (tenured) {
+            level++;
+        }
+        return Math.min(level, 4);
+    }
+
+    /**
+     * Return this owner's tenure in whole days: the number of days elapsed from the
+     * {@link #getRegistrationDate() registration date} to today. A newly created owner
+     * whose registration date is today has zero tenure. Zero when no registration date
+     * is known.
+     */
+    @Transient
+    public long getTenureDays() {
+        if (this.registrationDate == null) {
+            return 0;
+        }
+        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
     }
 
     /**
