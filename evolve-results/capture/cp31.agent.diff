@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index dc01a2b96..e2897a516 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.util.Luhn;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -25,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+@@ -91,6 +93,14 @@ public interface OwnerMapper {
+         return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
++    default Integer checkDigit(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null) {
++            return null;
++        }
++        return Luhn.checkDigit(owner.getCustomerCode());
++    }
++
+     /**
+      * The owner's numeric membership level, derived from the owner's own fields; null when there
+      * is no owner.
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Luhn.java b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+new file mode 100644
+index 000000000..429fa0b47
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * The Luhn (mod 10) algorithm. Computes the single check digit that, appended to a sequence
++ * of digits, makes the whole sequence pass the Luhn checksum.
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /**
++     * The Luhn check digit (0-9) over the digits contained in {@code value}; non-digit
++     * characters are ignored.
++     */
++    public static int checkDigit(String value) {
++        int sum = 0;
++        boolean doubling = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (doubling) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            doubling = !doubling;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fc82d1c2f..22d5a35a5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2100,6 +2100,15 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn (mod 10) check digit computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 7
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: Derived from the owner's own fields, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
