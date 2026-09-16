@@ -244,5 +244,13 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         this.namedParameterJdbcTemplate.update("DELETE FROM owners WHERE id=:id", ownerParams);
 	}
 
+    @Override
+    public long count() throws DataAccessException {
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners",
+            new HashMap<String, Object>(),
+            Long.class);
+        return total == null ? 0 : total;
+    }
 
 }
