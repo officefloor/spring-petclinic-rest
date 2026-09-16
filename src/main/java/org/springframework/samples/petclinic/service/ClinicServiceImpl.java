@@ -41,6 +41,12 @@ import java.util.function.Supplier;
 @Service
 public class ClinicServiceImpl implements ClinicService {
 
+    /**
+     * Number of owners that must already carry a day's registration date before a
+     * further owner registered that day is flagged with a bulk signup warning.
+     */
+    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
     private final OwnerRepository ownerRepository;
@@ -245,6 +251,8 @@ public class ClinicServiceImpl implements ClinicService {
                     owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity())));
             }
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+            owner.setBulkSignupWarning(
+                ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
         }
         ownerRepository.save(owner);
 
