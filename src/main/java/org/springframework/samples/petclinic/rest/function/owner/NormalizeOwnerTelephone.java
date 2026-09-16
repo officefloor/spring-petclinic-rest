@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 /**
  * Normalizes a create-owner request's telephone to E.164 form via {@link OwnerTelephones}.
  * The E.164 value is stored back on the (already published) request so
- * {@link RejectDuplicateOwnerTelephone} and {@link BuildOwner} carry it through to
+ * {@link RejectDuplicateOwnerIdentity} and {@link BuildOwner} carry it through to
  * persistence. Runs after {@link ValidateRequiredOwnerFields}, so the telephone is known
  * non-blank here.
  */
