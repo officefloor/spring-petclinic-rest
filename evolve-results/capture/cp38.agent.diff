@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 16d34bb95..2e257bdf7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DailyRegistrationLimitExceededException;
++import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+@@ -242,6 +243,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DisposableEmailDomainException} raised when an owner's submitted email is
++     * syntactically valid but its domain is on the disposable-domain blocklist. Returns a 400 Bad
++     * Request whose body carries an {@code errors} array naming the {@code email} field.
++     *
++     * @param e The {@link DisposableEmailDomainException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(DisposableEmailDomainException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("email"));
++        logger.debug("Disposable email domain at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link InvalidPostcodeException} raised when an owner's supplied postcode is out of
+      * range for its city's region. Returns a 400 Bad Request whose body carries an {@code errors}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 264b3451c..976609ae7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerCapacityValidator;
+ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
++import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
+@@ -147,6 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
+         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
++        DisposableEmailDomainValidator.validate(owner.getEmail());
+         PostcodeValidator.validate(owner.getCity(), owner.getPostcode());
+         RegistrationDateValidator.validateNotFuture(owner.getRegistrationDate());
+         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainException.java
+new file mode 100644
+index 000000000..88ad2c600
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's submitted email is syntactically valid but its domain is on the
++ * disposable-domain blocklist. The REST layer reports this as a 400 Bad Request.
++ *
++ * @see DisposableEmailDomainValidator
++ */
++public class DisposableEmailDomainException extends RuntimeException {
++
++    public DisposableEmailDomainException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java
+new file mode 100644
+index 000000000..6b65838da
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Set;
++
++/**
++ * Rejects an owner whose email domain is on the disposable-domain blocklist. Disposable
++ * addresses are throw-away mailboxes that cannot be relied on for contacting an owner, so
++ * a present email must not use one of these domains.
++ *
++ * <p>This is a policy check distinct from {@link EmailNormalizer}'s syntactic validation: it
++ * operates on an already-normalized (lower-cased, syntactically valid) address.
++ */
++public final class DisposableEmailDomainValidator {
++
++    private static final Set<String> BLOCKED_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomainValidator() {
++    }
++
++    /**
++     * Rejects a normalized email whose domain is on the disposable-domain blocklist. Email is
++     * optional, so a {@code null} value is accepted unchanged.
++     *
++     * @param email the normalized (lower-cased, syntactically valid) email, or {@code null} if none
++     * @throws DisposableEmailDomainException if the email's domain is on the blocklist
++     */
++    public static void validate(String email) {
++        if (email == null) {
++            return;
++        }
++        String domain = email.substring(email.indexOf('@') + 1);
++        if (BLOCKED_DOMAINS.contains(domain)) {
++            throw new DisposableEmailDomainException(
++                "Email domain '" + domain + "' is a disposable-domain and is not allowed");
++        }
++    }
++}
