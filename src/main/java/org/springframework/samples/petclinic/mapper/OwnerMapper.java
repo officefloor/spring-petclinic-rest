@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CheckDigit;
 import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
@@ -29,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -90,6 +92,12 @@ public interface OwnerMapper {
     /** The Luhn check digit over the digits of the owner's customer code, or null when unset. */
     default Integer checkDigit(Owner owner) {
         return owner.getCustomerCode() == null ? null : CheckDigit.luhn(owner.getCustomerCode());
+    }
+
+    /** The owner's age band on their registration date, derived from their birth date (see
+     * {@link AgeBand}), or null when either date is unset. */
+    default String ageBand(Owner owner) {
+        return AgeBand.on(owner.getBirthDate(), owner.getRegistrationDate());
     }
 
     @Mapping(target = "id", ignore = true)
