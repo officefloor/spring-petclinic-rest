@@ -23,8 +23,8 @@ import org.springframework.stereotype.Component;
  * Enforces that no two owners share a household, i.e. have the same last name and the same address.
  * Both fields are compared case-insensitively and with runs of whitespace collapsed to a single
  * space (and surrounding whitespace trimmed), so values that differ only in letter case or spacing
- * are still treated as the same. The comparison is done in memory because the stored address is not
- * kept in a normalized form, so it cannot be matched reliably with a database query.
+ * are still treated as the same. The comparison is done in memory because the stored last name is
+ * not kept in a normalized form, so a household cannot be matched reliably with a database query.
  */
 @Component
 public class OwnerHouseholdUniquenessValidator {
