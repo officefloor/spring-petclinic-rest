@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 79a11f3d7..301d90b42 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.AgeBand;
+ import org.springframework.samples.petclinic.model.CheckDigit;
+ import org.springframework.samples.petclinic.model.CustomerCode;
++import org.springframework.samples.petclinic.model.Locality;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.model.Tenure;
+@@ -31,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+@@ -109,6 +111,13 @@ public interface OwnerMapper {
+         return CustomerCode.region(owner.getCustomerCode());
+     }
+ 
++    /** The owner's IANA timezone, derived from the locality/region via the pinned
++     * region-to-timezone table (see {@link Locality#timezoneForRegion}), or null when the
++     * region is not in the table. */
++    default String timezone(Owner owner) {
++        return Locality.timezoneForRegion(locality(owner));
++    }
++
+     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */
+     default String contactPreference(Owner owner) {
+         return hasEmail(owner) ? "EMAIL" : "PHONE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Locality.java b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+index 945b5c41e..6c199d693 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+@@ -28,6 +28,12 @@ public final class Locality {
+             "VIC", new int[] {3000, 3099},
+             "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
+     private Locality() {
+     }
+ 
+@@ -62,6 +68,16 @@ public final class Locality {
+         return UNKNOWN;
+     }
+ 
++    /**
++     * The IANA timezone name for the given region, via the pinned region-to-timezone table.
++     *
++     * @param region the canonical region (e.g. {@code "NSW"}, may be {@code null})
++     * @return the IANA timezone name, or {@code null} when the region is not in the table
++     */
++    public static String timezoneForRegion(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++
+     /**
+      * Whether the given 4-digit postcode is permitted for the given city. A city whose
+      * region has a pinned postcode range accepts only postcodes within that (inclusive)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a5c385866..7e91fb4e8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2198,6 +2198,14 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's IANA timezone, derived from the locality/region via the
++                pinned region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane), or null when the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel — 'EMAIL' when an email is
