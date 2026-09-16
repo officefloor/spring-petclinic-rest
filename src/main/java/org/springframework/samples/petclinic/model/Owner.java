@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.validation.LuhnCheckDigit;
+import org.springframework.samples.petclinic.rest.validation.Sha256;
+import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 
 import jakarta.persistence.*;
@@ -270,8 +272,9 @@ public class Owner extends Person {
 
     /**
      * Return whether this owner is a possible duplicate: true when it was created while an existing
-     * owner already shared its last name and postcode under a different telephone, i.e. when a
-     * {@link #getPossibleDuplicateOf() possible-duplicate-of} owner id is present.
+     * owner's last name shared its Soundex code at the same postcode (yet resolved to a different
+     * identity key), i.e. when a {@link #getPossibleDuplicateOf() possible-duplicate-of} owner id is
+     * present.
      */
     @Transient
     public boolean getPossibleDuplicate() {
@@ -309,15 +312,18 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's identity key: the derived value formed as
-     * {@code normalizedTelephone + '|' + email + '|' + householdId} (an absent email or household id
-     * contributes an empty segment). Members of the same household share a household id but, having
-     * different telephones, still have distinct identity keys. The telephone and email are expected
-     * to already be in their normalized storage form.
+     * Return this owner's identity key: the lower-case SHA-256 hex digest of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (an absent email
+     * contributes an empty segment). Two owners are the same person — a hard duplicate — exactly
+     * when their identity keys match; owners who merely share a household (same last name and
+     * postcode) but differ in telephone, email or surname sound derive distinct keys. The telephone
+     * and email are expected to already be in their normalized storage form.
      */
     @Transient
     public String getIdentityKey() {
-        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
+        String raw = orEmpty(this.telephone) + "|" + orEmpty(this.email).toLowerCase(Locale.ROOT)
+            + "|" + Soundex.encode(this.getLastName());
+        return Sha256.hex(raw);
     }
 
     private static String orEmpty(String value) {

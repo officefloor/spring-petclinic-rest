@@ -21,13 +21,13 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Rejects an owner that duplicates one already on file. Members of the same household share a
- * {@link HouseholdKey#idFor(String, String) household id} but, having different telephones, keep
- * distinct {@link Owner#getIdentityKey() identity keys}; a genuinely new household member is
- * therefore allowed (and merely flagged as a {@link PossibleDuplicateOwnerDetector possible
- * duplicate}). Only an owner whose identity key matches an existing one — the same person submitted
- * again — is a true duplicate and rejected. The caller bypasses this block when the new owner
- * explicitly opts in via {@code sharesHousehold}.
+ * Rejects an owner that duplicates one already on file. Two owners collide only when their
+ * {@link Owner#getIdentityKey() identity keys} match — the same normalized telephone, email and
+ * surname sound — so members of the same household who differ in telephone keep distinct keys and a
+ * genuinely new household member is allowed (and merely flagged as a
+ * {@link PossibleDuplicateOwnerDetector possible duplicate}). Only an owner whose identity key
+ * matches an existing one — the same person submitted again — is a true duplicate and rejected. The
+ * caller bypasses this block when the new owner explicitly opts in via {@code sharesHousehold}.
  */
 @Component
 public class HouseholdDuplicateValidator {
@@ -40,8 +40,8 @@ public class HouseholdDuplicateValidator {
 
     /**
      * Rejects an owner whose {@link Owner#getIdentityKey() identity key} already belongs to an
-     * existing owner. The owner's telephone, email and household id must already be assigned when
-     * this runs, since the identity key is derived from them.
+     * existing owner. The owner's telephone, email and last name must already be assigned when this
+     * runs, since the identity key is derived from them.
      *
      * @param owner the owner being created
      * @throws DuplicateHouseholdException if another owner shares this owner's identity key

@@ -17,7 +17,6 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Comparator;
-import java.util.Objects;
 import java.util.Optional;
 
 import org.springframework.samples.petclinic.model.Owner;
@@ -25,11 +24,12 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Detects "possible duplicate" owners: a new owner that is not a household duplicate (see
- * {@link HouseholdDuplicateValidator}) but still shares an existing owner's last name (compared
- * case-insensitively) and postcode under a <em>different</em> telephone. The comparison is done in
- * memory because the stored last names are not kept in a normalized form, for the same reason as the
- * name matching in {@link NamesakeCounter}.
+ * Detects "possible duplicate" owners: a new owner that is not a hard duplicate (see
+ * {@link HouseholdDuplicateValidator}) but still sounds like an existing owner living at the same
+ * postcode — their last names share a {@link Soundex#encode(String) Soundex code} and their
+ * postcodes match — while resolving to a different {@link Owner#getIdentityKey() identity key}. The
+ * comparison is done in memory because the stored last names are not kept in a normalized form, for
+ * the same reason as the name matching in {@link NamesakeCounter}.
  */
 @Component
 public class PossibleDuplicateOwnerDetector {
@@ -42,8 +42,10 @@ public class PossibleDuplicateOwnerDetector {
 
     /**
      * Finds the existing owner the given (not-yet-saved) owner is a possible duplicate of: the
-     * earliest owner sharing its last name (case-insensitively) and postcode but registered under a
-     * different telephone. The owner's telephone is expected to already be in its normalized form.
+     * earliest owner whose last name shares its {@link Soundex#encode(String) Soundex code} and
+     * whose postcode matches, yet whose {@link Owner#getIdentityKey() identity key} differs (so the
+     * two are not the same person). The owner's telephone and email are expected to already be in
+     * their normalized form.
      *
      * @param owner the owner being created
      * @return the id of the earliest matching owner, or empty when the owner is not a possible
@@ -53,16 +55,14 @@ public class PossibleDuplicateOwnerDetector {
         if (owner.getPostcode() == null) {
             return Optional.empty();
         }
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName()))
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !Objects.equals(existing.getTelephone(), owner.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .min(Comparator.comparing(Owner::getId))
             .map(Owner::getId);
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a != null && a.equalsIgnoreCase(b);
     }
 }
