@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Objects;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -7,19 +9,21 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The duplicate block: rejects a create whose {@code (lastName, postcode)} household —
- * identified by its deterministic {@code householdId} (see {@link Households#householdId})
- * — is already occupied by an existing owner, as a 409 via
- * {@link DuplicateIdentityException}. Because the household is keyed on last name and
- * postcode, a second owner at the same one is a household duplicate.
+ * The duplicate block: rejects a create that re-registers the same person as an existing
+ * owner, as a 409 via {@link DuplicateIdentityException}. A person is identified by their
+ * {@code (lastName, postcode)} household — its deterministic {@code householdId} (see
+ * {@link Households#householdId}) — together with their telephone; a request matching an
+ * existing owner on both is the same person registering twice.
  *
- * <p>A request that opts in with {@code sharesHousehold=true} bypasses the block: it is a
- * declared member of that household and is created (see {@link AssignPossibleDuplicate},
- * which also leaves a declared member unflagged). A request with no postcode has no
+ * <p>A second owner in the same household with a <em>different</em> telephone is a distinct
+ * person and is allowed through, to be created and flagged as a soft duplicate (see
+ * {@link AssignPossibleDuplicate}); this is how a household comes to have more than one
+ * member. A request that opts in with {@code sharesHousehold=true} is a declared household
+ * member and bypasses the block (and is left unflagged). A request with no postcode has no
  * household key and cannot collide.
  *
- * <p>Runs before {@link BuildOwner}, so a collision is caught before any owner is built or
- * saved.
+ * <p>Runs after the telephone is normalized to E.164 (matching the stored form) and before
+ * {@link BuildOwner}, so a collision is caught before any owner is built or saved.
  */
 public class EnsureUniqueIdentity {
 
@@ -36,7 +40,8 @@ public class EnsureUniqueIdentity {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // a soft-deleted owner no longer occupies its household
             }
-            if (householdId.equals(existing.getHouseholdId())) {
+            if (householdId.equals(existing.getHouseholdId())
+                    && Objects.equals(request.getTelephone(), existing.getTelephone())) {
                 throw new DuplicateIdentityException(householdId);
             }
         }

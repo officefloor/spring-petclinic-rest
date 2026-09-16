@@ -1,9 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
@@ -44,6 +46,24 @@ final class Households {
             }
         }
         return count;
+    }
+
+    /**
+     * The highest membership level among the existing owners already carrying the given
+     * household id, or empty when the household has no existing members (id null or
+     * unmatched). Used to cap a new member's level ({@link AssignMembershipLevelCap}).
+     */
+    static OptionalInt maxMemberLevel(OwnerRepository repository, String householdId) {
+        if (householdId == null) {
+            return OptionalInt.empty();
+        }
+        int max = Integer.MIN_VALUE;
+        for (Owner owner : repository.findAll()) {
+            if (householdId.equals(owner.getHouseholdId())) {
+                max = Math.max(max, MembershipLevel.of(owner));
+            }
+        }
+        return max == Integer.MIN_VALUE ? OptionalInt.empty() : OptionalInt.of(max);
     }
 
     /** Case-fold and collapse whitespace so trivial spacing/casing differences still match. */
