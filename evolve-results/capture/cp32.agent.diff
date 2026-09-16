@@ -1,0 +1,259 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b49d1ea63..9f0d0e3d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -165,7 +165,7 @@ public class Owner extends Person {
+ 
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
+-     * is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
++     * is the last two digits of the registration date's year (e.g. {@code "NSW-1A2B3C4D-M26"}).
+      * Derived from the owner's own fields, so it stays consistent with them.
+      */
+     @Transient
+@@ -210,15 +210,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's locality: the canonical region. This prefers the postcode, resolving the
+-     * region whose range contains it (see {@link RegionPostcodeTable}), and only falls back
+-     * to the city via the fixed {@link CityRegionTable} when the postcode is absent or in no
+-     * known range. Derived from the owner's own fields, so it stays consistent with them.
++     * The owner's locality: the canonical region, taken as the region segment of the
++     * customer code (formatted {@code '<REGION>-<HASH8>'}), so the locality stays
++     * consistent with the owner's identity. When no customer code has been assigned yet
++     * it falls back to resolving the region directly from the postcode and city (see
++     * {@link RegionResolver}), the same rule the customer code itself is built from.
+      */
+     @Transient
+     public String getLocality() {
+-        return RegionPostcodeTable.regionFor(this.postcode)
+-            .orElseGet(() -> CityRegionTable.regionFor(this.city));
++        if (this.customerCode != null) {
++            int separator = this.customerCode.indexOf('-');
++            if (separator > 0) {
++                return this.customerCode.substring(0, separator);
++            }
++        }
++        return RegionResolver.regionFor(this.postcode, this.city);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RegionResolver.java b/src/main/java/org/springframework/samples/petclinic/model/RegionResolver.java
+new file mode 100644
+index 000000000..1c14bb11f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/RegionResolver.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Resolves an owner's canonical region from its location. Prefers the postcode,
++ * resolving the region whose range contains it (see {@link RegionPostcodeTable}),
++ * and only falls back to the city via the fixed {@link CityRegionTable} when the
++ * postcode is absent or in no known range.
++ *
++ * <p>Single source of truth for the mapping so the customer code's region segment
++ * and the owner's derived locality are always computed the same way.
++ */
++public final class RegionResolver {
++
++    private RegionResolver() {
++    }
++
++    /**
++     * Resolve the canonical region for the given postcode and city.
++     *
++     * @param postcode the owner's postcode, which may be {@code null} or non-numeric
++     * @param city     the owner's city, used when the postcode resolves to no region
++     * @return the region owning the postcode's range, or the city's region otherwise
++     */
++    public static String regionFor(String postcode, String city) {
++        return RegionPostcodeTable.regionFor(postcode)
++            .orElseGet(() -> CityRegionTable.regionFor(city));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 9189d5d42..fb26d2bf8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -248,7 +248,8 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew()) {
+             if (owner.getCustomerCode() == null) {
+                 owner.setCustomerCode(customerCodeGenerator.generate(
+-                    owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity())));
++                    RegionResolver.regionFor(owner.getPostcode(), owner.getCity()),
++                    owner.getTelephone(), owner.getLastName()));
+             }
+             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+             owner.setBulkSignupWarning(
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index 816b084c8..177922aef 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -15,33 +15,41 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.util.Locale;
++
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Builds an owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
+- * where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased
+- * first three letters of the last name and NNNN is a per-city 4-digit zero-padded
+- * sequence.
++ * Builds an owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where
++ * REGION is the owner's canonical region (see
++ * {@link org.springframework.samples.petclinic.model.RegionResolver}) and HASH8 is the
++ * first eight upper-case hexadecimal characters of the SHA-256 hash over the owner's
++ * normalized telephone followed by its last name. The identity is derived purely from
++ * the owner's own fields, carrying no sequence number.
+  */
+ @Component
+ public class CustomerCodeGenerator {
+ 
+-    private static final int PREFIX_LENGTH = 3;
++    private static final int HASH_LENGTH = 8;
+ 
+     /**
+      * Build the customer code for a new owner.
+      *
+-     * @param city                   the owner's city
+-     * @param lastName               the owner's last name
+-     * @param existingCityOwnerCount the number of owners already registered in that city;
+-     *                               the assigned sequence is one more than this value
+-     * @return the formatted customer code, e.g. {@code "LON-SMI-0007"}
++     * @param region             the owner's canonical region
++     * @param normalizedTelephone the owner's normalized (E.164) telephone
++     * @param lastName           the owner's last name
++     * @return the formatted customer code, e.g. {@code "NSW-1A2B3C4D"}
+      */
+-    public String generate(String city, String lastName, long existingCityOwnerCount) {
+-        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), existingCityOwnerCount + 1);
++    public String generate(String region, String normalizedTelephone, String lastName) {
++        return region + "-" + hash8(normalizedTelephone, lastName);
++    }
++
++    private String hash8(String normalizedTelephone, String lastName) {
++        String identity = safe(normalizedTelephone) + safe(lastName);
++        return Sha256.hex(identity).substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+     }
+ 
+-    private String prefix(String value) {
+-        return value.substring(0, Math.min(PREFIX_LENGTH, value.length())).toUpperCase();
++    private String safe(String value) {
++        return value == null ? "" : value;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdIdGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdIdGenerator.java
+index 9abc2dac8..bbaace361 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/HouseholdIdGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/HouseholdIdGenerator.java
+@@ -15,9 +15,6 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+ import java.util.Locale;
+ 
+ import org.springframework.stereotype.Component;
+@@ -48,7 +45,7 @@ public class HouseholdIdGenerator {
+      */
+     public String generate(String lastName, String address) {
+         String identity = normalize(lastName) + "\n" + normalize(address);
+-        return PREFIX + sha256Hex(identity).substring(0, ID_LENGTH).toUpperCase(Locale.ROOT);
++        return PREFIX + Sha256.hex(identity).substring(0, ID_LENGTH).toUpperCase(Locale.ROOT);
+     }
+ 
+     /**
+@@ -62,18 +59,4 @@ public class HouseholdIdGenerator {
+         }
+         return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+-
+-    private static String sha256Hex(String value) {
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder hex = new StringBuilder(digest.length * 2);
+-            for (byte b : digest) {
+-                hex.append(String.format("%02x", b));
+-            }
+-            return hex.toString();
+-        }
+-        catch (NoSuchAlgorithmException e) {
+-            throw new IllegalStateException("SHA-256 is required but not available", e);
+-        }
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/Sha256.java b/src/main/java/org/springframework/samples/petclinic/service/Sha256.java
+new file mode 100644
+index 000000000..daeb86522
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/Sha256.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Computes the SHA-256 digest of a string as lower-case hexadecimal. Shared by the
++ * owner identity generators so the hashing is written in exactly one place.
++ */
++final class Sha256 {
++
++    private Sha256() {
++    }
++
++    /**
++     * The lower-case hexadecimal SHA-256 digest of the UTF-8 bytes of {@code value}.
++     */
++    static String hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                hex.append(String.format("%02x", b));
++            }
++            return hex.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 is required but not available", e);
++        }
++    }
++}
