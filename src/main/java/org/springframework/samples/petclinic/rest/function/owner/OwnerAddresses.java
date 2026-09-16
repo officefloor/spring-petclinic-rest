@@ -6,9 +6,11 @@ import java.util.Map;
 /**
  * The single normalization rule for owner addresses: trim, collapse runs of whitespace to a
  * single space, upper-case, and expand common street-type abbreviations (ST->STREET, RD->ROAD,
- * AVE->AVENUE). Shared by {@link NormalizeOwnerAddress} (which stores the normalized value on the
- * request) so every address is stored, returned and compared — duplicate-household detection and
- * the shared household id (see {@link OwnerHouseholds}) — in the same form.
+ * AVE->AVENUE). Also composes the flat address from the structured {@code addressLine1}/
+ * {@code addressLine2} fields. Shared by {@link NormalizeOwnerAddress} (which stores the
+ * normalized value on the request) so every address is stored, returned and compared —
+ * duplicate-household detection and the shared household id (see {@link OwnerHouseholds}) — in
+ * the same form.
  */
 final class OwnerAddresses {
 
@@ -37,5 +39,19 @@ final class OwnerAddresses {
             normalized.append(ABBREVIATIONS.getOrDefault(word, word));
         }
         return normalized.toString();
+    }
+
+    /**
+     * The flat address composed from two already-normalized structured lines: {@code line1} on
+     * its own, or {@code line1} then a single space then {@code line2} when {@code line2} is
+     * present (non-empty). A blank second line is treated as absent.
+     */
+    static String compose(String line1, String line2) {
+        return (line2 == null || line2.isEmpty()) ? line1 : line1 + " " + line2;
+    }
+
+    /** Whether an address line was supplied, i.e. is non-null and not blank. */
+    static boolean isPresent(String line) {
+        return line != null && !line.isBlank();
     }
 }
