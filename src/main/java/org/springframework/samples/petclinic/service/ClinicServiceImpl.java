@@ -27,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -48,6 +47,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final HouseholdIdGenerator householdIdGenerator;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -56,7 +56,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator) {
+        CustomerCodeGenerator customerCodeGenerator,
+        HouseholdIdGenerator householdIdGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -64,6 +65,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.householdIdGenerator = householdIdGenerator;
     }
 
     @Override
@@ -258,21 +260,34 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException {
-        String targetAddress = normalizeIdentity(address);
-        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
-            .anyMatch(owner -> normalizeIdentity(owner.getAddress()).equals(targetAddress));
+        return !householdMembers(lastName, address).isEmpty();
+    }
+
+    @Override
+    @Transactional
+    public String shareHousehold(Owner owner) throws DataAccessException {
+        String householdId = householdIdGenerator.generate(owner.getLastName(), owner.getAddress());
+        // Backfill the existing members so the whole household carries one shared id.
+        householdMembers(owner.getLastName(), owner.getAddress()).stream()
+            .filter(member -> !householdId.equals(member.getHouseholdId()))
+            .forEach(member -> {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            });
+        owner.setHouseholdId(householdId);
+        return householdId;
     }
 
     /**
-     * Normalize a household identity value for comparison: trim, collapse each run of
-     * whitespace to a single space and lower-case, so that differences in case or
-     * spacing do not defeat the duplicate-household check.
+     * Return the existing owners that already occupy the household identified by the
+     * given last name and address, i.e. that map to the same shared household id.
      */
-    private static String normalizeIdentity(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    private List<Owner> householdMembers(String lastName, String address) {
+        String householdId = householdIdGenerator.generate(lastName, address);
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .filter(owner -> householdId.equals(
+                householdIdGenerator.generate(owner.getLastName(), owner.getAddress())))
+            .toList();
     }
 
     @Override

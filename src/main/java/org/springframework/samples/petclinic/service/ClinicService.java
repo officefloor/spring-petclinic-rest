@@ -72,6 +72,17 @@ public interface ClinicService {
 	 */
 	boolean existsOwnerByLastNameAndAddress(String lastName, String address) throws DataAccessException;
 
+	/**
+	 * Join the given (not-yet-persisted) owner to its household, assigning the stable,
+	 * shared household id to the owner and backfilling it onto any existing members
+	 * that share the same last name and address (compared case-insensitively and with
+	 * runs of whitespace collapsed to a single space).
+	 *
+	 * @param owner the owner about to be created that deliberately shares a household
+	 * @return the shared household id assigned to the owner
+	 */
+	String shareHousehold(Owner owner) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
