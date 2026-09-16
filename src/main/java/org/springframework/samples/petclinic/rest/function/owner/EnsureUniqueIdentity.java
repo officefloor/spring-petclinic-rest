@@ -33,6 +33,9 @@ public class EnsureUniqueIdentity {
             return;
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer occupies its household
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateIdentityException(householdId);
             }

@@ -34,6 +34,9 @@ public class AssignPossibleDuplicate {
             return;
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is not a duplicate to flag against
+            }
             if (isPossibleDuplicate(owner, existing)) {
                 owner.setPossibleDuplicate(true);
                 owner.setPossibleDuplicateOf(existing.getId());
