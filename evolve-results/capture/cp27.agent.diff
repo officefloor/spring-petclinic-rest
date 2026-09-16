@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6f802d842..22909a4ca 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.CityRegion;
++import org.springframework.samples.petclinic.util.ContactPreference;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ 
+ import java.util.Collection;
+@@ -25,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     // Not derivable from a single owner; the responder sets it from the daily registration count.
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+@@ -37,6 +39,16 @@ public interface OwnerMapper {
+         return CityRegion.localityOf(owner.getCity());
+     }
+ 
++    /**
++     * The owner's preferred contact channel: "EMAIL" when an email address is present,
++     * otherwise "PHONE".
++     *
++     * @see ContactPreference#of(Owner)
++     */
++    default String contactPreference(Owner owner) {
++        return ContactPreference.of(owner);
++    }
++
+     /**
+      * The owner's membership level from 1 to 3, assigned on creation.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/ContactPreference.java b/src/main/java/org/springframework/samples/petclinic/util/ContactPreference.java
+new file mode 100644
+index 000000000..ad40ea28a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/ContactPreference.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's preferred contact channel, computed on read. An owner with an email
++ * address prefers {@link #EMAIL}; otherwise the fallback is {@link #PHONE}.
++ */
++public final class ContactPreference {
++
++    /** Preference for owners that have an email address. */
++    public static final String EMAIL = "EMAIL";
++
++    /** Preference for owners without an email address. */
++    public static final String PHONE = "PHONE";
++
++    private ContactPreference() {
++    }
++
++    /** The contact preference for the given owner: {@link #EMAIL} when an email address
++     *  is present, otherwise {@link #PHONE}. */
++    public static String of(Owner owner) {
++        return (owner.getEmail() != null && !owner.getEmail().isBlank()) ? EMAIL : PHONE;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 78e3bee40..bffc6e233 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2128,6 +2128,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            contactPreference:
++              title: Contact preference
++              description: The owner's preferred contact channel, derived on read - 'EMAIL' when an email address is present, otherwise 'PHONE'.
++              type: string
++              example: EMAIL
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
