@@ -16,9 +16,11 @@
 package org.springframework.samples.petclinic.model;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * The fixed region-to-postcode-range lookup used to validate an owner's postcode.
+ * The fixed region-to-postcode-range lookup used to validate an owner's postcode and to
+ * resolve the region a postcode belongs to.
  *
  * <p>Maps each known region (see {@link CityRegionTable}) to the inclusive range of
  * 4-digit postcodes valid within it: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
@@ -33,6 +35,24 @@ public final class RegionPostcodeTable {
         "QLD", new int[] {4000, 4099});
 
     private RegionPostcodeTable() {
+    }
+
+    /**
+     * Resolve the canonical region whose postcode range contains the given postcode.
+     *
+     * @param postcode a postcode value, which may be {@code null} or non-numeric
+     * @return the region owning the range that contains the postcode, or an empty
+     *         {@link Optional} when the postcode is absent, unparseable or in no known range
+     */
+    public static Optional<String> regionFor(String postcode) {
+        if (postcode == null || !postcode.chars().allMatch(Character::isDigit) || postcode.isEmpty()) {
+            return Optional.empty();
+        }
+        int value = Integer.parseInt(postcode);
+        return RANGE_BY_REGION.entrySet().stream()
+            .filter(e -> value >= e.getValue()[0] && value <= e.getValue()[1])
+            .map(Map.Entry::getKey)
+            .findFirst();
     }
 
     /**
