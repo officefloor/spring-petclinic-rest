@@ -9,11 +9,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Flags a soft duplicate: a create that is not a hard duplicate (see
- * {@link RejectDuplicateOwnerHousehold}, which already let it through) but that shares an
- * existing owner's last name and postcode while carrying a <em>different</em> telephone. The
- * owner is still created; the response merely carries {@code possibleDuplicate}/
- * {@code possibleDuplicateOf} pointing at the matched owner.
+ * Flags a soft duplicate: a create that shares an existing owner's last name and postcode
+ * while carrying a <em>different</em> telephone. The owner is still created; the response
+ * merely carries {@code possibleDuplicate}/{@code possibleDuplicateOf} pointing at the matched
+ * owner.
  *
  * <p>A declared household member — one created with {@code sharesHousehold} — deliberately
  * shares an existing owner's last name and postcode, so it is <em>not</em> a suspected

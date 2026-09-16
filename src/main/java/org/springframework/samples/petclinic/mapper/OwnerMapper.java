@@ -44,6 +44,7 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "membershipLevelCap", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     /** The owner's canonical API path: '/api/owners/' followed by the owner's id. */
@@ -113,19 +114,23 @@ public interface OwnerMapper {
     }
 
     /** The owner's membership level from 1 to 4, derived from {@link #membershipPoints(Owner)}:
-     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. */
+     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. When the owner carries a
+     * {@code membershipLevelCap} (set at creation from their household; see
+     * {@code AssignOwnerMembershipLevelCap}) the derived level is clamped to that ceiling. */
     default int membershipLevel(Owner owner) {
         int points = membershipPoints(owner);
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
+        } else if (points <= 3) {
+            level = 2;
+        } else if (points <= 5) {
+            level = 3;
+        } else {
+            level = 4;
         }
-        if (points <= 3) {
-            return 2;
-        }
-        if (points <= 5) {
-            return 3;
-        }
-        return 4;
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
     }
 
     /** The owner's canonical region: the REGION segment of the customer code (see
@@ -181,6 +186,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
+    @Mapping(target = "membershipLevelCap", ignore = true)
     @Mapping(target = "deleted", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 

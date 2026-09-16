@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INTEGER,
   bulk_signup_warning BOOLEAN,
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 

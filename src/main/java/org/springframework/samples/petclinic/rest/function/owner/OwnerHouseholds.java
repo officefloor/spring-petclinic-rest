@@ -12,11 +12,12 @@ import org.springframework.samples.petclinic.model.Sha256;
  * postcode, compared case-insensitively with runs of whitespace collapsed to a single
  * space. The {@code householdId} is derived deterministically from those two fields, so
  * every owner with the same last name and postcode computes the same id automatically,
- * regardless of creation order or whether they opted in with {@code sharesHousehold}.
+ * regardless of creation order.
  *
- * <p>Shared by {@link RejectDuplicateOwnerHousehold} (which forbids an unopted duplicate),
- * {@link AssignOwnerHousehold} (which stamps the id) and {@link AssignOwnerHouseholdSize}
- * (which counts members), so all decide membership identically.
+ * <p>Shared by {@link AssignOwnerHousehold} (which stamps the id),
+ * {@link AssignOwnerHouseholdSize} (which counts members) and
+ * {@link AssignOwnerMembershipLevelCap} (which caps a new member's level), so all decide
+ * membership identically.
  */
 final class OwnerHouseholds {
 
