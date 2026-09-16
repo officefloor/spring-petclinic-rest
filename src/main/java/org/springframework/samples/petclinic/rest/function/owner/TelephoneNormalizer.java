@@ -1,6 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
+import org.springframework.samples.petclinic.util.Telephone;
 
 /**
  * Shared telephone normalization for the owner pipelines: convert a raw telephone to
@@ -18,9 +18,6 @@ import java.util.Map;
  * before it becomes part of the owner's identity key.
  */
 final class TelephoneNormalizer {
-
-    /** Country code -> the exact number of national digits E.164 requires for it. */
-    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
 
     private TelephoneNormalizer() {
     }
@@ -56,21 +53,10 @@ final class TelephoneNormalizer {
      *         general 8-to-15-digit E.164 shape check.
      */
     private static boolean hasValidNationalLength(String digits) {
-        String code = countryCode(digits);
+        String code = Telephone.countryCode(digits);
         if (code == null) {
             return true;
         }
-        return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
-    }
-
-    /** The longest recognised country code that {@code digits} begins with, or null. */
-    private static String countryCode(String digits) {
-        String match = null;
-        for (String code : NATIONAL_LENGTHS.keySet()) {
-            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
-                match = code;
-            }
-        }
-        return match;
+        return digits.length() - code.length() == Telephone.nationalLength(code);
     }
 }
