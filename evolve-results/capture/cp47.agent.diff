@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+index 59f8f9657..9460a6cdd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+@@ -20,9 +20,10 @@ import java.time.LocalDate;
+ /**
+  * Business-day rules for registration dates.
+  *
+- * <p>A registration date must fall on a business day: a Saturday or Sunday rolls
+- * forward to the following Monday, while a weekday is left unchanged. This is the
+- * single source of truth for that adjustment, so callers never repeat it.
++ * <p>A registration date must fall on a business day: any Saturday, Sunday, or
++ * {@link PublicHolidays public holiday} rolls forward to the next date that is none of
++ * those, while an ordinary weekday is left unchanged. This is the single source of truth
++ * for that adjustment, so callers never repeat it.
+  */
+ public final class BusinessDay {
+ 
+@@ -33,14 +34,21 @@ public final class BusinessDay {
+      * Roll a date forward onto a business day.
+      *
+      * @param date the date to adjust
+-     * @return the following Monday when {@code date} is a Saturday or Sunday, otherwise
+-     *         {@code date} unchanged
++     * @return the earliest date on or after {@code date} that is neither a weekend nor a
++     *         public holiday
+      */
+     public static LocalDate rollForward(LocalDate date) {
++        LocalDate adjusted = date;
++        while (!isBusinessDay(adjusted)) {
++            adjusted = adjusted.plusDays(1);
++        }
++        return adjusted;
++    }
++
++    private static boolean isBusinessDay(LocalDate date) {
+         return switch (date.getDayOfWeek()) {
+-            case SATURDAY -> date.plusDays(2);
+-            case SUNDAY -> date.plusDays(1);
+-            default -> date;
++            case SATURDAY, SUNDAY -> false;
++            default -> !PublicHolidays.contains(date);
+         };
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/PublicHolidays.java b/src/main/java/org/springframework/samples/petclinic/model/PublicHolidays.java
+new file mode 100644
+index 000000000..ee2429e37
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/PublicHolidays.java
+@@ -0,0 +1,48 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.util.Set;
++
++/**
++ * The fixed list of public holidays observed when adjusting registration dates.
++ *
++ * <p>This is the single source of truth for which dates count as public holidays, so
++ * {@link BusinessDay} can consult it without embedding the calendar itself.
++ */
++public final class PublicHolidays {
++
++    private static final Set<LocalDate> HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28));
++
++    private PublicHolidays() {
++    }
++
++    /**
++     * Whether {@code date} is a listed public holiday.
++     *
++     * @param date the date to test
++     * @return {@code true} when {@code date} appears in the public-holiday list
++     */
++    public static boolean contains(LocalDate date) {
++        return HOLIDAYS.contains(date);
++    }
++}
