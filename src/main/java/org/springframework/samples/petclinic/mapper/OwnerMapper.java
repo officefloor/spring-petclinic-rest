@@ -68,10 +68,10 @@ public interface OwnerMapper {
         return Math.min(level, 3);
     }
 
-    /** The owner's canonical region, derived from the city via the pinned city-to-region table,
-     * or 'UNKNOWN' when the city is not in the table. */
+    /** The owner's canonical region, derived from the postcode range when known and otherwise
+     * from the city-to-region table, or 'UNKNOWN' when neither is known. */
     default String locality(Owner owner) {
-        return Locality.regionFor(owner.getCity());
+        return Locality.regionFor(owner.getCity(), owner.getPostcode());
     }
 
     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */
