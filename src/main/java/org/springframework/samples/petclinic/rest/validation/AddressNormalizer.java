@@ -61,4 +61,20 @@ public final class AddressNormalizer {
         }
         return sb.toString();
     }
+
+    /**
+     * Composes the canonical address from its already-normalized structured lines: the first line,
+     * with a single space and the second line appended when a second line is present. Blank second
+     * lines contribute nothing.
+     *
+     * @param normalizedLine1 the normalized first address line
+     * @param normalizedLine2 the normalized second address line, or {@code null}/blank if none
+     * @return the composed address string
+     */
+    public static String compose(String normalizedLine1, String normalizedLine2) {
+        if (normalizedLine2 == null || normalizedLine2.isBlank()) {
+            return normalizedLine1;
+        }
+        return normalizedLine1 + " " + normalizedLine2;
+    }
 }

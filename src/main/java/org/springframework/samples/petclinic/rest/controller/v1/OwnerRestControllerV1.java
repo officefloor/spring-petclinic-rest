@@ -152,7 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        normalizeAddress(ownerFieldsDto);
         OwnerFieldsValidator.validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -185,6 +185,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalize the submitted address fields and resolve the effective {@code address}. The
+     * structured lines are normalized in place; when a non-blank {@code addressLine1} is supplied it
+     * takes precedence and {@code address} is composed from the normalized lines, otherwise the flat
+     * {@code address} input is normalized and kept for backward compatibility.
+     */
+    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
+        String line1 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+        ownerFieldsDto.setAddressLine1(line1);
+        ownerFieldsDto.setAddressLine2(line2);
+        if (line1 != null && !line1.isBlank()) {
+            ownerFieldsDto.setAddress(AddressNormalizer.compose(line1, line2));
+        } else {
+            ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
