@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0234de8bd..5127ba19f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -195,6 +195,18 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * The owner's primary identifier: the single value that identifies the owner across
++     * the system, currently the {@link #getCustomerCode() customer code}. Callers that
++     * need "the owner's identity" (such as the audit trail) should read this rather than
++     * the customer code directly, so that when the customer code is later unified into the
++     * member id the identifier follows in one place.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return this.customerCode;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java
+index 19d8082aa..762986df4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditLogger.java
+@@ -15,11 +15,15 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.stereotype.Component;
+ 
++import tools.jackson.databind.ObjectMapper;
++
+ /**
+  * Emits audit-trail entries for owner lifecycle events to the dedicated {@code AUDIT}
+  * logger, keeping audit side-effects out of the request-handling and persistence code.
+@@ -29,13 +33,23 @@ public class OwnerAuditLogger {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private final ObjectMapper objectMapper = new ObjectMapper();
++
++    /** Monotonically increasing sequence stamped on each create event. */
++    private final AtomicLong sequence = new AtomicLong();
++
+     /**
+-     * Record the successful registration of a new owner, capturing its id, customer
+-     * code, registration date, membership level and membership number.
++     * Record the successful registration of a new owner. Besides the human-readable audit
++     * line (capturing its id, customer code, registration date, membership level and
++     * membership number), an immutable {@link OwnerCreatedEvent} carrying the owner's
++     * current primary identifier is emitted as JSON on the same trail.
+      */
+     public void logCreated(Owner owner) {
+         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), owner.getMembershipNumber());
++        OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(),
++            owner.getId(), owner.getPrimaryIdentifier(), owner.getMembershipLevel());
++        AUDIT.info(objectMapper.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..879c6c243
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCreatedEvent.java
+@@ -0,0 +1,33 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Immutable structured audit event recording the creation of an owner. It captures the
++ * create's monotonic {@code seq}, the owner's id, its current primary identifier (the
++ * {@code customerCode}, and whatever later replaces it) and its membership level, and is
++ * serialized to JSON on the {@code AUDIT} trail alongside the human-readable audit line.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++        String event) {
++
++    /** The fixed discriminator identifying this kind of audit event. */
++    public static final String EVENT_TYPE = "OWNER_CREATED";
++
++    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++        this(seq, ownerId, customerCode, membershipLevel, EVENT_TYPE);
++    }
++}
