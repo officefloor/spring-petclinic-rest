@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java b/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
+index 5a0814ac8..673739183 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
+@@ -46,4 +46,15 @@ public final class CityRegionTable {
+     public static String regionFor(String city) {
+         return CITY_TO_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Whether the given region is a known canonical region (NSW, VIC or QLD) rather
++     * than the {@link #UNKNOWN} sentinel returned for unrecognised localities.
++     *
++     * @param region a region string, as returned by {@link #regionFor(String)}
++     * @return {@code true} for a known region, {@code false} for {@link #UNKNOWN} or null
++     */
++    public static boolean isKnown(String region) {
++        return region != null && !UNKNOWN.equals(region);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 020e3d976..5131031a3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -435,6 +435,17 @@ public class Owner extends Person {
+         return RegionResolver.regionFor(this.postcode, this.city);
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted {@code '<TIER>_<AREA>'} (see
++     * {@link OwnerSegment}): the tier from their {@link #getMembershipLevel() membership
++     * level} and the area from whether their {@link #getLocality() locality} is a known
++     * region. Derived from the owner's own fields, so it stays consistent with them.
++     */
++    @Transient
++    public String getOwnerSegment() {
++        return OwnerSegment.of(getMembershipLevel(), getLocality());
++    }
++
+     /**
+      * The owner's timezone: the IANA timezone name for their {@link #getLocality() locality},
+      * taken from the fixed region-to-timezone table (see {@link RegionTimezoneTable}), so it
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+new file mode 100644
+index 000000000..981748abe
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The marketing segment an owner falls into, formatted {@code '<TIER>_<AREA>'}. Owns the
++ * tier and area boundaries so they live in one place rather than being scattered across
++ * callers: the tier is {@code PREMIUM} at membership level 3 or more and {@code STANDARD}
++ * below it, and the area is {@code METRO} for a known region (see
++ * {@link CityRegionTable#isKnown(String)}) and {@code REGIONAL} otherwise.
++ */
++public final class OwnerSegment {
++
++    /** The lowest membership level that earns the {@code PREMIUM} tier. */
++    private static final int PREMIUM_LEVEL = 3;
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Format the {@code '<TIER>_<AREA>'} segment for an owner.
++     *
++     * @param membershipLevel the owner's membership level (1 to 4)
++     * @param locality        the owner's canonical region (as returned by
++     *                        {@link CityRegionTable#regionFor(String)})
++     * @return one of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO}
++     *         or {@code STANDARD_REGIONAL}
++     */
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= PREMIUM_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = CityRegionTable.isKnown(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fb6032365..227615256 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2287,6 +2287,21 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>': the tier is
++                'PREMIUM' at membership level 3 or more and 'STANDARD' below it, and the
++                area is 'METRO' for a known region (NSW, VIC or QLD) and 'REGIONAL'
++                otherwise.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
