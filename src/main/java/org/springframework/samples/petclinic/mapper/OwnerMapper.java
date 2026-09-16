@@ -5,7 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.CheckDigit;
-import org.springframework.samples.petclinic.model.Locality;
+import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -70,10 +70,10 @@ public interface OwnerMapper {
         return Math.min(level, 3);
     }
 
-    /** The owner's canonical region, derived from the postcode range when known and otherwise
-     * from the city-to-region table, or 'UNKNOWN' when neither is known. */
+    /** The owner's canonical region: the REGION segment of the customer code (see
+     * {@link CustomerCode}), or null when the customer code is unset. */
     default String locality(Owner owner) {
-        return Locality.regionFor(owner.getCity(), owner.getPostcode());
+        return CustomerCode.region(owner.getCustomerCode());
     }
 
     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */

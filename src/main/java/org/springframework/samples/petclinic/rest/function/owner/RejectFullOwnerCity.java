@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 /**
  * Rejects a create-owner request whose city already holds {@link #CITY_CAPACITY} or more
  * owners, responding 409. City membership is counted case-insensitively via
- * {@link OwnerCities}, the same definition {@link AssignOwnerCustomerCode} uses.
+ * {@link OwnerCities}.
  */
 public class RejectFullOwnerCity {
 
