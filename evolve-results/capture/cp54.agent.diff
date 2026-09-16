@@ -1,0 +1,113 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 50f2e4b80..c274907dc 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.BulkSignupWarningEvaluator;
++import org.springframework.samples.petclinic.rest.validation.CityCapacityWarningEvaluator;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -25,6 +26,9 @@ public abstract class OwnerMapper {
+     @Autowired
+     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+ 
++    @Autowired
++    protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
++
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     public abstract Owner toOwner(OwnerDto ownerDto);
+@@ -55,4 +59,13 @@ public abstract class OwnerMapper {
+     protected void applyBulkSignupWarning(@MappingTarget OwnerDto ownerDto) {
+         ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isWarranted());
+     }
++
++    /**
++     * Stamp the response-only capacity warning onto every mapped owner, since it reflects the
++     * current owner count of the owner's city rather than any stored owner field.
++     */
++    @AfterMapping
++    protected void applyCapacityWarning(@MappingTarget OwnerDto ownerDto) {
++        ownerDto.setCapacityWarning(this.cityCapacityWarningEvaluator.isWarranted(ownerDto.getCity()));
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java
+new file mode 100644
+index 000000000..053885aee
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java
+@@ -0,0 +1,50 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Decides whether the "capacity" warning applies to a city: it does once the city already holds
++ * at least {@value #CAPACITY_WARNING_THRESHOLD} owners but has not yet reached the hard limit of
++ * {@link CityOwnerCapacityValidator#MAX_OWNERS_PER_CITY}, signalling that the city is approaching
++ * capacity. The owners in the city are counted case-insensitively via {@link CityOwnerCounter}, the
++ * same accumulation path used to enforce the per-city cap in {@link CityOwnerCapacityValidator}.
++ */
++@Component
++public class CityCapacityWarningEvaluator {
++
++    /** The number of owners a city must reach before the capacity warning is raised. */
++    public static final long CAPACITY_WARNING_THRESHOLD = 40;
++
++    private final CityOwnerCounter cityOwnerCounter;
++
++    public CityCapacityWarningEvaluator(CityOwnerCounter cityOwnerCounter) {
++        this.cityOwnerCounter = cityOwnerCounter;
++    }
++
++    /**
++     * @param city the city to evaluate
++     * @return {@code true} when the city already holds between {@value #CAPACITY_WARNING_THRESHOLD}
++     * and {@link CityOwnerCapacityValidator#MAX_OWNERS_PER_CITY} (exclusive) owners.
++     */
++    public boolean isWarranted(String city) {
++        long count = this.cityOwnerCounter.count(city);
++        return count >= CAPACITY_WARNING_THRESHOLD
++            && count < CityOwnerCapacityValidator.MAX_OWNERS_PER_CITY;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 354b18c33..9e17b17c3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2347,6 +2347,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49
++                owners (inclusive), signalling that it is approaching the hard
++                capacity limit of 50 owners per city; false otherwise. Evaluated
++                per response.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
