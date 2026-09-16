@@ -45,12 +45,10 @@ import org.springframework.samples.petclinic.rest.validation.CustomerCodeGenerat
 import org.springframework.samples.petclinic.rest.validation.DailyRegistrationCapacityValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.MembershipNumberGenerator;
-import org.springframework.samples.petclinic.rest.validation.OwnerEmailUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdRegistrar;
-import org.springframework.samples.petclinic.rest.validation.OwnerHouseholdUniquenessValidator;
-import org.springframework.samples.petclinic.rest.validation.OwnerTelephoneUniquenessValidator;
+import org.springframework.samples.petclinic.rest.validation.OwnerIdentityUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -78,11 +76,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
-    private final OwnerTelephoneUniquenessValidator telephoneUniquenessValidator;
-
-    private final OwnerEmailUniquenessValidator emailUniquenessValidator;
-
-    private final OwnerHouseholdUniquenessValidator householdUniquenessValidator;
+    private final OwnerIdentityUniquenessValidator identityUniquenessValidator;
 
     private final OwnerHouseholdRegistrar householdRegistrar;
 
@@ -100,9 +94,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerTelephoneUniquenessValidator telephoneUniquenessValidator,
-                                 OwnerEmailUniquenessValidator emailUniquenessValidator,
-                                 OwnerHouseholdUniquenessValidator householdUniquenessValidator,
+                                 OwnerIdentityUniquenessValidator identityUniquenessValidator,
                                  OwnerHouseholdRegistrar householdRegistrar,
                                  NamesakeCounter namesakeCounter,
                                  CityOwnerCounter cityOwnerCounter,
@@ -113,9 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
-        this.telephoneUniquenessValidator = telephoneUniquenessValidator;
-        this.emailUniquenessValidator = emailUniquenessValidator;
-        this.householdUniquenessValidator = householdUniquenessValidator;
+        this.identityUniquenessValidator = identityUniquenessValidator;
         this.householdRegistrar = householdRegistrar;
         this.namesakeCounter = namesakeCounter;
         this.cityOwnerCounter = cityOwnerCounter;
@@ -161,14 +151,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
         this.dailyRegistrationCapacityValidator.validateHasCapacity(owner.getRegistrationDate());
-        this.telephoneUniquenessValidator.validateUnique(owner.getTelephone());
-        this.emailUniquenessValidator.validateUnique(owner.getEmail());
-        this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            this.householdUniquenessValidator.validateUnique(owner.getLastName(), owner.getAddress());
-        } else {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.householdRegistrar.assignHousehold(owner);
         }
+        this.identityUniquenessValidator.validateUnique(owner);
+        this.cityOwnerCapacityValidator.validateHasCapacity(owner.getCity());
         owner.setNamesakeCount(this.namesakeCounter.count(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(CustomerCodeGenerator.generate(owner.getCity(), owner.getLastName(),
             this.cityOwnerCounter.count(owner.getCity())));

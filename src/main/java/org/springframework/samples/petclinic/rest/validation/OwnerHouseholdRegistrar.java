@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
  * same stable {@link HouseholdKey#idFor(String) household id}. If no such household exists yet the
  * new owner is left without one.
  *
- * @see OwnerHouseholdUniquenessValidator
+ * @see OwnerIdentityUniquenessValidator
  */
 @Component
 public class OwnerHouseholdRegistrar {

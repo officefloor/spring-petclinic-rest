@@ -17,14 +17,15 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Thrown when an owner is created with a normalized (lower-cased) email that is already used by
- * another owner. The REST layer reports this as a 409 Conflict.
+ * Thrown when an owner is created whose whole identity key
+ * ({@code normalizedTelephone + '|' + email + '|' + householdId}) already belongs to another owner.
+ * The REST layer reports this as a 409 Conflict.
  *
- * @see OwnerEmailUniquenessValidator
+ * @see OwnerIdentityUniquenessValidator
  */
-public class DuplicateOwnerEmailException extends RuntimeException {
+public class DuplicateOwnerIdentityException extends RuntimeException {
 
-    public DuplicateOwnerEmailException(String email) {
-        super("An owner with email '" + email + "' already exists");
+    public DuplicateOwnerIdentityException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
     }
 }
