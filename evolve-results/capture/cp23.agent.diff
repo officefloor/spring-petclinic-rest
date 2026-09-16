@@ -1,0 +1,222 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c76d9f473..903440fcc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -141,6 +144,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
+      * is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
+@@ -155,12 +166,16 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "SILVER"} for a unique owner (namesake
+-     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise.
+-     * Derived from the owner's own fields, so it stays consistent with them.
++     * The owner's membership tier: {@code "GOLD"} when the owner belongs to a household
++     * of three or more members, otherwise {@code "SILVER"} for a unique owner (namesake
++     * count of zero) who has an email on file, and {@code "BRONZE"} otherwise. Derived
++     * from the owner's own fields, so it stays consistent with them.
+      */
+     @Transient
+     public String getMembershipTier() {
++        if (this.householdSize != null && this.householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+         boolean hasEmail = this.email != null && !this.email.isEmpty();
+         return unique && hasEmail ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index dcdbef18d..15abcd3d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -112,7 +112,17 @@ public interface OwnerRepository {
+     long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+ 
+     /**
+-     * Retrieve <code>Owner</code>s from the data store, returning all owners 
++     * Count the <code>Owner</code>s that already belong to the given household, i.e. that
++     * carry the given shared household id. Used to size a new owner's household when
++     * assigning its membership tier.
++     *
++     * @param householdId the shared household id to match
++     * @return the number of owners already sharing that household id
++     */
++    long countByHouseholdId(String householdId) throws DataAccessException;
++
++    /**
++     * Retrieve <code>Owner</code>s from the data store, returning all owners
+      *
+      * @return a <code>Collection</code> of <code>Owner</code>s (or an empty <code>Collection</code> if none
+      * found)
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index e6dc4b827..c031c201f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -289,4 +289,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return total == null ? 0 : total;
+     }
+ 
++    @Override
++    public long countByHouseholdId(String householdId) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("householdId", householdId);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE household_id = :householdId",
++            params,
++            Long.class);
++        return total == null ? 0 : total;
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index afa22752e..401fbc9fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -161,4 +161,12 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult();
+     }
+ 
++    @Override
++    public long countByHouseholdId(String householdId) throws DataAccessException {
++        Query query = this.em.createQuery(
++            "SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId");
++        query.setParameter("householdId", householdId);
++        return (long) query.getSingleResult();
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index ae0089707..0e572e27f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -71,4 +71,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate")
+     long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
++
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.householdId = :householdId")
++    long countByHouseholdId(@Param("householdId") String householdId);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 3339c018c..39b9be535 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -253,11 +253,24 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+             owner.setBulkSignupWarning(
+                 ownerRepository.countByRegistrationDate(owner.getRegistrationDate()) > BULK_SIGNUP_WARNING_THRESHOLD);
++            owner.setHouseholdSize(householdSizeIncluding(owner));
+         }
+         ownerRepository.save(owner);
+ 
+     }
+ 
++    /**
++     * Size of the household this new owner will belong to once persisted: the owners
++     * already sharing its household id, plus the owner itself. An owner with no shared
++     * household id stands alone, so its household size is one.
++     */
++    private int householdSizeIncluding(Owner owner) {
++        if (owner.getHouseholdId() == null) {
++            return 1;
++        }
++        return (int) ownerRepository.countByHouseholdId(owner.getHouseholdId()) + 1;
++    }
++
+     /**
+      * Count the existing owners that already share the given first and last name,
+      * compared case-insensitively. Used to stamp a new owner's namesake count at
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d8967f5d0..23881ee44 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index cd143661b..6d95fd87c 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 3c3c79dec..116a72b3d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  household_size INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9d354cb21..1f19ab04a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2b67f8aaf..37df59ab4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2146,8 +2146,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' for a unique owner (namesake
+-                count of zero) who has an email on file, and 'BRONZE' otherwise.
++                The owner's membership tier: 'GOLD' when the owner belongs to a
++                household of three or more members, otherwise 'SILVER' for a unique
++                owner (namesake count of zero) who has an email on file, and 'BRONZE'
++                otherwise.
+               type: string
+               example: 'SILVER'
+               readOnly: true
