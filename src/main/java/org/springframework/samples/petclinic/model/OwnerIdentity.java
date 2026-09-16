@@ -1,14 +1,9 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * The single definition of an owner's <em>identity key</em>: the derived value that decides
- * whether two owners are the same person for duplicate detection. It joins the normalized
- * telephone, the email (or empty) and the household id (or empty) with {@code '|'} so that a
- * duplicate is an exact match on the <em>whole</em> key — the same telephone alone, or the
- * same household alone, is not enough.
- *
- * <p>Shared by the create-owner reject step (which compares a request against existing owners)
- * and the response mapper (which returns the key), so both derive it identically.
+ * The single definition of an owner's <em>identity key</em>: a derived, human-readable
+ * fingerprint returned on the owner response. It joins the normalized telephone, the email
+ * (or empty) and the household id (or empty) with {@code '|'}.
  */
 public final class OwnerIdentity {
 
