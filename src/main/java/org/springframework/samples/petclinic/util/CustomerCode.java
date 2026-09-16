@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
 import java.util.Locale;
+import java.util.function.Predicate;
 
 /**
  * The owner's customer-code identity, formatted {@code <REGION>-<HASH8>} where REGION is
@@ -30,6 +31,26 @@ public final class CustomerCode {
      */
     public static String of(String region, String telephone, String lastName) {
         return region + SEPARATOR + hash8(telephone, lastName);
+    }
+
+    /**
+     * A customer code unique among the already-taken codes: the given code itself when it
+     * does not collide, otherwise {@code <customerCode>-<n>} with the smallest {@code n} of
+     * 2 or more that is not taken.
+     *
+     * @param customerCode the computed {@code <REGION>-<HASH8>} code
+     * @param taken        tests whether a code is already in use by an existing owner
+     */
+    public static String deduplicate(String customerCode, Predicate<String> taken) {
+        if (!taken.test(customerCode)) {
+            return customerCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = customerCode + SEPARATOR + n;
+            if (!taken.test(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /** The REGION segment of a customer code: everything before the first separator. */
