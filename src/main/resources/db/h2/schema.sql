@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   household_id VARCHAR(36),
   namesake_count INTEGER,
-  household_size INTEGER
+  household_size INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

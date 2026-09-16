@@ -50,7 +50,9 @@ CREATE TABLE owners (
   membership_number VARCHAR(30),
   household_id VARCHAR(36),
   namesake_count INTEGER,
-  household_size INTEGER
+  household_size INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
