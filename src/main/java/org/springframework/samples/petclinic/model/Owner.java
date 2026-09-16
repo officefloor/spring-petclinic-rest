@@ -165,7 +165,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY
-     * is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
+     * is the last two digits of the registration date's year (e.g. {@code "NSW-1A2B3C4D-M26"}).
      * Derived from the owner's own fields, so it stays consistent with them.
      */
     @Transient
@@ -210,15 +210,21 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region. This prefers the postcode, resolving the
-     * region whose range contains it (see {@link RegionPostcodeTable}), and only falls back
-     * to the city via the fixed {@link CityRegionTable} when the postcode is absent or in no
-     * known range. Derived from the owner's own fields, so it stays consistent with them.
+     * The owner's locality: the canonical region, taken as the region segment of the
+     * customer code (formatted {@code '<REGION>-<HASH8>'}), so the locality stays
+     * consistent with the owner's identity. When no customer code has been assigned yet
+     * it falls back to resolving the region directly from the postcode and city (see
+     * {@link RegionResolver}), the same rule the customer code itself is built from.
      */
     @Transient
     public String getLocality() {
-        return RegionPostcodeTable.regionFor(this.postcode)
-            .orElseGet(() -> CityRegionTable.regionFor(this.city));
+        if (this.customerCode != null) {
+            int separator = this.customerCode.indexOf('-');
+            if (separator > 0) {
+                return this.customerCode.substring(0, separator);
+            }
+        }
+        return RegionResolver.regionFor(this.postcode, this.city);
     }
 
     /**

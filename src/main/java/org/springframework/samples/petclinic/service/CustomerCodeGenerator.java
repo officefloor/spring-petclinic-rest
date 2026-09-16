@@ -15,33 +15,41 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.util.Locale;
+
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
- * where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased
- * first three letters of the last name and NNNN is a per-city 4-digit zero-padded
- * sequence.
+ * Builds an owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where
+ * REGION is the owner's canonical region (see
+ * {@link org.springframework.samples.petclinic.model.RegionResolver}) and HASH8 is the
+ * first eight upper-case hexadecimal characters of the SHA-256 hash over the owner's
+ * normalized telephone followed by its last name. The identity is derived purely from
+ * the owner's own fields, carrying no sequence number.
  */
 @Component
 public class CustomerCodeGenerator {
 
-    private static final int PREFIX_LENGTH = 3;
+    private static final int HASH_LENGTH = 8;
 
     /**
      * Build the customer code for a new owner.
      *
-     * @param city                   the owner's city
-     * @param lastName               the owner's last name
-     * @param existingCityOwnerCount the number of owners already registered in that city;
-     *                               the assigned sequence is one more than this value
-     * @return the formatted customer code, e.g. {@code "LON-SMI-0007"}
+     * @param region             the owner's canonical region
+     * @param normalizedTelephone the owner's normalized (E.164) telephone
+     * @param lastName           the owner's last name
+     * @return the formatted customer code, e.g. {@code "NSW-1A2B3C4D"}
      */
-    public String generate(String city, String lastName, long existingCityOwnerCount) {
-        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), existingCityOwnerCount + 1);
+    public String generate(String region, String normalizedTelephone, String lastName) {
+        return region + "-" + hash8(normalizedTelephone, lastName);
     }
 
-    private String prefix(String value) {
-        return value.substring(0, Math.min(PREFIX_LENGTH, value.length())).toUpperCase();
+    private String hash8(String normalizedTelephone, String lastName) {
+        String identity = safe(normalizedTelephone) + safe(lastName);
+        return Sha256.hex(identity).substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 }

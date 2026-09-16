@@ -248,7 +248,8 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew()) {
             if (owner.getCustomerCode() == null) {
                 owner.setCustomerCode(customerCodeGenerator.generate(
-                    owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity())));
+                    RegionResolver.regionFor(owner.getPostcode(), owner.getCity()),
+                    owner.getTelephone(), owner.getLastName()));
             }
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
             owner.setBulkSignupWarning(
