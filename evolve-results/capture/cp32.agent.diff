@@ -1,0 +1,301 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fb3d6f359..0c6447623 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -5,7 +5,7 @@ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.CheckDigit;
+-import org.springframework.samples.petclinic.model.Locality;
++import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -70,10 +70,10 @@ public interface OwnerMapper {
+         return Math.min(level, 3);
+     }
+ 
+-    /** The owner's canonical region, derived from the postcode range when known and otherwise
+-     * from the city-to-region table, or 'UNKNOWN' when neither is known. */
++    /** The owner's canonical region: the REGION segment of the customer code (see
++     * {@link CustomerCode}), or null when the customer code is unset. */
+     default String locality(Owner owner) {
+-        return Locality.regionFor(owner.getCity(), owner.getPostcode());
++        return CustomerCode.region(owner.getCustomerCode());
+     }
+ 
+     /** The owner's preferred contact channel: 'EMAIL' when an email is present, otherwise 'PHONE'. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+new file mode 100644
+index 000000000..82cce211b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The single definition of an owner's customer code: {@code <REGION>-<HASH8>} where REGION is
++ * the region derived from the owner's postcode and HASH8 is the first 8 upper-case hex
++ * characters of SHA-256 over the owner's normalized telephone plus last name. Building the
++ * code and reading its region back both live here so the format is defined in one place.
++ */
++public final class CustomerCode {
++
++    /** Number of leading hex characters of the telephone-and-name digest kept in the code. */
++    private static final int HASH_LENGTH = 8;
++
++    private static final String SEPARATOR = "-";
++
++    private CustomerCode() {
++    }
++
++    /**
++     * The customer code for {@code owner}. The owner's telephone must already be normalized
++     * (see the create pipeline), since it feeds the hash.
++     *
++     * @param owner the owner whose identity to derive
++     * @return the {@code <REGION>-<HASH8>} customer code
++     */
++    public static String forOwner(Owner owner) {
++        String region = Locality.regionForPostcode(owner.getPostcode());
++        String hash = Sha256.upperHex(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
++        return region + SEPARATOR + hash;
++    }
++
++    /**
++     * The REGION segment of a customer code.
++     *
++     * @param customerCode the customer code (may be {@code null})
++     * @return the region before the first separator, or {@code null} when the code is null
++     */
++    public static String region(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int separator = customerCode.indexOf(SEPARATOR);
++        return separator < 0 ? customerCode : customerCode.substring(0, separator);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Locality.java b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+index 40340acbc..945b5c41e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+@@ -4,8 +4,9 @@ import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ /**
+- * Pinned locality reference data. A region is derived by postcode range first, falling back
+- * to the city-to-region table; anything that matches neither resolves to {@link #UNKNOWN}.
++ * Pinned locality reference data. A region is derived from a postcode range
++ * ({@link #regionForPostcode}) or from the city-to-region table ({@link #regionFor(String)});
++ * anything unrecognised resolves to {@link #UNKNOWN}.
+  */
+ public final class Locality {
+ 
+@@ -30,20 +31,6 @@ public final class Locality {
+     private Locality() {
+     }
+ 
+-    /**
+-     * Derive the canonical region, preferring the postcode. The postcode's range decides the
+-     * region when it falls in a known range; otherwise (postcode absent or unrecognised) the
+-     * city-to-region table decides.
+-     *
+-     * @param city     the owner's city (may be {@code null})
+-     * @param postcode the owner's postcode (may be {@code null} or non-numeric)
+-     * @return the canonical region string, or {@link #UNKNOWN} when neither postcode nor city is known
+-     */
+-    public static String regionFor(String city, String postcode) {
+-        String byPostcode = regionForPostcode(postcode);
+-        return byPostcode != null ? byPostcode : regionFor(city);
+-    }
+-
+     /**
+      * Derive the canonical region for the given city.
+      *
+@@ -55,14 +42,15 @@ public final class Locality {
+     }
+ 
+     /**
+-     * The region whose pinned postcode range contains the given postcode.
++     * Derive the canonical region from the postcode alone: the region whose pinned range
++     * contains it.
+      *
+      * @param postcode the owner's postcode (may be {@code null} or non-numeric)
+-     * @return the matching region, or {@code null} when the postcode is absent, non-numeric or in no range
++     * @return the matching region, or {@link #UNKNOWN} when the postcode is absent, non-numeric or in no range
+      */
+-    private static String regionForPostcode(String postcode) {
++    public static String regionForPostcode(String postcode) {
+         if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
+-            return null;
++            return UNKNOWN;
+         }
+         int value = Integer.parseInt(postcode);
+         for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+@@ -71,7 +59,7 @@ public final class Locality {
+                 return entry.getKey();
+             }
+         }
+-        return null;
++        return UNKNOWN;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Sha256.java b/src/main/java/org/springframework/samples/petclinic/model/Sha256.java
+new file mode 100644
+index 000000000..9fe651c5f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Sha256.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.model;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * The single definition of a truncated SHA-256 fingerprint: the leading upper-case hex
++ * characters of the digest of a string. Shared by everything that fingerprints owner data
++ * (customer code hash, household id) so they hash identically.
++ */
++public final class Sha256 {
++
++    private Sha256() {
++    }
++
++    /**
++     * The first {@code length} upper-case hex characters of SHA-256 over the UTF-8 bytes of
++     * {@code value}.
++     *
++     * @param value  the string to hash
++     * @param length the number of leading hex characters to return
++     * @return the truncated upper-case hex digest
++     */
++    public static String upperHex(String value, int length) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                hex.append(String.format("%02X", b & 0xFF));
++            }
++            return hex.substring(0, length);
++        } catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 is required to derive a fingerprint", ex);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 8bb123895..3e2537bc3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -1,28 +1,18 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Locale;
+-
+ import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is
+- * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters
+- * of the last name and NNNN a per-city 4-digit zero-padded sequence equal to one more than
+- * the number of owners already in that city. Runs before the owner is saved and mutates the
+- * built {@link Owner} in place.
++ * Assigns the owner's customer code, formatted {@code <REGION>-<HASH8>} (see
++ * {@link CustomerCode}): REGION derived from the postcode and HASH8 the first 8 upper-case
++ * hex characters of SHA-256 over the normalized telephone plus last name. Runs after the
++ * telephone has been normalized and mutates the built {@link Owner} in place.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String cityPrefix = prefix(owner.getCity());
+-        String lastNamePrefix = prefix(owner.getLastName());
+-        int sequence = OwnerCities.size(ownerRepository.findAll(), owner.getCity()) + 1;
+-        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence));
+-    }
+-
+-    private static String prefix(String value) {
+-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
++    public void service(@Val Owner owner) {
++        owner.setCustomerCode(CustomerCode.forOwner(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java
+index 48480308c..7eb485170 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCities.java
+@@ -6,9 +6,8 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * The single definition of how owners are grouped by city: compared case-insensitively.
+- * Shared by {@link AssignOwnerCustomerCode} (which derives the per-city sequence) and
+- * {@link RejectFullOwnerCity} (which caps a city's population), so both count a city's
+- * members identically.
++ * Used by {@link RejectFullOwnerCity} (which caps a city's population) to count a city's
++ * members.
+  */
+ final class OwnerCities {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java
+index fc218cbcd..9fc85a182 100644
+Binary files a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java and b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHouseholds.java differ
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java
+index 51a1a1d5a..d72b68a00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectFullOwnerCity.java
+@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
+ /**
+  * Rejects a create-owner request whose city already holds {@link #CITY_CAPACITY} or more
+  * owners, responding 409. City membership is counted case-insensitively via
+- * {@link OwnerCities}, the same definition {@link AssignOwnerCustomerCode} uses.
++ * {@link OwnerCities}.
+  */
+ public class RejectFullOwnerCity {
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d3876d7c9..06d1e3000 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2100,11 +2100,11 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3 is
+-                the upper-cased first three letters of lastName and NNNN is a global 4-digit
+-                zero-padded sequence assigned at creation.
++              description: The owner's customer code, formatted '<REGION>-<HASH8>' where REGION
++                is the region derived from the postcode and HASH8 is the first 8 upper-case hex
++                characters of SHA-256 over the normalized telephone plus lastName.
+               type: string
+-              example: 'SMI-0007'
++              example: 'NSW-1A2B3C4D'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2135,7 +2135,7 @@ components:
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where
+                 YY is the last two digits of the registrationDate year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
+             membershipLevel:
+               title: Membership level
+@@ -2150,9 +2150,9 @@ components:
+               readOnly: true
+             locality:
+               title: Locality
+-              description: The owner's canonical region, derived from the city via the pinned
+-                city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN'
+-                when the city is not in the table.
++              description: The owner's canonical region — the REGION segment of the customerCode,
++                derived from the postcode range (2000-2099->NSW, 3000-3099->VIC, 4000-4099->QLD),
++                or 'UNKNOWN' when the postcode is absent or in no known range.
+               type: string
+               example: 'NSW'
+               readOnly: true
