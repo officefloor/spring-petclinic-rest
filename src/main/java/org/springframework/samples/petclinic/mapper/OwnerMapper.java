@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.model.Timezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerRisk;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -42,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's canonical API path - '/api/owners/' followed by the owner's id;
@@ -69,6 +71,15 @@ public interface OwnerMapper {
         }
         AgeBand ageBand = AgeBand.forOwner(owner);
         return ageBand == null ? null : ageBand.name();
+    }
+
+    /** Whether any risk signal is present for the owner - see {@link OwnerRisk}; null when there
+     * is no owner. */
+    default Boolean riskFlag(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return OwnerRisk.flag(owner);
     }
 
     /** The owner's derived duplicate-detection key - see {@link OwnerIdentities}. */
