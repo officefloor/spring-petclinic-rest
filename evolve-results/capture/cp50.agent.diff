@@ -1,0 +1,260 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index df22d304c..93bd4eee6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -96,6 +96,9 @@ public class Owner extends Person {
+     @Column(name = "deleted")
+     private Boolean deleted = Boolean.FALSE;
+ 
++    @Column(name = "idempotency_key")
++    private String idempotencyKey;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -248,6 +251,19 @@ public class Owner extends Person {
+         return Boolean.TRUE.equals(this.deleted);
+     }
+ 
++    /**
++     * The {@code Idempotency-Key} header value under which this owner was created, or
++     * {@code null} when the create request carried no key. Lets a repeated create with an
++     * already-seen key return this owner instead of creating a duplicate.
++     */
++    public String getIdempotencyKey() {
++        return this.idempotencyKey;
++    }
++
++    public void setIdempotencyKey(String idempotencyKey) {
++        this.idempotencyKey = idempotencyKey;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerIdempotencyKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerIdempotencyKey.java
+new file mode 100644
+index 000000000..28891b14f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerIdempotencyKey.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Stamps the create request's {@code Idempotency-Key} onto the new owner before it is saved, so a
++ * later create with the same key is recognised as a repeat (see {@link CheckIdempotencyKey}). Does
++ * nothing when the request carried no key.
++ */
++public class AssignOwnerIdempotencyKey {
++
++    public void service(@Val Owner owner, @Val RequestIdempotencyKey idempotencyKey) {
++        if (OwnerIdempotency.hasKey(idempotencyKey.value())) {
++            owner.setIdempotencyKey(idempotencyKey.value());
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotencyKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotencyKey.java
+new file mode 100644
+index 000000000..3be4b494c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotencyKey.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.section.clazz.Flow;
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.web.HttpHeaderParameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * First step of create-owner: honours the optional {@code Idempotency-Key} header. When a key has
++ * already been seen (see {@link OwnerIdempotency}), responds {@code 200} with the originally
++ * created owner and short-circuits — no duplicate is created. Otherwise it publishes the key for
++ * {@link AssignOwnerIdempotencyKey} and takes the {@code create} flow into the normal pipeline.
++ *
++ * <p>Runs before the body is bound, so it never consumes the request body; the {@code create}
++ * branch leads to {@link NormalizeOwnerAddress}, which binds it once for the pipeline.
++ */
++public class CheckIdempotencyKey {
++
++    @FunctionalInterface
++    public interface CreateFlow {
++        void create();
++    }
++
++    public void service(@HttpHeaderParameter("Idempotency-Key") String key,
++            OwnerRepository ownerRepository, OwnerMapper ownerMapper,
++            Out<RequestIdempotencyKey> idempotencyKey, ObjectResponse<OwnerDto> response,
++            @Flow("create") CreateFlow create) {
++        Owner existing = OwnerIdempotency.findByKey(ownerRepository, key);
++        if (existing != null) {
++            response.send(ownerMapper.toOwnerDto(existing));
++            return;
++        }
++        idempotencyKey.set(new RequestIdempotencyKey(key));
++        create.create();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdempotency.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdempotency.java
+new file mode 100644
+index 000000000..5861b024e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdempotency.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Shared idempotency lookup for the create-owner pipeline. An {@code Idempotency-Key} header
++ * ties a create request to the owner it produced, so a retried create with an already-seen key
++ * returns the original owner instead of creating a duplicate.
++ *
++ * <p>A missing or blank key means "no idempotency", and a soft-deleted owner never counts as the
++ * original — matching how the rest of the pipeline (see {@link RequireUniqueIdentity}) ignores
++ * deleted owners.
++ */
++final class OwnerIdempotency {
++
++    private OwnerIdempotency() {
++    }
++
++    /** Whether {@code key} is a usable idempotency key (present and non-blank). */
++    static boolean hasKey(String key) {
++        return key != null && !key.isBlank();
++    }
++
++    /**
++     * The owner previously created under {@code key}, or {@code null} when the key is absent or no
++     * live owner carries it.
++     */
++    static Owner findByKey(OwnerRepository ownerRepository, String key) {
++        if (!hasKey(key)) {
++            return null;
++        }
++        for (Owner existing : ownerRepository.findAll()) {
++            if (!existing.isDeleted() && key.equals(existing.getIdempotencyKey())) {
++                return existing;
++            }
++        }
++        return null;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequestIdempotencyKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequestIdempotencyKey.java
+new file mode 100644
+index 000000000..f9a863618
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequestIdempotencyKey.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * The create request's {@code Idempotency-Key} header value, published by
++ * {@link CheckIdempotencyKey} so {@link AssignOwnerIdempotencyKey} can stamp it onto the new
++ * owner. A distinct type (rather than a bare {@code String}) keeps it unambiguous as a pipeline
++ * variable and carries {@code null} when the header was absent.
++ */
++final class RequestIdempotencyKey {
++
++    private final String value;
++
++    RequestIdempotencyKey(String value) {
++        this.value = value;
++    }
++
++    /** The header value, or {@code null} when the request carried no key. */
++    String value() {
++        return this.value;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ef7217144..aac0a18f7 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN DEFAULT FALSE
++  deleted BOOLEAN DEFAULT FALSE,
++  idempotency_key VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0b6e20f6f..df629c801 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,7 +56,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN DEFAULT FALSE
++  deleted BOOLEAN DEFAULT FALSE,
++  idempotency_key VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 5ca2cf6eb..ebe82b6a1 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE,
++  idempotency_key VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index eb3f3b839..4a03f5ba7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+-                                      deleted BOOLEAN DEFAULT FALSE
++                                      deleted BOOLEAN DEFAULT FALSE,
++                                      idempotency_key VARCHAR(255)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 061bf072d..2955f3a11 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,12 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++checkIdempotency:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
++  govern: [ transaction ]
++  outputs:
++    create: normalizeAddress
++
+ normalizeAddress:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
+   govern: [ transaction ]
+@@ -94,6 +100,11 @@ assignNamesakeCount:
+ flagPossibleDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagOwnerPossibleDuplicate
+   govern: [ transaction ]
++  next: assignIdempotencyKey
++
++assignIdempotencyKey:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerIdempotencyKey
++  govern: [ transaction ]
+   next: save
+ 
+ save:
