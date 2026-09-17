@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ec91f208a..45cbb3b1e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -40,7 +40,7 @@ public interface OwnerMapper {
+     }
+ 
+     /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
+-     *  last two digits of the registration date's year (e.g. 'SMI-0007-M26'). Absent until both the
++     *  last two digits of the registration date's year (e.g. 'SPR-SMI-0007-M26'). Absent until both the
+      *  customer code and registration date have been assigned. */
+     default String membershipNumber(Owner owner) {
+         String customerCode = owner.getCustomerCode();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index c1f275769..c64c7973d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -6,16 +6,23 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Step of {@code POST /api/owners}: assigns the new owner's {@code customerCode}. The
+- * sequence number is one more than the current number of owners, so it is computed on the
+- * built owner before {@link SaveOwner} persists it (the owner is not yet counted). The code
+- * is persisted with the row and returned on later reads.
++ * sequence number is one more than the owners already in the new owner's city (see
++ * {@link SameCity}), so it is computed on the built owner before {@link SaveOwner} persists
++ * it (the owner is not yet counted). The code is persisted with the row and returned on
++ * later reads.
+  *
+- * @see CustomerCode for the {@code <LAST3>-<NNNN>} format.
++ * @see CustomerCode for the {@code <CITY3>-<LAST3>-<NNNN>} format.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        owner.setCustomerCode(CustomerCode.format(owner.getLastName(), sequence));
++        int inCity = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (SameCity.matches(existing, owner.getCity())) {
++                inCity++;
++            }
++        }
++        int sequence = inCity + 1;
++        owner.setCustomerCode(CustomerCode.format(owner.getCity(), owner.getLastName(), sequence));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+index 9ba9c4572..975ab51e8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -3,12 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.Locale;
+ 
+ /**
+- * The single definition of an owner's customer code: {@code <LAST3>-<NNNN>}, where LAST3 is
+- * the upper-cased first three letters of the last name (fewer when the name is shorter) and
+- * NNNN is a 4-digit zero-padded sequence number.
++ * The single definition of an owner's customer code: {@code <CITY3>-<LAST3>-<NNNN>}, where
++ * CITY3 is the upper-cased first three letters of the city and LAST3 the upper-cased first
++ * three letters of the last name (fewer when either is shorter), and NNNN is a 4-digit
++ * zero-padded sequence number.
+  *
+  * <p>Formatting only; the sequence value is supplied by the caller
+- * ({@link AssignOwnerCustomerCode} derives it from the current number of owners).
++ * ({@link AssignOwnerCustomerCode} derives it from the owners already in the city).
+  */
+ final class CustomerCode {
+ 
+@@ -18,12 +19,15 @@ final class CustomerCode {
+     }
+ 
+     /**
+-     * Format {@code lastName} and {@code sequence} into a customer code, e.g.
+-     * {@code format("Smithers", 7)} yields {@code "SMI-0007"}.
++     * Format {@code city}, {@code lastName} and {@code sequence} into a customer code, e.g.
++     * {@code format("Springfield", "Smithers", 7)} yields {@code "SPR-SMI-0007"}.
+      */
+-    static String format(String lastName, int sequence) {
+-        String prefix = lastName.substring(0, Math.min(PREFIX_LENGTH, lastName.length()))
+-                .toUpperCase(Locale.ROOT);
+-        return String.format("%s-%04d", prefix, sequence);
++    static String format(String city, String lastName, int sequence) {
++        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
++    }
++
++    /** The upper-cased first three letters of {@code value} (fewer when it is shorter). */
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(PREFIX_LENGTH, value.length())).toUpperCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SameCity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SameCity.java
+new file mode 100644
+index 000000000..3103c02cc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SameCity.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The single definition of two owners being in the same city, compared case-insensitively
++ * (leading and trailing whitespace ignored). Provides the membership test used to count how
++ * many existing owners already live in a new owner's city.
++ *
++ * @see AssignOwnerCustomerCode derives the per-city sequence of the customer code.
++ */
++final class SameCity {
++
++    private SameCity() {
++    }
++
++    /** Whether {@code owner} is in {@code city}. */
++    static boolean matches(Owner owner, String city) {
++        return normalize(owner.getCity()).equals(normalize(city));
++    }
++
++    /** A city name trimmed and lower-cased, so comparison is case-insensitive. */
++    private static String normalize(String value) {
++        return value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
++    }
++}
