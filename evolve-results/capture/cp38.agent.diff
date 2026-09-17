@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java
+new file mode 100644
+index 000000000..8632fa319
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Decides whether an email address belongs to a disposable-email provider.
++ *
++ * <p>Disposable providers hand out throwaway inboxes, so owners registered with one cannot be
++ * reliably contacted. An email is rejected when the domain after its {@code '@'} is on a small,
++ * fixed blocklist ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). The
++ * domain is compared case-insensitively; an absent email carries no domain and is accepted.
++ */
++public final class DisposableEmailRule {
++
++    /** Lower-cased domains whose emails are rejected as disposable. */
++    private static final Set<String> BLOCKED_DOMAINS = Set.of(
++        "mailinator.com",
++        "tempmail.com",
++        "guerrillamail.com");
++
++    private DisposableEmailRule() {
++    }
++
++    /**
++     * Whether {@code email} uses a disposable-email domain.
++     *
++     * @param email the owner's email, possibly {@code null} or without an {@code '@'}
++     * @return {@code true} when the domain following the last {@code '@'} is on the blocklist,
++     *         {@code false} otherwise (including for a {@code null} email or one with no domain)
++     */
++    public static boolean isDisposable(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        return BLOCKED_DOMAINS.contains(domain);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java
+new file mode 100644
+index 000000000..669b916cb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++public class DisposableEmailValidator implements ConstraintValidator<NotDisposableEmail, String> {
++
++    @Override
++    public boolean isValid(String email, ConstraintValidatorContext context) {
++        return !DisposableEmailRule.isDisposable(email);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/NotDisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/NotDisposableEmail.java
+new file mode 100644
+index 000000000..04f0211de
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/NotDisposableEmail.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Validates that an email address does not use a disposable-email domain (see
++ * {@link DisposableEmailRule}). An absent email is accepted.
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = DisposableEmailValidator.class)
++@Documented
++public @interface NotDisposableEmail {
++
++    String message() default "Email must not use a disposable-email domain";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 913cc2704..66fbae4ef 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2044,7 +2044,7 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: 'george.franklin@example.com'
+-          x-field-extra-annotation: "@jakarta.validation.constraints.Email"
++          x-field-extra-annotation: "@jakarta.validation.constraints.Email @org.springframework.samples.petclinic.rest.validation.NotDisposableEmail"
+         postcode:
+           title: Postcode
+           description: >-
