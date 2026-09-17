@@ -12,7 +12,8 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * household, so the request is a household duplicate and is rejected with a 409 via
  * {@link DuplicateIdentityException}. Setting {@code sharesHousehold} acknowledges the shared
  * household and bypasses this block, so the new owner is created as a declared household member. Runs
- * after {@link AssignHousehold}, so the built owner already carries its household id.
+ * after {@link AssignHousehold}, so the built owner already carries its household id. Soft-deleted
+ * owners are ignored, so a match that has since been deleted no longer blocks the create.
  */
 public class EnsureUniqueIdentity {
 
@@ -23,7 +24,7 @@ public class EnsureUniqueIdentity {
         }
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
-            if (HouseholdNormalizer.belongsTo(existing, householdId)) {
+            if (existing.isActive() && HouseholdNormalizer.belongsTo(existing, householdId)) {
                 throw new DuplicateIdentityException(householdId);
             }
         }

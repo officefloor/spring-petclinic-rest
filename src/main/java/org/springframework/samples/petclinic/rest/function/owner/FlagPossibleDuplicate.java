@@ -15,7 +15,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * request set {@code sharesHousehold}) is never flagged — deliberately sharing a household is not a
  * suspected duplicate. When nothing matches, {@code possibleDuplicate} is false and
  * {@code possibleDuplicateOf} stays absent. Runs before {@link SaveOwner}, so the new owner is not
- * yet persisted and is never matched against itself. Mutates the built {@link Owner} in place.
+ * yet persisted and is never matched against itself. Soft-deleted owners are ignored, mirroring the
+ * duplicate block in {@link EnsureUniqueIdentity}. Mutates the built {@link Owner} in place.
  */
 public class FlagPossibleDuplicate {
 
@@ -27,7 +28,7 @@ public class FlagPossibleDuplicate {
         String householdId = owner.getHouseholdId();
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
-            if (HouseholdNormalizer.belongsTo(existing, householdId)
+            if (existing.isActive() && HouseholdNormalizer.belongsTo(existing, householdId)
                     && !owner.getTelephone().equals(existing.getTelephone())) {
                 if (match == null || existing.getId() < match.getId()) {
                     match = existing;

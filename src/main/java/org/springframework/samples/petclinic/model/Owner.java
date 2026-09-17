@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -228,6 +231,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /** Whether this owner is still active, i.e. has not been soft-deleted. */
+    public boolean isActive() {
+        return !Boolean.TRUE.equals(this.deleted);
     }
 
     protected Set<Pet> getPetsInternal() {
