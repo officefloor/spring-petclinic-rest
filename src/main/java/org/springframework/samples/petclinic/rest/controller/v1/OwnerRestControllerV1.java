@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
@@ -77,6 +78,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CustomerCodeGenerator customerCodeGenerator;
 
+    private final HouseholdRegistrar householdRegistrar;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -85,7 +88,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 CustomerCodeGenerator customerCodeGenerator) {
+                                 CustomerCodeGenerator customerCodeGenerator,
+                                 HouseholdRegistrar householdRegistrar) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -95,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.householdRegistrar = householdRegistrar;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -137,6 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(
             this.customerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            this.householdRegistrar.register(owner);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

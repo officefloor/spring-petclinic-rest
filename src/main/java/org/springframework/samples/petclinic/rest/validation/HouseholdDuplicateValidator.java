@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Locale;
-
-import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -35,8 +32,11 @@ public class HouseholdDuplicateValidator {
 
     private final ClinicService clinicService;
 
-    public HouseholdDuplicateValidator(ClinicService clinicService) {
+    private final HouseholdKey householdKey;
+
+    public HouseholdDuplicateValidator(ClinicService clinicService, HouseholdKey householdKey) {
         this.clinicService = clinicService;
+        this.householdKey = householdKey;
     }
 
     /**
@@ -48,22 +48,12 @@ public class HouseholdDuplicateValidator {
         if (Boolean.TRUE.equals(owner.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String key = this.householdKey.of(owner.getLastName(), owner.getAddress());
         boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
-                && normalize(existing.getAddress()).equals(address));
+            .anyMatch(existing -> this.householdKey.of(existing.getLastName(), existing.getAddress())
+                .equals(key));
         if (duplicate) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
-    }
-
-    /** Lower-case and collapse runs of whitespace to a single space so trivial formatting
-     *  differences do not defeat the household comparison. */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
