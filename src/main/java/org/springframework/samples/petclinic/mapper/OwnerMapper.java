@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
@@ -23,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name for display as 'LastName, FirstName'. */
@@ -58,6 +60,12 @@ public interface OwnerMapper {
         String email = owner.getEmail();
         boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isBlank();
         return silver ? "SILVER" : "BRONZE";
+    }
+
+    /** The owner's region, derived from its city via the fixed city-to-region table
+     *  (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
+    default String locality(Owner owner) {
+        return Locality.region(owner.getCity());
     }
 
     Owner toOwner(OwnerDto ownerDto);
