@@ -259,6 +259,18 @@ public class ClinicServiceImpl implements ClinicService {
         return !findHouseholdMembers(lastName, address).isEmpty();
     }
 
+    /**
+     * The maximum number of owners allowed in a single city; once a city holds this many
+     * owners it is considered at capacity and no further owners may be created there.
+     */
+    static final long CITY_CAPACITY = 50;
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityAtCapacity(String city) throws DataAccessException {
+        return ownerRepository.countByCityIgnoreCase(city) >= CITY_CAPACITY;
+    }
+
     @Override
     @Transactional(readOnly = true)
     public long countNamesakes(String firstName, String lastName) throws DataAccessException {

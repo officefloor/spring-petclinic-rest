@@ -59,6 +59,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
+	boolean isCityAtCapacity(String city) throws DataAccessException;
 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 	String assignHousehold(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
