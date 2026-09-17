@@ -189,6 +189,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's preferred contact channel, derived from the owner's own fields:
+     * {@code "EMAIL"} when an {@link #getEmail() email} is present, otherwise {@code "PHONE"}.
+     */
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
      * Resolve the effective registration date before persisting: default it to the server's
      * current date when none was supplied, then roll it forward off weekends so a newly
      * registered owner always has a business-day registration date. Every value derived from it
