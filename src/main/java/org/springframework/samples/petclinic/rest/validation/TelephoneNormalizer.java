@@ -20,25 +20,42 @@ import org.springframework.samples.petclinic.rest.error.InvalidTelephoneExceptio
 import org.springframework.stereotype.Component;
 
 /**
- * Normalizes a submitted telephone number by removing every non-digit character and requiring the
- * result to be exactly ten digits.
+ * Normalizes a submitted telephone number into E.164 form. A leading '+' and country code are kept
+ * when present; otherwise the default country code '+61' is assumed and a single leading '0' is
+ * dropped from the national digits. Spaces, dashes and brackets are stripped, and the result must
+ * hold between 8 and 15 digits after the '+'.
  */
 @Component
 public class TelephoneNormalizer {
 
-    private static final int REQUIRED_DIGITS = 10;
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** Characters used only for human-readable grouping and removed before parsing. */
+    private static final String FORMATTING_CHARS = "[\\s\\-()\\[\\]]";
+
+    private static final int MIN_DIGITS = 8;
+    private static final int MAX_DIGITS = 15;
 
     /**
      * @param telephone the raw, possibly formatted telephone number
-     * @return the telephone reduced to its digits
-     * @throws InvalidTelephoneException if the value does not hold exactly ten digits once every
-     * non-digit character has been removed
+     * @return the telephone in E.164 form (a '+' followed by 8 to 15 digits)
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public String normalize(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != REQUIRED_DIGITS) {
+        if (telephone == null) {
+            throw new InvalidTelephoneException(null);
+        }
+        String cleaned = telephone.trim().replaceAll(FORMATTING_CHARS, "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = DEFAULT_COUNTRY_CODE + national;
+        }
+        if (!digits.matches("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}")) {
             throw new InvalidTelephoneException(telephone);
         }
-        return digits;
+        return "+" + digits;
     }
 }

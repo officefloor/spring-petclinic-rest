@@ -17,16 +17,16 @@
 package org.springframework.samples.petclinic.rest.error;
 
 /**
- * Thrown when a submitted telephone number does not contain exactly ten digits once every
- * non-digit character has been stripped. Carries the originally submitted value so the REST
- * layer can report what was rejected.
+ * Thrown when a submitted telephone number cannot be normalized into a valid E.164 number (a '+'
+ * followed by 8 to 15 digits). Carries the originally submitted value so the REST layer can report
+ * what was rejected.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     private final String rejectedValue;
 
     public InvalidTelephoneException(String rejectedValue) {
-        super("Telephone must contain exactly 10 digits after removing non-digit characters, but was: "
+        super("Telephone must form a valid E.164 number (a '+' followed by 8 to 15 digits), but was: "
             + rejectedValue);
         this.rejectedValue = rejectedValue;
     }
