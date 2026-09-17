@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3af7bff66..4ee7dcf8f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Pattern;
+ 
+ import java.time.LocalDate;
+ import java.time.Period;
++import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -245,10 +246,23 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership level, a number from 1 to 3 derived from the owner's own fields:
+-     * every owner starts at level 1, gains a level when an email address is present, and gains a
+-     * further level when this owner has no namesakes ({@code namesakeCount} is 0). The result is
+-     * capped at 3; level 4 is reserved for tenure.
++     * The owner's tenure in whole days: the number of days elapsed from the
++     * {@link #getRegistrationDate() registration date} up to today. A freshly registered owner has
++     * a tenure of zero. Absent until a registration date is present.
++     */
++    public Long getTenureDays() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++    }
++
++    /**
++     * The owner's membership level, a number from 1 to 4 derived from the owner's own fields:
++     * every owner starts at level 1, gains a level when an email address is present, gains a
++     * further level when this owner has no namesakes ({@code namesakeCount} is 0), and gains a
++     * final level once the owner's {@link #getTenureDays() tenure} exceeds 365 days. Because a
++     * newly created owner has zero tenure, a new owner never exceeds level 3.
+      */
+     public Integer getMembershipLevel() {
+         int level = 1;
+@@ -260,7 +274,12 @@ public class Owner extends Person {
+         if (unique) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        Long tenureDays = getTenureDays();
++        boolean tenured = tenureDays != null && tenureDays > 365;
++        if (tenured) {
++            level++;
++        }
++        return Math.min(level, 4);
+     }
+ 
+     /**
