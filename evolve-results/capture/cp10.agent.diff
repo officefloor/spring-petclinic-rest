@@ -1,0 +1,170 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
+new file mode 100644
+index 000000000..66bbc88d2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create request would place a new owner in a household (same last name and address) that
++ * an existing owner already occupies, without acknowledging it via {@code sharesHousehold}. Carries the
++ * offending last name and address so {@link DuplicateHouseholdExceptionHandler} can report them.
++ * Handled as a 409.
++ */
++public class DuplicateHouseholdException extends Exception {
++
++    private final String lastName;
++
++    private final String address;
++
++    public DuplicateHouseholdException(String lastName, String address) {
++        super("Another owner already shares this household: " + lastName + ", " + address);
++        this.lastName = lastName;
++        this.address = address;
++    }
++
++    public String getLastName() {
++        return lastName;
++    }
++
++    public String getAddress() {
++        return address;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
+new file mode 100644
+index 000000000..b3452a80f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateHouseholdExceptionHandler {
++
++    public void handle(@Parameter DuplicateHouseholdException ex,
++            ObjectResponse<ResponseEntity<String>> response) {
++        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+new file mode 100644
+index 000000000..34507a55d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
++
++/**
++ * Rejects a create request that would place the new owner in a household already occupied by an
++ * existing owner — same last name and address, compared case-insensitively with whitespace collapsed
++ * (see {@link HouseholdNormalizer}). A collision is a 409 via {@link DuplicateHouseholdException},
++ * unless the request sets {@code sharesHousehold} true to acknowledge the shared household.
++ */
++public class EnsureUniqueHousehold {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateHouseholdException {
++        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
++            return;
++        }
++        String key = HouseholdNormalizer.key(request.getLastName(), request.getAddress());
++        for (Owner owner : ownerRepository.findAll()) {
++            if (key.equals(HouseholdNormalizer.key(owner.getLastName(), owner.getAddress()))) {
++                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
++            }
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdNormalizer.java
+new file mode 100644
+index 000000000..2046abceb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdNormalizer.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Canonical household comparison shared by the create pipeline: {@link EnsureUniqueHousehold} uses it
++ * to decide whether two owners share a household. A household is identified by last name plus address,
++ * each compared case-insensitively with runs of whitespace collapsed to a single space and outer
++ * whitespace trimmed. Not a pipeline step, so it is free to expose plain helpers.
++ */
++public final class HouseholdNormalizer {
++
++    private HouseholdNormalizer() {
++    }
++
++    /**
++     * Builds the canonical household key for an owner from its last name and address. Two owners
++     * belong to the same household when their keys are equal. Either field may be {@code null}, which
++     * normalizes to an empty token.
++     */
++    public static String key(String lastName, String address) {
++        // '\n' separates the fields so that a boundary shift (e.g. "ab"+"c" vs "a"+"bc") cannot forge a
++        // collision; it never appears in a normalized value.
++        return normalize(lastName) + "\n" + normalize(address);
++    }
++
++    /** Lower-cases and collapses whitespace to single spaces, trimming the ends; {@code null} → "". */
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
+new file mode 100644
+index 000000000..0e5367031
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 771d127e0..8472bc41d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -11,6 +11,10 @@ normalizeTelephone:
+ 
+ ensureUniqueTelephone:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueTelephone
++  next: ensureUniqueHousehold
++
++ensureUniqueHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueHousehold
+   next: normalizeEmail
+ 
+ normalizeEmail:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c55b9e1b0..9ff00ca19 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2049,6 +2049,15 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Acknowledgement that this owner deliberately shares a household with an
++            existing owner. When true, the create request is allowed even though
++            another owner has the same last name and address; otherwise such a
++            request is rejected as a conflict. Not persisted.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
