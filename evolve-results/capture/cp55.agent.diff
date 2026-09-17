@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9f9ccc9e3..90ea612ff 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -19,6 +19,7 @@ import org.springframework.samples.petclinic.util.Locality;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.MembershipNumber;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
++import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
+ 
+ import java.util.Collection;
+@@ -41,6 +42,7 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -146,6 +148,20 @@ public interface OwnerMapper {
+         return level != null && cap != null ? Math.min(level, cap) : level;
+     }
+ 
++    /**
++     * The owner's segment (see {@link OwnerSegment}), formatted '&lt;TIER&gt;_&lt;AREA&gt;': TIER is
++     * 'PREMIUM' when the owner's {@link #membershipLevel(Owner) membership level} is 3 or more, else
++     * 'STANDARD'; AREA is 'METRO' when the owner's {@link #locality(Owner) locality} is a known region
++     * (NSW, VIC or QLD), else 'REGIONAL'.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        OwnerSegment segment = OwnerSegment.of(membershipLevel(owner), locality(owner));
++        return OwnerDto.OwnerSegmentEnum.valueOf(segment.name());
++    }
++
+     /**
+      * The owner's preferred contact channel (see {@link ContactPreference}): 'EMAIL' when an email
+      * address is present, otherwise 'PHONE'.
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java b/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
+index 310b58e1e..12c0cab8c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
+@@ -28,4 +28,12 @@ public final class CityRegion {
+     public static String of(String city) {
+         return city == null ? UNKNOWN : CITY_REGIONS.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Whether {@code region} is a known canonical region (e.g. NSW, VIC or QLD), i.e. neither
++     * {@code null} nor {@link #UNKNOWN}.
++     */
++    public static boolean isKnown(String region) {
++        return region != null && !UNKNOWN.equals(region);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 000000000..4a9f577a5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * An owner's segment, formatted {@code <TIER>_<AREA>}. The tier is {@code PREMIUM} when the owner's
++ * membership level (see {@link MembershipLevel}) is 3 or more, otherwise {@code STANDARD}. The area
++ * is {@code METRO} when the owner's locality is a known region (see {@link CityRegion#isKnown(String)}),
++ * otherwise {@code REGIONAL}. Composed at response time from the already-derived membership level and
++ * locality, so it is derived rather than stored on the entity.
++ */
++public enum OwnerSegment {
++
++    PREMIUM_METRO,
++
++    PREMIUM_REGIONAL,
++
++    STANDARD_METRO,
++
++    STANDARD_REGIONAL;
++
++    /** The smallest membership level that counts as the {@code PREMIUM} tier. */
++    private static final int PREMIUM_LEVEL = 3;
++
++    /**
++     * The segment for the given {@code membershipLevel} (see {@link MembershipLevel}) and
++     * {@code locality} (a region, see {@link CityRegion}). A {@code null} membership level is treated
++     * as below the premium threshold.
++     */
++    public static OwnerSegment of(Integer membershipLevel, String locality) {
++        boolean premium = membershipLevel != null && membershipLevel >= PREMIUM_LEVEL;
++        boolean metro = CityRegion.isKnown(locality);
++        if (premium) {
++            return metro ? PREMIUM_METRO : PREMIUM_REGIONAL;
++        }
++        return metro ? STANDARD_METRO : STANDARD_REGIONAL;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d891ec39f..d6e30c3b7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2277,6 +2277,20 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                'membershipLevel' is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                owner's 'locality' is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
