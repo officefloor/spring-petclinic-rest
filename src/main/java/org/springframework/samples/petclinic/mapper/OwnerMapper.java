@@ -29,6 +29,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -44,6 +45,15 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's canonical API path - '/api/owners/' followed by the owner's id;
+     * null until the owner has been assigned an id. */
+    default String selfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /** The owner's stored E.164 telephone formatted for humans - see {@link OwnerTelephones#toDisplay}. */
     default String telephoneDisplay(Owner owner) {

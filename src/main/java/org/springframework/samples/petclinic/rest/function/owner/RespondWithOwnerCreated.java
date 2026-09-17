@@ -14,6 +14,6 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+        response.send(ResponseEntity.created(URI.create(dto.getSelfLink())).body(dto));
     }
 }
