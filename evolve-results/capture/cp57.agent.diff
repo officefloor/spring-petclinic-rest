@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2826383e5..d2b913c0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerato
+ import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
+ import org.springframework.samples.petclinic.rest.assignment.MembershipLevelCapCalculator;
+ import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
++import org.springframework.samples.petclinic.rest.notification.WelcomeNotifier;
+ import org.springframework.samples.petclinic.rest.idempotency.OwnerCreationIdempotencyStore;
+ import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
+ import org.springframework.samples.petclinic.rest.validation.AddressFormNormalizer;
+@@ -116,6 +117,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerAuditLogger ownerAuditLogger;
+ 
++    private final WelcomeNotifier welcomeNotifier;
++
+     private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+ 
+     private final OwnerCreationIdempotencyStore idempotencyStore;
+@@ -141,6 +144,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  HouseholdSizeCalculator householdSizeCalculator,
+                                  MembershipLevelCapCalculator membershipLevelCapCalculator,
+                                  OwnerAuditLogger ownerAuditLogger,
++                                 WelcomeNotifier welcomeNotifier,
+                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
+                                  OwnerCreationIdempotencyStore idempotencyStore) {
+         this.clinicService = clinicService;
+@@ -164,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.householdSizeCalculator = householdSizeCalculator;
+         this.membershipLevelCapCalculator = membershipLevelCapCalculator;
+         this.ownerAuditLogger = ownerAuditLogger;
++        this.welcomeNotifier = welcomeNotifier;
+         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+         this.idempotencyStore = idempotencyStore;
+     }
+@@ -262,6 +267,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipLevelCap(this.membershipLevelCapCalculator.cap(owner));
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditLogger.created(owner);
++        this.welcomeNotifier.welcome(owner);
+         return owner;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/notification/WelcomeNotifier.java b/src/main/java/org/springframework/samples/petclinic/rest/notification/WelcomeNotifier.java
+new file mode 100644
+index 000000000..9abb77d71
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/notification/WelcomeNotifier.java
+@@ -0,0 +1,41 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.notification;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Enqueues welcome notifications for newly created owners on the dedicated {@code NOTIFY}
++ * logger, keeping notification side-effects out of the request-handling flow.
++ */
++@Component
++public class WelcomeNotifier {
++
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
++    /**
++     * Enqueue a welcome notification for an owner that has just been created.
++     *
++     * @param owner the owner that has just been persisted
++     */
++    public void welcome(Owner owner) {
++        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
++    }
++}
