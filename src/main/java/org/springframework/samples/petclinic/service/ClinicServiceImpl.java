@@ -24,13 +24,13 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDay;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -262,19 +262,20 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException {
         String identityKey = owner.getIdentityKey();
-        // Owners can only share an identity key when they share a (normalized) telephone, so it is
-        // enough to compare against the owners already stored with the same telephone. Soft-deleted
-        // owners are ignored, so a duplicate is allowed once the only match has been deleted.
+        // The identity key hashes the (normalized) telephone among its inputs, so owners can only
+        // share a key when they share a telephone; it is therefore enough to compare against the
+        // owners already stored with the same telephone. Soft-deleted owners are ignored, so a
+        // duplicate is allowed once the only match has been deleted.
         return ownerRepository.findByTelephone(owner.getTelephone()).stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**
-     * Find an existing owner that this (not yet persisted) owner soft-matches: one sharing its last
-     * name (ignoring case) and postcode but carrying a different telephone, so it is not a hard
-     * identity-key duplicate. Returns the matching owner's id (the lowest when several match), or
-     * {@code null} when the owner has no postcode or nothing matches.
+     * Find an existing owner that this (not yet persisted) owner soft-matches: one sharing its
+     * postcode and the {@linkplain Soundex Soundex} code of its last name but carrying a different
+     * identity key, so it is not a hard identity-key duplicate. Returns the matching owner's id (the
+     * lowest when several match), or {@code null} when the owner has no postcode or nothing matches.
      */
     @Override
     @Transactional(readOnly = true)
@@ -282,10 +283,12 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getPostcode() == null) {
             return null;
         }
-        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+        String lastNameSoundex = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
+        return ownerRepository.findByPostcode(owner.getPostcode()).stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .filter(existing -> lastNameSoundex.equals(Soundex.encode(existing.getLastName())))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);

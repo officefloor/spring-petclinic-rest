@@ -175,6 +175,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public Collection<Owner> findByPostcode(String postcode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("postcode", postcode);
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE postcode = :postcode",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+        loadOwnersPetsAndVisits(owners);
+        return owners;
+    }
+
+    @Override
     public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
         Map<String, Object> params = new HashMap<>();
         params.put("customerCode", customerCode);

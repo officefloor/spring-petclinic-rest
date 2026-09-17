@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.BusinessDay;
 import org.springframework.samples.petclinic.util.FiscalYear;
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -307,18 +309,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived key that uniquely identifies an owner for duplicate detection: the normalized
-     * telephone, the (lower-cased) email or the empty string when absent, and the household id or
-     * the empty string when the owner belongs to no household, joined with {@code '|'}. Two owners
-     * are duplicates only when their whole identity keys are equal, so members of the same household
-     * with different telephones (or an owner reusing only a telephone or only an email) remain
-     * distinct.
+     * The derived key that uniquely identifies an owner for duplicate detection: the SHA-256 hex of
+     * the normalized telephone, the (lower-cased) email or the empty string when absent, and the
+     * {@linkplain Soundex Soundex} code of the last name, joined with {@code '|'}. Two owners are
+     * duplicates only when their whole identity keys are equal, so owners sharing a last name (or a
+     * similar-sounding one) and postcode but carrying different telephones remain distinct.
      */
     @Transient
     public String getIdentityKey() {
-        return this.telephone + "|"
+        return Sha256.hex(this.telephone + "|"
             + (this.email == null ? "" : this.email) + "|"
-            + (this.householdId == null ? "" : this.householdId);
+            + Soundex.encode(this.lastName));
     }
 
     /**

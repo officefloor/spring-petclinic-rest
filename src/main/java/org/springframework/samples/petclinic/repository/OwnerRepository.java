@@ -77,6 +77,16 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Retrieve all <code>Owner</code>s stored with the given postcode. Used to find the candidates
+     * for a soft (possible-duplicate) match, since a soft match requires a shared postcode.
+     *
+     * @param postcode the postcode to look for
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByPostcode(String postcode) throws DataAccessException;
+
+    /**
      * Report whether any <code>Owner</code> is already stored with the given customer code. Used to
      * detect customer-code collisions so a unique code can be assigned.
      *

@@ -69,5 +69,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByTelephone(String telephone);
 
     @Override
+    Collection<Owner> findByPostcode(String postcode);
+
+    @Override
     boolean existsByCustomerCode(String customerCode);
 }

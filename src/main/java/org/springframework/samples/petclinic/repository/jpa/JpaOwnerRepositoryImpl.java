@@ -106,6 +106,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public Collection<Owner> findByPostcode(String postcode) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.postcode = :postcode");
+        query.setParameter("postcode", postcode);
+        return query.getResultList();
+    }
+
+    @Override
     public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
         Query query = this.em.createQuery(
             "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");

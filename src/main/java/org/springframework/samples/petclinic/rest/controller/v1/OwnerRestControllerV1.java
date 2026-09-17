@@ -132,11 +132,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // Assign the deterministic householdId (derived from last name and postcode) so owners in
-        // the same household share it automatically and it forms part of the identity key.
+        // the same household share it automatically.
         this.clinicService.assignHousehold(owner);
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // Reject an exact duplicate: an owner whose whole identity key (normalized telephone,
-        // email and householdId) already exists.
+        // email and the Soundex of the last name) already exists.
         if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -147,8 +147,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipLevel(this.clinicService.resolveCappedMembershipLevel(owner));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
         // Flag a soft match unless this is a declared household member (a declared member is not a
-        // suspected duplicate): an existing owner sharing this owner's last name and postcode with a
-        // different telephone.
+        // suspected duplicate): an existing owner sharing this owner's postcode and last-name Soundex
+        // with a different identity key.
         if (!declaredHouseholdMember) {
             Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
             owner.setPossibleDuplicate(possibleDuplicateOf != null);
