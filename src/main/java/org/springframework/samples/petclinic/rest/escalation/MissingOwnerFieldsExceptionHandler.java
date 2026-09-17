@@ -12,6 +12,6 @@ public class MissingOwnerFieldsExceptionHandler {
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
         detail.setProperty("errors", ex.getFields());
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+        response.send(ProblemDetails.asResponse(detail));
     }
 }

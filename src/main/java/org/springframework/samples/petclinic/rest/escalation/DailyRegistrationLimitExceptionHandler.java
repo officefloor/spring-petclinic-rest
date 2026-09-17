@@ -10,7 +10,6 @@ public class DailyRegistrationLimitExceptionHandler {
 
     public void handle(@Parameter DailyRegistrationLimitException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
-        response.send(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
     }
 }

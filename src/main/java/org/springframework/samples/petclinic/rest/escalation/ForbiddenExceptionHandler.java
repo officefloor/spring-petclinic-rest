@@ -17,8 +17,7 @@ public class ForbiddenExceptionHandler {
 
     public void handle(@Parameter AuthorizationDeniedException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.FORBIDDEN,
-                "You do not have permission to access this resource");
-        response.send(ResponseEntity.status(HttpStatus.FORBIDDEN).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.FORBIDDEN,
+                "You do not have permission to access this resource"));
     }
 }

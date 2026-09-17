@@ -11,8 +11,7 @@ public class DataIntegrityViolationExceptionHandler {
 
     public void handle(@Parameter DataIntegrityViolationException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.NOT_FOUND,
-                "The requested resource could not be processed due to a data constraint violation");
-        response.send(ResponseEntity.status(HttpStatus.NOT_FOUND).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.NOT_FOUND,
+                "The requested resource could not be processed due to a data constraint violation"));
     }
 }

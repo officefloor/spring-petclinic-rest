@@ -10,7 +10,6 @@ public class CityAtCapacityExceptionHandler {
 
     public void handle(@Parameter CityAtCapacityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.CONFLICT, ex.getMessage()));
     }
 }

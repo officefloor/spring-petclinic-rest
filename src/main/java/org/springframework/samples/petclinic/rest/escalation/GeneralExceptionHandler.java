@@ -14,8 +14,7 @@ public class GeneralExceptionHandler {
 
     public void handle(@Parameter Exception ex, ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         logger.error("Unexpected error", ex);
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred while processing your request");
-        response.send(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred while processing your request"));
     }
 }

@@ -10,7 +10,6 @@ public class DisposableEmailExceptionHandler {
 
     public void handle(@Parameter DisposableEmailException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
-        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+        response.send(ProblemDetails.respond(ex, HttpStatus.BAD_REQUEST, ex.getMessage()));
     }
 }
