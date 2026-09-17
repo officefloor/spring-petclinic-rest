@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitVali
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
+import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -75,6 +76,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerRequestValidator ownerRequestValidator;
 
+    private final PostcodeValidator postcodeValidator;
+
     private final DuplicateOwnerValidator duplicateOwnerValidator;
 
     private final CityOwnerLimitValidator cityOwnerLimitValidator;
@@ -102,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerRequestValidator ownerRequestValidator,
+                                 PostcodeValidator postcodeValidator,
                                  DuplicateOwnerValidator duplicateOwnerValidator,
                                  CityOwnerLimitValidator cityOwnerLimitValidator,
                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
@@ -118,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerRequestValidator = ownerRequestValidator;
+        this.postcodeValidator = postcodeValidator;
         this.duplicateOwnerValidator = duplicateOwnerValidator;
         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
@@ -171,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         this.ownerRequestValidator.validate(ownerFieldsDto);
+        this.postcodeValidator.validate(ownerFieldsDto);
         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
         this.dailyOwnerLimitValidator.validate(ownerFieldsDto.getRegistrationDate());
         ownerFieldsDto.setTelephone(this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));

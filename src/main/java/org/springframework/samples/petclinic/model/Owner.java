@@ -51,6 +51,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -99,6 +102,14 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public LocalDate getRegistrationDate() {
@@ -189,18 +200,11 @@ public class Owner extends Person {
     }
 
     /**
-     * Fixed city-to-region lookup backing {@link #getLocality()}. Cities absent from this
-     * table derive the locality {@code "UNKNOWN"}.
-     */
-    private static final Map<String, String> CITY_REGIONS =
-        Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
      * The owner's locality: the canonical region derived from {@link #getCity() city} using the
-     * fixed {@link #CITY_REGIONS} table, or {@code "UNKNOWN"} when the city is not in the table.
+     * fixed {@link Regions} table, or {@code "UNKNOWN"} when the city is not in the table.
      */
     public String getLocality() {
-        return CITY_REGIONS.getOrDefault(this.city, "UNKNOWN");
+        return Regions.regionOf(this.city);
     }
 
     /**
