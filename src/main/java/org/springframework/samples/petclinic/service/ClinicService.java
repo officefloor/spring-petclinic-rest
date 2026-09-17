@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -63,6 +64,7 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 	long countOwnersInCity(String city) throws DataAccessException;
+	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
