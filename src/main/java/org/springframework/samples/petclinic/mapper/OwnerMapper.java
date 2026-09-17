@@ -23,6 +23,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -45,6 +46,14 @@ public interface OwnerMapper {
     /** The upper-cased first letter of {@code name} followed by a dot. */
     private String initial(String name) {
         return Character.toUpperCase(name.charAt(0)) + ".";
+    }
+
+    /**
+     * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
+     * last two digits of the registration date year, e.g. {@code "SMI-0007-M26"}.
+     */
+    default String formatMembershipNumber(Owner owner) {
+        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
     @Mapping(target = "id", ignore = true)
