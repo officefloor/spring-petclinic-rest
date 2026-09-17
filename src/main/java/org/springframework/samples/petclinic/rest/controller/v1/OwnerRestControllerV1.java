@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitVali
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
+import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateDetector;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DuplicateOwnerValidator duplicateOwnerValidator;
 
+    private final PossibleDuplicateDetector possibleDuplicateDetector;
+
     private final CityOwnerLimitValidator cityOwnerLimitValidator;
 
     private final DailyOwnerLimitValidator dailyOwnerLimitValidator;
@@ -110,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerRequestValidator ownerRequestValidator,
                                  PostcodeValidator postcodeValidator,
                                  DuplicateOwnerValidator duplicateOwnerValidator,
+                                 PossibleDuplicateDetector possibleDuplicateDetector,
                                  CityOwnerLimitValidator cityOwnerLimitValidator,
                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
                                  RegistrationDateValidator registrationDateValidator,
@@ -128,6 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerRequestValidator = ownerRequestValidator;
         this.postcodeValidator = postcodeValidator;
         this.duplicateOwnerValidator = duplicateOwnerValidator;
+        this.possibleDuplicateDetector = possibleDuplicateDetector;
         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
         this.registrationDateValidator = registrationDateValidator;
@@ -195,6 +200,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 this.householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
         }
         this.duplicateOwnerValidator.validate(owner);
+        Integer possibleDuplicateOf = this.possibleDuplicateDetector.findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setCustomerCode(
             this.customerCodeGenerator.generate(owner.getPostcode(), owner.getTelephone(),
                 owner.getLastName()));
