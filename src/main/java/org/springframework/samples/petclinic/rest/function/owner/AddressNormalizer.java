@@ -14,6 +14,12 @@ import java.util.Map;
  * uses it to store the canonical value and {@link ValidateOwnerFields} uses it to reject an
  * address that is blank once normalized. The transformation is idempotent, so normalizing an
  * already-normalized address is a no-op.
+ *
+ * <p>An address may arrive in two forms: the structured {@code addressLine1} /
+ * {@code addressLine2} fields (preferred) or the flat {@code address} field (kept for
+ * backward compatibility). {@link #line1} picks the structured first line when present,
+ * falling back to the flat address, and {@link #compose} builds the single canonical address
+ * string returned to clients.
  */
 final class AddressNormalizer {
 
@@ -42,5 +48,29 @@ final class AddressNormalizer {
             sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return sb.toString();
+    }
+
+    /**
+     * The effective first address line: the structured {@code addressLine1} when non-blank,
+     * otherwise the flat {@code address}. This is the single point that prefers the structured
+     * form over the flat one.
+     */
+    static String line1(String addressLine1, String flatAddress) {
+        return isBlank(addressLine1) ? flatAddress : addressLine1;
+    }
+
+    /**
+     * The composed, canonical address: the normalized {@code addressLine1}, with a single space
+     * and the normalized {@code addressLine2} appended when {@code addressLine2} is present.
+     */
+    static String compose(String addressLine1, String addressLine2) {
+        String first = normalize(addressLine1);
+        String second = normalize(addressLine2);
+        return second.isEmpty() ? first : first + " " + second;
+    }
+
+    /** Whether {@code value} is null or contains only whitespace. */
+    static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

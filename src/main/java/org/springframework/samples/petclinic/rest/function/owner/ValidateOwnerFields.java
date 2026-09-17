@@ -20,15 +20,24 @@ public class ValidateOwnerFields {
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
-        // Address is required once normalized, so a value that is blank after
-        // normalization (e.g. only whitespace) is rejected here rather than stored empty.
-        require("address", AddressNormalizer.normalize(request.getAddress()), missing);
+        requireAddress(request, missing);
         require("city", request.getCity(), missing);
         require("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
         validated.set(request);
+    }
+
+    // An address must be supplied in one form or the other: a non-blank structured
+    // 'addressLine1', or the flat 'address' (blank once normalized, e.g. only whitespace,
+    // does not count).
+    private static void requireAddress(OwnerFieldsDto request, List<String> missing) {
+        boolean structured = !AddressNormalizer.isBlank(request.getAddressLine1());
+        boolean flat = !AddressNormalizer.normalize(request.getAddress()).isEmpty();
+        if (!structured && !flat) {
+            missing.add("address");
+        }
     }
 
     private static void require(String name, String value, List<String> missing) {
