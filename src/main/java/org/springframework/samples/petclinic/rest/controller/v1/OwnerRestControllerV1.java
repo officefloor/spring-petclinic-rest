@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.IdempotencyStore;
 import org.springframework.samples.petclinic.service.OwnerAuditor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -43,6 +44,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -64,16 +66,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditor ownerAuditor;
 
+    private final IdempotencyStore idempotencyStore;
+
+    private final HttpServletRequest request;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerAuditor ownerAuditor) {
+                                 OwnerAuditor ownerAuditor,
+                                 IdempotencyStore idempotencyStore,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerAuditor = ownerAuditor;
+        this.idempotencyStore = idempotencyStore;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -104,6 +114,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = this.request.getHeader("Idempotency-Key");
+        ResponseEntity<OwnerDto> replay = replayCreatedOwner(idempotencyKey);
+        if (replay != null) {
+            return replay;
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.isRegistrationDateInFuture(owner.getRegistrationDate())) {
@@ -144,10 +159,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.auditCreated(owner);
+        this.idempotencyStore.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * If {@code idempotencyKey} was already used to create an owner, return that original owner
+     * with {@code 200 OK} so a repeated create replays the first result instead of creating a
+     * duplicate. Returns {@code null} when there is nothing to replay (no key, or key unseen).
+     */
+    private ResponseEntity<OwnerDto> replayCreatedOwner(String idempotencyKey) {
+        return this.idempotencyStore.find(idempotencyKey)
+            .map(this.clinicService::findOwnerById)
+            .map(owner -> new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK))
+            .orElse(null);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
