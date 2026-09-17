@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerat
 import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
+import org.springframework.samples.petclinic.rest.idempotency.OwnerCreationIdempotencyStore;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.AddressFormNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
@@ -57,6 +59,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.util.StringUtils;
 
 import jakarta.transaction.Transactional;
 
@@ -109,6 +112,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
 
+    private final OwnerCreationIdempotencyStore idempotencyStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -128,7 +133,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdIdGenerator householdIdGenerator,
                                  HouseholdSizeCalculator householdSizeCalculator,
                                  OwnerAuditLogger ownerAuditLogger,
-                                 BulkSignupWarningEvaluator bulkSignupWarningEvaluator) {
+                                 BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
+                                 OwnerCreationIdempotencyStore idempotencyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -149,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdSizeCalculator = householdSizeCalculator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+        this.idempotencyStore = idempotencyStore;
     }
 
     /**
@@ -188,7 +195,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        if (StringUtils.hasText(idempotencyKey)) {
+            Optional<Owner> alreadyCreated = this.idempotencyStore.find(idempotencyKey)
+                .map(this.clinicService::findOwnerById);
+            if (alreadyCreated.isPresent()) {
+                return new ResponseEntity<>(toOwnerDto(alreadyCreated.get()), HttpStatus.OK);
+            }
+        }
+        Owner owner = createOwner(ownerFieldsDto);
+        if (StringUtils.hasText(idempotencyKey)) {
+            this.idempotencyStore.remember(idempotencyKey, owner.getId());
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(UriComponentsBuilder.newInstance()
+            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        return new ResponseEntity<>(toOwnerDto(owner), headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Apply every create-time rule to the submitted fields and persist the resulting owner.
+     */
+    private Owner createOwner(OwnerFieldsDto ownerFieldsDto) {
         this.addressFormNormalizer.normalize(ownerFieldsDto);
         this.ownerRequestValidator.validate(ownerFieldsDto);
         this.postcodeValidator.validate(ownerFieldsDto);
@@ -198,7 +226,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.disposableEmailDomainValidator.validate(ownerFieldsDto.getEmail());
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // The householdId is deterministic from (lastName, postcode), so every owner carries the
@@ -224,10 +251,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(this.householdSizeCalculator.size(owner));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.created(owner);
-        OwnerDto ownerDto = toOwnerDto(owner);
-        headers.setLocation(UriComponentsBuilder.newInstance()
-            .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return owner;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
