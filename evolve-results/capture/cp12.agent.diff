@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0f234b176..3b9a36914 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+@@ -50,8 +51,18 @@ public interface OwnerMapper {
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
++    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Store the address in its canonical form (trimmed, whitespace-collapsed, upper-cased and with
++     * common abbreviations expanded), so it is always persisted, returned and compared normalized.
++     */
++    @Named("normalizeAddress")
++    default String normalizeAddress(String address) {
++        return AddressNormalizer.normalize(address);
++    }
++
+     /**
+      * Store the telephone in E.164 form. Validation ({@code @Telephone}) has already guaranteed
+      * the raw value normalizes to a valid E.164 number.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+new file mode 100644
+index 000000000..d24f408d6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Normalizes a postal address to its canonical stored form.
++ *
++ * <p>The raw value is trimmed, its internal runs of whitespace are collapsed to a single space
++ * and it is upper-cased. Each resulting word is then checked against a small table of common
++ * abbreviations ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}) and expanded to
++ * its full form. Applying this consistently means addresses that differ only in casing, spacing or
++ * abbreviation are stored — and therefore compared — as the same value.
++ */
++public final class AddressNormalizer {
++
++    /** Whole-word abbreviations expanded to their full form (keyed by their upper-cased token). */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Convert a raw address to its normalized form.
++     *
++     * @param address the raw address, possibly {@code null} or containing irregular whitespace,
++     *                casing or abbreviations
++     * @return the normalized address (trimmed, whitespace-collapsed, upper-cased and with common
++     *         abbreviations expanded), or {@code null} when the input is {@code null}
++     */
++    public static String normalize(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] words = collapsed.split(" ");
++        for (int i = 0; i < words.length; i++) {
++            words[i] = ABBREVIATIONS.getOrDefault(words[i], words[i]);
++        }
++        return String.join(" ", words);
++    }
++}
