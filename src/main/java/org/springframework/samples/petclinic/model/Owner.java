@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -56,6 +57,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -118,6 +122,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
@@ -230,6 +242,23 @@ public class Owner extends Person {
     public String getContactPreference() {
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * The owner's age band, derived from the owner's own fields: the whole years between
+     * {@link #getBirthDate() birth date} and {@link #getRegistrationDate() registration date}
+     * classified as {@code "MINOR"} (under 18), {@code "ADULT"} (18-64) or {@code "SENIOR"}
+     * (65 or older). Absent until a birth date and a registration date are both present.
+     */
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        return age < 65 ? "ADULT" : "SENIOR";
     }
 
     /**
