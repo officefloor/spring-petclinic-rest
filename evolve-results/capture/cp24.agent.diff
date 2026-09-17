@@ -1,0 +1,346 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 74da6a76a..d325c04fe 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,7 +23,6 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -53,21 +52,6 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+     }
+ 
+-    /** The owner's membership tier: 'GOLD' when the owner's household (owners sharing the same
+-     *  householdId) has 3 or more members; otherwise 'SILVER' when the owner has no namesakes
+-     *  (namesakeCount is 0) and an email on file, and 'BRONZE' otherwise. The household size is
+-     *  supplied on the owner (see {@code Owner.getHouseholdSize()}) by the responding step. */
+-    default String membershipTier(Owner owner) {
+-        Integer householdSize = owner.getHouseholdSize();
+-        if (householdSize != null && householdSize >= 3) {
+-            return "GOLD";
+-        }
+-        Integer namesakeCount = owner.getNamesakeCount();
+-        String email = owner.getEmail();
+-        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isBlank();
+-        return silver ? "SILVER" : "BRONZE";
+-    }
+-
+     /** The owner's region, derived from its city via the fixed city-to-region table
+      *  (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
+     default String locality(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 068085b4f..22d87a334 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,9 +65,8 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
+-    /** Number of owners in this owner's household, derived at response time (not persisted). */
+-    @Transient
+-    private Integer householdSize;
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
+ 
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+@@ -136,12 +135,12 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
+-    public Integer getHouseholdSize() {
+-        return this.householdSize;
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
+     }
+ 
+-    public void setHouseholdSize(Integer householdSize) {
+-        this.householdSize = householdSize;
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+new file mode 100644
+index 000000000..760d8c7e4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Step of {@code POST /api/owners}: assigns the new owner's {@code membershipLevel} — a
++ * number from 1 to 3 fixed at registration. It starts at 1, gains a level when the owner
++ * has an email on file and another when the owner has no namesakes ({@code namesakeCount}
++ * is 0), and is capped at 3 (level 4 is reserved for tenure). It runs after
++ * {@link CountNamesakes} so the namesake count is known, and before {@link SaveOwner}
++ * persists the owner and {@link AuditOwnerCreated} records the level. The value is stored
++ * with the row and returned unchanged on later reads.
++ */
++public class AssignMembershipLevel {
++
++    /** The highest level the registration rules award; level 4 is reserved for tenure. */
++    private static final int MAX_LEVEL = 3;
++
++    public void service(@Val Owner owner) {
++        int level = 1;
++        String email = owner.getEmail();
++        if (email != null && !email.isBlank()) {
++            level++;
++        }
++        Integer namesakeCount = owner.getNamesakeCount();
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        owner.setMembershipLevel(Math.min(level, MAX_LEVEL));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 52a131516..1f46b0685 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -9,15 +9,15 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Step of {@code POST /api/owners}: emits the create audit trail. Runs after
+  * {@link SaveOwner} so the owner carries its persisted id, logging one line to the
+- * dedicated {@code AUDIT} logger with the owner id, {@code customerCode} and
+- * {@code registrationDate}.
++ * dedicated {@code AUDIT} logger with the owner id, {@code customerCode},
++ * {@code registrationDate} and {@code membershipLevel}.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index 10d1cbbf3..b7098a76d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -1,12 +1,10 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.nio.charset.StandardCharsets;
+-import java.util.Collection;
+ import java.util.Locale;
+ import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * The single definition of an owner "household": owners sharing the same last name and
+@@ -34,28 +32,6 @@ final class Household {
+                 && AddressNormalizer.normalize(address).equals(AddressNormalizer.normalize(owner.getAddress()));
+     }
+ 
+-    /** The number of owners in {@code owner}'s household — those sharing its {@code householdId} — or
+-     *  1 when it belongs to no shared household (its {@code householdId} is unset). */
+-    static int size(Owner owner, OwnerRepository ownerRepository) {
+-        return size(owner, ownerRepository.findAll());
+-    }
+-
+-    /** As {@link #size(Owner, OwnerRepository)} but counting within an already-loaded set of owners,
+-     *  so a whole page can be sized from a single query. */
+-    static int size(Owner owner, Collection<Owner> owners) {
+-        String householdId = owner.getHouseholdId();
+-        if (householdId == null) {
+-            return 1;
+-        }
+-        int count = 0;
+-        for (Owner other : owners) {
+-            if (householdId.equals(other.getHouseholdId())) {
+-                count++;
+-            }
+-        }
+-        return count;
+-    }
+-
+     /** The stable identifier shared by every owner in the household keyed by {@code lastName} and {@code address}. */
+     static String id(String lastName, String address) {
+         String key = normalizeName(lastName) + "\n" + AddressNormalizer.normalize(address);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+index aacef85dc..c9b3a3f1e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+@@ -23,8 +23,6 @@ public class ListOwners {
+             response.send(ResponseEntity.notFound().build());
+             return;
+         }
+-        Collection<Owner> allOwners = ownerRepository.findAll();
+-        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
+         response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+index a0ef92cb4..31398909f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+@@ -1,7 +1,5 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Collection;
+-
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+@@ -25,8 +23,6 @@ public class ListOwnersPage {
+         Page<Owner> owners = lastName != null
+                 ? ownerRepository.findByLastName(lastName, pageable)
+                 : ownerRepository.findAll(pageable);
+-        Collection<Owner> allOwners = ownerRepository.findAll();
+-        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
+         response.send(ownerMapper.toOwnerPageDto(owners));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 48c515e57..d75a085d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -11,7 +11,6 @@ public class RespondWithOwner {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+-        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(dto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 095bb4019..ff1e4b9c0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,7 +14,6 @@ public class RespondWithOwnerCreated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index 77cdf8871..c1da85ae3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -13,7 +13,6 @@ public class RespondWithOwnerUpdated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..d8263167c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_level INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..c1d820d10 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_level INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 8e38077df..24eee03d5 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  membership_level INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..15a9c177f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_level INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 46e445cc0..7c675a2eb 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -64,6 +64,11 @@ assignCustomerCode:
+ countNamesakes:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountNamesakes
+   govern: [ transaction ]
++  next: assignMembershipLevel
++
++assignMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 53a6a9723..e196d5aee 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,15 +2126,18 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household (owners
+-                sharing the same householdId) has 3 or more members; otherwise 'SILVER'
+-                when the owner has no namesakes (namesakeCount is 0) and an email on file,
+-                and 'BRONZE' otherwise.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 fixed at registration:
++                it starts at 1, gains a level when the owner has an email on file and
++                another when the owner has no namesakes (namesakeCount is 0), and is
++                capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
