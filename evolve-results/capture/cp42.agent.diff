@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 607c1a6a4..6a6a84c34 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
++import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
+ import org.springframework.samples.petclinic.util.Luhn;
+ 
+ import java.util.Collection;
+@@ -27,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
++    @Mapping(target = "timezone", expression = "java(resolveTimezone(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(resolveMembershipPoints(owner))")
+@@ -76,6 +78,15 @@ public interface OwnerMapper {
+         return customerCode.substring(0, customerCode.indexOf('-'));
+     }
+ 
++    /**
++     * Derives the owner's IANA timezone from its {@linkplain #resolveLocality(Owner) locality}
++     * (canonical region) via the fixed region-to-timezone table, or {@code null} when the locality
++     * has no known timezone.
++     */
++    default String resolveTimezone(Owner owner) {
++        return TimezoneResolver.resolve(resolveLocality(owner));
++    }
++
+     /**
+      * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
+      * last two digits of the registration date year, e.g. {@code "LON-SMI-0007-M26"}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TimezoneResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TimezoneResolver.java
+new file mode 100644
+index 000000000..5bd39c5ff
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TimezoneResolver.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++/**
++ * Maps a canonical region to its IANA timezone name via a fixed region-to-timezone table
++ * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++ * {@code QLD -> Australia/Brisbane}).
++ *
++ * <p>The region is the locality derived by {@link LocalityResolver}; any region not present in the
++ * table — including {@link LocalityResolver#UNKNOWN} and a {@code null} region — has no known
++ * timezone.
++ */
++public final class TimezoneResolver {
++
++    /** Region -> IANA timezone; anything not listed has no known timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    private TimezoneResolver() {
++    }
++
++    /**
++     * Resolve the IANA timezone name for a region.
++     *
++     * @param region the canonical region, possibly {@code null}
++     * @return the region's IANA timezone name, or {@code null} when the region has no known timezone
++     */
++    public static String resolve(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 59b61f00e..1b5cb2fd7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2120,6 +2120,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The IANA timezone name derived from the locality via the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or absent when the locality has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: Stable code formatted '<REGION>-<HASH8>', where REGION is the region derived from the postcode and HASH8 is the first eight upper-case hex characters of the SHA-256 of the normalized telephone concatenated with the last name.
