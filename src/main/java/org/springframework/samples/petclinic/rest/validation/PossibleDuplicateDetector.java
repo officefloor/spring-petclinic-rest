@@ -50,6 +50,7 @@ public class PossibleDuplicateDetector {
             return null;
         }
         return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> existing.getLastName().equalsIgnoreCase(owner.getLastName()))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))

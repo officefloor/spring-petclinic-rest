@@ -47,6 +47,7 @@ public class DuplicateOwnerValidator {
     public void validate(Owner owner) {
         String key = this.householdKey.of(owner.getLastName(), owner.getPostcode());
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> key.equals(
                 this.householdKey.of(existing.getLastName(), existing.getPostcode())));
         if (duplicate) {
