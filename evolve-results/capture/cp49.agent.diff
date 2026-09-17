@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0f741098f..096a9ec23 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+@@ -45,6 +46,15 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /** The owner's canonical API path - '/api/owners/' followed by the owner's id;
++     * null until the owner has been assigned an id. */
++    default String selfLink(Owner owner) {
++        if (owner == null || owner.getId() == null) {
++            return null;
++        }
++        return "/api/owners/" + owner.getId();
++    }
++
+     /** The owner's stored E.164 telephone formatted for humans - see {@link OwnerTelephones#toDisplay}. */
+     default String telephoneDisplay(Owner owner) {
+         if (owner == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..f9ef775cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,6 +14,6 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
++        response.send(ResponseEntity.created(URI.create(dto.getSelfLink())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 13bb5b762..f67bfc156 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2116,6 +2116,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            selfLink:
++              title: Self link
++              description: The canonical API path of this owner - '/api/owners/' followed by the owner's id.
++              type: string
++              example: '/api/owners/1'
++              readOnly: true
+             salutation:
+               title: Salutation
+               description: The owner's title and last name ('DR Who'), or just the last name when no title is given.
