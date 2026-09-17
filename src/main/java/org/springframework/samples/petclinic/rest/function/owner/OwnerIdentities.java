@@ -8,10 +8,11 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId},
  * with telephone canonicalized to E.164 (see {@link OwnerTelephones}) and email lower-cased
- * (see {@link OwnerEmails}); a missing component contributes an empty string. Two owners are
- * duplicates exactly when their whole keys are equal — so members of the same household
- * (same {@code householdId}) with different telephones have different keys and are both
- * allowed.
+ * (see {@link OwnerEmails}); a missing component contributes an empty string. The
+ * {@code householdId} is the deterministic (last name, postcode) household key (see
+ * {@link OwnerHouseholds}). Two owners share this key only when they are the same person in the
+ * same household — {@link RequireUniqueIdentity} uses it to reject an exact resubmission even of
+ * a declared household member.
  */
 public final class OwnerIdentities {
 

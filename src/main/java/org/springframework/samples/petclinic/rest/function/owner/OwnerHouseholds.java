@@ -2,15 +2,17 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
- * Shared household identity for the create-owner pipeline: derives a canonical key from an
- * owner's last name and address so the duplicate-household check compares the same value.
+ * Shared household identity for the create-owner pipeline: derives the deterministic
+ * {@code householdId} from an owner's last name and postcode, so every owner with the same
+ * last name and postcode resolves to the same value automatically — without any owner having
+ * to opt in.
  *
- * <p>Two owners share a household when their last names match case-insensitively (with
- * collapsed whitespace) and their addresses match once put through the shared
- * {@link OwnerAddresses#normalize(String) address normalization}.
+ * <p>Two owners belong to the same household exactly when their last names match
+ * case-insensitively (with collapsed whitespace) and their postcodes are equal.
  */
 final class OwnerHouseholds {
 
@@ -18,23 +20,18 @@ final class OwnerHouseholds {
     }
 
     /**
-     * Canonical household key for {@code lastName} + {@code address}. Two requests/owners
-     * belong to the same household exactly when their keys are equal.
+     * Deterministic household identifier for {@code lastName} + {@code postcode}: the first 12
+     * hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Every owner in
+     * the same household resolves to the same value regardless of when they are created.
      */
-    static String key(String lastName, String address) {
-        // '\n' separates the fields so "a b" + "c" cannot collide with "a" + "b c"
-        // (a newline never survives whitespace collapsing).
-        return normalizeLastName(lastName) + "\n" + OwnerAddresses.normalize(address);
+    static String id(String lastName, String postcode) {
+        String key = normalizeLastName(lastName) + "|" + (postcode == null ? "" : postcode);
+        return Sha256.hex(key).substring(0, 12);
     }
 
-    /**
-     * Stable, shared household identifier for {@code lastName} + {@code address}, formatted
-     * {@code HH-<12 hex>}. Derived from the canonical {@link #key(String, String)}, so every
-     * owner in the same household resolves to the same value regardless of when they are
-     * created.
-     */
-    static String id(String lastName, String address) {
-        return "HH-" + Sha256.hex(key(lastName, address)).substring(0, 12).toUpperCase(Locale.ROOT);
+    /** Deterministic household id for an existing owner's stored last name and postcode. */
+    static String of(Owner owner) {
+        return id(owner.getLastName(), owner.getPostcode());
     }
 
     /** Trim, collapse internal whitespace runs to a single space, and lower-case. */
