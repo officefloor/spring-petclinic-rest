@@ -241,6 +241,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
+        currentOwner.setTitle(ownerFieldsDto.getTitle());
         currentOwner.setTelephone(this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
