@@ -1,0 +1,224 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3583bdc05..db0af7e7a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -119,6 +122,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     /**
+      * Default the registration date to the server's current date when none was
+      * supplied, so a newly registered owner always has a registration date.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index f38b693ee..05c469c2e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -56,6 +56,16 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Count the <code>Owner</code>s that share the given first and last name, compared
++     * case-insensitively.
++     *
++     * @param firstName the first name to match
++     * @param lastName  the last name to match
++     * @return the number of stored owners with the same first and last name
++     */
++    long countByName(String firstName, String lastName) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 141bf14ac..b4467920d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -233,6 +233,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return total == null ? 0 : total;
+     }
+ 
++    @Override
++    public long countByName(String firstName, String lastName) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("firstName", firstName);
++        params.put("lastName", lastName);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE LOWER(first_name)=LOWER(:firstName) AND LOWER(last_name)=LOWER(:lastName)",
++            params,
++            Long.class
++        );
++        return total == null ? 0 : total;
++    }
++
+ 	@Override
+ 	@Transactional
+ 	public void delete(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 3168eee75..31bd0ab21 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -136,4 +136,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+     }
+ 
++    @Override
++    public long countByName(String firstName, String lastName) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner "
++            + "WHERE LOWER(owner.firstName) = LOWER(:firstName) AND LOWER(owner.lastName) = LOWER(:lastName)");
++        query.setParameter("firstName", firstName);
++        query.setParameter("lastName", lastName);
++        return (long) query.getSingleResult();
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index c715e6e9d..0e7459ee6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -59,4 +59,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
++
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner "
++        + "WHERE LOWER(owner.firstName) = LOWER(:firstName) AND LOWER(owner.lastName) = LOWER(:lastName)")
++    long countByName(@Param("firstName") String firstName, @Param("lastName") String lastName);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bf60c5dd3..34c425fb5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -148,6 +148,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setCustomerCode(
+             this.customerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
++        owner.setNamesakeCount(
++            (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             this.householdRegistrar.register(owner);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index dcd757d87..8d52e0dd1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -61,6 +61,7 @@ public interface ClinicService {
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
++	long countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bea552273..33a14d795 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -254,6 +254,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByTelephone(telephone);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public long countNamesakes(String firstName, String lastName) throws DataAccessException {
++        return ownerRepository.countByName(firstName, lastName);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index dcc28baa6..aa945722d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(40)
++  household_id VARCHAR(40),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7870c1e30..893aa49a8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(40)
++  household_id VARCHAR(40),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a4bee52c7..c0161d411 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
++  namesake_count INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 91eec0f11..d450831ac 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+-                                      household_id TEXT
++                                      household_id TEXT,
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 24286efe8..67441d117 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,6 +2103,17 @@ components:
+               type: string
+               example: 'HH-3F2A1B7C9D0E'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of existing owners that, at the moment this owner was
++                created, already shared the same firstName and lastName
++                (compared case-insensitively).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             displayName:
+               title: Display name
+               description: The owner's name formatted as 'LastName, FirstName'.
