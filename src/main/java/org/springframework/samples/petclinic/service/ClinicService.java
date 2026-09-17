@@ -63,6 +63,7 @@ public interface ClinicService {
 	boolean isCityAtCapacity(String city) throws DataAccessException;
 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
 	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;
+	boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException;
 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 	String assignHousehold(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;

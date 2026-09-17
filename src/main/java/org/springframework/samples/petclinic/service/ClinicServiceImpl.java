@@ -292,6 +292,19 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.countByRegistrationDate(registrationDate) >= DAILY_OWNER_LIMIT;
     }
 
+    /**
+     * The number of owners that may be registered on a given day before further sign-ups for that
+     * day are flagged with a bulk-signup warning. Once more than this many owners already exist for
+     * the day, subsequent creates carry the warning.
+     */
+    static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
     @Override
     @Transactional(readOnly = true)
     public long countNamesakes(String firstName, String lastName) throws DataAccessException {
