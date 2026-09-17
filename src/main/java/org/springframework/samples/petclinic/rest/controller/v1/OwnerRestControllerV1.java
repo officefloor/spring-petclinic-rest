@@ -116,25 +116,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Group the owner into a shared household (assigning the shared householdId that forms part
-        // of the identity key) when it knowingly joins an existing one.
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                && this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
-            this.clinicService.assignHousehold(owner);
+        // Assign the deterministic householdId (derived from last name and postcode) so owners in
+        // the same household share it automatically and it forms part of the identity key.
+        this.clinicService.assignHousehold(owner);
+        boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        // A second owner in an existing household (same last name and postcode) is a household
+        // duplicate; reject it unless the client declares the shared household, in which case it is
+        // created as a declared member.
+        if (this.clinicService.existsOwnerInHousehold(owner) && !declaredHouseholdMember) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Reject only an exact duplicate: an owner whose whole identity key (normalized telephone,
+        // Reject an exact duplicate: an owner whose whole identity key (normalized telephone,
         // email and householdId) already exists.
         if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
-        owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner.getLastName(), owner.getAddress()));
+        owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
-        // Not a hard duplicate, but flag a soft match: an existing owner sharing this owner's last
-        // name and postcode with a different telephone.
-        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
-        owner.setPossibleDuplicate(possibleDuplicateOf != null);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        // Flag a soft match unless this is a declared household member (a declared member is not a
+        // suspected duplicate): an existing owner sharing this owner's last name and postcode with a
+        // different telephone.
+        if (!declaredHouseholdMember) {
+            Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+            owner.setPossibleDuplicate(possibleDuplicateOf != null);
+            owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.auditCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

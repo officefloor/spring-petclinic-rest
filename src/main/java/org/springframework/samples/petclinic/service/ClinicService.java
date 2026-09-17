@@ -60,7 +60,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException;
 	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
-	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
+	boolean existsOwnerInHousehold(Owner owner) throws DataAccessException;
 	boolean isCityAtCapacity(String city) throws DataAccessException;
 	boolean isRegistrationDateInFuture(LocalDate registrationDate);
 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
@@ -68,7 +68,7 @@ public interface ClinicService {
 	boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException;
 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 	String assignHousehold(Owner owner) throws DataAccessException;
-	long countHouseholdMembers(String lastName, String address) throws DataAccessException;
+	long countHouseholdMembers(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 

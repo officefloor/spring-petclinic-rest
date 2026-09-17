@@ -22,31 +22,31 @@ import org.springframework.stereotype.Component;
 
 /**
  * Owns the notion of a "household" key and its stable identifier. A household groups owners
- * that share the same last name and address; this component canonicalizes those fields (so
+ * that share the same last name and postcode; this component normalizes the last name (so
  * values differing only in casing or spacing are treated as equal) and derives a stable,
- * shared {@code householdId} from them.
+ * shared {@code householdId} from the normalized last name and the postcode.
  *
- * <p>The id is deterministic: the same canonical household always maps to the same id,
- * independent of which member is registered first.
+ * <p>The id is deterministic: the same (last name, postcode) household always maps to the same
+ * id, independent of which member is registered first, so members share it automatically.
  */
 @Component
 public class HouseholdIdGenerator {
 
     /**
-     * Derive the stable household identifier for the given last name and address, formatted
-     * {@code "HH-<12 upper-case hex>"} of the SHA-256 of the canonical household key.
+     * Derive the stable household identifier for the given last name and postcode: the first 12
+     * hex characters of the SHA-256 of {@code normalizedLastName + '|' + postcode}.
      *
      * @param lastName the household's last name
-     * @param address  the household's address
+     * @param postcode the household's postcode
      * @return the stable, shared household id
      */
-    public String generate(String lastName, String address) {
-        String key = canonical(lastName) + "\n" + canonical(address);
-        return "HH-" + Sha256.hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    public String generate(String lastName, String postcode) {
+        String key = canonical(lastName) + "|" + (postcode == null ? "" : postcode);
+        return Sha256.hex(key).substring(0, 12);
     }
 
     /**
-     * Canonicalize a free-text field for household identity: trim, collapse internal runs of
+     * Canonicalize the last name for household identity: trim, collapse internal runs of
      * whitespace to a single space and lower-case, so values differing only in casing or
      * spacing are treated as the same household.
      */

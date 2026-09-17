@@ -281,8 +281,8 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
-        return !findHouseholdMembers(lastName, address).isEmpty();
+    public boolean existsOwnerInHousehold(Owner owner) throws DataAccessException {
+        return !findHouseholdMembers(owner).isEmpty();
     }
 
     /**
@@ -342,43 +342,46 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
+    /**
+     * Assign the owner's deterministic {@code householdId}, derived from its last name and postcode,
+     * so owners sharing a last name and postcode share the id automatically. Owners without a
+     * postcode belong to no household and are left without an id.
+     *
+     * @return the assigned household id, or {@code null} when the owner has no postcode
+     */
     @Override
     @Transactional
     public String assignHousehold(Owner owner) throws DataAccessException {
-        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        String householdId = members.stream()
-            .map(Owner::getHouseholdId)
-            .filter(Objects::nonNull)
-            .findFirst()
-            .orElseGet(() -> householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
-        owner.setHouseholdId(householdId);
-        for (Owner member : members) {
-            if (member.getHouseholdId() == null) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
+        if (owner.getPostcode() == null) {
+            return null;
         }
+        String householdId = householdIdGenerator.generate(owner.getLastName(), owner.getPostcode());
+        owner.setHouseholdId(householdId);
         return householdId;
     }
 
     /**
      * The number of members the owner's household will have once this (not yet persisted) owner is
-     * created: the existing members sharing its last name and canonical address, plus the owner itself.
+     * created: the existing members sharing its household (last name and postcode), plus the owner
+     * itself.
      */
     @Override
     @Transactional(readOnly = true)
-    public long countHouseholdMembers(String lastName, String address) throws DataAccessException {
-        return findHouseholdMembers(lastName, address).size() + 1;
+    public long countHouseholdMembers(Owner owner) throws DataAccessException {
+        return findHouseholdMembers(owner).size() + 1;
     }
 
     /**
      * Find the existing owners that share {@code owner}'s household, i.e. those with the same last
-     * name (ignoring case) and the same canonical address.
+     * name (ignoring case) and the same postcode. An owner without a postcode belongs to no
+     * household, so no members are returned for it.
      */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String canonicalAddress = householdIdGenerator.canonical(address);
-        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
-            .filter(owner -> householdIdGenerator.canonical(owner.getAddress()).equals(canonicalAddress))
+    private List<Owner> findHouseholdMembers(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return List.of();
+        }
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .toList();
     }
 
