@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f77fb708e..68244ac6b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.DisposableEmailRule;
+ import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+@@ -38,6 +39,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
+     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
+     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
++    @Mapping(target = "riskFlag", expression = "java(resolveRiskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+@@ -177,6 +179,19 @@ public interface OwnerMapper {
+         return hasEmail(owner) ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * Resolves the owner's risk flag: {@code true} when any risk signal holds — the owner is a
++     * possible duplicate, its email domain is
++     * {@linkplain DisposableEmailRule#isDisposableAdjacent(String) disposable-adjacent}, or its
++     * city was over its soft capacity (the capacity warning) when the owner was created — otherwise
++     * {@code false}.
++     */
++    default boolean resolveRiskFlag(Owner owner) {
++        return owner.isPossibleDuplicate()
++            || DisposableEmailRule.isDisposableAdjacent(owner.getEmail())
++            || owner.isCapacityWarning();
++    }
++
+     /** Whether the owner has a non-blank email address. */
+     private boolean hasEmail(Owner owner) {
+         return owner.getEmail() != null && !owner.getEmail().isBlank();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java
+index 8632fa319..38f454188 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailRule.java
+@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.validation;
+ 
+ import java.util.Locale;
+ import java.util.Set;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Decides whether an email address belongs to a disposable-email provider.
+@@ -19,6 +20,11 @@ public final class DisposableEmailRule {
+         "tempmail.com",
+         "guerrillamail.com");
+ 
++    /** The second-level labels of the blocked domains (e.g. {@code mailinator} for {@code mailinator.com}). */
++    private static final Set<String> DISPOSABLE_LABELS = BLOCKED_DOMAINS.stream()
++        .map(DisposableEmailRule::secondLevelLabel)
++        .collect(Collectors.toUnmodifiableSet());
++
+     private DisposableEmailRule() {
+     }
+ 
+@@ -30,14 +36,36 @@ public final class DisposableEmailRule {
+      *         {@code false} otherwise (including for a {@code null} email or one with no domain)
+      */
+     public static boolean isDisposable(String email) {
++        String domain = domainOf(email);
++        return domain != null && BLOCKED_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Whether {@code email}'s domain is disposable-adjacent: it shares the second-level label of a
++     * known disposable domain even though it is not itself blocked, catching the same provider under
++     * a different TLD (e.g. {@code mailinator.net}) or a subdomain (e.g. {@code mx.mailinator.com}).
++     *
++     * @param email the owner's email, possibly {@code null} or without an {@code '@'}
++     * @return {@code true} when the domain's second-level label is one of a blocked provider's,
++     *         {@code false} otherwise (including for a {@code null} email or one with no domain)
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        return domain != null && DISPOSABLE_LABELS.contains(secondLevelLabel(domain));
++    }
++
++    /** The lower-cased domain following the last {@code '@'}, or {@code null} when absent. */
++    private static String domainOf(String email) {
+         if (email == null) {
+-            return false;
++            return null;
+         }
+         int at = email.lastIndexOf('@');
+-        if (at < 0) {
+-            return false;
+-        }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        return BLOCKED_DOMAINS.contains(domain);
++        return at < 0 ? null : email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /** The registrable second-level label of {@code domain} (the label left of the final TLD label). */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length < 2 ? domain : labels[labels.length - 2];
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 102654784..9538f8d55 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2264,6 +2264,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants review because any risk signal holds: the owner is a
++                possible duplicate, its email domain is disposable-adjacent (shares a known
++                disposable provider's second-level label, e.g. a different TLD or a subdomain), or
++                its city was over its soft capacity (the 40-owner warning threshold) when the owner
++                was created; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when the owner has been soft-deleted via DELETE /api/owners/{id} (the record is retained but excluded from the create endpoint's duplicate and identity checks), otherwise false. A newly created owner is false.
