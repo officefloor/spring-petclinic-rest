@@ -1,0 +1,241 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9ceb2f826..fa243e18a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -54,6 +54,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -101,6 +104,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     /**
+      * On first persist, default the registration date to the server's current date
+      * when the client did not supply one, leaving any supplied date untouched.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 4a7b9b9d8..39f4c7370 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -64,6 +64,13 @@ public interface OwnerRepository {
+      */
+     boolean existsByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Report the total number of <code>Owner</code>s currently stored.
++     *
++     * @return the count of all owners
++     */
++    long count() throws DataAccessException;
++
+ 
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 754a4bb2b..1a5655fb5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -159,6 +159,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return count != null && count > 0;
+     }
+ 
++    @Override
++    public long count() throws DataAccessException {
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners",
++            new HashMap<String, Object>(),
++            Long.class);
++        return total == null ? 0 : total;
++    }
++
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 317dcfb1c..a950abe46 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -96,6 +96,11 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult() > 0;
+     }
+ 
++    @Override
++    public long count() throws DataAccessException {
++        return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
++    }
++
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index c950eb6f3..cffd9cb67 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -46,6 +46,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private final VisitRepository visitRepository;
+     private final SpecialtyRepository specialtyRepository;
+     private final PetTypeRepository petTypeRepository;
++    private final CustomerCodeGenerator customerCodeGenerator;
+ 
+     public ClinicServiceImpl(
+         PetRepository petRepository,
+@@ -53,13 +54,15 @@ public class ClinicServiceImpl implements ClinicService {
+         OwnerRepository ownerRepository,
+         VisitRepository visitRepository,
+         SpecialtyRepository specialtyRepository,
+-        PetTypeRepository petTypeRepository) {
++        PetTypeRepository petTypeRepository,
++        CustomerCodeGenerator customerCodeGenerator) {
+         this.petRepository = petRepository;
+         this.vetRepository = vetRepository;
+         this.ownerRepository = ownerRepository;
+         this.visitRepository = visitRepository;
+         this.specialtyRepository = specialtyRepository;
+         this.petTypeRepository = petTypeRepository;
++        this.customerCodeGenerator = customerCodeGenerator;
+     }
+ 
+     @Override
+@@ -232,6 +235,9 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        if (owner.isNew() && owner.getCustomerCode() == null) {
++            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), ownerRepository.count() + 1));
++        }
+         ownerRepository.save(owner);
+ 
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+new file mode 100644
+index 000000000..d2072d7f8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -0,0 +1,42 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Locale;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>} where LAST3 is
++ * the upper-cased first three letters of the last name and NNNN is a 4-digit zero-padded
++ * sequence number (e.g. {@code "SMI-0007"}).
++ */
++@Component
++public class CustomerCodeGenerator {
++
++    /**
++     * Build the customer code for the given last name and sequence number.
++     *
++     * @param lastName the owner's last name; its first three letters (upper-cased) form the prefix
++     * @param sequence the global sequence number, rendered as a 4-digit zero-padded suffix
++     * @return the formatted customer code
++     */
++    public String generate(String lastName, long sequence) {
++        String trimmed = lastName.trim();
++        String prefix = trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
++        return String.format("%s-%04d", prefix, sequence);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 77bb1228b..9ba24c192 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4a767727f..70fd8db41 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4e5bc62e3..6e7c1871a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  customer_code VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a363d7467..98b796581 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+-                                      registration_date DATE
++                                      registration_date DATE,
++                                      customer_code TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ab80ee899..4e0b1a631 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2083,6 +2083,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: Stable code formatted '<LAST3>-<NNNN>', where LAST3 is the upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded sequence assigned at registration.
++              type: string
++              example: 'SMI-0007'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
