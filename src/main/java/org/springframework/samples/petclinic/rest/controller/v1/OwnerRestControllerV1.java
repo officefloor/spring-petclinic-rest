@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerat
 import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -105,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdRegistrar householdRegistrar,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 BulkSignupWarningEvaluator bulkSignupWarningEvaluator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -120,6 +124,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdRegistrar = householdRegistrar;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+    }
+
+    /**
+     * Map an owner to its DTO and stamp the current bulk-signup warning onto it, so every
+     * single-owner response reflects whether more than 80 owners have been created today.
+     */
+    private OwnerDto toOwnerDto(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isBulkSignupInEffect());
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -144,7 +159,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        return new ResponseEntity<>(toOwnerDto(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -173,7 +188,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.created(owner);
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
