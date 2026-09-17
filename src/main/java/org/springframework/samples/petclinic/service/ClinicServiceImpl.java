@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -269,6 +270,18 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean isCityAtCapacity(String city) throws DataAccessException {
         return ownerRepository.countByCityIgnoreCase(city) >= CITY_CAPACITY;
+    }
+
+    /**
+     * The maximum number of owners that may be created in a single day; once this many owners
+     * have already been registered today no further owners may be created until the next day.
+     */
+    static final long DAILY_OWNER_LIMIT = 100;
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isDailyOwnerLimitReached() throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(LocalDate.now()) >= DAILY_OWNER_LIMIT;
     }
 
     @Override

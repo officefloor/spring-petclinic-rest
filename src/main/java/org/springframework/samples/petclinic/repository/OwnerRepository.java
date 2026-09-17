@@ -88,6 +88,14 @@ public interface OwnerRepository {
      */
     long countByCityIgnoreCase(String city) throws DataAccessException;
 
+    /**
+     * Report the number of <code>Owner</code>s registered on the given date.
+     *
+     * @param registrationDate the registration date to match
+     * @return the count of owners whose registration date equals the given date
+     */
+    long countByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

@@ -63,5 +63,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     long countByCityIgnoreCase(String city);
 
     @Override
+    long countByRegistrationDate(java.time.LocalDate registrationDate);
+
+    @Override
     boolean existsByTelephone(String telephone);
 }

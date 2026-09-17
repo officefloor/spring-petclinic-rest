@@ -117,6 +117,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate");
+        query.setParameter("registrationDate", registrationDate);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
             this.em.persist(owner);

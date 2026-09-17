@@ -193,6 +193,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByRegistrationDate(java.time.LocalDate registrationDate) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("registrationDate", registrationDate);
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE registration_date = :registrationDate",
+            params,
+            Long.class);
+        return total == null ? 0 : total;
+    }
+
+    @Override
     public void save(Owner owner) throws DataAccessException {
         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
         if (owner.isNew()) {
