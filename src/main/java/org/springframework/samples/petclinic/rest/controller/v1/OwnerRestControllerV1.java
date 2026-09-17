@@ -106,6 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (this.clinicService.isRegistrationDateInFuture(owner.getRegistrationDate())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         owner.setRegistrationDate(this.clinicService.resolveRegistrationDate(owner.getRegistrationDate()));
         if (this.clinicService.isDailyOwnerLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);

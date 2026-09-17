@@ -61,6 +61,7 @@ public interface ClinicService {
 	boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException;
 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
 	boolean isCityAtCapacity(String city) throws DataAccessException;
+	boolean isRegistrationDateInFuture(LocalDate registrationDate);
 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
 	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;
 	boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException;

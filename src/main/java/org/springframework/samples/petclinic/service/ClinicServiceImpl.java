@@ -285,6 +285,11 @@ public class ClinicServiceImpl implements ClinicService {
     static final long DAILY_OWNER_LIMIT = 100;
 
     @Override
+    public boolean isRegistrationDateInFuture(LocalDate registrationDate) {
+        return registrationDate != null && registrationDate.isAfter(LocalDate.now());
+    }
+
+    @Override
     public LocalDate resolveRegistrationDate(LocalDate registrationDate) {
         LocalDate effectiveDate = registrationDate == null ? LocalDate.now() : registrationDate;
         return BusinessDay.rollForward(effectiveDate);
