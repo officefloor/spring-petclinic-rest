@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.IdempotencyStore;
 import org.springframework.samples.petclinic.service.OwnerAuditor;
+import org.springframework.samples.petclinic.service.WelcomeNotifier;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -66,6 +67,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditor ownerAuditor;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     private final IdempotencyStore idempotencyStore;
 
     private final HttpServletRequest request;
@@ -75,6 +78,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerAuditor ownerAuditor,
+                                 WelcomeNotifier welcomeNotifier,
                                  IdempotencyStore idempotencyStore,
                                  HttpServletRequest request) {
         this.clinicService = clinicService;
@@ -82,6 +86,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerAuditor = ownerAuditor;
+        this.welcomeNotifier = welcomeNotifier;
         this.idempotencyStore = idempotencyStore;
         this.request = request;
     }
@@ -157,6 +162,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.auditCreated(owner);
+        this.welcomeNotifier.enqueueWelcome(owner);
         this.idempotencyStore.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
