@@ -1,0 +1,255 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1e15fec9b..8f9ef6ec3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -41,6 +41,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -91,6 +97,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c0475c400..4e13f7f83 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,7 +40,7 @@ import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerato
+ import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
+ import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
+-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.AddressFormNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
+ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
+@@ -97,7 +97,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+ 
+-    private final AddressNormalizer addressNormalizer;
++    private final AddressFormNormalizer addressFormNormalizer;
+ 
+     private final CustomerCodeGenerator customerCodeGenerator;
+ 
+@@ -123,7 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
+-                                 AddressNormalizer addressNormalizer,
++                                 AddressFormNormalizer addressFormNormalizer,
+                                  CustomerCodeGenerator customerCodeGenerator,
+                                  HouseholdIdGenerator householdIdGenerator,
+                                  HouseholdSizeCalculator householdSizeCalculator,
+@@ -143,7 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
+-        this.addressNormalizer = addressNormalizer;
++        this.addressFormNormalizer = addressFormNormalizer;
+         this.customerCodeGenerator = customerCodeGenerator;
+         this.householdIdGenerator = householdIdGenerator;
+         this.householdSizeCalculator = householdSizeCalculator;
+@@ -189,7 +189,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+-        ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
++        this.addressFormNormalizer.normalize(ownerFieldsDto);
+         this.ownerRequestValidator.validate(ownerFieldsDto);
+         this.postcodeValidator.validate(ownerFieldsDto);
+         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressFormNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressFormNormalizer.java
+new file mode 100644
+index 000000000..d95536191
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressFormNormalizer.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.stereotype.Component;
++import org.springframework.util.StringUtils;
++
++/**
++ * Reconciles the two accepted address forms into a single canonical, normalized address before an
++ * owner is validated and stored. The structured form ({@code addressLine1} with an optional
++ * {@code addressLine2}) is preferred when present; otherwise the flat {@code address} is kept for
++ * backward compatibility. Whichever fields are supplied are normalized with the shared
++ * {@link AddressNormalizer}, and the flat {@code address} is (re)composed as the normalized first
++ * line with the normalized second line appended after a single space when a second line is present.
++ * Every later consumer therefore reads one normalized, composed address.
++ */
++@Component
++public class AddressFormNormalizer {
++
++    private final AddressNormalizer addressNormalizer;
++
++    public AddressFormNormalizer(AddressNormalizer addressNormalizer) {
++        this.addressNormalizer = addressNormalizer;
++    }
++
++    /**
++     * Normalize the supplied address fields in place and compose the flat {@code address}.
++     *
++     * @param owner the submitted owner fields, mutated so its address fields hold their normalized,
++     * composed values
++     */
++    public void normalize(OwnerFieldsDto owner) {
++        String line1 = this.addressNormalizer.normalize(owner.getAddressLine1());
++        if (StringUtils.hasText(line1)) {
++            String line2 = this.addressNormalizer.normalize(owner.getAddressLine2());
++            boolean hasLine2 = StringUtils.hasText(line2);
++            owner.setAddressLine1(line1);
++            owner.setAddressLine2(hasLine2 ? line2 : null);
++            owner.setAddress(hasLine2 ? line1 + " " + line2 : line1);
++        }
++        else {
++            owner.setAddress(this.addressNormalizer.normalize(owner.getAddress()));
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 74f6e6ac6..9f89b8d68 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 293269967..bc160c7c7 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE owners (
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 7ff718848..0b1f56f01 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8515c5361..781ce6db7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address    TEXT,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e333a6c8..7c2acd198 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,34 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. Accepted for backward compatibility;
++            when the structured 'addressLine1' is supplied it takes precedence and this
++            value is returned as the composed, normalized address (the normalized
++            'addressLine1' with the normalized 'addressLine2' appended after a single
++            space when 'addressLine2' is present).
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: >-
++            The first line of the owner's structured street address. Preferred over the
++            flat 'address' when present; an owner is valid when it supplies either a
++            non-blank 'addressLine1' or the flat 'address', plus a city.
++          type: string
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: >-
++            The optional second line of the owner's structured street address (for
++            example a unit or apartment). When present it is normalized and appended to
++            the composed 'address' after a single space.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2085,7 +2108,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
