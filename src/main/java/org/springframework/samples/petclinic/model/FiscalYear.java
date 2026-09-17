@@ -41,11 +41,19 @@ public final class FiscalYear {
     }
 
     /**
-     * The fiscal year of the given date formatted {@code 'FY<YY>'}, where YY is the last two digits
-     * of its {@link #endingYear(LocalDate) ending year} (e.g. {@code 'FY27'}).
+     * The two-digit fiscal-year segment of the given date: the last two digits of its
+     * {@link #endingYear(LocalDate) ending year}, zero-padded (e.g. {@code '27'}).
+     */
+    public static String twoDigit(LocalDate date) {
+        return String.format("%02d", endingYear(date) % 100);
+    }
+
+    /**
+     * The fiscal year of the given date formatted {@code 'FY<YY>'}, where YY is its
+     * {@link #twoDigit(LocalDate) two-digit segment} (e.g. {@code 'FY27'}).
      */
     public static String label(LocalDate date) {
-        return String.format("FY%02d", endingYear(date) % 100);
+        return "FY" + twoDigit(date);
     }
 
     /**

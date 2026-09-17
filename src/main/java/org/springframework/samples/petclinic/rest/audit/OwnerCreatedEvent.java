@@ -22,17 +22,17 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured record of an owner having been created, emitted to the {@code AUDIT} logger
  * alongside the human-readable audit line.
  *
- * <p>The {@code customerCode} slot carries the owner's {@link Owner#getPrimaryIdentifier() current
- * primary identifier} rather than the customer code field directly, so that when a different
- * identifier later becomes primary the event follows automatically without touching this type.
+ * <p>The {@code memberId} slot carries the owner's {@link Owner#getPrimaryIdentifier() current
+ * primary identifier} rather than the member id field directly, so that when a different identifier
+ * later becomes primary the event follows automatically without touching this type.
  *
  * @param seq            monotonically increasing sequence number across creates
  * @param ownerId        the persisted owner's id
- * @param customerCode   the owner's current primary identifier
+ * @param memberId       the owner's current primary identifier
  * @param membershipLevel the owner's derived membership level
  * @param event          the event marker, always {@link #EVENT_TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
                                 String event) {
 
     /** The marker identifying this event kind. */

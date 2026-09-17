@@ -70,8 +70,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -199,23 +199,22 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
      * The owner's current primary identifier: the single external identifier by which this owner is
-     * known. Today this is the {@link #getCustomerCode() customer code}; if a different identifier
-     * later becomes primary (e.g. once the customer code is unified into a member id), this method
-     * changes to return that instead, and every consumer that records the primary identifier follows
+     * known, namely the {@link #getMemberId() member id}. Every consumer that records the primary
+     * identifier reads it through this method, so a future change of primary identifier follows
      * automatically.
      */
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {
@@ -310,39 +309,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the {@link #getFiscalYear() fiscal year} of the business-day-adjusted
-     * registration date (e.g. {@code 'SMI-0007-M27'}). Derived from the owner's own fields;
-     * absent until both the customer code and registration date have been assigned.
-     */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, FiscalYear.endingYear(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'} and derived from the business-day-adjusted
-     * {@link #getRegistrationDate() registration date}. The fiscal year starts on 1 July; see
-     * {@link FiscalYear}. Absent until a registration date has been assigned.
+     * The owner's fiscal year, formatted {@code 'FY<YY>'}: the two-digit FY segment carried by the
+     * {@link #getMemberId() member id} (the fiscal year, starting 1 July, of the business-day-adjusted
+     * registration date when the identity was assigned; see {@link FiscalYear}). Absent until a member
+     * id has been assigned.
      */
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        if (this.memberId == null) {
             return null;
         }
-        return FiscalYear.label(this.registrationDate);
-    }
-
-    /**
-     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits of the
-     * {@link #getCustomerCode() customer code}. Absent until the customer code has been assigned.
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        return Luhn.checkDigit(this.customerCode);
+        int fiscalYearStart = regionLength();
+        return "FY" + this.memberId.substring(fiscalYearStart, fiscalYearStart + 2);
     }
 
     /**
@@ -417,16 +394,27 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION segment of the {@link #getCustomerCode() customer code} (the
-     * region derived from the postcode when the identity was assigned), or {@link Regions#UNKNOWN}
-     * before a customer code has been assigned.
+     * The owner's locality: the REGION segment of the {@link #getMemberId() member id} (the region
+     * derived from the postcode when the identity was assigned), or {@link Regions#UNKNOWN} before a
+     * member id has been assigned.
      */
     public String getLocality() {
-        if (this.customerCode == null) {
+        if (this.memberId == null) {
             return Regions.UNKNOWN;
         }
-        int separator = this.customerCode.indexOf('-');
-        return separator < 0 ? this.customerCode : this.customerCode.substring(0, separator);
+        return this.memberId.substring(0, regionLength());
+    }
+
+    /**
+     * The length of the leading REGION segment of the {@link #getMemberId() member id}: its run of
+     * leading letters, ending where the two-digit fiscal-year segment begins.
+     */
+    private int regionLength() {
+        int i = 0;
+        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
+            i++;
+        }
+        return i;
     }
 
     /**
@@ -477,18 +465,26 @@ public class Owner extends Person {
     }
 
     /**
-     * Resolve the effective registration date before persisting: default it to the server's
-     * current date when none was supplied, then roll it forward off weekends so a newly
-     * registered owner always has a business-day registration date. Every value derived from it
-     * (such as the {@link #getMembershipNumber() membership number}) therefore uses the adjusted
-     * date.
+     * The registration date this owner will be persisted with: the supplied
+     * {@link #getRegistrationDate() registration date} rolled forward to a business day, or today's
+     * business-day-adjusted date when none was supplied. Every value derived from the registration
+     * date (such as the FY segment of the {@link #getMemberId() member id}) uses this date, so a
+     * caller assigning the identity before persistence obtains the same value that
+     * {@link #resolveRegistrationDate() persistence} later stores.
+     */
+    public LocalDate effectiveRegistrationDate() {
+        LocalDate date = this.registrationDate != null ? this.registrationDate : LocalDate.now();
+        return BusinessDay.onOrAfter(date);
+    }
+
+    /**
+     * Resolve the effective registration date before persisting so a newly registered owner always
+     * has a business-day registration date, defaulted to today when none was supplied. Idempotent:
+     * a date already resolved via {@link #effectiveRegistrationDate()} is left unchanged.
      */
     @PrePersist
     private void resolveRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
-        this.registrationDate = BusinessDay.onOrAfter(this.registrationDate);
+        this.registrationDate = effectiveRegistrationDate();
     }
 
     /**

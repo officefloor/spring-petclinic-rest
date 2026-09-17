@@ -36,7 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
-import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.assignment.MemberIdGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
 import org.springframework.samples.petclinic.rest.assignment.MembershipLevelCapCalculator;
@@ -106,7 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressFormNormalizer addressFormNormalizer;
 
-    private final CustomerCodeGenerator customerCodeGenerator;
+    private final MemberIdGenerator memberIdGenerator;
 
     private final HouseholdIdGenerator householdIdGenerator;
 
@@ -136,7 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
                                  AddressFormNormalizer addressFormNormalizer,
-                                 CustomerCodeGenerator customerCodeGenerator,
+                                 MemberIdGenerator memberIdGenerator,
                                  HouseholdIdGenerator householdIdGenerator,
                                  HouseholdSizeCalculator householdSizeCalculator,
                                  MembershipLevelCapCalculator membershipLevelCapCalculator,
@@ -159,7 +159,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
         this.addressFormNormalizer = addressFormNormalizer;
-        this.customerCodeGenerator = customerCodeGenerator;
+        this.memberIdGenerator = memberIdGenerator;
         this.householdIdGenerator = householdIdGenerator;
         this.householdSizeCalculator = householdSizeCalculator;
         this.membershipLevelCapCalculator = membershipLevelCapCalculator;
@@ -255,9 +255,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(possibleDuplicateOf != null);
             owner.setPossibleDuplicateOf(possibleDuplicateOf);
         }
-        owner.setCustomerCode(
-            this.customerCodeGenerator.generate(owner.getPostcode(), owner.getTelephone(),
-                owner.getLastName()));
+        owner.setMemberId(this.memberIdGenerator.generate(owner));
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(this.householdSizeCalculator.size(owner));
