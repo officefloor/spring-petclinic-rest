@@ -110,6 +110,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long countByCityIgnoreCase(String city) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = LOWER(:city)");
+        query.setParameter("city", city);
+        return (long) query.getSingleResult();
+    }
+
+    @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
             this.em.persist(owner);

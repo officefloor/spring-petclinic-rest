@@ -20,23 +20,29 @@ import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>} where LAST3 is
- * the upper-cased first three letters of the last name and NNNN is a 4-digit zero-padded
- * sequence number (e.g. {@code "SMI-0007"}).
+ * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3
+ * is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters
+ * of the last name and NNNN a 4-digit zero-padded per-city sequence number (e.g.
+ * {@code "LON-SMI-0007"}).
  */
 @Component
 public class CustomerCodeGenerator {
 
     /**
-     * Build the customer code for the given last name and sequence number.
+     * Build the customer code for the given city, last name and sequence number.
      *
-     * @param lastName the owner's last name; its first three letters (upper-cased) form the prefix
-     * @param sequence the global sequence number, rendered as a 4-digit zero-padded suffix
+     * @param city     the owner's city; its first three letters (upper-cased) form the leading prefix
+     * @param lastName the owner's last name; its first three letters (upper-cased) form the middle prefix
+     * @param sequence the per-city sequence number, rendered as a 4-digit zero-padded suffix
      * @return the formatted customer code
      */
-    public String generate(String lastName, long sequence) {
-        String trimmed = lastName.trim();
-        String prefix = trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
-        return String.format("%s-%04d", prefix, sequence);
+    public String generate(String city, String lastName, long sequence) {
+        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
+    }
+
+    /** The upper-cased first three letters of {@code value}, trimmed. */
+    private String prefix(String value) {
+        String trimmed = value.trim();
+        return trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
     }
 }

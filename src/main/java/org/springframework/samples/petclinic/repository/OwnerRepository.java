@@ -80,6 +80,14 @@ public interface OwnerRepository {
      */
     long count() throws DataAccessException;
 
+    /**
+     * Report the number of <code>Owner</code>s stored in the given city, matching case-insensitively.
+     *
+     * @param city the city to match (case-insensitively)
+     * @return the count of owners in that city
+     */
+    long countByCityIgnoreCase(String city) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

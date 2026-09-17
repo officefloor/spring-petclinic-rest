@@ -51,7 +51,7 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
-     * last two digits of the registration date year, e.g. {@code "SMI-0007-M26"}.
+     * last two digits of the registration date year, e.g. {@code "LON-SMI-0007-M26"}.
      */
     default String formatMembershipNumber(Owner owner) {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
