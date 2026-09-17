@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c1d910b13..cff37c71a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -51,7 +51,7 @@ public interface OwnerMapper {
+ 
+     /**
+      * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
+-     * last two digits of the registration date year, e.g. {@code "SMI-0007-M26"}.
++     * last two digits of the registration date year, e.g. {@code "LON-SMI-0007-M26"}.
+      */
+     default String formatMembershipNumber(Owner owner) {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 05691283d..12f4f8491 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -80,6 +80,14 @@ public interface OwnerRepository {
+      */
+     long count() throws DataAccessException;
+ 
++    /**
++     * Report the number of <code>Owner</code>s stored in the given city, matching case-insensitively.
++     *
++     * @param city the city to match (case-insensitively)
++     * @return the count of owners in that city
++     */
++    long countByCityIgnoreCase(String city) throws DataAccessException;
++
+ 
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 74379d204..b4fdf39a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -181,6 +181,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return total == null ? 0 : total;
+     }
+ 
++    @Override
++    public long countByCityIgnoreCase(String city) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("city", city);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE LOWER(city) = LOWER(:city)",
++            params,
++            Long.class);
++        return total == null ? 0 : total;
++    }
++
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 2c029a96e..7ea85daa7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -109,6 +109,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+     }
+ 
++    @Override
++    public long countByCityIgnoreCase(String city) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = LOWER(:city)");
++        query.setParameter("city", city);
++        return (long) query.getSingleResult();
++    }
++
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 91b339713..93062177f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -59,6 +59,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     Collection<Owner> findByLastNameIgnoreCase(String lastName);
+ 
++    @Override
++    long countByCityIgnoreCase(String city);
++
+     @Override
+     boolean existsByTelephone(String telephone);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index e53c7e6d9..80898e0c5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -240,7 +240,8 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), ownerRepository.count() + 1));
++            long citySequence = ownerRepository.countByCityIgnoreCase(owner.getCity()) + 1;
++            owner.setCustomerCode(customerCodeGenerator.generate(owner.getCity(), owner.getLastName(), citySequence));
+         }
+         ownerRepository.save(owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index d2072d7f8..031fb4324 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -20,23 +20,29 @@ import java.util.Locale;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>} where LAST3 is
+- * the upper-cased first three letters of the last name and NNNN is a 4-digit zero-padded
+- * sequence number (e.g. {@code "SMI-0007"}).
++ * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3
++ * is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters
++ * of the last name and NNNN a 4-digit zero-padded per-city sequence number (e.g.
++ * {@code "LON-SMI-0007"}).
+  */
+ @Component
+ public class CustomerCodeGenerator {
+ 
+     /**
+-     * Build the customer code for the given last name and sequence number.
++     * Build the customer code for the given city, last name and sequence number.
+      *
+-     * @param lastName the owner's last name; its first three letters (upper-cased) form the prefix
+-     * @param sequence the global sequence number, rendered as a 4-digit zero-padded suffix
++     * @param city     the owner's city; its first three letters (upper-cased) form the leading prefix
++     * @param lastName the owner's last name; its first three letters (upper-cased) form the middle prefix
++     * @param sequence the per-city sequence number, rendered as a 4-digit zero-padded suffix
+      * @return the formatted customer code
+      */
+-    public String generate(String lastName, long sequence) {
+-        String trimmed = lastName.trim();
+-        String prefix = trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
+-        return String.format("%s-%04d", prefix, sequence);
++    public String generate(String city, String lastName, long sequence) {
++        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
++    }
++
++    /** The upper-cased first three letters of {@code value}, trimmed. */
++    private String prefix(String value) {
++        String trimmed = value.trim();
++        return trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
+     }
+ }
