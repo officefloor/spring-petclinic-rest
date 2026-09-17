@@ -4,7 +4,7 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Formats an owner's membership number as '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the last two
- * digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
+ * digits of the {@link FiscalYear fiscal year} of the registration date, e.g. 'NSW-1A2B3C4D-M26'.
  */
 public final class MembershipNumber {
 
@@ -19,6 +19,7 @@ public final class MembershipNumber {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+                FiscalYear.of(owner.getRegistrationDate()) % 100);
     }
 }

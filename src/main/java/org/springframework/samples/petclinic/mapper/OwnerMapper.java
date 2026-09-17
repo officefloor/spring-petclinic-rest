@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipNumber;
@@ -35,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -96,6 +98,16 @@ public interface OwnerMapper {
      */
     default String membershipNumber(Owner owner) {
         return MembershipNumber.of(owner);
+    }
+
+    /**
+     * The owner's fiscal year (see {@link FiscalYear}) as 'FY&lt;YY&gt;', where YY is the last two
+     * digits of the fiscal year (starting 1 July) of the business-day-adjusted registration date.
+     * {@code null} when the owner or its registration date is {@code null}.
+     */
+    default String fiscalYear(Owner owner) {
+        return owner == null || owner.getRegistrationDate() == null ? null
+            : FiscalYear.label(owner.getRegistrationDate());
     }
 
     /**
