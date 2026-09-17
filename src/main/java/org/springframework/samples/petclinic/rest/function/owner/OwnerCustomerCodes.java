@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.Set;
 
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
@@ -24,6 +25,22 @@ final class OwnerCustomerCodes {
     /** The {@code <REGION>-<HASH8>} customer code for {@code owner}. */
     static String forOwner(Owner owner) {
         return format(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
+    }
+
+    /**
+     * De-duplicates {@code base} against the already-{@code taken} codes: returns {@code base} when
+     * it is free, otherwise {@code base-<n>} using the smallest {@code n} of 2 or more that is unused.
+     */
+    static String deduplicate(String base, Set<String> taken) {
+        if (!taken.contains(base)) {
+            return base;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = base + "-" + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /** Format {@code postcode}, {@code telephone} and {@code lastName} as {@code <REGION>-<HASH8>}. */
