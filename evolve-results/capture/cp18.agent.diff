@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b0e30e5f7..7239246a6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.existsOwnerByTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (this.clinicService.isCityAtCapacity(owner.getCity())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         if (this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
+             if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                 return new ResponseEntity<>(HttpStatus.CONFLICT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index f1b4290fb..36004c252 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
+ 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
++	boolean isCityAtCapacity(String city) throws DataAccessException;
+ 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 	String assignHousehold(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 80898e0c5..c035d8e63 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -259,6 +259,18 @@ public class ClinicServiceImpl implements ClinicService {
+         return !findHouseholdMembers(lastName, address).isEmpty();
+     }
+ 
++    /**
++     * The maximum number of owners allowed in a single city; once a city holds this many
++     * owners it is considered at capacity and no further owners may be created there.
++     */
++    static final long CITY_CAPACITY = 50;
++
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isCityAtCapacity(String city) throws DataAccessException {
++        return ownerRepository.countByCityIgnoreCase(city) >= CITY_CAPACITY;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public long countNamesakes(String firstName, String lastName) throws DataAccessException {
