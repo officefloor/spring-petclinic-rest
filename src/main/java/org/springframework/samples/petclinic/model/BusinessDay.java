@@ -17,28 +17,39 @@ package org.springframework.samples.petclinic.model;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
- * Business-day calendar rules. A business day is any weekday; Saturday and Sunday are not.
+ * Business-day calendar rules. A business day is any weekday that is not a public holiday;
+ * Saturday, Sunday and listed public holidays are not business days.
  */
 public final class BusinessDay {
+
+    /** Fixed public holidays that are not business days. */
+    private static final Set<LocalDate> HOLIDAYS = Set.of(
+            LocalDate.parse("2026-01-01"),
+            LocalDate.parse("2026-01-26"),
+            LocalDate.parse("2026-04-25"),
+            LocalDate.parse("2026-12-25"),
+            LocalDate.parse("2026-12-28"));
 
     private BusinessDay() {
     }
 
     /**
      * Return the given date if it is a business day, otherwise the next business day after it.
-     * A Saturday or Sunday is rolled forward to the following Monday; a weekday is returned
-     * unchanged.
+     * A weekend or public holiday is rolled forward until a weekday that is not a listed
+     * public holiday is reached; a business day is returned unchanged.
      */
     public static LocalDate onOrAfter(LocalDate date) {
-        DayOfWeek day = date.getDayOfWeek();
-        if (day == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (day == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (!isBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
+    }
+
+    private static boolean isBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !HOLIDAYS.contains(date);
     }
 }
