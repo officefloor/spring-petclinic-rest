@@ -38,6 +38,12 @@ public final class Regions {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Region -&gt; IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONES = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private Regions() {
     }
 
@@ -75,6 +81,14 @@ public final class Regions {
      */
     public static int[] rangeOf(String region) {
         return REGION_RANGES.get(region);
+    }
+
+    /**
+     * @param region a canonical region
+     * @return that region's IANA timezone name, or {@code null} when the region has no known timezone
+     */
+    public static String timezoneOf(String region) {
+        return REGION_TIMEZONES.get(region);
     }
 
     private static Integer parse(String postcode) {

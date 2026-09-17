@@ -318,6 +318,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's timezone: the IANA timezone name for the owner's {@link #getLocality() locality}
+     * from the fixed region-to-timezone table (NSW&rarr;Australia/Sydney, VIC&rarr;Australia/Melbourne,
+     * QLD&rarr;Australia/Brisbane), or absent when the locality has no known timezone.
+     */
+    public String getTimezone() {
+        return Regions.timezoneOf(getLocality());
+    }
+
+    /**
      * The owner's preferred contact channel, derived from the owner's own fields:
      * {@code "EMAIL"} when an {@link #getEmail() email} is present, otherwise {@code "PHONE"}.
      */
