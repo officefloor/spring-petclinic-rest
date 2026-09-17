@@ -7,7 +7,7 @@ import java.util.Map;
  * Shared telephone canonicalization for the create-owner pipeline: reduces a telephone to
  * its E.164 form so validation, uniqueness checks and storage all compare the same value.
  */
-final class OwnerTelephones {
+public final class OwnerTelephones {
 
     /**
      * Country calling code (E.164 digits after the {@code '+'}) mapped to the exact number
@@ -68,5 +68,42 @@ final class OwnerTelephones {
             return true; // no per-country length rule
         }
         return digits.length() - code.length() == NATIONAL_DIGITS.get(code);
+    }
+
+    /**
+     * Formats an E.164 {@code telephone} for humans as its country calling code, a space, then
+     * the national digits grouped in threes (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). The country code is recognized only for codes with a known
+     * national length (see {@link #NATIONAL_DIGITS}); a number whose code is unknown, or that is
+     * not E.164, is returned unchanged.
+     *
+     * @param telephone an E.164 number (as produced by {@link #toE164(String)}).
+     */
+    public static String toDisplay(String telephone) {
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        // Longest code first so "+61" is not matched as "+6"/"+1".
+        String code = NATIONAL_DIGITS.keySet().stream()
+                .filter(digits::startsWith)
+                .max(Comparator.comparingInt(String::length))
+                .orElse(null);
+        if (code == null) {
+            return telephone; // no known country code to split on
+        }
+        return "+" + code + " " + groupInThrees(digits.substring(code.length()));
+    }
+
+    /** Groups {@code digits} left-to-right into space-separated runs of three. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
     }
 }
