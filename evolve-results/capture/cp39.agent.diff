@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a3a839340..084312e8a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -83,9 +83,9 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 3 that starts
+-     * at 1, gains 1 for a present email address and 1 for a unique name (namesakeCount is zero),
+-     * capped at 3.
++     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 4 that starts
++     * at 1, gains 1 for a present email address, 1 for a unique name (namesakeCount is zero) and 1
++     * for tenure over a year, capped at 4.
+      */
+     default Integer membershipLevel(Owner owner) {
+         return MembershipLevel.of(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index 415dfd5bf..d1267b75b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -3,18 +3,22 @@ package org.springframework.samples.petclinic.util;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's membership level, a number from 1 to 3 fixed at the moment the owner is
+- * created. It starts at 1, gains 1 when an email address is present, and gains 1 when the owner has
+- * a unique name (namesakeCount is zero), capped at 3. Level 4 is reserved for tenure. Pure function
+- * of the owner's own fields, so it is derived at response time rather than stored on the entity.
++ * Derives an owner's membership level, a number from 1 to 4. It starts at 1, gains 1 when an email
++ * address is present, gains 1 when the owner has a unique name (namesakeCount is zero), and gains 1
++ * when the owner's {@link Tenure tenure} exceeds {@link #TENURE_DAYS} days, capped at 4. Because a
++ * newly created owner has zero tenure, a new owner never exceeds level 3 — reaching level 4 always
++ * requires tenure of more than a year.
+  */
+ public final class MembershipLevel {
+ 
+     /** The lowest membership level every owner starts from. */
+     public static final int BASE = 1;
+ 
+-    /** The highest level this rule awards; level 4 is reserved for tenure. */
+-    public static final int CAP = 3;
++    /** The highest level this rule awards. */
++    public static final int CAP = 4;
++
++    /** Tenure in days beyond which the top level is awarded. */
++    public static final int TENURE_DAYS = 365;
+ 
+     private MembershipLevel() {
+     }
+@@ -32,6 +36,9 @@ public final class MembershipLevel {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
++        if (Tenure.days(owner) > TENURE_DAYS) {
++            level++;
++        }
+         return Math.min(level, CAP);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Tenure.java b/src/main/java/org/springframework/samples/petclinic/util/Tenure.java
+new file mode 100644
+index 000000000..cfda7c21a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Tenure.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * An owner's tenure: the number of whole days from their registration date up to today. A newly
++ * created owner, registered today, has zero tenure. Zero when the owner is {@code null} or has no
++ * registration date. Depends on the current date, so unlike the other derived fields it is not a
++ * pure function of the owner's own fields.
++ */
++public final class Tenure {
++
++    private Tenure() {
++    }
++
++    /** The tenure of {@code owner} in whole days, or {@code 0} when it cannot be measured. */
++    public static long days(Owner owner) {
++        if (owner == null || owner.getRegistrationDate() == null) {
++            return 0;
++        }
++        return ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now());
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9e11e49c7..4c61c73ea 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2188,14 +2188,14 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3 fixed when the owner was
+-                created. It starts at 1, gains 1 when an email address is present, and gains 1
+-                when the owner has a unique name (namesakeCount is zero), capped at 3. Level 4 is
+-                reserved for tenure.
++                The owner's membership level, a number from 1 to 4. It starts at 1, gains 1 when
++                an email address is present, gains 1 when the owner has a unique name (namesakeCount
++                is zero), and gains 1 when the owner's tenure exceeds 365 days, capped at 4. Because
++                a newly created owner has zero tenure, a new owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 2
+               readOnly: true
+             bulkSignupWarning:
