@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 import org.springframework.dao.DataAccessException;
@@ -74,7 +75,20 @@ public interface OwnerRepository {
 	Collection<Owner> findAll() throws DataAccessException;
 
     Page<Owner> findAll(Pageable pageable) throws DataAccessException;
-	
+
+    /**
+     * Count the <code>Owner</code>s already registered on the given day, i.e. whose
+     * registration date equals {@code day}.
+     *
+     * @param day the registration day to count
+     * @return the number of owners registered on that day
+     */
+    default long countRegisteredOn(LocalDate day) throws DataAccessException {
+        return findAll().stream()
+                .filter(owner -> day.equals(owner.getRegistrationDate()))
+                .count();
+    }
+
     /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
      *

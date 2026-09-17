@@ -20,9 +20,7 @@ public class EnsureDailyOwnerLimit {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyOwnerLimitException {
         LocalDate day = owner.getRegistrationDate();
-        long registeredThatDay = ownerRepository.findAll().stream()
-                .filter(existing -> day.equals(existing.getRegistrationDate()))
-                .count();
+        long registeredThatDay = ownerRepository.countRegisteredOn(day);
         if (registeredThatDay >= DAILY_LIMIT) {
             throw new DailyOwnerLimitException(DAILY_LIMIT);
         }
