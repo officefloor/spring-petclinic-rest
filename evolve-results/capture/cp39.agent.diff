@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 85f562022..aab768cbd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -90,10 +90,16 @@ public interface OwnerMapper {
+         return Luhn.checkDigit(owner.getCustomerCode());
+     }
+ 
++    /** The minimum tenure, in days, an owner must exceed to qualify for membership level 4. */
++    int TENURE_LEVEL_THRESHOLD_DAYS = 365;
++
+     /**
+-     * Resolves the owner's numeric membership level, assigned on creation: starts at {@code 1},
+-     * plus {@code 1} when an email is present, plus {@code 1} when the owner has no namesakes
+-     * (namesakeCount is 0), capped at {@code 3} (level {@code 4} is reserved for tenure).
++     * Resolves the owner's numeric membership level: starts at {@code 1}, plus {@code 1} when an
++     * email is present, plus {@code 1} when the owner has no namesakes (namesakeCount is 0), plus
++     * {@code 1} when the owner's tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS} days. Since
++     * the pre-tenure factors cap at level {@code 3}, level {@code 4} requires tenure of more than
++     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days, which a newly created (zero-tenure) owner never
++     * has.
+      */
+     default Integer resolveMembershipLevel(Owner owner) {
+         int level = 1;
+@@ -103,7 +109,10 @@ public interface OwnerMapper {
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        if (owner.getTenureDays() > TENURE_LEVEL_THRESHOLD_DAYS) {
++            level++;
++        }
++        return level;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index af947d72b..455b2027d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -23,6 +23,7 @@ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -145,6 +146,15 @@ public class Owner extends Person {
+         this.birthDate = birthDate;
+     }
+ 
++    /**
++     * The owner's tenure in days: the number of whole days from its {@link #registrationDate} to
++     * the current date. A brand-new owner registered today has zero tenure.
++     */
++    @Transient
++    public long getTenureDays() {
++        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++    }
++
+     /**
+      * The owner's age band derived from {@link #birthDate} against {@link #registrationDate}, or
+      * {@code null} when no birth date was supplied.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 66fbae4ef..439e0835a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2157,11 +2157,11 @@ components:
+               readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "Numeric membership level assigned on creation: starts at 1, plus 1 when an email is present, plus 1 when the owner has no namesakes (namesakeCount is 0), capped at 3 (level 4 is reserved for tenure)."
++              description: "Numeric membership level: starts at 1, plus 1 when an email is present, plus 1 when the owner has no namesakes (namesakeCount is 0), plus 1 when the owner's tenure exceeds 365 days. The pre-tenure factors cap at 3, so level 4 requires tenure of more than 365 days, which a newly created (zero-tenure) owner never has."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             contactPreference:
