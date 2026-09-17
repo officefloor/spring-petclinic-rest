@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   deleted BOOLEAN DEFAULT FALSE,
+  idempotency_key VARCHAR(255),
   INDEX(last_name)
 ) engine=InnoDB;
 

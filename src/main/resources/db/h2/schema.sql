@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS owners (
   bulk_signup_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
-  deleted BOOLEAN DEFAULT FALSE
+  deleted BOOLEAN DEFAULT FALSE,
+  idempotency_key VARCHAR(255)
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

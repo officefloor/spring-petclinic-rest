@@ -96,6 +96,9 @@ public class Owner extends Person {
     @Column(name = "deleted")
     private Boolean deleted = Boolean.FALSE;
 
+    @Column(name = "idempotency_key")
+    private String idempotencyKey;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -246,6 +249,19 @@ public class Owner extends Person {
     /** Whether this owner has been soft-deleted; treats an absent flag as not deleted. */
     public boolean isDeleted() {
         return Boolean.TRUE.equals(this.deleted);
+    }
+
+    /**
+     * The {@code Idempotency-Key} header value under which this owner was created, or
+     * {@code null} when the create request carried no key. Lets a repeated create with an
+     * already-seen key return this owner instead of creating a duplicate.
+     */
+    public String getIdempotencyKey() {
+        return this.idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     protected Set<Pet> getPetsInternal() {
