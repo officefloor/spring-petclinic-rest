@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
+import java.util.function.Predicate;
 
 import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.util.Sha256;
@@ -47,5 +48,26 @@ public class CustomerCodeGenerator {
         String hash = Sha256.hex(normalizedTelephone + lastName)
             .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
         return region + "-" + hash;
+    }
+
+    /**
+     * Return a customer code that no existing owner already carries. If {@code customerCode} is free
+     * it is returned unchanged; otherwise {@code "-<n>"} is appended using the smallest {@code n} of
+     * two or more that yields an unused code.
+     *
+     * @param customerCode the freshly generated code that may collide with an existing owner's code
+     * @param isTaken      predicate reporting whether a candidate code is already in use
+     * @return a code guaranteed not to collide with an existing owner's code
+     */
+    public String deduplicate(String customerCode, Predicate<String> isTaken) {
+        if (!isTaken.test(customerCode)) {
+            return customerCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = customerCode + "-" + n;
+            if (!isTaken.test(candidate)) {
+                return candidate;
+            }
+        }
     }
 }

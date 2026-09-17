@@ -77,6 +77,15 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Report whether any <code>Owner</code> is already stored with the given customer code. Used to
+     * detect customer-code collisions so a unique code can be assigned.
+     *
+     * @param customerCode the customer code to look for
+     * @return <code>true</code> if an owner with that customer code exists, <code>false</code> otherwise
+     */
+    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
+
+    /**
      * Report the total number of <code>Owner</code>s currently stored.
      *
      * @return the count of all owners
