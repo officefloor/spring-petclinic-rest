@@ -3,20 +3,19 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.officefloor.plugin.variable.Out;
+import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.MissingRequiredFieldsException;
-import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * Rejects a create request that is missing or blank in any required owner field, reporting every
- * offending field at once. Runs first and binds the body <em>without</em> {@code @Valid} so this rule
- * decides the 400 response shape rather than bean validation. A valid body is republished for
- * {@link BuildOwner} to consume.
+ * offending field at once. Reads the request <em>without</em> {@code @Valid} so this rule decides the
+ * 400 response shape rather than bean validation. Runs after {@link NormalizeAddress}, so the address
+ * is judged in its normalized form and a value that is blank after normalization is rejected.
  */
 public class ValidateOwnerFields {
 
-    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+    public void service(@Val OwnerFieldsDto request)
             throws MissingRequiredFieldsException {
         List<String> missing = new ArrayList<>();
         requirePresent(missing, "firstName", request.getFirstName());
@@ -27,7 +26,6 @@ public class ValidateOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingRequiredFieldsException(missing);
         }
-        validated.set(request);
     }
 
     private static void requirePresent(List<String> missing, String field, String value) {

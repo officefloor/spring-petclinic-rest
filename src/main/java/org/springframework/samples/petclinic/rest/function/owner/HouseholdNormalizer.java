@@ -7,9 +7,10 @@ import java.security.NoSuchAlgorithmException;
 /**
  * Canonical household comparison shared by the create pipeline: {@link EnsureUniqueHousehold} uses it
  * to decide whether two owners share a household and {@link AssignHousehold} uses it to derive the
- * shared household id. A household is identified by last name plus address, each compared
- * case-insensitively with runs of whitespace collapsed to a single space and outer whitespace
- * trimmed. Not a pipeline step, so it is free to expose plain helpers.
+ * shared household id. A household is identified by last name plus address: the last name is compared
+ * case-insensitively with runs of whitespace collapsed to a single space and outer whitespace trimmed,
+ * and the address is compared in its canonical form (see {@link AddressNormalizer}). Not a pipeline
+ * step, so it is free to expose plain helpers.
  */
 public final class HouseholdNormalizer {
 
@@ -47,11 +48,11 @@ public final class HouseholdNormalizer {
     public static String key(String lastName, String address) {
         // '\n' separates the fields so that a boundary shift (e.g. "ab"+"c" vs "a"+"bc") cannot forge a
         // collision; it never appears in a normalized value.
-        return normalize(lastName) + "\n" + normalize(address);
+        return normalizeName(lastName) + "\n" + AddressNormalizer.normalize(address);
     }
 
     /** Lower-cases and collapses whitespace to single spaces, trimming the ends; {@code null} → "". */
-    private static String normalize(String value) {
+    private static String normalizeName(String value) {
         if (value == null) {
             return "";
         }
