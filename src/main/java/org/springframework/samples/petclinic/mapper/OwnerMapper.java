@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegion;
+import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 import java.util.Collection;
@@ -25,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName'. */
@@ -62,6 +64,15 @@ public interface OwnerMapper {
      */
     default Integer membershipLevel(Owner owner) {
         return MembershipLevel.of(owner);
+    }
+
+    /**
+     * The owner's preferred contact channel (see {@link ContactPreference}): 'EMAIL' when an email
+     * address is present, otherwise 'PHONE'.
+     */
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        ContactPreference preference = ContactPreference.of(owner);
+        return preference == null ? null : OwnerDto.ContactPreferenceEnum.valueOf(preference.name());
     }
 
     Owner toOwner(OwnerDto ownerDto);
