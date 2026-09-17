@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index ed3365e7f..12e1ae789 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -76,6 +76,15 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Report whether any <code>Owner</code> is already stored with the given customer code. Used to
++     * detect customer-code collisions so a unique code can be assigned.
++     *
++     * @param customerCode the customer code to look for
++     * @return <code>true</code> if an owner with that customer code exists, <code>false</code> otherwise
++     */
++    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
++
+     /**
+      * Report the total number of <code>Owner</code>s currently stored.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 788153a0d..138d63b04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -174,6 +174,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return owners;
+     }
+ 
++    @Override
++    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("customerCode", customerCode);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
++            params,
++            Long.class);
++        return total != null && total > 0;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Long total = this.namedParameterJdbcTemplate.queryForObject(
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 243244257..e5b88f1bc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -105,6 +105,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
++        Query query = this.em.createQuery(
++            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
++        query.setParameter("customerCode", customerCode);
++        return (long) query.getSingleResult() > 0;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 8139a0b2c..5dd3717e2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -67,4 +67,7 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+ 
+     @Override
+     Collection<Owner> findByTelephone(String telephone);
++
++    @Override
++    boolean existsByCustomerCode(String customerCode);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index a850733b8..bc5ec0ea2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -242,8 +242,10 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(customerCodeGenerator.generate(
+-                owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
++            String customerCode = customerCodeGenerator.generate(
++                owner.getPostcode(), owner.getTelephone(), owner.getLastName());
++            owner.setCustomerCode(
++                customerCodeGenerator.deduplicate(customerCode, ownerRepository::existsByCustomerCode));
+         }
+         ownerRepository.save(owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index 8c9fe55d1..af4b5192c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.service;
+ 
+ import java.util.Locale;
++import java.util.function.Predicate;
+ 
+ import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
+ import org.springframework.samples.petclinic.util.Sha256;
+@@ -48,4 +49,25 @@ public class CustomerCodeGenerator {
+             .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+         return region + "-" + hash;
+     }
++
++    /**
++     * Return a customer code that no existing owner already carries. If {@code customerCode} is free
++     * it is returned unchanged; otherwise {@code "-<n>"} is appended using the smallest {@code n} of
++     * two or more that yields an unused code.
++     *
++     * @param customerCode the freshly generated code that may collide with an existing owner's code
++     * @param isTaken      predicate reporting whether a candidate code is already in use
++     * @return a code guaranteed not to collide with an existing owner's code
++     */
++    public String deduplicate(String customerCode, Predicate<String> isTaken) {
++        if (!isTaken.test(customerCode)) {
++            return customerCode;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = customerCode + "-" + n;
++            if (!isTaken.test(candidate)) {
++                return candidate;
++            }
++        }
++    }
+ }
