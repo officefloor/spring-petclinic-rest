@@ -181,6 +181,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits of the
+     * {@link #getCustomerCode() customer code}. Absent until the customer code has been assigned.
+     */
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        return Luhn.checkDigit(this.customerCode);
+    }
+
+    /**
      * The owner's membership level, a number from 1 to 3 derived from the owner's own fields:
      * every owner starts at level 1, gains a level when an email address is present, and gains a
      * further level when this owner has no namesakes ({@code namesakeCount} is 0). The result is
