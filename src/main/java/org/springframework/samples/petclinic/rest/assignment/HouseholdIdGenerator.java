@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.assignment;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,9 @@ import org.springframework.stereotype.Component;
  * Derives an owner's {@code householdId}: a stable identifier shared by every owner in the same
  * household. Because it is a pure function of the {@link HouseholdKey} over (last name, postcode),
  * owners with the same last name and postcode always yield the same value: the first 12 hex
- * characters of the SHA-256 of that key.
+ * characters of the SHA-256 of the {@link IdentityVersion#TAG version tag} mixed with that key. The
+ * leading version tag makes every version-2 household id differ from the value the same household
+ * would have produced under version 1.
  */
 @Component
 public class HouseholdIdGenerator {
@@ -42,6 +45,6 @@ public class HouseholdIdGenerator {
      */
     public String generate(String lastName, String postcode) {
         String key = this.householdKey.of(lastName, postcode);
-        return Sha256.hex(key).substring(0, 12);
+        return Sha256.hex(IdentityVersion.TAG + "|" + key).substring(0, 12);
     }
 }

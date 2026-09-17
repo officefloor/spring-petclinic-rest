@@ -294,13 +294,17 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used to detect duplicate owners, formed as
-     * the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
-     * where an absent telephone or email contributes an empty string. Because the telephone is part
-     * of the key, housemates that share a last name and postcode but hold different telephones have
-     * distinct identity keys and are both allowed (and merely flagged as possible duplicates).
+     * the SHA-256 hex digest of
+     * {@code <versionTag> + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
+     * where an absent telephone or email contributes an empty string. The leading
+     * {@link IdentityVersion#TAG version tag} makes every version-2 key differ from the value the
+     * same owner would have produced under version 1. Because the telephone is part of the key,
+     * housemates that share a last name and postcode but hold different telephones have distinct
+     * identity keys and are both allowed (and merely flagged as possible duplicates).
      */
     public String getIdentityKey() {
-        String key = orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + Soundex.of(this.getLastName());
+        String key = IdentityVersion.TAG + "|" + orEmpty(this.telephone) + "|" + orEmpty(this.email)
+            + "|" + Soundex.of(this.getLastName());
         return Sha256.hex(key);
     }
 
@@ -309,7 +313,7 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'}: the two-digit FY segment carried by the
+     * The owner's fiscal year, formatted {@code 'FY<YY>'}: the FY segment carried by the
      * {@link #getMemberId() member id} (the fiscal year, starting 1 July, of the business-day-adjusted
      * registration date when the identity was assigned; see {@link FiscalYear}). Absent until a member
      * id has been assigned.
@@ -318,8 +322,7 @@ public class Owner extends Person {
         if (this.memberId == null) {
             return null;
         }
-        int fiscalYearStart = regionLength();
-        return "FY" + this.memberId.substring(fiscalYearStart, fiscalYearStart + 2);
+        return FiscalYear.label(effectiveRegistrationDate());
     }
 
     /**
@@ -394,27 +397,13 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION segment of the {@link #getMemberId() member id} (the region
-     * derived from the postcode when the identity was assigned), or {@link Regions#UNKNOWN} before a
-     * member id has been assigned.
+     * The owner's locality: the plain region derived from the owner's postcode (see
+     * {@link Regions#regionOfPostcode(String)}), or {@link Regions#UNKNOWN} when no known region
+     * applies. This is the user-facing region and never carries the identity {@link IdentityVersion#TAG
+     * version tag}, unlike the region embedded inside the {@link #getMemberId() member id}.
      */
     public String getLocality() {
-        if (this.memberId == null) {
-            return Regions.UNKNOWN;
-        }
-        return this.memberId.substring(0, regionLength());
-    }
-
-    /**
-     * The length of the leading REGION segment of the {@link #getMemberId() member id}: its run of
-     * leading letters, ending where the two-digit fiscal-year segment begins.
-     */
-    private int regionLength() {
-        int i = 0;
-        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
-            i++;
-        }
-        return i;
+        return Regions.regionOfPostcode(this.postcode);
     }
 
     /**

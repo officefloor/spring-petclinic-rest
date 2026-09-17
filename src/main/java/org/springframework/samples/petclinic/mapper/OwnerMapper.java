@@ -21,8 +21,15 @@ public interface OwnerMapper {
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "riskFlag", ignore = true)
+    @Mapping(target = "apiVersion",
+        expression = "java(org.springframework.samples.petclinic.model.IdentityVersion.VERSION)")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId", source = "householdId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)

@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Set;
 
 import org.springframework.samples.petclinic.model.FiscalYear;
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Luhn;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Regions;
@@ -30,11 +31,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Builds an owner's {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'}: REGION is the
- * region derived from the postcode (see {@link Regions#regionOfPostcode(String)}), FY is the
- * two-digit fiscal year of the business-day-adjusted registration date, HASH8 is the first 8
- * upper-case hex characters of SHA-256 over the normalized telephone concatenated with the last name
- * (the same HASH8 as the region-and-hash identity), and CHK is a single Luhn check digit computed
- * over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW271A2B3C4D5'}).
+ * version-2 identity region &mdash; the {@link IdentityVersion#TAG version tag} followed by the plain
+ * region derived from the postcode (see {@link Regions#regionOfPostcode(String)}), e.g. {@code 'V2NSW'}
+ * &mdash; so it differs from the plain user-facing region; FY is the two-digit fiscal year of the
+ * business-day-adjusted registration date, HASH8 is the first 8 upper-case hex characters of SHA-256
+ * over the normalized telephone concatenated with the last name (the same HASH8 as the
+ * region-and-hash identity), and CHK is a single Luhn check digit computed over the digits of
+ * {@code <REGION><FY><HASH8>} (e.g. {@code 'V2NSW271A2B3C4D5'}).
  *
  * <p>When the formatted member id collides with an existing owner's {@code memberId}, {@code '-<n>'}
  * is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners
@@ -57,7 +60,7 @@ public class MemberIdGenerator {
      * @return the formatted member id, de-duplicated against existing owners
      */
     public String generate(Owner owner) {
-        String region = Regions.regionOfPostcode(owner.getPostcode());
+        String region = IdentityVersion.TAG + Regions.regionOfPostcode(owner.getPostcode());
         String fiscalYear = FiscalYear.twoDigit(owner.effectiveRegistrationDate());
         String hash8 = Sha256.hex(owner.getTelephone() + owner.getLastName())
             .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);

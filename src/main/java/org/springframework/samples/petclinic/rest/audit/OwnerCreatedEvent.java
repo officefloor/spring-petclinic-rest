@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.audit;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -26,27 +27,34 @@ import org.springframework.samples.petclinic.model.Owner;
  * primary identifier} rather than the member id field directly, so that when a different identifier
  * later becomes primary the event follows automatically without touching this type.
  *
+ * <p>This is schema version 2 of the event: it carries the {@link #schemaVersion} explicitly and the
+ * owner segment recomputed from the version-2 identity. The {@code schemaVersion} tracks the shared
+ * {@link IdentityVersion#VERSION identity version}.
+ *
  * @param seq            monotonically increasing sequence number across creates
  * @param ownerId        the persisted owner's id
  * @param memberId       the owner's current primary identifier
  * @param membershipLevel the owner's derived membership level
+ * @param ownerSegment   the owner's segment, recomputed from the version-2 identity
+ * @param schemaVersion  the audit event schema version, always {@link IdentityVersion#VERSION}
  * @param event          the event marker, always {@link #EVENT_TYPE}
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-                                String event) {
+                                String ownerSegment, int schemaVersion, String event) {
 
     /** The marker identifying this event kind. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
     /**
      * Build the event for a freshly persisted owner, reading its current primary identifier so the
-     * event stays correct as the primary identifier evolves.
+     * event stays correct as the primary identifier evolves and recomputing its owner segment from
+     * the version-2 identity.
      *
      * @param seq   the sequence number to assign to this event
      * @param owner the owner that has just been persisted
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
         return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(),
-            owner.getMembershipLevel(), EVENT_TYPE);
+            owner.getMembershipLevel(), owner.getOwnerSegment(), IdentityVersion.VERSION, EVENT_TYPE);
     }
 }
