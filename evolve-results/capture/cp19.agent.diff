@@ -1,0 +1,332 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 1274943f5..6d20b4513 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -15,6 +15,7 @@
+  */
+ package org.springframework.samples.petclinic.repository;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ 
+ import org.springframework.dao.DataAccessException;
+@@ -74,6 +75,14 @@ public interface OwnerRepository {
+      */
+     long countByCity(String city) throws DataAccessException;
+ 
++    /**
++     * Count the <code>Owner</code>s that were registered on the given date.
++     *
++     * @param registrationDate the registration date to match
++     * @return the number of stored owners registered on that date
++     */
++    long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index cb11c084d..eb64108ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -36,6 +36,7 @@ import org.springframework.stereotype.Repository;
+ 
+ import javax.sql.DataSource;
+ import jakarta.transaction.Transactional;
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -258,6 +259,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return total == null ? 0 : total;
+     }
+ 
++    @Override
++    public long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("registrationDate", registrationDate);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE registration_date=:registrationDate",
++            params,
++            Long.class
++        );
++        return total == null ? 0 : total;
++    }
++
+ 	@Override
+ 	@Transactional
+ 	public void delete(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 947ec670d..39831a18f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -15,6 +15,7 @@
+  */
+ package org.springframework.samples.petclinic.repository.jpa;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -153,4 +154,12 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult();
+     }
+ 
++    @Override
++    public long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner "
++            + "WHERE owner.registrationDate = :registrationDate");
++        query.setParameter("registrationDate", registrationDate);
++        return (long) query.getSingleResult();
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index b7b60e7d6..10c7c869b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -15,6 +15,7 @@
+  */
+ package org.springframework.samples.petclinic.repository.springdatajpa;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ 
+ import org.springframework.context.annotation.Profile;
+@@ -68,4 +69,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = LOWER(:city)")
+     long countByCity(@Param("city") String city);
++
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate")
++    long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 48f9f8d5f..177dc6fc6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
++import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
+@@ -304,4 +305,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyOwnerLimitExceededException} thrown when an owner is created on a day that
++     * has already reached the maximum permitted number of owner registrations. Returns a 429 Too
++     * Many Requests.
++     *
++     * @param e The {@link DailyOwnerLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
++     */
++    @ExceptionHandler(DailyOwnerLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitExceededException(DailyOwnerLimitExceededException e, HttpServletRequest request) {
++        logger.debug("Daily owner limit exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getRegistrationDate());
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 14ddf92df..79859f73e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
+ import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
++import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+ import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
+@@ -76,6 +77,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final CityOwnerLimitValidator cityOwnerLimitValidator;
+ 
++    private final DailyOwnerLimitValidator dailyOwnerLimitValidator;
++
+     private final TelephoneNormalizer telephoneNormalizer;
+ 
+     private final EmailNormalizer emailNormalizer;
+@@ -93,6 +96,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  OwnerRequestValidator ownerRequestValidator,
+                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                  CityOwnerLimitValidator cityOwnerLimitValidator,
++                                 DailyOwnerLimitValidator dailyOwnerLimitValidator,
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+                                  AddressNormalizer addressNormalizer,
+@@ -105,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.ownerRequestValidator = ownerRequestValidator;
+         this.householdDuplicateValidator = householdDuplicateValidator;
+         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
++        this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.addressNormalizer = addressNormalizer;
+@@ -144,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.ownerRequestValidator.validate(ownerFieldsDto);
+         this.householdDuplicateValidator.validate(ownerFieldsDto);
+         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
++        this.dailyOwnerLimitValidator.validate();
+         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+         ownerFieldsDto.setTelephone(telephone);
+         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/error/DailyOwnerLimitExceededException.java b/src/main/java/org/springframework/samples/petclinic/rest/error/DailyOwnerLimitExceededException.java
+new file mode 100644
+index 000000000..a3a9dc259
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/error/DailyOwnerLimitExceededException.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.error;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an owner is created on a day that has already reached the maximum permitted number of
++ * owner registrations. Carries the day whose quota was exhausted so the REST layer can report what
++ * was rejected.
++ */
++public class DailyOwnerLimitExceededException extends RuntimeException {
++
++    private final LocalDate registrationDate;
++
++    public DailyOwnerLimitExceededException(LocalDate registrationDate) {
++        super("The maximum number of owners has already been created on " + registrationDate);
++        this.registrationDate = registrationDate;
++    }
++
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java
+new file mode 100644
+index 000000000..d51649c64
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java
+@@ -0,0 +1,50 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Rejects creating an owner once {@value #MAX_OWNERS_PER_DAY} or more owners have already been
++ * registered on the current day.
++ */
++@Component
++public class DailyOwnerLimitValidator {
++
++    static final long MAX_OWNERS_PER_DAY = 100;
++
++    private final ClinicService clinicService;
++
++    public DailyOwnerLimitValidator(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * @throws DailyOwnerLimitExceededException if {@value #MAX_OWNERS_PER_DAY} or more owners have
++     * already been registered today
++     */
++    public void validate() {
++        LocalDate today = LocalDate.now();
++        if (this.clinicService.countOwnersRegisteredOn(today) >= MAX_OWNERS_PER_DAY) {
++            throw new DailyOwnerLimitExceededException(today);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 6fd3e8616..2d39aeb31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -15,6 +15,7 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Set;
+@@ -63,6 +64,7 @@ public interface ClinicService {
+ 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
+ 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 	long countOwnersInCity(String city) throws DataAccessException;
++	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 126d6a127..df081d31e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Set;
+@@ -266,6 +267,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.countByCity(city);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException {
++        return ownerRepository.countByRegistrationDate(registrationDate);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
