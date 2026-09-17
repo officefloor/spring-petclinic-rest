@@ -1,0 +1,325 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 23ea12746..4f437d10c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "sharesHousehold", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "riskFlag", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d2b913c0e..02c078f23 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -52,6 +52,7 @@ import org.springframework.samples.petclinic.rest.validation.DisposableEmailDoma
+ import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerValidator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
++import org.springframework.samples.petclinic.rest.validation.OwnerRiskFlagEvaluator;
+ import org.springframework.samples.petclinic.rest.validation.PossibleDuplicateDetector;
+ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
+ import org.springframework.samples.petclinic.rest.validation.RegistrationDateValidator;
+@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+ 
++    private final OwnerRiskFlagEvaluator ownerRiskFlagEvaluator;
++
+     private final DailyOwnerLimitValidator dailyOwnerLimitValidator;
+ 
+     private final RegistrationDateValidator registrationDateValidator;
+@@ -133,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  PossibleDuplicateDetector possibleDuplicateDetector,
+                                  CityOwnerLimitValidator cityOwnerLimitValidator,
+                                  CityCapacityWarningEvaluator cityCapacityWarningEvaluator,
++                                 OwnerRiskFlagEvaluator ownerRiskFlagEvaluator,
+                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
+                                  RegistrationDateValidator registrationDateValidator,
+                                  TelephoneNormalizer telephoneNormalizer,
+@@ -157,6 +161,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.possibleDuplicateDetector = possibleDuplicateDetector;
+         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
+         this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
++        this.ownerRiskFlagEvaluator = ownerRiskFlagEvaluator;
+         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
+         this.registrationDateValidator = registrationDateValidator;
+         this.telephoneNormalizer = telephoneNormalizer;
+@@ -176,12 +181,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Map an owner to its DTO and stamp the current warnings onto it, so every single-owner
+      * response reflects whether more than 80 owners have been created today and whether the
+-     * owner's city is approaching its capacity limit.
++     * owner's city is approaching its capacity limit, and whether the owner warrants a manual
++     * risk review.
+      */
+     private OwnerDto toOwnerDto(Owner owner) {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isBulkSignupInEffect());
+         ownerDto.setCapacityWarning(this.cityCapacityWarningEvaluator.isApproachingCapacity(owner.getCity()));
++        ownerDto.setRiskFlag(this.ownerRiskFlagEvaluator.isAtRisk(owner));
+         return ownerDto;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java
+index 65c221843..1f0ad2b1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CityCapacityWarningEvaluator.java
+@@ -22,11 +22,13 @@ import org.springframework.stereotype.Component;
+ /**
+  * Decides whether a city is approaching the {@link CityOwnerLimitValidator#MAX_OWNERS_PER_CITY}
+  * owner capacity limit: it is once the city already holds at least
+- * {@value #WARNING_THRESHOLD} owners while still below the hard limit.
++ * {@value #WARNING_THRESHOLD} owners while still below the hard limit. The
++ * {@value #WARNING_THRESHOLD}-owner threshold is the city's <em>soft capacity</em>.
+  */
+ @Component
+ public class CityCapacityWarningEvaluator {
+ 
++    /** The soft capacity: the owner count at which a city starts warning of impending fullness. */
+     static final long WARNING_THRESHOLD = 40;
+ 
+     private final ClinicService clinicService;
+@@ -45,4 +47,14 @@ public class CityCapacityWarningEvaluator {
+         long count = this.clinicService.countOwnersInCity(city);
+         return count >= WARNING_THRESHOLD && count < CityOwnerLimitValidator.MAX_OWNERS_PER_CITY;
+     }
++
++    /**
++     * @param city the owner's city
++     * @return {@code true} when {@code city} already holds at least {@value #WARNING_THRESHOLD}
++     * owners, i.e. it is at or over its soft capacity (whether or not it has also reached the hard
++     * limit); {@code false} otherwise.
++     */
++    public boolean isOverSoftCapacity(String city) {
++        return this.clinicService.countOwnersInCity(city) >= WARNING_THRESHOLD;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainClassifier.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainClassifier.java
+new file mode 100644
+index 000000000..afe78d3a4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainClassifier.java
+@@ -0,0 +1,93 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++import org.springframework.stereotype.Component;
++import org.springframework.util.StringUtils;
++
++/**
++ * Single source of truth for classifying an email address by the disposability of its domain.
++ *
++ * <p>A domain is <em>blocked</em> when it exactly matches a known disposable-email provider; such
++ * addresses are rejected at creation (see {@link DisposableEmailDomainValidator}). A domain is
++ * <em>disposable-adjacent</em> when it is not itself blocked yet shares its registrable name with a
++ * blocked provider &mdash; for example {@code mailinator.net} or {@code x.tempmail.org}, which sit
++ * next to a blocked domain on a different top-level domain or as a subdomain. Such addresses are
++ * accepted but warrant a closer look.
++ *
++ * <p>All inputs are expected to be the already-normalized (trimmed, lower-cased) email produced by
++ * {@link EmailNormalizer}; an absent email is classified as neither blocked nor adjacent.
++ */
++@Component
++public class DisposableEmailDomainClassifier {
++
++    private static final Set<String> BLOCKED_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /** The registrable labels (e.g. {@code mailinator}) of the blocked domains. */
++    private static final Set<String> DISPOSABLE_BRANDS = BLOCKED_DOMAINS.stream()
++        .map(DisposableEmailDomainClassifier::registrableLabel)
++        .collect(Collectors.toUnmodifiableSet());
++
++    /**
++     * @param email the normalized email address, or {@code null}/blank when none was supplied
++     * @return {@code true} when the email's domain is on the disposable-provider blocklist
++     */
++    public boolean isBlocked(String email) {
++        String domain = domainOf(email);
++        return domain != null && BLOCKED_DOMAINS.contains(domain);
++    }
++
++    /**
++     * @param email the normalized email address, or {@code null}/blank when none was supplied
++     * @return {@code true} when the email's domain is not itself blocked but shares its registrable
++     * name with a blocked disposable-email provider (a different TLD or a subdomain of one)
++     */
++    public boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null || BLOCKED_DOMAINS.contains(domain)) {
++            return false;
++        }
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_BRANDS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    private static String domainOf(String email) {
++        if (!StringUtils.hasText(email)) {
++            return null;
++        }
++        int at = email.indexOf('@');
++        if (at < 0) {
++            return null;
++        }
++        return email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /** The label immediately left of the top-level domain (e.g. {@code mailinator} in {@code mailinator.com}). */
++    private static String registrableLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length >= 2 ? labels[labels.length - 2] : domain;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java
+index 04fc78a2a..8a5f1e1ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailDomainValidator.java
+@@ -16,34 +16,30 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+-import java.util.Locale;
+-import java.util.Set;
+-
+ import org.springframework.samples.petclinic.rest.error.DisposableEmailDomainException;
+ import org.springframework.stereotype.Component;
+-import org.springframework.util.StringUtils;
+ 
+ /**
+  * Rejects an owner whose email address belongs to a known disposable-email provider. Expects the
+  * already-normalized (trimmed, lower-cased) email produced by {@link EmailNormalizer}; an absent
+- * email passes untouched.
++ * email passes untouched. The disposable-domain taxonomy lives in
++ * {@link DisposableEmailDomainClassifier}.
+  */
+ @Component
+ public class DisposableEmailDomainValidator {
+ 
+-    private static final Set<String> BLOCKED_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++    private final DisposableEmailDomainClassifier classifier;
++
++    public DisposableEmailDomainValidator(DisposableEmailDomainClassifier classifier) {
++        this.classifier = classifier;
++    }
+ 
+     /**
+      * @param email the normalized email address, or {@code null} when none was supplied
+      * @throws DisposableEmailDomainException if the email's domain is on the blocklist
+      */
+     public void validate(String email) {
+-        if (!StringUtils.hasText(email)) {
+-            return;
+-        }
+-        String domain = email.substring(email.indexOf('@') + 1).toLowerCase(Locale.ROOT);
+-        if (BLOCKED_DOMAINS.contains(domain)) {
++        if (this.classifier.isBlocked(email)) {
+             throw new DisposableEmailDomainException(email);
+         }
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerRiskFlagEvaluator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerRiskFlagEvaluator.java
+new file mode 100644
+index 000000000..8c9e1bf43
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/OwnerRiskFlagEvaluator.java
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Decides whether an owner warrants a manual risk review. The owner is flagged when any single
++ * risk signal holds: it is a possible duplicate, its email domain is disposable-adjacent, or its
++ * city is over its soft capacity. Each underlying signal is owned by its own collaborator; this
++ * evaluator only combines them.
++ */
++@Component
++public class OwnerRiskFlagEvaluator {
++
++    private final DisposableEmailDomainClassifier disposableEmailDomainClassifier;
++
++    private final CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
++
++    public OwnerRiskFlagEvaluator(DisposableEmailDomainClassifier disposableEmailDomainClassifier,
++                                  CityCapacityWarningEvaluator cityCapacityWarningEvaluator) {
++        this.disposableEmailDomainClassifier = disposableEmailDomainClassifier;
++        this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
++    }
++
++    /**
++     * @param owner the owner to assess
++     * @return {@code true} when the owner is a possible duplicate, has a disposable-adjacent email
++     * domain, or lives in a city that is over its soft capacity; {@code false} otherwise
++     */
++    public boolean isAtRisk(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || this.disposableEmailDomainClassifier.isDisposableAdjacent(owner.getEmail())
++            || this.cityCapacityWarningEvaluator.isOverSoftCapacity(owner.getCity());
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 12d6ed182..281fee195 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2351,6 +2351,18 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review because any
++                of the following holds: the owner is a possible duplicate, the
++                email domain is disposable-adjacent (shares a known
++                disposable-email provider's name but is not itself on the
++                blocklist), or the owner's city is over its soft capacity (the
++                40-owner warning threshold); false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
