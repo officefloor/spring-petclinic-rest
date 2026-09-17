@@ -26,6 +26,28 @@ public final class PostcodeRule {
     }
 
     /**
+     * Resolve the region whose fixed postcode range contains {@code postcode}.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the canonical region string whose inclusive range contains the four-digit
+     *         {@code postcode}, or {@code null} when the postcode is absent, malformed, or in no
+     *         known range
+     */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether {@code postcode} is acceptable for {@code city}.
      *
      * @param city     the owner's city, possibly {@code null}

@@ -3,12 +3,15 @@ package org.springframework.samples.petclinic.rest.validation;
 import java.util.Map;
 
 /**
- * Derives an owner's locality (canonical region) from its city.
+ * Derives an owner's locality (canonical region), preferring the postcode over the city.
  *
- * <p>The city is looked up in a small, fixed city-to-region table
- * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) and the matching
- * canonical region string is returned. Any city not present in the table — including a
- * {@code null} city — derives the sentinel locality {@code "UNKNOWN"}.
+ * <p>The postcode is looked up first via {@link PostcodeRule#regionForPostcode(String)}
+ * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}); the matching canonical
+ * region string is returned. When the postcode is absent or in no known range, the city is looked
+ * up in a small, fixed city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+ * {@code Brisbane -> QLD}). Any city not present in the table — including a {@code null} city —
+ * derives the sentinel locality {@code "UNKNOWN"}. Preferring the postcode returns the same region
+ * for known cities but disambiguates cities that share a name.
  */
 public final class LocalityResolver {
 
@@ -25,7 +28,20 @@ public final class LocalityResolver {
     }
 
     /**
-     * Resolve the canonical region for a city.
+     * Resolve the canonical region, preferring the postcode over the city.
+     *
+     * @param city     the owner's city, possibly {@code null}
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the region whose range contains the postcode; otherwise the region derived from the
+     *         city via {@link #resolve(String)} (which yields {@code "UNKNOWN"} for an unknown city)
+     */
+    public static String resolve(String city, String postcode) {
+        String region = PostcodeRule.regionForPostcode(postcode);
+        return region != null ? region : resolve(city);
+    }
+
+    /**
+     * Resolve the canonical region for a city alone.
      *
      * @param city the owner's city, possibly {@code null}
      * @return the canonical region string when the city is in the table, otherwise {@code "UNKNOWN"}

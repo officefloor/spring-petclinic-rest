@@ -54,11 +54,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (canonical region) from its city via the fixed
-     * city-to-region table, yielding {@code "UNKNOWN"} for any city not in the table.
+     * Derives the owner's locality (canonical region), preferring the postcode range over the
+     * city-to-region table and yielding {@code "UNKNOWN"} when neither identifies a region.
      */
     default String resolveLocality(Owner owner) {
-        return LocalityResolver.resolve(owner.getCity());
+        return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
     }
 
     /**
