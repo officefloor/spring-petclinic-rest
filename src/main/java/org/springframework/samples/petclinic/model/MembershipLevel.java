@@ -19,16 +19,21 @@ package org.springframework.samples.petclinic.model;
  * Derives an owner's numeric membership level from the owner's own fields.
  *
  * <p>The level starts at {@value #MIN}; a present email adds one; having no
- * namesakes (namesakeCount is 0) adds one; the total is capped at {@value #MAX}.
- * Level 4 is reserved for tenure and is not awarded here.
+ * namesakes (namesakeCount is 0) adds one; and tenure of more than
+ * {@value #TENURE_DAYS} days adds one; the total is capped at {@value #MAX}.
+ * Level 4 requires tenure, so a newly registered owner (zero tenure) never
+ * exceeds level 3 no matter how the other factors fall.
  */
 public final class MembershipLevel {
 
     /** The level every owner starts at. */
     public static final int MIN = 1;
 
-    /** The highest level derivable from an owner's own fields; level 4 is reserved for tenure. */
-    public static final int MAX = 3;
+    /** The highest level attainable; only reached once the tenure factor applies. */
+    public static final int MAX = 4;
+
+    /** Tenure, in days, that an owner must exceed to earn the level-4 tenure factor. */
+    public static final int TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
@@ -45,6 +50,9 @@ public final class MembershipLevel {
             level++;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
+        }
+        if (Tenure.inDays(owner) > TENURE_DAYS) {
             level++;
         }
         return Math.min(level, MAX);
