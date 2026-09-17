@@ -28,4 +28,12 @@ public final class CityRegion {
     public static String of(String city) {
         return city == null ? UNKNOWN : CITY_REGIONS.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * Whether {@code region} is a known canonical region (e.g. NSW, VIC or QLD), i.e. neither
+     * {@code null} nor {@link #UNKNOWN}.
+     */
+    public static boolean isKnown(String region) {
+        return region != null && !UNKNOWN.equals(region);
+    }
 }

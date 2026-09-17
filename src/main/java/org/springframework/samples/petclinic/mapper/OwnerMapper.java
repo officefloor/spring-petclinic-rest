@@ -19,6 +19,7 @@ import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipNumber;
 import org.springframework.samples.petclinic.util.MembershipPoints;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 
 import java.util.Collection;
@@ -41,6 +42,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -144,6 +146,20 @@ public interface OwnerMapper {
         Integer level = MembershipLevel.forPoints(MembershipPoints.of(owner));
         Integer cap = owner == null ? null : owner.getMembershipLevelCap();
         return level != null && cap != null ? Math.min(level, cap) : level;
+    }
+
+    /**
+     * The owner's segment (see {@link OwnerSegment}), formatted '&lt;TIER&gt;_&lt;AREA&gt;': TIER is
+     * 'PREMIUM' when the owner's {@link #membershipLevel(Owner) membership level} is 3 or more, else
+     * 'STANDARD'; AREA is 'METRO' when the owner's {@link #locality(Owner) locality} is a known region
+     * (NSW, VIC or QLD), else 'REGIONAL'.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerSegment segment = OwnerSegment.of(membershipLevel(owner), locality(owner));
+        return OwnerDto.OwnerSegmentEnum.valueOf(segment.name());
     }
 
     /**
