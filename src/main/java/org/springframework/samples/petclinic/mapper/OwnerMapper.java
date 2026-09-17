@@ -136,10 +136,14 @@ public interface OwnerMapper {
     /**
      * The owner's membership level (see {@link MembershipLevel}): the {@link #membershipPoints(Owner)
      * membership points} banded into a number from 1 to 4 (1 for 0-1 points, 2 for 2-3, 3 for 4-5,
-     * 4 for 6 or more).
+     * 4 for 6 or more), then held down to the owner's household ceiling
+     * ({@link Owner#getMembershipLevelCap()}) captured at creation. With no ceiling the banded level
+     * stands.
      */
     default Integer membershipLevel(Owner owner) {
-        return MembershipLevel.forPoints(MembershipPoints.of(owner));
+        Integer level = MembershipLevel.forPoints(MembershipPoints.of(owner));
+        Integer cap = owner == null ? null : owner.getMembershipLevelCap();
+        return level != null && cap != null ? Math.min(level, cap) : level;
     }
 
     /**
