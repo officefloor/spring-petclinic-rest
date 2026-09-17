@@ -1,0 +1,156 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d2e336cc6..f42a13af4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.IdempotencyStore;
+ import org.springframework.samples.petclinic.service.OwnerAuditor;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -43,6 +44,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -64,16 +66,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerAuditor ownerAuditor;
+ 
++    private final IdempotencyStore idempotencyStore;
++
++    private final HttpServletRequest request;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+-                                 OwnerAuditor ownerAuditor) {
++                                 OwnerAuditor ownerAuditor,
++                                 IdempotencyStore idempotencyStore,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.ownerAuditor = ownerAuditor;
++        this.idempotencyStore = idempotencyStore;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -104,6 +114,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = this.request.getHeader("Idempotency-Key");
++        ResponseEntity<OwnerDto> replay = replayCreatedOwner(idempotencyKey);
++        if (replay != null) {
++            return replay;
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (this.clinicService.isRegistrationDateInFuture(owner.getRegistrationDate())) {
+@@ -144,12 +159,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditor.auditCreated(owner);
++        this.idempotencyStore.record(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * If {@code idempotencyKey} was already used to create an owner, return that original owner
++     * with {@code 200 OK} so a repeated create replays the first result instead of creating a
++     * duplicate. Returns {@code null} when there is nothing to replay (no key, or key unseen).
++     */
++    private ResponseEntity<OwnerDto> replayCreatedOwner(String idempotencyKey) {
++        return this.idempotencyStore.find(idempotencyKey)
++            .map(this.clinicService::findOwnerById)
++            .map(owner -> new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK))
++            .orElse(null);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/IdempotencyStore.java b/src/main/java/org/springframework/samples/petclinic/service/IdempotencyStore.java
+new file mode 100644
+index 000000000..3bfc825dc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/IdempotencyStore.java
+@@ -0,0 +1,66 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Optional;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers which owner a given {@code Idempotency-Key} first created, so a repeated create
++ * carrying an already-seen key can replay the original result instead of creating a duplicate.
++ *
++ * <p>The mapping is key &rarr; created owner id. A blank or absent key is never stored and never
++ * matches, so requests without a key follow the ordinary create path.
++ */
++@Component
++public class IdempotencyStore {
++
++    private final ConcurrentMap<String, Integer> ownerIdByKey = new ConcurrentHashMap<>();
++
++    /**
++     * Look up the owner previously created under {@code key}.
++     *
++     * @param key the request's {@code Idempotency-Key} (may be {@code null} or blank)
++     * @return the id of the originally created owner, or empty if the key is blank or unseen
++     */
++    public Optional<Integer> find(String key) {
++        if (isBlank(key)) {
++            return Optional.empty();
++        }
++        return Optional.ofNullable(this.ownerIdByKey.get(key));
++    }
++
++    /**
++     * Remember that {@code key} first created the owner with the given id. Blank keys are ignored
++     * and an already-seen key keeps its original id, so the first create always wins.
++     *
++     * @param key     the request's {@code Idempotency-Key} (may be {@code null} or blank)
++     * @param ownerId the id of the owner created for this key
++     */
++    public void record(String key, Integer ownerId) {
++        if (isBlank(key)) {
++            return;
++        }
++        this.ownerIdByKey.putIfAbsent(key, ownerId);
++    }
++
++    private boolean isBlank(String key) {
++        return key == null || key.isBlank();
++    }
++}
