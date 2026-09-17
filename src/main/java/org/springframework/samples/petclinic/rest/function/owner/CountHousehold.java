@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * via {@link HouseholdNormalizer}). Existing owners can only share that identity when they too opted
  * into a shared household ({@link EnsureUniqueHousehold} rejects any un-acknowledged collision), so a
  * matching owner is always a genuine household member. Runs before {@link SaveOwner}, so the new
- * owner is not yet persisted and is counted explicitly. Mutates the built {@link Owner} in place;
- * {@link org.springframework.samples.petclinic.mapper.OwnerMapper#membershipTier(Owner)} reads it.
+ * owner is not yet persisted and is counted explicitly. Mutates the built {@link Owner} in place.
  */
 public class CountHousehold {
 
