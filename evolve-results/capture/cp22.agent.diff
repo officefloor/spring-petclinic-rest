@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9d4da31d7..1e64ee81c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -135,6 +138,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public boolean isBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     /**
+      * On first persist, default the registration date to the server's current date when the
+      * client did not supply one, then roll the effective date forward so it always falls on a
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 987ef63cb..91928843d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             this.clinicService.assignHousehold(owner);
+         }
+         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
++        owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditor.auditCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a59970c85..e4460f46f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -63,6 +63,7 @@ public interface ClinicService {
+ 	boolean isCityAtCapacity(String city) throws DataAccessException;
+ 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
+ 	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;
++	boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException;
+ 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 	String assignHousehold(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 040d37f26..42ee22706 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -292,6 +292,19 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.countByRegistrationDate(registrationDate) >= DAILY_OWNER_LIMIT;
+     }
+ 
++    /**
++     * The number of owners that may be registered on a given day before further sign-ups for that
++     * day are flagged with a bulk-signup warning. Once more than this many owners already exist for
++     * the day, subsequent creates carry the warning.
++     */
++    static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException {
++        return ownerRepository.countByRegistrationDate(registrationDate) > BULK_SIGNUP_WARNING_THRESHOLD;
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public long countNamesakes(String firstName, String lastName) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8b81d2be5..79065527d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index aca4b0601..bd7de38c6 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a89f83d4c..219e7eec9 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+   namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..9d354cb21 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0d135cbe4..f4e7016b4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2133,6 +2133,12 @@ components:
+                 - SILVER
+               example: 'SILVER'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: True when more than 80 owners had already been created for this owner's registration day at the time this owner was created, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
