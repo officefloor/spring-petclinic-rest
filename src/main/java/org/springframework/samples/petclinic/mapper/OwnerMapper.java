@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.MembershipNumber;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 
@@ -81,10 +82,7 @@ public interface OwnerMapper {
      * last two digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
      */
     default String membershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return MembershipNumber.of(owner);
     }
 
     /**

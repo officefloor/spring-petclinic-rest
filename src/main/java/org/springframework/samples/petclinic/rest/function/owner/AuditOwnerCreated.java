@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.MembershipNumber;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 
 /**
@@ -19,8 +20,8 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         Integer membershipPoints = MembershipPoints.of(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipPoints, MembershipLevel.forPoints(membershipPoints));
+                membershipPoints, MembershipLevel.forPoints(membershipPoints), MembershipNumber.of(owner));
     }
 }
