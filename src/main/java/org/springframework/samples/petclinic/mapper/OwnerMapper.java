@@ -67,11 +67,20 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
+    /** The household size (members after this owner's create) at or above which the tier is GOLD. */
+    int GOLD_HOUSEHOLD_SIZE = 3;
+
     /**
-     * Resolves the owner's membership tier: {@code SILVER} when the owner has no namesakes
-     * (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
+     * Resolves the owner's membership tier: {@code GOLD} when the owner's household had
+     * {@value #GOLD_HOUSEHOLD_SIZE} or more members once this owner was created; otherwise
+     * {@code SILVER} when the owner has no namesakes (namesakeCount is 0) and an email is present,
+     * otherwise {@code BRONZE}.
      */
     default OwnerDto.MembershipTierEnum resolveMembershipTier(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= GOLD_HOUSEHOLD_SIZE) {
+            return OwnerDto.MembershipTierEnum.GOLD;
+        }
         boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;

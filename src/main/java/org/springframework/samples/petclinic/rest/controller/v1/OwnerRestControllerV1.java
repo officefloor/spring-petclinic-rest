@@ -123,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.clinicService.assignHousehold(owner);
         }
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner.getLastName(), owner.getAddress()));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.auditCreated(owner);

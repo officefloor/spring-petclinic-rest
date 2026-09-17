@@ -333,6 +333,16 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * The number of members the owner's household will have once this (not yet persisted) owner is
+     * created: the existing members sharing its last name and canonical address, plus the owner itself.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public long countHouseholdMembers(String lastName, String address) throws DataAccessException {
+        return findHouseholdMembers(lastName, address).size() + 1;
+    }
+
+    /**
      * Find the existing owners that share {@code owner}'s household, i.e. those with the same last
      * name (ignoring case) and the same canonical address.
      */

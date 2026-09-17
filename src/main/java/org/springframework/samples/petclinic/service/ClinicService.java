@@ -66,6 +66,7 @@ public interface ClinicService {
 	boolean isBulkSignupWarranted(LocalDate registrationDate) throws DataAccessException;
 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 	String assignHousehold(Owner owner) throws DataAccessException;
+	long countHouseholdMembers(String lastName, String address) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
