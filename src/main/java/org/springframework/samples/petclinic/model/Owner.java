@@ -155,6 +155,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Fixed city-to-region lookup backing {@link #getLocality()}. Cities absent from this
+     * table derive the locality {@code "UNKNOWN"}.
+     */
+    private static final Map<String, String> CITY_REGIONS =
+        Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * The owner's locality: the canonical region derived from {@link #getCity() city} using the
+     * fixed {@link #CITY_REGIONS} table, or {@code "UNKNOWN"} when the city is not in the table.
+     */
+    public String getLocality() {
+        return CITY_REGIONS.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
      * Default the registration date to the server's current date when none was
      * supplied, so a newly registered owner always has a registration date.
      */
