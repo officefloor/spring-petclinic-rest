@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(resolveMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
@@ -90,29 +91,53 @@ public interface OwnerMapper {
         return Luhn.checkDigit(owner.getCustomerCode());
     }
 
-    /** The minimum tenure, in days, an owner must exceed to qualify for membership level 4. */
-    int TENURE_LEVEL_THRESHOLD_DAYS = 365;
+    /** The minimum tenure, in days, an owner must exceed to earn the tenure membership points. */
+    int TENURE_POINTS_THRESHOLD_DAYS = 365;
+
+    /** The minimum household size that earns the household membership points. */
+    int HOUSEHOLD_POINTS_THRESHOLD = 3;
 
     /**
-     * Resolves the owner's numeric membership level: starts at {@code 1}, plus {@code 1} when an
-     * email is present, plus {@code 1} when the owner has no namesakes (namesakeCount is 0), plus
-     * {@code 1} when the owner's tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS} days. Since
-     * the pre-tenure factors cap at level {@code 3}, level {@code 4} requires tenure of more than
-     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days, which a newly created (zero-tenure) owner never
-     * has.
+     * Resolves the owner's membership points: starts at {@code 0}, plus {@code 2} when an email is
+     * present, plus {@code 1} when the owner has no namesakes (namesakeCount is 0), plus {@code 2}
+     * when the owner belongs to a household of {@value #HOUSEHOLD_POINTS_THRESHOLD} or more, plus
+     * {@code 3} when the owner's tenure exceeds {@value #TENURE_POINTS_THRESHOLD_DAYS} days.
      */
-    default Integer resolveMembershipLevel(Owner owner) {
-        int level = 1;
+    default Integer resolveMembershipPoints(Owner owner) {
+        int points = 0;
         if (hasEmail(owner)) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += 1;
         }
-        if (owner.getTenureDays() > TENURE_LEVEL_THRESHOLD_DAYS) {
-            level++;
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= HOUSEHOLD_POINTS_THRESHOLD) {
+            points += 2;
         }
-        return level;
+        if (owner.getTenureDays() > TENURE_POINTS_THRESHOLD_DAYS) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Resolves the owner's numeric membership level from its {@linkplain #resolveMembershipPoints
+     * membership points}: level {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
+     * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more.
+     */
+    default Integer resolveMembershipLevel(Owner owner) {
+        int points = resolveMembershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
