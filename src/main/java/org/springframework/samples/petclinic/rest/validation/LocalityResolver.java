@@ -41,6 +41,19 @@ public final class LocalityResolver {
     }
 
     /**
+     * Resolve the canonical region from the postcode alone.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @return the region whose fixed range contains the postcode via
+     *         {@link PostcodeRule#regionForPostcode(String)}, or {@link #UNKNOWN} when the postcode
+     *         is absent, malformed, or in no known range
+     */
+    public static String resolveFromPostcode(String postcode) {
+        String region = PostcodeRule.regionForPostcode(postcode);
+        return region != null ? region : UNKNOWN;
+    }
+
+    /**
      * Resolve the canonical region for a city alone.
      *
      * @param city the owner's city, possibly {@code null}

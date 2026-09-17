@@ -17,32 +17,35 @@ package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
+import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3
- * is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters
- * of the last name and NNNN a 4-digit zero-padded per-city sequence number (e.g.
- * {@code "LON-SMI-0007"}).
+ * Builds an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
+ * canonical region derived from the owner's postcode and HASH8 is the first eight upper-case hex
+ * characters of the SHA-256 of the owner's normalized telephone concatenated with the last name
+ * (e.g. {@code "NSW-1A2B3C4D"}).
  */
 @Component
 public class CustomerCodeGenerator {
 
+    /** Number of leading hex characters of the SHA-256 digest kept as the identity hash. */
+    private static final int HASH_LENGTH = 8;
+
     /**
-     * Build the customer code for the given city, last name and sequence number.
+     * Build the customer code for the given postcode, normalized telephone and last name.
      *
-     * @param city     the owner's city; its first three letters (upper-cased) form the leading prefix
-     * @param lastName the owner's last name; its first three letters (upper-cased) form the middle prefix
-     * @param sequence the per-city sequence number, rendered as a 4-digit zero-padded suffix
+     * @param postcode            the owner's postcode; its region forms the leading segment
+     * @param normalizedTelephone the owner's telephone in canonical (E.164) form; hashed with the
+     *                            last name to form the trailing segment
+     * @param lastName            the owner's last name; hashed with the telephone
      * @return the formatted customer code
      */
-    public String generate(String city, String lastName, long sequence) {
-        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
-    }
-
-    /** The upper-cased first three letters of {@code value}, trimmed. */
-    private String prefix(String value) {
-        String trimmed = value.trim();
-        return trimmed.substring(0, Math.min(3, trimmed.length())).toUpperCase(Locale.ROOT);
+    public String generate(String postcode, String normalizedTelephone, String lastName) {
+        String region = LocalityResolver.resolveFromPostcode(postcode);
+        String hash = Sha256.hex(normalizedTelephone + lastName)
+            .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+        return region + "-" + hash;
     }
 }

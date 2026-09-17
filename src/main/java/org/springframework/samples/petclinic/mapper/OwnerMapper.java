@@ -10,7 +10,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
-import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.util.Luhn;
 
@@ -56,11 +55,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (canonical region), preferring the postcode range over the
-     * city-to-region table and yielding {@code "UNKNOWN"} when neither identifies a region.
+     * Derives the owner's locality (canonical region) from the leading {@code <REGION>} segment of
+     * its {@code customerCode} ({@code <REGION>-<HASH8>}), so the locality always agrees with the
+     * region encoded in the owner's identity.
      */
     default String resolveLocality(Owner owner) {
-        return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+        String customerCode = owner.getCustomerCode();
+        return customerCode.substring(0, customerCode.indexOf('-'));
     }
 
     /**
