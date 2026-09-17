@@ -233,6 +233,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return total == null ? 0 : total;
     }
 
+    @Override
+    public long countByName(String firstName, String lastName) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("firstName", firstName);
+        params.put("lastName", lastName);
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE LOWER(first_name)=LOWER(:firstName) AND LOWER(last_name)=LOWER(:lastName)",
+            params,
+            Long.class
+        );
+        return total == null ? 0 : total;
+    }
+
 	@Override
 	@Transactional
 	public void delete(Owner owner) throws DataAccessException {

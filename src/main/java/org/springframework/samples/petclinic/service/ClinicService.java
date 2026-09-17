@@ -61,6 +61,7 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
+	long countNamesakes(String firstName, String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;

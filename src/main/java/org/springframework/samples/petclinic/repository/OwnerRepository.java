@@ -57,6 +57,16 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s that share the given first and last name, compared
+     * case-insensitively.
+     *
+     * @param firstName the first name to match
+     * @param lastName  the last name to match
+     * @return the number of stored owners with the same first and last name
+     */
+    long countByName(String firstName, String lastName) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

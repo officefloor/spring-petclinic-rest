@@ -148,6 +148,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(
             this.customerCodeGenerator.generate(owner.getLastName(), this.clinicService.countOwners()));
+        owner.setNamesakeCount(
+            (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.householdRegistrar.register(owner);
         }
