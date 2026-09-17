@@ -31,13 +31,13 @@ public class OwnerAuditLogger {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
-     * Record that an owner was successfully created, capturing the assigned id, customer code and
-     * resolved registration date.
+     * Record that an owner was successfully created, capturing the assigned id, customer code,
+     * resolved registration date and membership level.
      *
      * @param owner the owner that has just been persisted
      */
     public void created(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
     }
 }
