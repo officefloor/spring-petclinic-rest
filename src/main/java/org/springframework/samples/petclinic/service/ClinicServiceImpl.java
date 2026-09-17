@@ -300,10 +300,24 @@ public class ClinicServiceImpl implements ClinicService {
      */
     static final long CITY_CAPACITY = 50;
 
+    /**
+     * The number of owners a city may hold before further sign-ups there are flagged as
+     * approaching the {@link #CITY_CAPACITY capacity limit}; once a city holds at least this many
+     * (but fewer than {@code CITY_CAPACITY}) owners, subsequent creates in it carry the warning.
+     */
+    static final long CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     @Override
     @Transactional(readOnly = true)
     public boolean isCityAtCapacity(String city) throws DataAccessException {
         return ownerRepository.countByCityIgnoreCase(city) >= CITY_CAPACITY;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityApproachingCapacity(String city) throws DataAccessException {
+        long count = ownerRepository.countByCityIgnoreCase(city);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 
     /**

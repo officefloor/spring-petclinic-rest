@@ -61,6 +61,7 @@ public interface ClinicService {
 	boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException;
 	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
 	boolean isCityAtCapacity(String city) throws DataAccessException;
+	boolean isCityApproachingCapacity(String city) throws DataAccessException;
 	boolean isRegistrationDateInFuture(LocalDate registrationDate);
 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
 	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;

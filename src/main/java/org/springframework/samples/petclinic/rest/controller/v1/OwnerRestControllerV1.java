@@ -146,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // than one level above its current highest-ranked member.
         owner.setMembershipLevel(this.clinicService.resolveCappedMembershipLevel(owner));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
+        owner.setCapacityWarning(this.clinicService.isCityApproachingCapacity(owner.getCity()));
         // Flag a soft match unless this is a declared household member (a declared member is not a
         // suspected duplicate): an existing owner sharing this owner's postcode and last-name Soundex
         // with a different identity key.
