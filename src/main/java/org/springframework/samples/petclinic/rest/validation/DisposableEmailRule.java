@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Decides whether an email address belongs to a disposable-email provider.
@@ -19,6 +20,11 @@ public final class DisposableEmailRule {
         "tempmail.com",
         "guerrillamail.com");
 
+    /** The second-level labels of the blocked domains (e.g. {@code mailinator} for {@code mailinator.com}). */
+    private static final Set<String> DISPOSABLE_LABELS = BLOCKED_DOMAINS.stream()
+        .map(DisposableEmailRule::secondLevelLabel)
+        .collect(Collectors.toUnmodifiableSet());
+
     private DisposableEmailRule() {
     }
 
@@ -30,14 +36,36 @@ public final class DisposableEmailRule {
      *         {@code false} otherwise (including for a {@code null} email or one with no domain)
      */
     public static boolean isDisposable(String email) {
+        String domain = domainOf(email);
+        return domain != null && BLOCKED_DOMAINS.contains(domain);
+    }
+
+    /**
+     * Whether {@code email}'s domain is disposable-adjacent: it shares the second-level label of a
+     * known disposable domain even though it is not itself blocked, catching the same provider under
+     * a different TLD (e.g. {@code mailinator.net}) or a subdomain (e.g. {@code mx.mailinator.com}).
+     *
+     * @param email the owner's email, possibly {@code null} or without an {@code '@'}
+     * @return {@code true} when the domain's second-level label is one of a blocked provider's,
+     *         {@code false} otherwise (including for a {@code null} email or one with no domain)
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        String domain = domainOf(email);
+        return domain != null && DISPOSABLE_LABELS.contains(secondLevelLabel(domain));
+    }
+
+    /** The lower-cased domain following the last {@code '@'}, or {@code null} when absent. */
+    private static String domainOf(String email) {
         if (email == null) {
-            return false;
+            return null;
         }
         int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        return BLOCKED_DOMAINS.contains(domain);
+        return at < 0 ? null : email.substring(at + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /** The registrable second-level label of {@code domain} (the label left of the final TLD label). */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        return labels.length < 2 ? domain : labels[labels.length - 2];
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailRule;
 import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -38,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
+    @Mapping(target = "riskFlag", expression = "java(resolveRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -175,6 +177,19 @@ public interface OwnerMapper {
      */
     default String resolveContactPreference(Owner owner) {
         return hasEmail(owner) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Resolves the owner's risk flag: {@code true} when any risk signal holds — the owner is a
+     * possible duplicate, its email domain is
+     * {@linkplain DisposableEmailRule#isDisposableAdjacent(String) disposable-adjacent}, or its
+     * city was over its soft capacity (the capacity warning) when the owner was created — otherwise
+     * {@code false}.
+     */
+    default boolean resolveRiskFlag(Owner owner) {
+        return owner.isPossibleDuplicate()
+            || DisposableEmailRule.isDisposableAdjacent(owner.getEmail())
+            || owner.isCapacityWarning();
     }
 
     /** Whether the owner has a non-blank email address. */
