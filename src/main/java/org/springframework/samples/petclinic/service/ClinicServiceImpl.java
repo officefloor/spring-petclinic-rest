@@ -259,6 +259,14 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public long countNamesakes(String firstName, String lastName) throws DataAccessException {
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .filter(owner -> owner.getFirstName().equalsIgnoreCase(firstName))
+            .count();
+    }
+
+    @Override
     @Transactional
     public String assignHousehold(Owner owner) throws DataAccessException {
         List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
