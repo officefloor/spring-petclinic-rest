@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
+index 30384128f..506187727 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
+@@ -9,10 +9,10 @@ import org.springframework.samples.petclinic.util.BusinessDay;
+ /**
+  * Resolves an owner's effective registration date and rolls it onto a business day. The effective
+  * date is the one supplied on the create request, or the server's current date when the request
+- * omits it. Either way, a Saturday or Sunday rolls forward to the following Monday (see
+- * {@link BusinessDay#onOrAfter(LocalDate)}). Runs before the customer code, membership number and
+- * daily create-limit are derived, so all of them key off the adjusted date. Mutates the built
+- * {@link Owner} in place.
++ * omits it. Either way, a Saturday, Sunday or public holiday rolls forward to the next non-holiday
++ * business day (see {@link BusinessDay#onOrAfter(LocalDate)}). Runs before the customer code,
++ * membership number and daily create-limit are derived, so all of them key off the adjusted date.
++ * Mutates the built {@link Owner} in place.
+  */
+ public class ResolveRegistrationDate {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+index 772932071..c3e3fe790 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+@@ -2,25 +2,40 @@ package org.springframework.samples.petclinic.util;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ /**
+- * Business-day calendar rules. A business day is any weekday; Saturday and Sunday are not. Pure
+- * date arithmetic with no dependency on other state, so it is a shared helper rather than a step.
++ * Business-day calendar rules. A business day is any weekday that is not a listed public holiday;
++ * Saturdays, Sundays and public holidays are not business days. Pure date arithmetic with no
++ * dependency on other state, so it is a shared helper rather than a step.
+  */
+ public final class BusinessDay {
+ 
++    /** Fixed public-holiday calendar. Dates that fall on one of these are not business days. */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++            LocalDate.of(2026, 1, 1),
++            LocalDate.of(2026, 1, 26),
++            LocalDate.of(2026, 4, 25),
++            LocalDate.of(2026, 12, 25),
++            LocalDate.of(2026, 12, 28));
++
+     private BusinessDay() {
+     }
+ 
+-    /** Whether {@code date} is a business day (Monday to Friday). */
++    /** Whether {@code date} is a public holiday. */
++    public static boolean isPublicHoliday(LocalDate date) {
++        return PUBLIC_HOLIDAYS.contains(date);
++    }
++
++    /** Whether {@code date} is a business day (a weekday that is not a public holiday). */
+     public static boolean isBusinessDay(LocalDate date) {
+         DayOfWeek day = date.getDayOfWeek();
+-        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY;
++        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !isPublicHoliday(date);
+     }
+ 
+     /**
+      * {@code date} itself when it already falls on a business day, otherwise the next business day:
+-     * a Saturday or Sunday rolls forward to the following Monday.
++     * a Saturday, Sunday or public holiday rolls forward to the following non-holiday weekday.
+      */
+     public static LocalDate onOrAfter(LocalDate date) {
+         LocalDate result = date;
+diff --git a/src/test/java/org/springframework/samples/petclinic/util/BusinessDayTest.java b/src/test/java/org/springframework/samples/petclinic/util/BusinessDayTest.java
+new file mode 100644
+index 000000000..5c2c7058c
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/util/BusinessDayTest.java
+@@ -0,0 +1,67 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++
++import org.junit.jupiter.api.Test;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/** Business-day calendar rules, including the fixed public-holiday roll-forward. */
++class BusinessDayTest {
++
++	@Test
++	void weekdayIsBusinessDay() {
++		// Friday, 2026-09-18
++		assertTrue(BusinessDay.isBusinessDay(LocalDate.of(2026, 9, 18)));
++	}
++
++	@Test
++	void weekendIsNotBusinessDay() {
++		assertFalse(BusinessDay.isBusinessDay(LocalDate.of(2026, 9, 19))); // Saturday
++		assertFalse(BusinessDay.isBusinessDay(LocalDate.of(2026, 9, 20))); // Sunday
++	}
++
++	@Test
++	void listedHolidayIsNotBusinessDay() {
++		assertFalse(BusinessDay.isBusinessDay(LocalDate.of(2026, 12, 25))); // Fri, Christmas
++	}
++
++	@Test
++	void businessDayIsUnchanged() {
++		LocalDate friday = LocalDate.of(2026, 9, 18);
++		assertEquals(friday, BusinessDay.onOrAfter(friday));
++	}
++
++	@Test
++	void weekendRollsToMonday() {
++		// Sat 2026-09-19 -> Mon 2026-09-21
++		assertEquals(LocalDate.of(2026, 9, 21), BusinessDay.onOrAfter(LocalDate.of(2026, 9, 19)));
++	}
++
++	@Test
++	void holidayOnWeekdayRollsToNextBusinessDay() {
++		// Christmas is Fri 2026-12-25; Sat/Sun follow; Mon 2026-12-28 is also a listed holiday;
++		// so it rolls to Tue 2026-12-29.
++		assertEquals(LocalDate.of(2026, 12, 29), BusinessDay.onOrAfter(LocalDate.of(2026, 12, 25)));
++	}
++
++	@Test
++	void newYearsDayRollsToFriday() {
++		// Thu 2026-01-01 is a holiday -> Fri 2026-01-02.
++		assertEquals(LocalDate.of(2026, 1, 2), BusinessDay.onOrAfter(LocalDate.of(2026, 1, 1)));
++	}
++
++	@Test
++	void anzacDayRollsPastWeekend() {
++		// Sat 2026-04-25 (holiday) -> Sun 26th -> Mon 2026-04-27.
++		assertEquals(LocalDate.of(2026, 4, 27), BusinessDay.onOrAfter(LocalDate.of(2026, 4, 25)));
++	}
++
++	@Test
++	void australiaDayRollsToTuesday() {
++		// Mon 2026-01-26 is a holiday -> Tue 2026-01-27.
++		assertEquals(LocalDate.of(2026, 1, 27), BusinessDay.onOrAfter(LocalDate.of(2026, 1, 26)));
++	}
++}
