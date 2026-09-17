@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -48,6 +48,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final HouseholdIdGenerator householdIdGenerator;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -56,7 +57,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator) {
+        CustomerCodeGenerator customerCodeGenerator,
+        HouseholdIdGenerator householdIdGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -64,6 +66,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.householdIdGenerator = householdIdGenerator;
     }
 
     @Override
@@ -252,18 +255,37 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
-        String normalizedAddress = normalizeForComparison(address);
-        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
-            .anyMatch(owner -> normalizeForComparison(owner.getAddress()).equals(normalizedAddress));
+        return !findHouseholdMembers(lastName, address).isEmpty();
+    }
+
+    @Override
+    @Transactional
+    public String assignHousehold(Owner owner) throws DataAccessException {
+        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElseGet(() -> householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
+        owner.setHouseholdId(householdId);
+        for (Owner member : members) {
+            if (member.getHouseholdId() == null) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        return householdId;
     }
 
     /**
-     * Canonicalize a free-text field for identity comparison: trim, collapse internal runs of
-     * whitespace to a single space and lower-case, so values differing only in casing or spacing
-     * are treated as equal.
+     * Find the existing owners that share {@code owner}'s household, i.e. those with the same last
+     * name (ignoring case) and the same canonical address.
      */
-    private static String normalizeForComparison(String value) {
-        return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
+        String canonicalAddress = householdIdGenerator.canonical(address);
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .filter(owner -> householdIdGenerator.canonical(owner.getAddress()).equals(canonicalAddress))
+            .toList();
     }
 
     @Override
