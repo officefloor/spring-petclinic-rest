@@ -64,4 +64,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Query("SELECT COUNT(owner) FROM Owner owner "
         + "WHERE LOWER(owner.firstName) = LOWER(:firstName) AND LOWER(owner.lastName) = LOWER(:lastName)")
     long countByName(@Param("firstName") String firstName, @Param("lastName") String lastName);
+
+    @Override
+    @Query("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.city) = LOWER(:city)")
+    long countByCity(@Param("city") String city);
 }

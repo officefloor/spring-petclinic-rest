@@ -21,21 +21,25 @@ import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'} where LAST3 is the
- * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
- * sequence equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+ * Builds an owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
+ * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
+ * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
+ * owners already in that city (e.g. {@code 'LON-SMI-0007'}).
  */
 @Component
 public class CustomerCodeGenerator {
 
     /**
-     * @param lastName   the owner's last name, used for the LAST3 prefix
-     * @param ownerCount the current number of stored owners; the sequence is one greater
+     * @param city          the owner's city, used for the CITY3 prefix
+     * @param lastName      the owner's last name, used for the LAST3 prefix
+     * @param cityOwnerCount the number of owners already stored in that city; the sequence is one greater
      * @return the formatted customer code
      */
-    public String generate(String lastName, long ownerCount) {
-        int length = Math.min(3, lastName.length());
-        String prefix = lastName.substring(0, length).toUpperCase(Locale.ROOT);
-        return String.format("%s-%04d", prefix, ownerCount + 1);
+    public String generate(String city, String lastName, long cityOwnerCount) {
+        return String.format("%s-%s-%04d", abbreviate(city), abbreviate(lastName), cityOwnerCount + 1);
+    }
+
+    private String abbreviate(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
     }
 }

@@ -67,6 +67,14 @@ public interface OwnerRepository {
     long countByName(String firstName, String lastName) throws DataAccessException;
 
     /**
+     * Count the <code>Owner</code>s that live in the given city, compared case-insensitively.
+     *
+     * @param city the city to match
+     * @return the number of stored owners in that city
+     */
+    long countByCity(String city) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for
