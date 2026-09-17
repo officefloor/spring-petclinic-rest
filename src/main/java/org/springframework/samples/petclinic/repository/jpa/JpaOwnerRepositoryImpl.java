@@ -97,6 +97,11 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long count() throws DataAccessException {
+        return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+    }
+
+    @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
             this.em.persist(owner);
