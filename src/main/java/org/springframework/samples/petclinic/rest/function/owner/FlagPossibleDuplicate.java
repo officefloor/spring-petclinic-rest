@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Step of {@code POST /api/owners}: records whether the new owner is a possible duplicate of
@@ -10,13 +11,18 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@link PossibleDuplicate}). Such an owner is still created; the matching owner's id is
  * stored in {@code possibleDuplicateOf} so a later read can flag it.
  *
- * <p>Runs after {@link EnsureUniqueIdentity} has already rejected hard duplicates, so any
- * match found here is genuinely a softer one. When several existing owners match, the
- * earliest-created (lowest id) is recorded; no match leaves the field unset.
+ * <p>Runs after {@link EnsureUniqueIdentity} has already rejected household duplicates, so a
+ * match reaching here can only be a declared household member ({@code sharesHousehold}). A
+ * declared member is not a suspected duplicate, so it is never flagged; otherwise the
+ * earliest-created (lowest id) matching owner is recorded, and no match leaves the field unset.
  */
 public class FlagPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicateOf(null); // a declared household member is not a suspected duplicate
+            return;
+        }
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (PossibleDuplicate.matches(existing, owner)) {

@@ -11,10 +11,9 @@ import java.util.Map;
  * whitespace-only address normalizes to the empty string.
  *
  * <p>The single, shared definition of a normalized address: {@link NormalizeOwnerAddress}
- * uses it to store the canonical value, {@link ValidateOwnerFields} uses it to reject an
- * address that is blank once normalized, and {@link Household} uses it to compare
- * addresses for duplicate detection and the shared household identifier. The
- * transformation is idempotent, so normalizing an already-normalized address is a no-op.
+ * uses it to store the canonical value and {@link ValidateOwnerFields} uses it to reject an
+ * address that is blank once normalized. The transformation is idempotent, so normalizing an
+ * already-normalized address is a no-op.
  */
 final class AddressNormalizer {
 

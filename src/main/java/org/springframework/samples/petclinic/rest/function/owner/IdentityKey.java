@@ -13,13 +13,13 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>Key = {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}.
  * All three parts are already stored in canonical form ({@link NormalizeOwnerTelephone}
  * stores the E.164 telephone, {@link NormalizeOwnerEmail} the lower-cased email and
- * {@link AssignHousehold} the shared household id), so the key is built from the owner's
- * stored fields; email is lower-cased defensively so the comparison is case-insensitive.
+ * {@link AssignHousehold} the deterministic household id), so the key is built from the
+ * owner's stored fields; email is lower-cased defensively so the comparison is
+ * case-insensitive.
  *
- * <p>Because the telephone is part of the key, two members of the same household (same
- * {@code householdId}) with different telephones have different keys and are both allowed.
- *
- * @see EnsureUniqueIdentity rejects a create request whose identity key matches an existing owner.
+ * <p>Exposed as a derived, read-only owner field. The create endpoint's duplicate block is
+ * keyed on the {@code householdId} alone (see {@link EnsureUniqueIdentity}); this fuller key
+ * is retained only for display.
  */
 public final class IdentityKey {
 
