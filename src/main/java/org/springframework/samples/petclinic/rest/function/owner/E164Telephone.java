@@ -18,8 +18,8 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * the generic 8-to-15-digit rule only.
  *
  * <p>The single, shared definition of a normalized telephone: {@link NormalizeOwnerTelephone}
- * uses it to store the E.164 value and {@link EnsureUniqueTelephone} uses it to compare
- * telephones for duplicates.
+ * uses it to store the E.164 value, which then forms the telephone part of the owner's
+ * {@link IdentityKey} used for duplicate detection.
  */
 final class E164Telephone {
 

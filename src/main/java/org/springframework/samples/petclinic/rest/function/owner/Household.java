@@ -18,8 +18,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * address, so every owner in the same household resolves to the same value regardless of
  * creation order.
  *
- * @see EnsureUniqueHousehold rejects a duplicate household unless the request opts in.
  * @see AssignHousehold assigns the shared identifier to the joining owners.
+ * @see IdentityKey folds the household identifier into the owner's duplicate-detection key.
  */
 final class Household {
 

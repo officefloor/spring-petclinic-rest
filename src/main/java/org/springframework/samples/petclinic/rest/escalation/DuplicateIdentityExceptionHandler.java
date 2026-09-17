@@ -6,12 +6,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateTelephoneExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateTelephoneException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "Another owner already uses this telephone");
+                "Another owner already has this identity");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
