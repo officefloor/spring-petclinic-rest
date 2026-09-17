@@ -16,10 +16,15 @@
 
 package org.springframework.samples.petclinic.rest.audit;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Emits audit trail entries for owner lifecycle events on the dedicated {@code AUDIT} logger,
@@ -30,9 +35,15 @@ public class OwnerAuditLogger {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+
+    /** Assigns each emitted create event a sequence number that strictly increases across creates. */
+    private final AtomicLong sequence = new AtomicLong();
+
     /**
-     * Record that an owner was successfully created, capturing the assigned id, customer code,
-     * resolved registration date, membership level and membership number.
+     * Record that an owner was successfully created. Emits the human-readable audit line (assigned
+     * id, customer code, resolved registration date, membership level and membership number) and,
+     * alongside it, an immutable structured {@link OwnerCreatedEvent} serialized as JSON.
      *
      * @param owner the owner that has just been persisted
      */
@@ -40,5 +51,7 @@ public class OwnerAuditLogger {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(this.sequence.incrementAndGet(), owner);
+        AUDIT.info(MAPPER.writeValueAsString(event));
     }
 }

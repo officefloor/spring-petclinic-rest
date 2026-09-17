@@ -1,0 +1,52 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.audit;
+
+import org.springframework.samples.petclinic.model.Owner;
+
+/**
+ * Immutable structured record of an owner having been created, emitted to the {@code AUDIT} logger
+ * alongside the human-readable audit line.
+ *
+ * <p>The {@code customerCode} slot carries the owner's {@link Owner#getPrimaryIdentifier() current
+ * primary identifier} rather than the customer code field directly, so that when a different
+ * identifier later becomes primary the event follows automatically without touching this type.
+ *
+ * @param seq            monotonically increasing sequence number across creates
+ * @param ownerId        the persisted owner's id
+ * @param customerCode   the owner's current primary identifier
+ * @param membershipLevel the owner's derived membership level
+ * @param event          the event marker, always {@link #EVENT_TYPE}
+ */
+public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+                                String event) {
+
+    /** The marker identifying this event kind. */
+    public static final String EVENT_TYPE = "OWNER_CREATED";
+
+    /**
+     * Build the event for a freshly persisted owner, reading its current primary identifier so the
+     * event stays correct as the primary identifier evolves.
+     *
+     * @param seq   the sequence number to assign to this event
+     * @param owner the owner that has just been persisted
+     */
+    public static OwnerCreatedEvent of(long seq, Owner owner) {
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(),
+            owner.getMembershipLevel(), EVENT_TYPE);
+    }
+}

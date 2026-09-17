@@ -207,6 +207,17 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current primary identifier: the single external identifier by which this owner is
+     * known. Today this is the {@link #getCustomerCode() customer code}; if a different identifier
+     * later becomes primary (e.g. once the customer code is unified into a member id), this method
+     * changes to return that instead, and every consumer that records the primary identifier follows
+     * automatically.
+     */
+    public String getPrimaryIdentifier() {
+        return getCustomerCode();
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
