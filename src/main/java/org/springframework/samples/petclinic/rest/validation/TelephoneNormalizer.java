@@ -16,9 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
+import org.springframework.samples.petclinic.model.Telephone;
 import org.springframework.samples.petclinic.rest.error.InvalidTelephoneException;
 import org.springframework.stereotype.Component;
 
@@ -39,17 +37,6 @@ public class TelephoneNormalizer {
 
     private static final int MIN_DIGITS = 8;
     private static final int MAX_DIGITS = 15;
-
-    /**
-     * Required national-number length for each known country code, ordered longest prefix first so
-     * the most specific country code is matched against a normalized number.
-     */
-    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY_CODE = new LinkedHashMap<>();
-
-    static {
-        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("61", 9);
-        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("1", 10);
-    }
 
     /**
      * @param telephone the raw, possibly formatted telephone number
@@ -80,15 +67,13 @@ public class TelephoneNormalizer {
      * known country codes are checked; a number with an unrecognised country code passes.
      */
     private void requireValidNationalLength(String digits, String telephone) {
-        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
-            String countryCode = entry.getKey();
-            if (digits.startsWith(countryCode)) {
-                int nationalLength = digits.length() - countryCode.length();
-                if (nationalLength != entry.getValue()) {
-                    throw new InvalidTelephoneException(telephone);
-                }
-                return;
-            }
+        String countryCode = Telephone.countryCodeOf(digits);
+        if (countryCode == null) {
+            return;
+        }
+        int nationalLength = digits.length() - countryCode.length();
+        if (nationalLength != Telephone.nationalLength(countryCode)) {
+            throw new InvalidTelephoneException(telephone);
         }
     }
 }
