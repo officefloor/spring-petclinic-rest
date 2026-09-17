@@ -1,0 +1,100 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8aea16b84..57e168f22 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+ import org.springframework.samples.petclinic.rest.function.owner.Locality;
++import org.springframework.samples.petclinic.rest.function.owner.Luhn;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
+@@ -24,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+@@ -60,6 +62,13 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+     }
+ 
++    /** The Luhn check digit (0-9) over the digits of the owner's customerCode; absent until the
++     *  customer code has been assigned. */
++    default Integer checkDigit(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        return customerCode == null ? null : Luhn.checkDigit(customerCode);
++    }
++
+     /** The owner's region, derived from its postcode range first (NSW 2000-2099, VIC 3000-3099,
+      *  QLD 4000-4099), falling back to the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
+      *  Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Luhn.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Luhn.java
+new file mode 100644
+index 000000000..16a978ee2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Luhn.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * The single definition of the <em>Luhn check digit</em>: the digit (0-9) that, appended to
++ * a sequence of digits, makes the whole pass the Luhn checksum. Non-digit characters in the
++ * input are ignored, so it can be computed directly over a formatted value such as a
++ * {@link CustomerCode}.
++ *
++ * <p>Pure function of its input; the digit is computed on read rather than stored.
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /** The Luhn check digit (0-9) over the digits contained in {@code value}. */
++    public static int checkDigit(String value) {
++        int sum = 0;
++        boolean doubled = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubled) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubled = !doubled;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d4bbe72f7..52650e39c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2106,6 +2106,18 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained in the
++                owner's customerCode. Derived from the customerCode; absent until it is
++                assigned.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
