@@ -1,0 +1,158 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 153b1f427..d8a2f45bb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -92,6 +92,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -264,6 +267,19 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted: the record is retained but flagged so it is
++     * excluded from the create endpoint's duplicate and identity checks. A newly created owner
++     * is not deleted.
++     */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * The derived key that uniquely identifies an owner for duplicate detection: the normalized
+      * telephone, the (lower-cased) email or the empty string when absent, and the household id or
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bc5ec0ea2..cef90df62 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -149,7 +149,10 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void deleteOwner(Owner owner) throws DataAccessException {
+-        ownerRepository.delete(owner);
++        // Soft-delete: retain the record and flag it so it is excluded from duplicate/identity
++        // checks, while remaining readable via findOwnerById.
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ 
+     @Override
+@@ -256,8 +259,10 @@ public class ClinicServiceImpl implements ClinicService {
+     public boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException {
+         String identityKey = owner.getIdentityKey();
+         // Owners can only share an identity key when they share a (normalized) telephone, so it is
+-        // enough to compare against the owners already stored with the same telephone.
++        // enough to compare against the owners already stored with the same telephone. Soft-deleted
++        // owners are ignored, so a duplicate is allowed once the only match has been deleted.
+         return ownerRepository.findByTelephone(owner.getTelephone()).stream()
++            .filter(existing -> !existing.isDeleted())
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+     }
+ 
+@@ -274,6 +279,7 @@ public class ClinicServiceImpl implements ClinicService {
+             return null;
+         }
+         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
++            .filter(existing -> !existing.isDeleted())
+             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+             .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+             .map(Owner::getId)
+@@ -376,13 +382,15 @@ public class ClinicServiceImpl implements ClinicService {
+     /**
+      * Find the existing owners that share {@code owner}'s household, i.e. those with the same last
+      * name (ignoring case) and the same postcode. An owner without a postcode belongs to no
+-     * household, so no members are returned for it.
++     * household, so no members are returned for it. Soft-deleted owners are excluded, so they
++     * neither block a create as a household duplicate nor count towards the household size.
+      */
+     private List<Owner> findHouseholdMembers(Owner owner) {
+         if (owner.getPostcode() == null) {
+             return List.of();
+         }
+         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
++            .filter(existing -> !existing.isDeleted())
+             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+             .toList();
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 6b7f68c29..982ccee50 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d75c23811..587c38798 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4263b0634..6e3b1be46 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c6b51863f..9019443a0 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 627c7c720..95bf02b1a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2252,6 +2252,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: True when the owner has been soft-deleted via DELETE /api/owners/{id} (the record is retained but excluded from the create endpoint's duplicate and identity checks), otherwise false. A newly created owner is false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
