@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -20,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name for display as 'LastName, FirstName'. */
@@ -34,6 +36,18 @@ public interface OwnerMapper {
 
     private String initial(String name) {
         return name == null || name.isEmpty() ? "" : Character.toUpperCase(name.charAt(0)) + ".";
+    }
+
+    /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
+     *  last two digits of the registration date's year (e.g. 'SMI-0007-M26'). Absent until both the
+     *  customer code and registration date have been assigned. */
+    default String membershipNumber(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (customerCode == null || registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
