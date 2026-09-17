@@ -144,11 +144,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Resolves the owner's numeric membership level from its {@linkplain #resolveMembershipPoints
+     * Resolves the owner's effective membership level: the level persisted (capped) on creation when
+     * present, otherwise the level {@linkplain #deriveMembershipLevel derived} from its membership
+     * points.
+     */
+    default Integer resolveMembershipLevel(Owner owner) {
+        Integer stored = owner.getMembershipLevel();
+        return stored != null ? stored : deriveMembershipLevel(owner);
+    }
+
+    /**
+     * Derives the owner's numeric membership level from its {@linkplain #resolveMembershipPoints
      * membership points}: level {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3},
      * {@code 3} for {@code 4-5} and {@code 4} for {@code 6} or more.
      */
-    default Integer resolveMembershipLevel(Owner owner) {
+    default Integer deriveMembershipLevel(Owner owner) {
         int points = resolveMembershipPoints(owner);
         if (points <= 1) {
             return 1;

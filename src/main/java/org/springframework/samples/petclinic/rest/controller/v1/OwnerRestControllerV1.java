@@ -135,12 +135,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // the same household share it automatically and it forms part of the identity key.
         this.clinicService.assignHousehold(owner);
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        // A second owner in an existing household (same last name and postcode) is a household
-        // duplicate; reject it unless the client declares the shared household, in which case it is
-        // created as a declared member.
-        if (this.clinicService.existsOwnerInHousehold(owner) && !declaredHouseholdMember) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         // Reject an exact duplicate: an owner whose whole identity key (normalized telephone,
         // email and householdId) already exists.
         if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
@@ -148,6 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner));
+        // Cap the membership level so a new household member never outranks its household by more
+        // than one level above its current highest-ranked member.
+        owner.setMembershipLevel(this.clinicService.resolveCappedMembershipLevel(owner));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
         // Flag a soft match unless this is a declared household member (a declared member is not a
         // suspected duplicate): an existing owner sharing this owner's last name and postcode with a

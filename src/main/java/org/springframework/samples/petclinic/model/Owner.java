@@ -83,6 +83,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private boolean bulkSignupWarning;
 
@@ -251,6 +254,19 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * The owner's persisted membership level, capped on creation so it never exceeds one above the
+     * highest level among the owner's household members. {@code null} for owners created before the
+     * level was resolved, in which case the level is derived on read from the membership points.
+     */
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public boolean isBulkSignupWarning() {

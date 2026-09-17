@@ -20,6 +20,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
+import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDay;
@@ -51,6 +52,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
     private final HouseholdIdGenerator householdIdGenerator;
+    private final OwnerMapper ownerMapper;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -60,7 +62,8 @@ public class ClinicServiceImpl implements ClinicService {
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
-        HouseholdIdGenerator householdIdGenerator) {
+        HouseholdIdGenerator householdIdGenerator,
+        OwnerMapper ownerMapper) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -69,6 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdIdGenerator = householdIdGenerator;
+        this.ownerMapper = ownerMapper;
     }
 
     @Override
@@ -287,12 +291,6 @@ public class ClinicServiceImpl implements ClinicService {
             .orElse(null);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerInHousehold(Owner owner) throws DataAccessException {
-        return !findHouseholdMembers(owner).isEmpty();
-    }
-
     /**
      * The maximum number of owners allowed in a single city; once a city holds this many
      * owners it is considered at capacity and no further owners may be created there.
@@ -377,6 +375,22 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countHouseholdMembers(Owner owner) throws DataAccessException {
         return findHouseholdMembers(owner).size() + 1;
+    }
+
+    /**
+     * Resolve the membership level for a new owner, capping the level derived from its own membership
+     * points so it never exceeds one above the current maximum level among its existing household
+     * members. With no existing household member no cap applies and the derived level is returned.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Integer resolveCappedMembershipLevel(Owner owner) throws DataAccessException {
+        Integer derivedLevel = ownerMapper.deriveMembershipLevel(owner);
+        return findHouseholdMembers(owner).stream()
+            .map(ownerMapper::resolveMembershipLevel)
+            .max(Integer::compareTo)
+            .map(maxMemberLevel -> Math.min(derivedLevel, maxMemberLevel + 1))
+            .orElse(derivedLevel);
     }
 
     /**
