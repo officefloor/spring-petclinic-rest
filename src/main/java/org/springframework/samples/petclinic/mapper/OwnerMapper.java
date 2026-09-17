@@ -176,7 +176,9 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
@@ -186,6 +188,23 @@ public interface OwnerMapper {
     @Named("normalizeAddress")
     default String normalizeAddress(String address) {
         return AddressNormalizer.normalize(address);
+    }
+
+    /**
+     * Compose the owner's canonical {@code address} from the supplied fields, preferring the
+     * structured form: when {@code addressLine1} is present it is the normalized {@code addressLine1}
+     * with a single space and the normalized {@code addressLine2} appended when that line is present;
+     * otherwise it falls back to the normalized flat {@code address}. Composing into the single
+     * {@code address} field keeps everything that reads the address (household hash, postcode
+     * validation, locality) consistent whichever form was supplied.
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        String line1 = normalizeAddress(ownerDto.getAddressLine1());
+        if (line1 == null || line1.isBlank()) {
+            return normalizeAddress(ownerDto.getAddress());
+        }
+        String line2 = normalizeAddress(ownerDto.getAddressLine2());
+        return (line2 == null || line2.isBlank()) ? line1 : line1 + " " + line2;
     }
 
     /**
