@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cff37c71a..e29361978 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+@@ -23,6 +24,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
++    @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(resolveMembershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -49,6 +51,14 @@ public interface OwnerMapper {
+         return Character.toUpperCase(name.charAt(0)) + ".";
+     }
+ 
++    /**
++     * Derives the owner's locality (canonical region) from its city via the fixed
++     * city-to-region table, yielding {@code "UNKNOWN"} for any city not in the table.
++     */
++    default String resolveLocality(Owner owner) {
++        return LocalityResolver.resolve(owner.getCity());
++    }
++
+     /**
+      * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
+      * last two digits of the registration date year, e.g. {@code "LON-SMI-0007-M26"}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+new file mode 100644
+index 000000000..50b1a38ba
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's locality (canonical region) from its city.
++ *
++ * <p>The city is looked up in a small, fixed city-to-region table
++ * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) and the matching
++ * canonical region string is returned. Any city not present in the table — including a
++ * {@code null} city — derives the sentinel locality {@code "UNKNOWN"}.
++ */
++public final class LocalityResolver {
++
++    /** Locality returned for any city not present in {@link #CITY_REGION}. */
++    public static final String UNKNOWN = "UNKNOWN";
++
++    /** City -> canonical region; anything not listed derives {@link #UNKNOWN}. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW",
++        "Melbourne", "VIC",
++        "Brisbane", "QLD");
++
++    private LocalityResolver() {
++    }
++
++    /**
++     * Resolve the canonical region for a city.
++     *
++     * @param city the owner's city, possibly {@code null}
++     * @return the canonical region string when the city is in the table, otherwise {@code "UNKNOWN"}
++     */
++    public static String resolve(String city) {
++        return CITY_REGION.getOrDefault(city, UNKNOWN);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a2127122b..0d135cbe4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,6 +2092,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            locality:
++              title: Locality
++              description: The canonical region derived from the city via the fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' for any other city.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: Stable code formatted '<LAST3>-<NNNN>', where LAST3 is the upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded sequence assigned at registration.
