@@ -50,7 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final CustomerCodeGenerator customerCodeGenerator;
+    private final MemberIdGenerator memberIdGenerator;
     private final HouseholdIdGenerator householdIdGenerator;
     private final OwnerMapper ownerMapper;
 
@@ -61,7 +61,7 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator,
+        MemberIdGenerator memberIdGenerator,
         HouseholdIdGenerator householdIdGenerator,
         OwnerMapper ownerMapper) {
         this.petRepository = petRepository;
@@ -70,7 +70,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.customerCodeGenerator = customerCodeGenerator;
+        this.memberIdGenerator = memberIdGenerator;
         this.householdIdGenerator = householdIdGenerator;
         this.ownerMapper = ownerMapper;
     }
@@ -248,11 +248,11 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            String customerCode = customerCodeGenerator.generate(
-                owner.getPostcode(), owner.getTelephone(), owner.getLastName());
-            owner.setCustomerCode(
-                customerCodeGenerator.deduplicate(customerCode, ownerRepository::existsByCustomerCode));
+        if (owner.isNew() && owner.getMemberId() == null) {
+            String memberId = memberIdGenerator.generate(
+                owner.getPostcode(), owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
+            owner.setMemberId(
+                memberIdGenerator.deduplicate(memberId, ownerRepository::existsByMemberId));
         }
         ownerRepository.save(owner);
 

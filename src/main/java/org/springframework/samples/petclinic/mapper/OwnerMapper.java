@@ -14,7 +14,6 @@ import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
-import org.springframework.samples.petclinic.util.Luhn;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,8 +30,6 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "timezone", expression = "java(resolveTimezone(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(resolveMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
@@ -81,13 +78,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (canonical region) from the leading {@code <REGION>} segment of
-     * its {@code customerCode} ({@code <REGION>-<HASH8>}), so the locality always agrees with the
-     * region encoded in the owner's identity.
+     * Derives the owner's locality (canonical region) from its postcode via the same resolver the
+     * {@code memberId} uses for its leading {@code <REGION>} segment, so the locality always agrees
+     * with the region encoded in the owner's identity.
      */
     default String resolveLocality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        return customerCode.substring(0, customerCode.indexOf('-'));
+        return LocalityResolver.resolveFromPostcode(owner.getPostcode());
     }
 
     /**
@@ -97,22 +93,6 @@ public interface OwnerMapper {
      */
     default String resolveTimezone(Owner owner) {
         return TimezoneResolver.resolve(resolveLocality(owner));
-    }
-
-    /**
-     * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
-     * last two digits of the {@linkplain Owner#getFiscalYear() fiscal year} of the registration
-     * date, e.g. {@code "LON-SMI-0007-M26"}.
-     */
-    default String formatMembershipNumber(Owner owner) {
-        return owner.getCustomerCode() + "-M" + owner.getFiscalYear().substring(2);
-    }
-
-    /**
-     * Computes the Luhn check digit over the decimal digits of the owner's customer code.
-     */
-    default Integer computeCheckDigit(Owner owner) {
-        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /** The minimum tenure, in fiscal years, an owner must exceed to earn the tenure membership points. */

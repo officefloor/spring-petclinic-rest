@@ -73,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -229,23 +229,17 @@ public class Owner extends Person {
         return this.birthDate == null ? null : AgeBand.of(this.birthDate, this.registrationDate);
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
-    }
-
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
     /**
-     * The owner's current primary identifier: presently the {@link #customerCode}. Consumers that
-     * need "whatever identifies this owner" (such as audit events) read it from here so there is a
-     * single source of truth; when the customer code is later unified into the member id, only this
-     * method changes and every consumer follows.
+     * The owner's stable member id, formatted {@code <REGION><FY><HASH8><CHK>}. It unifies what were
+     * previously the separate customer code and membership number into a single identifier, and is
+     * the owner's primary identifier for audit and downstream consumers.
      */
-    @Transient
-    public String getPrimaryIdentifier() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
+    }
+
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {

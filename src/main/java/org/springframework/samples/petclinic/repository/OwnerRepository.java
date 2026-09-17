@@ -87,13 +87,13 @@ public interface OwnerRepository {
     Collection<Owner> findByPostcode(String postcode) throws DataAccessException;
 
     /**
-     * Report whether any <code>Owner</code> is already stored with the given customer code. Used to
-     * detect customer-code collisions so a unique code can be assigned.
+     * Report whether any <code>Owner</code> is already stored with the given member id. Used to
+     * detect member-id collisions so a unique id can be assigned.
      *
-     * @param customerCode the customer code to look for
-     * @return <code>true</code> if an owner with that customer code exists, <code>false</code> otherwise
+     * @param memberId the member id to look for
+     * @return <code>true</code> if an owner with that member id exists, <code>false</code> otherwise
      */
-    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
+    boolean existsByMemberId(String memberId) throws DataAccessException;
 
     /**
      * Report the total number of <code>Owner</code>s currently stored.

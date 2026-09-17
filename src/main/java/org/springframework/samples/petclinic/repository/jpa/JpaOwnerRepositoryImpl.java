@@ -114,10 +114,10 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
-    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+    public boolean existsByMemberId(String memberId) throws DataAccessException {
         Query query = this.em.createQuery(
-            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
-        query.setParameter("customerCode", customerCode);
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.memberId = :memberId");
+        query.setParameter("memberId", memberId);
         return (long) query.getSingleResult() > 0;
     }
 

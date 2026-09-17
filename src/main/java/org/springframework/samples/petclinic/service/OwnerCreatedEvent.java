@@ -17,23 +17,23 @@ package org.springframework.samples.petclinic.service;
 
 /**
  * Immutable structured record of an owner's creation, emitted to the {@code AUDIT} logger as JSON.
- * The {@code customerCode} field carries the owner's {@linkplain
- * org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier() current primary
- * identifier}, so it automatically follows whatever later replaces the customer code.
+ * The {@code memberId} field carries the owner's {@linkplain
+ * org.springframework.samples.petclinic.model.Owner#getMemberId() member id}, its stable primary
+ * identifier.
  *
  * @param seq            monotonically increasing sequence number across all creates
  * @param ownerId        the created owner's id
- * @param customerCode   the owner's current primary identifier at creation time
+ * @param memberId       the owner's member id at creation time
  * @param membershipLevel the owner's resolved membership level
  * @param event          the event type discriminator, always {@code "OWNER_CREATED"}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     /** The event-type discriminator carried by every owner-created event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
-        this(seq, ownerId, customerCode, membershipLevel, EVENT_TYPE);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
     }
 }

@@ -44,14 +44,25 @@ public final class FiscalYear {
     }
 
     /**
+     * The two-digit fiscal-year value {@code "<YY>"} for the fiscal year containing {@code date}, the
+     * last two digits of the {@linkplain #of(LocalDate) fiscal year} zero-padded, e.g. {@code "21"}.
+     *
+     * @param date the date to classify
+     * @return the two-digit fiscal-year value
+     */
+    public static String twoDigit(LocalDate date) {
+        return String.format("%02d", of(date) % 100);
+    }
+
+    /**
      * The fiscal-year label {@code "FY<YY>"} for the fiscal year containing {@code date}, where YY
-     * is the last two digits of the {@linkplain #of(LocalDate) fiscal year}, e.g. {@code "FY21"}.
+     * is the {@linkplain #twoDigit(LocalDate) two-digit fiscal year}, e.g. {@code "FY21"}.
      *
      * @param date the date to label
      * @return the fiscal-year label
      */
     public static String label(LocalDate date) {
-        return String.format("FY%02d", of(date) % 100);
+        return "FY" + twoDigit(date);
     }
 
     /**
