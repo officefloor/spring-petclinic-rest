@@ -15,11 +15,16 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Emits audit records for owner life-cycle events to the dedicated {@code AUDIT}
@@ -32,17 +37,26 @@ public class OwnerAuditor {
 
     private final OwnerMapper ownerMapper;
 
+    private final ObjectMapper jsonMapper = JsonMapper.builder().build();
+
+    /** Sequence shared by every owner-created event, monotonically increasing across creates. */
+    private final AtomicLong sequence = new AtomicLong();
+
     public OwnerAuditor(OwnerMapper ownerMapper) {
         this.ownerMapper = ownerMapper;
     }
 
     /**
-     * Record the successful creation of an owner, capturing its id, customer code,
-     * registration date and derived membership number and level.
+     * Record the successful creation of an owner: a human-readable audit line plus an immutable
+     * structured {@link OwnerCreatedEvent} serialized as JSON, both on the {@code AUDIT} logger.
      */
     public void auditCreated(Owner owner) {
+        Integer membershipLevel = this.ownerMapper.resolveMembershipLevel(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipNumber={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            this.ownerMapper.formatMembershipNumber(owner), this.ownerMapper.resolveMembershipLevel(owner));
+            this.ownerMapper.formatMembershipNumber(owner), membershipLevel);
+        OwnerCreatedEvent event = new OwnerCreatedEvent(this.sequence.incrementAndGet(),
+            owner.getId(), owner.getPrimaryIdentifier(), membershipLevel);
+        AUDIT.info(this.jsonMapper.writeValueAsString(event));
     }
 }
