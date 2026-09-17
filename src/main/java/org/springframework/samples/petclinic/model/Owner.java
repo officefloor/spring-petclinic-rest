@@ -65,9 +65,8 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
-    /** Number of owners in this owner's household, derived at response time (not persisted). */
-    @Transient
-    private Integer householdSize;
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
@@ -136,12 +135,12 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
-    public Integer getHouseholdSize() {
-        return this.householdSize;
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
     }
 
-    public void setHouseholdSize(Integer householdSize) {
-        this.householdSize = householdSize;
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     protected Set<Pet> getPetsInternal() {

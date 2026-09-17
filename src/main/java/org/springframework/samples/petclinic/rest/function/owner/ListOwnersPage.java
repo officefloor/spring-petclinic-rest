@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Collection;
-
 import net.officefloor.web.ObjectResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -25,8 +23,6 @@ public class ListOwnersPage {
         Page<Owner> owners = lastName != null
                 ? ownerRepository.findByLastName(lastName, pageable)
                 : ownerRepository.findAll(pageable);
-        Collection<Owner> allOwners = ownerRepository.findAll();
-        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
         response.send(ownerMapper.toOwnerPageDto(owners));
     }
 }

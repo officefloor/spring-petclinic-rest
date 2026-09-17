@@ -1,12 +1,10 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Collection;
 import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * The single definition of an owner "household": owners sharing the same last name and
@@ -32,28 +30,6 @@ final class Household {
     static boolean matches(Owner owner, String lastName, String address) {
         return normalizeName(lastName).equals(normalizeName(owner.getLastName()))
                 && AddressNormalizer.normalize(address).equals(AddressNormalizer.normalize(owner.getAddress()));
-    }
-
-    /** The number of owners in {@code owner}'s household — those sharing its {@code householdId} — or
-     *  1 when it belongs to no shared household (its {@code householdId} is unset). */
-    static int size(Owner owner, OwnerRepository ownerRepository) {
-        return size(owner, ownerRepository.findAll());
-    }
-
-    /** As {@link #size(Owner, OwnerRepository)} but counting within an already-loaded set of owners,
-     *  so a whole page can be sized from a single query. */
-    static int size(Owner owner, Collection<Owner> owners) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return 1;
-        }
-        int count = 0;
-        for (Owner other : owners) {
-            if (householdId.equals(other.getHouseholdId())) {
-                count++;
-            }
-        }
-        return count;
     }
 
     /** The stable identifier shared by every owner in the household keyed by {@code lastName} and {@code address}. */

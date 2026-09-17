@@ -13,7 +13,6 @@ public class RespondWithOwnerUpdated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
-        owner.setHouseholdSize(Household.size(owner, ownerRepository));
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));

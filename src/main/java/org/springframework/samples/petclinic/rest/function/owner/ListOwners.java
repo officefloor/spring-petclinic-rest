@@ -23,8 +23,6 @@ public class ListOwners {
             response.send(ResponseEntity.notFound().build());
             return;
         }
-        Collection<Owner> allOwners = ownerRepository.findAll();
-        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
         response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
     }
 }

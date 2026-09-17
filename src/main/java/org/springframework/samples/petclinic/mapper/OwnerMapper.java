@@ -23,7 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -51,21 +50,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
-    }
-
-    /** The owner's membership tier: 'GOLD' when the owner's household (owners sharing the same
-     *  householdId) has 3 or more members; otherwise 'SILVER' when the owner has no namesakes
-     *  (namesakeCount is 0) and an email on file, and 'BRONZE' otherwise. The household size is
-     *  supplied on the owner (see {@code Owner.getHouseholdSize()}) by the responding step. */
-    default String membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isBlank();
-        return silver ? "SILVER" : "BRONZE";
     }
 
     /** The owner's region, derived from its city via the fixed city-to-region table
