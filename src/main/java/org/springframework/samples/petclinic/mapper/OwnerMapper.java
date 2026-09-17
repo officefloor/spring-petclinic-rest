@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.Luhn;
@@ -69,11 +70,14 @@ public interface OwnerMapper {
         return customerCode == null ? null : Luhn.checkDigit(customerCode);
     }
 
-    /** The owner's region, derived from its postcode range first (NSW 2000-2099, VIC 3000-3099,
-     *  QLD 4000-4099), falling back to the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
+    /** The owner's region, read back from the region segment of its customerCode (the identity's
+     *  {@code <REGION>-<HASH8>} form). Until the customer code has been assigned it falls back to
+     *  deriving the region from the postcode range first (NSW 2000-2099, VIC 3000-3099,
+     *  QLD 4000-4099), then the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
      *  Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
     default String locality(Owner owner) {
-        return Locality.region(owner.getCity(), owner.getPostcode());
+        String region = CustomerCode.region(owner.getCustomerCode());
+        return region != null ? region : Locality.region(owner.getCity(), owner.getPostcode());
     }
 
     /** The owner's preferred contact channel: 'EMAIL' when an email address is on file,
