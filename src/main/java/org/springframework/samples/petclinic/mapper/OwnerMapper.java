@@ -83,9 +83,9 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 3 that starts
-     * at 1, gains 1 for a present email address and 1 for a unique name (namesakeCount is zero),
-     * capped at 3.
+     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 4 that starts
+     * at 1, gains 1 for a present email address, 1 for a unique name (namesakeCount is zero) and 1
+     * for tenure over a year, capped at 4.
      */
     default Integer membershipLevel(Owner owner) {
         return MembershipLevel.of(owner);
