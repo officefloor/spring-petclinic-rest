@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.MembershipPoints;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Timezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -33,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -81,6 +83,15 @@ public interface OwnerMapper {
             return null;
         }
         return Locality.forPostcode(owner.getPostcode());
+    }
+
+    /** The IANA timezone name for the owner's region (see {@link Timezone} and {@link #locality}),
+     * or null when the region has no known timezone. */
+    default String timezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Timezone.forRegion(locality(owner));
     }
 
     /** Format the stored names as 'LastName, FirstName'. */
