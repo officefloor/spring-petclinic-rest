@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -106,6 +107,14 @@ public interface OwnerMapper {
     /** Whether the owner has a non-blank email address. */
     private boolean hasEmail(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isBlank();
+    }
+
+    /**
+     * Resolves the owner's age band (as a string) from its birth date against its registration
+     * date, or {@code null} when the owner has no birth date.
+     */
+    default String resolveAgeBand(Owner owner) {
+        return owner.getAgeBand() == null ? null : owner.getAgeBand().name();
     }
 
     @Mapping(target = "id", ignore = true)

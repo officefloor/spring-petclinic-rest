@@ -58,6 +58,9 @@ public class Owner extends Person {
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date", columnDefinition = "DATE")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -126,6 +129,23 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's age band derived from {@link #birthDate} against {@link #registrationDate}, or
+     * {@code null} when no birth date was supplied.
+     */
+    @Transient
+    public AgeBand getAgeBand() {
+        return this.birthDate == null ? null : AgeBand.of(this.birthDate, this.registrationDate);
     }
 
     public String getCustomerCode() {
