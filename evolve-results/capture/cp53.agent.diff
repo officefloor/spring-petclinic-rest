@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/event/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/event/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..d5c8c97bf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/event/OwnerCreatedEvent.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.rest.event;
++
++/**
++ * Immutable structured record of an owner creation, emitted to the {@code AUDIT} log alongside the
++ * human-readable audit line. Each event carries a process-wide monotonically increasing
++ * {@code seq}, the owner's generated {@code ownerId}, its current primary identifier and the
++ * membership level, under the {@code OWNER_CREATED} event type.
++ *
++ * <p>The {@code primaryIdentifier} is whatever identifies the owner today — the customerCode — and
++ * whatever replaces it later (the memberId). It is serialized under the {@code customerCode} key
++ * while the customerCode is primary; that key tracks the identifier when it is unified into the
++ * memberId.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String primaryIdentifier, Integer membershipLevel) {
++
++    /** The event type discriminator carried in the serialized form. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    /** Renders the event as a compact JSON object with fields in the documented order. */
++    public String toJson() {
++        return "{"
++                + "\"seq\":" + seq
++                + ",\"ownerId\":" + ownerId
++                + ",\"customerCode\":" + jsonString(primaryIdentifier)
++                + ",\"membershipLevel\":" + membershipLevel
++                + ",\"event\":" + jsonString(EVENT)
++                + "}";
++    }
++
++    /** A JSON string literal for {@code value}, or the bare {@code null} literal when absent. */
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder escaped = new StringBuilder("\"");
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            if (c == '"' || c == '\\') {
++                escaped.append('\\');
++            }
++            escaped.append(c);
++        }
++        return escaped.append('"').toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java
+new file mode 100644
+index 000000000..42dc5da47
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import net.officefloor.plugin.variable.Val;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.event.OwnerCreatedEvent;
++import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.MembershipPoints;
++import org.springframework.samples.petclinic.util.PrimaryIdentifier;
++
++/**
++ * Emits the immutable {@link OwnerCreatedEvent} to the {@code AUDIT} log after
++ * {@link AuditOwnerCreated} has written the human-readable line. Runs once the owner is persisted, so
++ * it carries the generated id, the current primary identifier and the derived membership level. Each
++ * event takes the next value from a process-wide monotonic sequence so consumers can order creates
++ * and detect gaps.
++ */
++public class AuditOwnerCreatedEvent {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    /** Process-wide monotonic sequence shared across all owner creates. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
++    public void service(@Val Owner owner) {
++        Integer membershipLevel = MembershipLevel.forPoints(MembershipPoints.of(owner));
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(),
++                owner.getId(), PrimaryIdentifier.of(owner), membershipLevel);
++        AUDIT.info("{}", event.toJson());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/PrimaryIdentifier.java b/src/main/java/org/springframework/samples/petclinic/util/PrimaryIdentifier.java
+new file mode 100644
+index 000000000..a5ad1c4aa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/PrimaryIdentifier.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * The owner's current primary identifier — the single value that identifies an owner across the
++ * system. Today that is the {@link CustomerCode customerCode}; when identities are unified this will
++ * resolve to the memberId instead. Callers that record "the primary identifier" (such as the
++ * owner-created audit event) go through here, so the switch is a one-line change confined to this
++ * class rather than spread across every consumer.
++ */
++public final class PrimaryIdentifier {
++
++    private PrimaryIdentifier() {
++    }
++
++    /** The owner's current primary identifier, or {@code null} when the owner has none. */
++    public static String of(Owner owner) {
++        return owner.getCustomerCode();
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 796d4d888..2a0ba8ef2 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -119,6 +119,11 @@ recordIdempotency:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: auditEvent
++
++auditEvent:
++  class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreatedEvent
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
