@@ -20,16 +20,17 @@ import java.util.Comparator;
 import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Soundex;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
  * Detects a soft match between a newly created owner and an existing one: an owner that is not a
- * hard {@link DuplicateOwnerValidator duplicate} but shares an existing owner's last name and
- * postcode while holding a different telephone. Unlike the duplicate validator this never rejects
- * the create; it merely reports the existing owner so the caller can flag the new one as a possible
- * duplicate.
+ * hard {@link DuplicateOwnerValidator duplicate} but whose last name (compared phonetically by
+ * Soundex) and postcode match an existing owner while their {@link Owner#getIdentityKey() identity
+ * keys} differ. Unlike the duplicate validator this never rejects the create; it merely reports the
+ * existing owner so the caller can flag the new one as a possible duplicate.
  */
 @Component
 public class PossibleDuplicateDetector {
@@ -41,19 +42,22 @@ public class PossibleDuplicateDetector {
     }
 
     /**
-     * @param owner the owner being created, with its telephone already normalized
-     * @return the id of the lowest-id existing owner that shares this owner's last name and
-     * postcode but holds a different telephone, or {@code null} when there is no such match
+     * @param owner the owner being created, with its telephone and email already normalized so its
+     * {@link Owner#getIdentityKey() identityKey} is final
+     * @return the id of the lowest-id existing owner whose last name (by Soundex) and postcode match
+     * this owner's but whose identity key differs, or {@code null} when there is no such match
      */
     public Integer findPossibleDuplicate(Owner owner) {
         if (!StringUtils.hasText(owner.getPostcode())) {
             return null;
         }
-        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
+        String soundex = Soundex.of(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
+        return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> existing.getLastName().equalsIgnoreCase(owner.getLastName()))
+            .filter(existing -> soundex.equals(Soundex.of(existing.getLastName())))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .filter(Objects::nonNull)
             .min(Comparator.naturalOrder())

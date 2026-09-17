@@ -23,11 +23,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * Rejects creating an owner that hard-duplicates an existing one. A new owner is a duplicate only
- * when its whole {@link Owner#getIdentityKey() identity key} (normalized telephone, email and
- * household id) equals that of an existing owner, so housemates that share a household but hold
- * different telephones are allowed (and merely flagged as {@link PossibleDuplicateDetector possible
- * duplicates}). The caller bypasses this check when the create deliberately declares a shared
- * household.
+ * when its whole {@link Owner#getIdentityKey() identity key} (a hash of normalized telephone, email
+ * and the Soundex of the last name) equals that of an existing owner, so housemates that share a
+ * last name and postcode but hold different telephones are allowed (and merely flagged as
+ * {@link PossibleDuplicateDetector possible duplicates}). The caller bypasses this check when the
+ * create deliberately declares a shared household.
  */
 @Component
 public class DuplicateOwnerValidator {

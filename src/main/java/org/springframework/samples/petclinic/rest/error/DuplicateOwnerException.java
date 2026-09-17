@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.rest.error;
 
 /**
- * Thrown when an owner is created whose whole identity key (normalized telephone, email and
- * household id) matches that of an existing owner. Carries the conflicting key so the REST layer
- * can report what was rejected.
+ * Thrown when an owner is created whose whole identity key (a hash of normalized telephone, email
+ * and the Soundex of the last name) matches that of an existing owner. Carries the conflicting key
+ * so the REST layer can report what was rejected.
  */
 public class DuplicateOwnerException extends RuntimeException {
 

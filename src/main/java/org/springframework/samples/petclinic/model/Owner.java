@@ -245,9 +245,9 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
-     * postcode while holding a different telephone. Resolved at creation and stored so it is
-     * reported consistently on every later read.
+     * Whether this owner, though not a hard duplicate, matches an existing owner's last name by
+     * Soundex and shares its postcode while holding a different identity key. Resolved at creation
+     * and stored so it is reported consistently on every later read.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -283,14 +283,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: the single derived value used to detect duplicate owners, formed
-     * as {@code normalizedTelephone + '|' + email + '|' + householdId} where an absent telephone,
-     * email or household contributes an empty string. Two owners are duplicates only when their
-     * whole identity keys are equal, so housemates that share a {@code householdId} but hold
-     * different telephones have distinct identity keys and are both allowed.
+     * The owner's identity key: the single derived value used to detect duplicate owners, formed as
+     * the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
+     * where an absent telephone or email contributes an empty string. Because the telephone is part
+     * of the key, housemates that share a last name and postcode but hold different telephones have
+     * distinct identity keys and are both allowed (and merely flagged as possible duplicates).
      */
     public String getIdentityKey() {
-        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
+        String key = orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + Soundex.of(this.getLastName());
+        return Sha256.hex(key);
     }
 
     private static String orEmpty(String value) {
