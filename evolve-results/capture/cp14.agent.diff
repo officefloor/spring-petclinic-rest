@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2c7815d6e..1f7d2daca 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -20,6 +21,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name for display as 'LastName, FirstName'. */
+@@ -36,6 +38,18 @@ public interface OwnerMapper {
+         return name == null || name.isEmpty() ? "" : Character.toUpperCase(name.charAt(0)) + ".";
+     }
+ 
++    /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
++     *  last two digits of the registration date's year (e.g. 'SMI-0007-M26'). Absent until both the
++     *  customer code and registration date have been assigned. */
++    default String membershipNumber(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (customerCode == null || registrationDate == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index baf69989c..b42c19b3a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2117,6 +2117,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The owner's membership number, formatted '<customerCode>-M<YY>' where YY is
++                the last two digits of the registration date's year. Derived from the owner's
++                own customerCode and registrationDate.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
