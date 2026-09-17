@@ -144,6 +144,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's membership tier: {@code "SILVER"} when this owner has no namesakes
+     * ({@code namesakeCount} is 0) and an email address is present, otherwise
+     * {@code "BRONZE"}. Derived from the owner's own fields.
+     */
+    public String getMembershipTier() {
+        boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        return unique && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
      * Default the registration date to the server's current date when none was
      * supplied, so a newly registered owner always has a registration date.
      */
