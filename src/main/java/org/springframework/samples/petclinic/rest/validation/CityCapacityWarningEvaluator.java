@@ -22,11 +22,13 @@ import org.springframework.stereotype.Component;
 /**
  * Decides whether a city is approaching the {@link CityOwnerLimitValidator#MAX_OWNERS_PER_CITY}
  * owner capacity limit: it is once the city already holds at least
- * {@value #WARNING_THRESHOLD} owners while still below the hard limit.
+ * {@value #WARNING_THRESHOLD} owners while still below the hard limit. The
+ * {@value #WARNING_THRESHOLD}-owner threshold is the city's <em>soft capacity</em>.
  */
 @Component
 public class CityCapacityWarningEvaluator {
 
+    /** The soft capacity: the owner count at which a city starts warning of impending fullness. */
     static final long WARNING_THRESHOLD = 40;
 
     private final ClinicService clinicService;
@@ -44,5 +46,15 @@ public class CityCapacityWarningEvaluator {
     public boolean isApproachingCapacity(String city) {
         long count = this.clinicService.countOwnersInCity(city);
         return count >= WARNING_THRESHOLD && count < CityOwnerLimitValidator.MAX_OWNERS_PER_CITY;
+    }
+
+    /**
+     * @param city the owner's city
+     * @return {@code true} when {@code city} already holds at least {@value #WARNING_THRESHOLD}
+     * owners, i.e. it is at or over its soft capacity (whether or not it has also reached the hard
+     * limit); {@code false} otherwise.
+     */
+    public boolean isOverSoftCapacity(String city) {
+        return this.clinicService.countOwnersInCity(city) >= WARNING_THRESHOLD;
     }
 }
