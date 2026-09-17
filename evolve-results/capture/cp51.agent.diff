@@ -1,0 +1,371 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9139bc427..a0bc2283a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -228,6 +231,19 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    /**
++     * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: one above
++     * the highest membership level held by the owner's household members when this owner was created.
++     * {@code null} when the owner had no existing household member and so is uncapped.
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     /**
+      * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
+      * postcode while holding a different telephone. Resolved at creation and stored so it is
+@@ -362,9 +378,19 @@ public class Owner extends Person {
+     /**
+      * The owner's membership level, a number from 1 to 4 derived from the owner's
+      * {@link #getMembershipPoints() membership points}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and
+-     * 4 for 6 or more.
++     * 4 for 6 or more. The level is then held to its {@link #getMembershipLevelCap() cap} (one above
++     * the highest level among the owner's household members at creation), so a new owner cannot rank
++     * more than one level above their household. An uncapped owner keeps the derived level.
+      */
+     public Integer getMembershipLevel() {
++        int level = derivedMembershipLevel();
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
++        }
++        return level;
++    }
++
++    private int derivedMembershipLevel() {
+         int points = getMembershipPoints();
+         if (points >= 6) {
+             return 4;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdMembers.java
+new file mode 100644
+index 000000000..0dc9d6981
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdMembers.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.assignment;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Finds the existing members of an owner's household. A household is keyed on (last name, postcode)
++ * via {@link HouseholdKey}, so the members are simply the already-persisted owners that share the
++ * given owner's key. This is the single place that resolves household membership, keeping every
++ * household-derived value (size, membership-level ceiling) in agreement.
++ */
++@Component
++public class HouseholdMembers {
++
++    private final ClinicService clinicService;
++
++    private final HouseholdKey householdKey;
++
++    public HouseholdMembers(ClinicService clinicService, HouseholdKey householdKey) {
++        this.clinicService = clinicService;
++        this.householdKey = householdKey;
++    }
++
++    /**
++     * @param owner the owner being created, not yet saved
++     * @return every existing owner in {@code owner}'s household, i.e. sharing its last name and
++     * postcode; empty when {@code owner} is the first member of its household
++     */
++    public List<Owner> existing(Owner owner) {
++        String key = this.householdKey.of(owner.getLastName(), owner.getPostcode());
++        List<Owner> members = new ArrayList<>();
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (this.householdKey.of(existing.getLastName(), existing.getPostcode()).equals(key)) {
++                members.add(existing);
++            }
++        }
++        return members;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdSizeCalculator.java b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdSizeCalculator.java
+index 79c3e1640..657a036ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdSizeCalculator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdSizeCalculator.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.rest.assignment;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
+-import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -29,13 +28,10 @@ import org.springframework.stereotype.Component;
+ @Component
+ public class HouseholdSizeCalculator {
+ 
+-    private final ClinicService clinicService;
++    private final HouseholdMembers householdMembers;
+ 
+-    private final HouseholdKey householdKey;
+-
+-    public HouseholdSizeCalculator(ClinicService clinicService, HouseholdKey householdKey) {
+-        this.clinicService = clinicService;
+-        this.householdKey = householdKey;
++    public HouseholdSizeCalculator(HouseholdMembers householdMembers) {
++        this.householdMembers = householdMembers;
+     }
+ 
+     /**
+@@ -44,13 +40,6 @@ public class HouseholdSizeCalculator {
+      * owner and every existing owner with the same last name and postcode
+      */
+     public int size(Owner owner) {
+-        String key = this.householdKey.of(owner.getLastName(), owner.getPostcode());
+-        int members = 1;
+-        for (Owner existing : this.clinicService.findAllOwners()) {
+-            if (this.householdKey.of(existing.getLastName(), existing.getPostcode()).equals(key)) {
+-                members++;
+-            }
+-        }
+-        return members;
++        return this.householdMembers.existing(owner).size() + 1;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/assignment/MembershipLevelCapCalculator.java b/src/main/java/org/springframework/samples/petclinic/rest/assignment/MembershipLevelCapCalculator.java
+new file mode 100644
+index 000000000..373ae81f2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/assignment/MembershipLevelCapCalculator.java
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.assignment;
++
++import java.util.List;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Computes the membership-level ceiling for a joining owner: a new owner may not rank more than one
++ * level above their household, so the cap is one above the highest membership level currently held
++ * by the owner's household members. When the owner has no existing household member there is no
++ * ceiling.
++ */
++@Component
++public class MembershipLevelCapCalculator {
++
++    private final HouseholdMembers householdMembers;
++
++    public MembershipLevelCapCalculator(HouseholdMembers householdMembers) {
++        this.householdMembers = householdMembers;
++    }
++
++    /**
++     * @param owner the owner being created, not yet saved
++     * @return one above the maximum membership level among {@code owner}'s existing household
++     * members, or {@code null} when the owner has no existing household member and so is uncapped
++     */
++    public Integer cap(Owner owner) {
++        List<Owner> members = this.householdMembers.existing(owner);
++        if (members.isEmpty()) {
++            return null;
++        }
++        int max = 0;
++        for (Owner member : members) {
++            max = Math.max(max, member.getMembershipLevel());
++        }
++        return max + 1;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 47d42bba0..2aad699f6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
+ import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
++import org.springframework.samples.petclinic.rest.assignment.MembershipLevelCapCalculator;
+ import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.rest.idempotency.OwnerCreationIdempotencyStore;
+ import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
+@@ -108,6 +109,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final HouseholdSizeCalculator householdSizeCalculator;
+ 
++    private final MembershipLevelCapCalculator membershipLevelCapCalculator;
++
+     private final OwnerAuditLogger ownerAuditLogger;
+ 
+     private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+@@ -132,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  CustomerCodeGenerator customerCodeGenerator,
+                                  HouseholdIdGenerator householdIdGenerator,
+                                  HouseholdSizeCalculator householdSizeCalculator,
++                                 MembershipLevelCapCalculator membershipLevelCapCalculator,
+                                  OwnerAuditLogger ownerAuditLogger,
+                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
+                                  OwnerCreationIdempotencyStore idempotencyStore) {
+@@ -153,6 +157,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.customerCodeGenerator = customerCodeGenerator;
+         this.householdIdGenerator = householdIdGenerator;
+         this.householdSizeCalculator = householdSizeCalculator;
++        this.membershipLevelCapCalculator = membershipLevelCapCalculator;
+         this.ownerAuditLogger = ownerAuditLogger;
+         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
+         this.idempotencyStore = idempotencyStore;
+@@ -249,6 +254,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(
+             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize(this.householdSizeCalculator.size(owner));
++        owner.setMembershipLevelCap(this.membershipLevelCapCalculator.cap(owner));
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditLogger.created(owner);
+         return owner;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
+index 1b1f47eb9..d104f7d74 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
+@@ -22,36 +22,34 @@ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Rejects creating an owner that duplicates an existing household. The household is keyed on (last
+- * name, postcode) through the {@link HouseholdKey}, so a new owner is a duplicate whenever an
+- * existing owner already belongs to the same household. The caller bypasses this check when the
+- * create deliberately declares a shared household.
++ * Rejects creating an owner that hard-duplicates an existing one. A new owner is a duplicate only
++ * when its whole {@link Owner#getIdentityKey() identity key} (normalized telephone, email and
++ * household id) equals that of an existing owner, so housemates that share a household but hold
++ * different telephones are allowed (and merely flagged as {@link PossibleDuplicateDetector possible
++ * duplicates}). The caller bypasses this check when the create deliberately declares a shared
++ * household.
+  */
+ @Component
+ public class DuplicateOwnerValidator {
+ 
+     private final ClinicService clinicService;
+ 
+-    private final HouseholdKey householdKey;
+-
+-    public DuplicateOwnerValidator(ClinicService clinicService, HouseholdKey householdKey) {
++    public DuplicateOwnerValidator(ClinicService clinicService) {
+         this.clinicService = clinicService;
+-        this.householdKey = householdKey;
+     }
+ 
+     /**
+      * @param owner the owner being created, with its telephone, email and household id already
+      * resolved so its {@link Owner#getIdentityKey() identityKey} is final
+-     * @throws DuplicateOwnerException if another owner already belongs to the same household
++     * @throws DuplicateOwnerException if another owner already holds the same identity key
+      */
+     public void validate(Owner owner) {
+-        String key = this.householdKey.of(owner.getLastName(), owner.getPostcode());
++        String identityKey = owner.getIdentityKey();
+         boolean duplicate = this.clinicService.findAllOwners().stream()
+             .filter(existing -> !existing.isDeleted())
+-            .anyMatch(existing -> key.equals(
+-                this.householdKey.of(existing.getLastName(), existing.getPostcode())));
++            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+         if (duplicate) {
+-            throw new DuplicateOwnerException(owner.getIdentityKey());
++            throw new DuplicateOwnerException(identityKey);
+         }
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2f8b53481..40f7fde03 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index dc1e23b99..b24c7323f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index eb0c99d7b..3f99b3351 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0a29ec955..2dcc4eaa9 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       birth_date DATE,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
