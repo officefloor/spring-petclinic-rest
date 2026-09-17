@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 79ec454d0..8aea16b84 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -60,10 +60,11 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+     }
+ 
+-    /** The owner's region, derived from its city via the fixed city-to-region table
+-     *  (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
++    /** The owner's region, derived from its postcode range first (NSW 2000-2099, VIC 3000-3099,
++     *  QLD 4000-4099), falling back to the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
++     *  Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
+     default String locality(Owner owner) {
+-        return Locality.region(owner.getCity());
++        return Locality.region(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /** The owner's preferred contact channel: 'EMAIL' when an email address is on file,
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+index 4ca26f368..46e277ba1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+@@ -3,11 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.Map;
+ 
+ /**
+- * The single definition of an owner's locality: the canonical region derived from its city
+- * via a fixed city-to-region table. Cities not in the table resolve to {@code "UNKNOWN"}.
++ * The single definition of an owner's locality: the canonical region derived from its
++ * postcode range first (see {@link Postcode}), falling back to a fixed city-to-region table
++ * when the postcode is absent or in no known range. Owners matching neither resolve to
++ * {@code "UNKNOWN"}.
+  *
+- * <p>Lookup only; a pure function of the city, so the region is computed on read rather than
+- * stored.
++ * <p>Lookup only; a pure function of the postcode and city, so the region is computed on read
++ * rather than stored.
+  */
+ public final class Locality {
+ 
+@@ -21,8 +23,16 @@ public final class Locality {
+     private Locality() {
+     }
+ 
+-    /** The canonical region for {@code city}, or {@code "UNKNOWN"} when it is not in the table. */
++    /** The canonical region for {@code city} via the city-to-region table alone, or
++     *  {@code "UNKNOWN"} when it is not in the table. */
+     public static String region(String city) {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /** The canonical region for an owner: the postcode's region when its range identifies one,
++     *  otherwise the city's region, or {@code "UNKNOWN"} when neither applies. */
++    public static String region(String city, String postcode) {
++        String byPostcode = Postcode.region(postcode);
++        return byPostcode != null ? byPostcode : region(city);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Postcode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Postcode.java
+index a341d7799..b6eb8a23b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Postcode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Postcode.java
+@@ -37,4 +37,20 @@ public final class Postcode {
+         int value = Integer.parseInt(postcode);
+         return value >= range[0] && value <= range[1];
+     }
++
++    /** The region whose fixed range contains {@code postcode}, or {@code null} when the postcode
++     *  is absent, malformed, or falls in no known range. */
++    public static String region(String postcode) {
++        if (!isWellFormed(postcode)) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
