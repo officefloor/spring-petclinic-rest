@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       customer_code TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
+                                      membership_points INTEGER,
                                       membership_level INTEGER,
                                       possible_duplicate_of INTEGER
 );

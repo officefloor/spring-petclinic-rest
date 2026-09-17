@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * The single definition of an owner "household": owners sharing the same last name and
  * postcode. The last name is compared case-insensitively with runs of whitespace collapsed
@@ -29,6 +31,21 @@ final class Household {
     static String id(String lastName, String postcode) {
         String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode);
         return Sha256.hex(key, ID_LENGTH);
+    }
+
+    /** How many of the given owners belong to the household with {@code householdId}. Owners with a
+     *  null or non-matching {@code householdId} are not counted; a null {@code householdId} yields 0. */
+    static long size(String householdId, Iterable<Owner> owners) {
+        if (householdId == null) {
+            return 0;
+        }
+        long count = 0;
+        for (Owner owner : owners) {
+            if (householdId.equals(owner.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** A last name trimmed and lower-cased, with internal whitespace runs collapsed to a single space. */
