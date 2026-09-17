@@ -149,7 +149,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        // Soft-delete: retain the record and flag it so it is excluded from duplicate/identity
+        // checks, while remaining readable via findOwnerById.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -256,8 +259,10 @@ public class ClinicServiceImpl implements ClinicService {
     public boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException {
         String identityKey = owner.getIdentityKey();
         // Owners can only share an identity key when they share a (normalized) telephone, so it is
-        // enough to compare against the owners already stored with the same telephone.
+        // enough to compare against the owners already stored with the same telephone. Soft-deleted
+        // owners are ignored, so a duplicate is allowed once the only match has been deleted.
         return ownerRepository.findByTelephone(owner.getTelephone()).stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
@@ -274,6 +279,7 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
             .map(Owner::getId)
@@ -376,13 +382,15 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Find the existing owners that share {@code owner}'s household, i.e. those with the same last
      * name (ignoring case) and the same postcode. An owner without a postcode belongs to no
-     * household, so no members are returned for it.
+     * household, so no members are returned for it. Soft-deleted owners are excluded, so they
+     * neither block a create as a household duplicate nor count towards the household size.
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
         if (owner.getPostcode() == null) {
             return List.of();
         }
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .toList();
     }
