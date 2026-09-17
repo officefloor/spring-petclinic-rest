@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5f280ec6c..8d9e85544 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -19,6 +19,7 @@ import org.springframework.samples.petclinic.util.MembershipLevel;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
+ import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
++import org.springframework.samples.petclinic.util.RiskFlag;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -43,6 +44,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** The canonical API path of the owner: '/api/owners/' followed by the owner's id. */
+@@ -179,6 +181,15 @@ public interface OwnerMapper {
+         return owner == null ? null : TelephoneNormalizer.toDisplay(owner.getTelephone());
+     }
+ 
++    /**
++     * The owner's risk follow-up signal (see {@link RiskFlag}): true when the owner is a possible
++     * duplicate, its city was over its soft capacity at creation, or its email domain is
++     * disposable-adjacent; false otherwise.
++     */
++    default Boolean riskFlag(Owner owner) {
++        return RiskFlag.of(owner);
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java
+index 47317d2c2..e64b12356 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java
+@@ -1,6 +1,7 @@
+ package org.springframework.samples.petclinic.util;
+ 
+ import java.util.Set;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Pinned blocklist of disposable email domains. An owner whose email is registered under one of these
+@@ -15,6 +16,12 @@ public final class DisposableEmailDomains {
+             "tempmail.com",
+             "guerrillamail.com");
+ 
++    /** The registrable labels of the blocked providers (e.g. 'mailinator'), the single source of
++     *  truth for {@link #isDisposableAdjacent(String)}. */
++    private static final Set<String> BLOCKED_LABELS = BLOCKED.stream()
++            .map(DisposableEmailDomains::registrableLabel)
++            .collect(Collectors.toUnmodifiableSet());
++
+     private DisposableEmailDomains() {
+     }
+ 
+@@ -22,4 +29,25 @@ public final class DisposableEmailDomains {
+     public static boolean isBlocked(String domain) {
+         return domain != null && BLOCKED.contains(domain.toLowerCase());
+     }
++
++    /**
++     * Whether {@code domain} is disposable-<em>adjacent</em>: it is not itself blocked, yet shares a
++     * registrable label with a known disposable provider — a different TLD ({@code mailinator.net}) or
++     * a subdomain ({@code smtp.mailinator.com}). Such an address is allowed but worth flagging. A
++     * blocked domain is not adjacent (it is disposable outright), and an unrelated domain is not
++     * adjacent. Case-insensitive; {@code null} or blank is not adjacent.
++     */
++    public static boolean isDisposableAdjacent(String domain) {
++        if (domain == null || domain.isBlank() || isBlocked(domain)) {
++            return false;
++        }
++        return BLOCKED_LABELS.contains(registrableLabel(domain));
++    }
++
++    /** The registrable label of a domain: its second-level part ('mailinator' of 'smtp.mailinator.net'),
++     *  lower-cased. The whole (lower-cased) value when it has no dot. */
++    private static String registrableLabel(String domain) {
++        String[] parts = domain.toLowerCase().split("\\.");
++        return parts.length >= 2 ? parts[parts.length - 2] : domain.toLowerCase();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java
+new file mode 100644
+index 000000000..07a6c3e49
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.function.owner.EmailNormalizer;
++
++/**
++ * The owner's single risk follow-up signal, an OR of the individual risk markers already derived for an
++ * owner: a possible duplicate ({@link Owner#getPossibleDuplicate()}), a city that was over its soft
++ * capacity at creation ({@link Owner#getCapacityWarning()}), or an email whose domain is
++ * disposable-adjacent (see {@link DisposableEmailDomains#isDisposableAdjacent(String)}). Composed at
++ * response time from the owner's stored state, so it is derived rather than stored on the entity.
++ */
++public final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    /** Whether {@code owner} carries any risk marker; false for a {@code null} owner. */
++    public static boolean of(Owner owner) {
++        if (owner == null) {
++            return false;
++        }
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || Boolean.TRUE.equals(owner.getCapacityWarning())
++                || DisposableEmailDomains.isDisposableAdjacent(EmailNormalizer.domainOf(owner.getEmail()));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 75800a135..196f17d03 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2337,6 +2337,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                A single follow-up signal, true when any of the owner's individual risk
++                markers hold: the owner is a possible duplicate ('possibleDuplicate'), the
++                owner's city was over its soft capacity at creation ('capacityWarning'), or
++                the owner's email domain is disposable-adjacent (shares a registrable label
++                with a known disposable-mail provider without being one). False otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
