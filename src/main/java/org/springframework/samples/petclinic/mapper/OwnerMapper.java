@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
+import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.MembershipPoints;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Timezone;
@@ -123,10 +124,7 @@ public interface OwnerMapper {
      * own fields; null until both the customer code and registration date are assigned.
      */
     default String membershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        return MembershipNumber.of(owner);
     }
 
     /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
