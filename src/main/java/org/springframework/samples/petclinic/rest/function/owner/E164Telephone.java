@@ -68,6 +68,23 @@ final class E164Telephone {
     }
 
     /**
+     * The recognised country code that a normalized E.164 value starts with (e.g. {@code "61"}
+     * for {@code "+61412345678"}), or {@code null} when its leading digits match no known code.
+     * Sole owner of the recognised-country-code knowledge, so callers that need to split a
+     * number into country code and national part (such as {@link TelephoneDisplay}) share this
+     * one definition rather than repeating the table.
+     */
+    static String countryCode(String e164) {
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        for (String code : NATIONAL_DIGITS.keySet()) {
+            if (digits.startsWith(code)) {
+                return code;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Enforce the national-number length required by a recognised country code. A number
      * whose leading digits match a known code but whose remaining (national) digits are the
      * wrong length is rejected; codes not in {@link #NATIONAL_DIGITS} are left to the caller's

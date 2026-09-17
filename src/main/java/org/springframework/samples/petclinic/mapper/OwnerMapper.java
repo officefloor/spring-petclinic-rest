@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.Luhn;
+import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
@@ -33,7 +34,13 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's stored E.164 telephone formatted for humans; see {@link TelephoneDisplay}. */
+    default String telephoneDisplay(Owner owner) {
+        return TelephoneDisplay.of(owner.getTelephone());
+    }
 
     /** The owner's derived identity key: normalized telephone, email and household id joined. */
     default String identityKey(Owner owner) {
