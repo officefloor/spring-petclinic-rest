@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.validation;
 
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
@@ -38,13 +39,20 @@ public class DailyOwnerLimitValidator {
     }
 
     /**
+     * Enforce the daily create-limit for the business day this owner will be registered on: the
+     * supplied date (or the server's current date when none was supplied), rolled forward off
+     * weekends to match the date the owner will actually be stored under.
+     *
+     * @param suppliedRegistrationDate the client-supplied registration date, or {@code null} when
+     * none was supplied
      * @throws DailyOwnerLimitExceededException if {@value #MAX_OWNERS_PER_DAY} or more owners have
-     * already been registered today
+     * already been registered on that business day
      */
-    public void validate() {
-        LocalDate today = LocalDate.now();
-        if (this.clinicService.countOwnersRegisteredOn(today) >= MAX_OWNERS_PER_DAY) {
-            throw new DailyOwnerLimitExceededException(today);
+    public void validate(LocalDate suppliedRegistrationDate) {
+        LocalDate registrationDate = BusinessDay.onOrAfter(
+            suppliedRegistrationDate != null ? suppliedRegistrationDate : LocalDate.now());
+        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(registrationDate);
         }
     }
 }

@@ -149,7 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerRequestValidator.validate(ownerFieldsDto);
         this.householdDuplicateValidator.validate(ownerFieldsDto);
         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
-        this.dailyOwnerLimitValidator.validate();
+        this.dailyOwnerLimitValidator.validate(ownerFieldsDto.getRegistrationDate());
         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));

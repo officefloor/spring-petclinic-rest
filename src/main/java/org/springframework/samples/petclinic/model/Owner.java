@@ -170,14 +170,18 @@ public class Owner extends Person {
     }
 
     /**
-     * Default the registration date to the server's current date when none was
-     * supplied, so a newly registered owner always has a registration date.
+     * Resolve the effective registration date before persisting: default it to the server's
+     * current date when none was supplied, then roll it forward off weekends so a newly
+     * registered owner always has a business-day registration date. Every value derived from it
+     * (such as the {@link #getMembershipNumber() membership number}) therefore uses the adjusted
+     * date.
      */
     @PrePersist
-    private void defaultRegistrationDate() {
+    private void resolveRegistrationDate() {
         if (this.registrationDate == null) {
             this.registrationDate = LocalDate.now();
         }
+        this.registrationDate = BusinessDay.onOrAfter(this.registrationDate);
     }
 
     protected Set<Pet> getPetsInternal() {
