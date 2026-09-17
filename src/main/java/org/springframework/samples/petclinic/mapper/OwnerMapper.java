@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

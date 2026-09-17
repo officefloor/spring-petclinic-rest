@@ -66,21 +66,15 @@ public interface OwnerRepository {
     Owner findById(int id) throws DataAccessException;
 
     /**
-     * Report whether any <code>Owner</code> is already stored with the given (normalized) telephone.
+     * Retrieve all <code>Owner</code>s stored with the given (normalized) telephone. Used to find the
+     * candidates for an identity-key duplicate check, since owners can only share an identity key when
+     * they share a telephone.
      *
      * @param telephone the normalized telephone to look for
-     * @return <code>true</code> if at least one owner has this telephone
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
      */
-    boolean existsByTelephone(String telephone) throws DataAccessException;
-
-    /**
-     * Report whether any <code>Owner</code> is already stored with the given email, matching
-     * case-insensitively.
-     *
-     * @param email the email to look for (compared ignoring case)
-     * @return <code>true</code> if at least one owner has this email
-     */
-    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
      * Report the total number of <code>Owner</code>s currently stored.

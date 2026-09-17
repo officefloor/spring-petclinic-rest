@@ -110,21 +110,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.isDailyOwnerLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (this.clinicService.existsOwnerByTelephone(owner.getTelephone())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()
-                && this.clinicService.existsOwnerByEmail(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
+        // Group the owner into a shared household (assigning the shared householdId that forms part
+        // of the identity key) when it knowingly joins an existing one.
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+                && this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
             this.clinicService.assignHousehold(owner);
+        }
+        // Reject only an exact duplicate: an owner whose whole identity key (normalized telephone,
+        // email and householdId) already exists.
+        if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner.getLastName(), owner.getAddress()));

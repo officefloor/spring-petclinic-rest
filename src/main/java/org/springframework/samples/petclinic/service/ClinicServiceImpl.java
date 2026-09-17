@@ -251,14 +251,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerByTelephone(String telephone) throws DataAccessException {
-        return ownerRepository.existsByTelephone(telephone);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerByEmail(String email) throws DataAccessException {
-        return ownerRepository.existsByEmailIgnoreCase(email);
+    public boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
+        // Owners can only share an identity key when they share a (normalized) telephone, so it is
+        // enough to compare against the owners already stored with the same telephone.
+        return ownerRepository.findByTelephone(owner.getTelephone()).stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     @Override

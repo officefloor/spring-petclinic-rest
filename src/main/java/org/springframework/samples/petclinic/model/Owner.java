@@ -158,6 +158,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The derived key that uniquely identifies an owner for duplicate detection: the normalized
+     * telephone, the (lower-cased) email or the empty string when absent, and the household id or
+     * the empty string when the owner belongs to no household, joined with {@code '|'}. Two owners
+     * are duplicates only when their whole identity keys are equal, so members of the same household
+     * with different telephones (or an owner reusing only a telephone or only an email) remain
+     * distinct.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return this.telephone + "|"
+            + (this.email == null ? "" : this.email) + "|"
+            + (this.householdId == null ? "" : this.householdId);
+    }
+
+    /**
      * On first persist, default the registration date to the server's current date when the
      * client did not supply one, then roll the effective date forward so it always falls on a
      * business day (a weekend moves to the following Monday).

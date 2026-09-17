@@ -58,8 +58,7 @@ public interface ClinicService {
 	Collection<Owner> findAllOwners() throws DataAccessException;
 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
 	void saveOwner(Owner owner) throws DataAccessException;
-	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
-	boolean existsOwnerByEmail(String email) throws DataAccessException;
+	boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException;
 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
 	boolean isCityAtCapacity(String city) throws DataAccessException;
 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
