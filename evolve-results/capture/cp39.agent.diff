@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index 760d8c7e4..c682ca125 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -1,21 +1,25 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.LocalDate;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Step of {@code POST /api/owners}: assigns the new owner's {@code membershipLevel} — a
+- * number from 1 to 3 fixed at registration. It starts at 1, gains a level when the owner
+- * has an email on file and another when the owner has no namesakes ({@code namesakeCount}
+- * is 0), and is capped at 3 (level 4 is reserved for tenure). It runs after
+- * {@link CountNamesakes} so the namesake count is known, and before {@link SaveOwner}
+- * persists the owner and {@link AuditOwnerCreated} records the level. The value is stored
+- * with the row and returned unchanged on later reads.
++ * number from 1 to 4. It starts at 1, gains a level when the owner has an email on file,
++ * another when the owner has no namesakes ({@code namesakeCount} is 0), and the top level
++ * when the owner's {@link Tenure tenure} exceeds {@link #TENURE_LEVEL_DAYS} days. A newly
++ * created owner has zero tenure, so it never reaches level 4. It runs after
++ * {@link CountNamesakes} so the namesake count is known, and after
++ * {@link ResolveOwnerRegistrationDate} so the registration date is resolved, and before
++ * {@link SaveOwner} persists the owner and {@link AuditOwnerCreated} records the level. The
++ * value is stored with the row and returned unchanged on later reads.
+  */
+ public class AssignMembershipLevel {
+ 
+-    /** The highest level the registration rules award; level 4 is reserved for tenure. */
+-    private static final int MAX_LEVEL = 3;
++    /** Tenure, in days, that an owner must exceed to reach the top membership level (4). */
++    private static final long TENURE_LEVEL_DAYS = 365;
+ 
+     public void service(@Val Owner owner) {
+         int level = 1;
+@@ -27,6 +31,9 @@ public class AssignMembershipLevel {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        owner.setMembershipLevel(Math.min(level, MAX_LEVEL));
++        if (Tenure.days(owner.getRegistrationDate(), LocalDate.now()) > TENURE_LEVEL_DAYS) {
++            level++;
++        }
++        owner.setMembershipLevel(level);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Tenure.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Tenure.java
+new file mode 100644
+index 000000000..8d122a779
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Tenure.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++/**
++ * The single definition of an owner's "tenure": the number of whole days that have elapsed
++ * since the owner's registration date. A newly registered owner — one registered as of the
++ * reference date — has zero tenure. Provides the measure {@link AssignMembershipLevel} uses to
++ * gate the top membership level, which is reserved for long-standing owners.
++ */
++final class Tenure {
++
++    private Tenure() {
++    }
++
++    /** Whole days between {@code registrationDate} and {@code asOf}; zero when the date is
++     *  unset or still in the future. */
++    static long days(LocalDate registrationDate, LocalDate asOf) {
++        if (registrationDate == null) {
++            return 0;
++        }
++        return Math.max(ChronoUnit.DAYS.between(registrationDate, asOf), 0);
++    }
++}
