@@ -40,7 +40,7 @@ import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerato
 import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.AddressFormNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
@@ -97,7 +97,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DisposableEmailDomainValidator disposableEmailDomainValidator;
 
-    private final AddressNormalizer addressNormalizer;
+    private final AddressFormNormalizer addressFormNormalizer;
 
     private final CustomerCodeGenerator customerCodeGenerator;
 
@@ -123,7 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  DisposableEmailDomainValidator disposableEmailDomainValidator,
-                                 AddressNormalizer addressNormalizer,
+                                 AddressFormNormalizer addressFormNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdIdGenerator householdIdGenerator,
                                  HouseholdSizeCalculator householdSizeCalculator,
@@ -143,7 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.disposableEmailDomainValidator = disposableEmailDomainValidator;
-        this.addressNormalizer = addressNormalizer;
+        this.addressFormNormalizer = addressFormNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdIdGenerator = householdIdGenerator;
         this.householdSizeCalculator = householdSizeCalculator;
@@ -189,7 +189,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        this.addressFormNormalizer.normalize(ownerFieldsDto);
         this.ownerRequestValidator.validate(ownerFieldsDto);
         this.postcodeValidator.validate(ownerFieldsDto);
         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
