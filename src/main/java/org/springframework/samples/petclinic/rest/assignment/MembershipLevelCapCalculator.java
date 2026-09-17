@@ -16,30 +16,40 @@
 
 package org.springframework.samples.petclinic.rest.assignment;
 
+import java.util.List;
+
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.stereotype.Component;
 
 /**
- * Computes the size of an owner's household. Because the household is keyed on (last name, postcode)
- * every owner already carries the shared {@code householdId}, so there is nothing to link: the size
- * is simply the joining owner plus every existing owner in the same {@link HouseholdKey household}.
+ * Computes the membership-level ceiling for a joining owner: a new owner may not rank more than one
+ * level above their household, so the cap is one above the highest membership level currently held
+ * by the owner's household members. When the owner has no existing household member there is no
+ * ceiling.
  */
 @Component
-public class HouseholdSizeCalculator {
+public class MembershipLevelCapCalculator {
 
     private final HouseholdMembers householdMembers;
 
-    public HouseholdSizeCalculator(HouseholdMembers householdMembers) {
+    public MembershipLevelCapCalculator(HouseholdMembers householdMembers) {
         this.householdMembers = householdMembers;
     }
 
     /**
      * @param owner the owner being created, not yet saved
-     * @return the number of members in the household once {@code owner} joins, counting the joining
-     * owner and every existing owner with the same last name and postcode
+     * @return one above the maximum membership level among {@code owner}'s existing household
+     * members, or {@code null} when the owner has no existing household member and so is uncapped
      */
-    public int size(Owner owner) {
-        return this.householdMembers.existing(owner).size() + 1;
+    public Integer cap(Owner owner) {
+        List<Owner> members = this.householdMembers.existing(owner);
+        if (members.isEmpty()) {
+            return null;
+        }
+        int max = 0;
+        for (Owner member : members) {
+            max = Math.max(max, member.getMembershipLevel());
+        }
+        return max + 1;
     }
 }

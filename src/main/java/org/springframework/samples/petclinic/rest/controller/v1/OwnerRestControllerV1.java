@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
+import org.springframework.samples.petclinic.rest.assignment.MembershipLevelCapCalculator;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.idempotency.OwnerCreationIdempotencyStore;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
@@ -108,6 +109,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdSizeCalculator householdSizeCalculator;
 
+    private final MembershipLevelCapCalculator membershipLevelCapCalculator;
+
     private final OwnerAuditLogger ownerAuditLogger;
 
     private final BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
@@ -132,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdIdGenerator householdIdGenerator,
                                  HouseholdSizeCalculator householdSizeCalculator,
+                                 MembershipLevelCapCalculator membershipLevelCapCalculator,
                                  OwnerAuditLogger ownerAuditLogger,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator,
                                  OwnerCreationIdempotencyStore idempotencyStore) {
@@ -153,6 +157,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdIdGenerator = householdIdGenerator;
         this.householdSizeCalculator = householdSizeCalculator;
+        this.membershipLevelCapCalculator = membershipLevelCapCalculator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
         this.idempotencyStore = idempotencyStore;
@@ -249,6 +254,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(this.householdSizeCalculator.size(owner));
+        owner.setMembershipLevelCap(this.membershipLevelCapCalculator.cap(owner));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.created(owner);
         return owner;

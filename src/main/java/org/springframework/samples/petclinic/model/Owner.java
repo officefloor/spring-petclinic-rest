@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -229,6 +232,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: one above
+     * the highest membership level held by the owner's household members when this owner was created.
+     * {@code null} when the owner had no existing household member and so is uncapped.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
      * postcode while holding a different telephone. Resolved at creation and stored so it is
      * reported consistently on every later read.
@@ -362,9 +378,19 @@ public class Owner extends Person {
     /**
      * The owner's membership level, a number from 1 to 4 derived from the owner's
      * {@link #getMembershipPoints() membership points}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and
-     * 4 for 6 or more.
+     * 4 for 6 or more. The level is then held to its {@link #getMembershipLevelCap() cap} (one above
+     * the highest level among the owner's household members at creation), so a new owner cannot rank
+     * more than one level above their household. An uncapped owner keeps the derived level.
      */
     public Integer getMembershipLevel() {
+        int level = derivedMembershipLevel();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    private int derivedMembershipLevel() {
         int points = getMembershipPoints();
         if (points >= 6) {
             return 4;
