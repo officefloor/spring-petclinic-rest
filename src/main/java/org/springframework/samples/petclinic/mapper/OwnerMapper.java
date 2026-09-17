@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.MembershipPoints;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.model.Timezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
@@ -41,6 +42,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -87,6 +89,15 @@ public interface OwnerMapper {
             return null;
         }
         return ContactPreference.forOwner(owner).name();
+    }
+
+    /** The owner's marketing segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;' - see
+     * {@link OwnerSegment}. */
+    default String ownerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return OwnerSegment.forOwner(owner);
     }
 
     /** The canonical region derived from the owner's postcode - the same REGION that forms the
