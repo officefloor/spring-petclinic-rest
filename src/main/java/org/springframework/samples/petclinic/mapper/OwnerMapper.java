@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
+import org.springframework.samples.petclinic.model.MembershipPoints;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentities;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones;
@@ -29,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -125,8 +127,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's numeric membership level, derived from the owner's own fields; null when there
+     * The owner's membership points, scored from the owner's own fields; null when there
      * is no owner.
+     *
+     * @see MembershipPoints
+     */
+    default Integer membershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return MembershipPoints.of(owner);
+    }
+
+    /**
+     * The owner's numeric membership level, mapped from the owner's membership points; null
+     * when there is no owner.
      *
      * @see MembershipLevel
      */

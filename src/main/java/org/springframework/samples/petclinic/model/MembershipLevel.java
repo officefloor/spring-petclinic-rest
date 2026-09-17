@@ -16,24 +16,19 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * Derives an owner's numeric membership level from the owner's own fields.
+ * Derives an owner's numeric membership level from their {@link MembershipPoints}.
  *
- * <p>The level starts at {@value #MIN}; a present email adds one; having no
- * namesakes (namesakeCount is 0) adds one; and tenure of more than
- * {@value #TENURE_DAYS} days adds one; the total is capped at {@value #MAX}.
- * Level 4 requires tenure, so a newly registered owner (zero tenure) never
- * exceeds level 3 no matter how the other factors fall.
+ * <p>Points map to a level as follows: {@code 0-1} points is level {@value #MIN},
+ * {@code 2-3} is level 2, {@code 4-5} is level 3, and {@code 6} or more is level
+ * {@value #MAX}.
  */
 public final class MembershipLevel {
 
-    /** The level every owner starts at. */
+    /** The lowest level attainable. */
     public static final int MIN = 1;
 
-    /** The highest level attainable; only reached once the tenure factor applies. */
+    /** The highest level attainable. */
     public static final int MAX = 4;
-
-    /** Tenure, in days, that an owner must exceed to earn the level-4 tenure factor. */
-    public static final int TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
@@ -45,16 +40,25 @@ public final class MembershipLevel {
      * @return the level, from {@value #MIN} to {@value #MAX}.
      */
     public static int of(Owner owner) {
-        int level = MIN;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+        return forPoints(MembershipPoints.of(owner));
+    }
+
+    /**
+     * Map a membership points total to its level.
+     *
+     * @param points the membership points (see {@link MembershipPoints}).
+     * @return the level, from {@value #MIN} to {@value #MAX}.
+     */
+    public static int forPoints(int points) {
+        if (points <= 1) {
+            return 1;
         }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (Tenure.inDays(owner) > TENURE_DAYS) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, MAX);
+        return MAX;
     }
 }
