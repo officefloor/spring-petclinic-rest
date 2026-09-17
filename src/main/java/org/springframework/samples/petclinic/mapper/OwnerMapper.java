@@ -49,13 +49,14 @@ public interface OwnerMapper {
         return ContactPreference.forOwner(owner).name();
     }
 
-    /** The canonical region derived from the owner, preferring the postcode's region range and
-     * falling back to the fixed city-to-region table, or 'UNKNOWN' when neither is known. */
+    /** The canonical region derived from the owner's postcode - the same REGION that forms the
+     * customer code (see {@link OwnerIdentities} and the {@code <REGION>-<HASH8>} customer code),
+     * or 'UNKNOWN' when the postcode resolves to no known region. */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        return Locality.forCityAndPostcode(owner.getCity(), owner.getPostcode());
+        return Locality.forPostcode(owner.getPostcode());
     }
 
     /** Format the stored names as 'LastName, FirstName'. */
@@ -83,7 +84,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registrationDate year (e.g. 'LON-SMI-0007-M26'). Derived from the owner's
+     * last two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Derived from the owner's
      * own fields; null until both the customer code and registration date are assigned.
      */
     default String membershipNumber(Owner owner) {

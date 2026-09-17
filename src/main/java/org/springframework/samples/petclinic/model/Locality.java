@@ -45,19 +45,17 @@ public final class Locality {
     }
 
     /**
-     * Derive the canonical region, preferring the postcode. The postcode's region range is
-     * consulted first (see {@link PostcodeRange#regionForPostcode(String)}); only when the
-     * postcode is absent or in no known range does this fall back to the city-to-region table.
-     * This yields the same region for the pinned cities but disambiguates cities that share a
-     * name.
+     * Derive the canonical region from the postcode alone (see
+     * {@link PostcodeRange#regionForPostcode(String)}). This is the region that forms an owner's
+     * {@code <REGION>-<HASH8>} customer code, so an owner's locality and customer code always
+     * agree.
      *
-     * @param city     the city name (may be {@code null}).
-     * @param postcode the postcode (may be {@code null}).
-     * @return the region string, or {@link #UNKNOWN} when neither the postcode nor the city
-     *         resolves to a known region.
+     * @param postcode the postcode (may be {@code null} or not a 4-digit number).
+     * @return the region string, or {@link #UNKNOWN} when the postcode is absent or in no known
+     *         range.
      */
-    public static String forCityAndPostcode(String city, String postcode) {
+    public static String forPostcode(String postcode) {
         String region = PostcodeRange.regionForPostcode(postcode);
-        return region != null ? region : forCity(city);
+        return region != null ? region : UNKNOWN;
     }
 }

@@ -2,31 +2,42 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Locality;
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.Sha256;
+
 /**
- * Shared formatting for an owner's customer code: {@code <CITY3>-<LAST3>-<NNNN>}, where
- * CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first
- * three of the last name and NNNN a 4-digit zero-padded per-city sequence
- * (e.g. {@code LON-SMI-0007}).
+ * Shared formatting for an owner's customer code: {@code <REGION>-<HASH8>}, where REGION is the
+ * region derived from the postcode (see {@link Locality#forPostcode(String)}) and HASH8 the first
+ * eight upper-case hex characters of SHA-256 over the normalized telephone followed by the last
+ * name (e.g. {@code NSW-1A2B3C4D}). The code is a stable function of the owner's own identity,
+ * carrying no sequence number.
  */
 final class OwnerCustomerCodes {
+
+    /** Number of leading SHA-256 hex characters that form the HASH8 segment. */
+    private static final int HASH_LENGTH = 8;
 
     private OwnerCustomerCodes() {
     }
 
-    /** Format {@code city}, {@code lastName} and {@code sequence} as {@code <CITY3>-<LAST3>-<NNNN>}. */
-    static String format(String city, String lastName, int sequence) {
-        return prefix(city) + "-" + prefix(lastName) + "-" + String.format("%04d", sequence);
+    /** The {@code <REGION>-<HASH8>} customer code for {@code owner}. */
+    static String forOwner(Owner owner) {
+        return format(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
     }
 
-    /** The upper-cased first three letters of {@code value}, ignoring any non-letters. */
-    private static String prefix(String value) {
-        StringBuilder letters = new StringBuilder(3);
-        for (int i = 0; value != null && i < value.length() && letters.length() < 3; i++) {
-            char c = value.charAt(i);
-            if (Character.isLetter(c)) {
-                letters.append(c);
-            }
-        }
-        return letters.toString().toUpperCase(Locale.ROOT);
+    /** Format {@code postcode}, {@code telephone} and {@code lastName} as {@code <REGION>-<HASH8>}. */
+    static String format(String postcode, String telephone, String lastName) {
+        return Locality.forPostcode(postcode) + "-" + hash8(telephone, lastName);
+    }
+
+    /** First eight upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName}. */
+    private static String hash8(String telephone, String lastName) {
+        String input = part(OwnerTelephones.toE164(telephone)) + part(lastName);
+        return Sha256.hex(input).substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+    }
+
+    private static String part(String value) {
+        return value == null ? "" : value;
     }
 }
