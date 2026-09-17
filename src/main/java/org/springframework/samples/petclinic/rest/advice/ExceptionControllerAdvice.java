@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.error.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.error.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.error.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
@@ -230,6 +231,27 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
         logger.debug("Invalid email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException} thrown when a submitted email address belongs to
+     * a disposable-email domain on the blocklist. Returns a 400 Bad Request naming the offending field.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        logger.debug("Disposable email domain at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getRejectedValue());

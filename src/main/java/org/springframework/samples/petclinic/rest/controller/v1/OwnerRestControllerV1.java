@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvalua
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
@@ -94,6 +95,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+
     private final AddressNormalizer addressNormalizer;
 
     private final CustomerCodeGenerator customerCodeGenerator;
@@ -119,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  RegistrationDateValidator registrationDateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 DisposableEmailDomainValidator disposableEmailDomainValidator,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdIdGenerator householdIdGenerator,
@@ -138,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.registrationDateValidator = registrationDateValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.disposableEmailDomainValidator = disposableEmailDomainValidator;
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdIdGenerator = householdIdGenerator;
@@ -192,6 +197,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.dailyOwnerLimitValidator.validate(ownerFieldsDto.getRegistrationDate());
         ownerFieldsDto.setTelephone(this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+        this.disposableEmailDomainValidator.validate(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
