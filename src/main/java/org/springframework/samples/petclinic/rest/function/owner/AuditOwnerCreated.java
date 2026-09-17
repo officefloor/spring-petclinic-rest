@@ -5,13 +5,13 @@ import org.slf4j.LoggerFactory;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.MembershipLevel;
-import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerPrimaryIdentifier;
 
 /**
  * Emits an audit trail entry once an owner has been persisted, capturing the
- * generated id together with the assigned customer code, registration date,
- * membership level and membership number.
+ * generated id together with the assigned memberId (the unified
+ * {@code <REGION><FY><HASH8><CHK>} identity), registration date and membership level.
  */
 public class AuditOwnerCreated {
 
@@ -19,8 +19,8 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         AUDIT.info(
-                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), MembershipLevel.effective(owner),
-                MembershipNumber.of(owner));
+                "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), OwnerPrimaryIdentifier.of(owner), owner.getRegistrationDate(),
+                MembershipLevel.effective(owner));
     }
 }

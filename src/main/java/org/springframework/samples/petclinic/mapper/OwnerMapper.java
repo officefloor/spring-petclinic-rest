@@ -9,7 +9,6 @@ import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
-import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.MembershipPoints;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerSegment;
@@ -19,7 +18,6 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephones
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.util.Luhn;
 
 import java.util.Collection;
 import java.util.List;
@@ -34,9 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -101,8 +97,8 @@ public interface OwnerMapper {
     }
 
     /** The canonical region derived from the owner's postcode - the same REGION that forms the
-     * customer code (see {@link OwnerIdentities} and the {@code <REGION>-<HASH8>} customer code),
-     * or 'UNKNOWN' when the postcode resolves to no known region. */
+     * memberId (the {@code <REGION><FY><HASH8><CHK>} identity), or 'UNKNOWN' when the postcode
+     * resolves to no known region. */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
@@ -156,15 +152,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Derived from the owner's
-     * own fields; null until both the customer code and registration date are assigned.
-     */
-    default String membershipNumber(Owner owner) {
-        return MembershipNumber.of(owner);
-    }
-
-    /**
      * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the last two digits of the
      * fiscal year (starting 1 July) of the registrationDate; null until a registration date is
      * assigned.
@@ -176,14 +163,6 @@ public interface OwnerMapper {
             return null;
         }
         return FiscalYear.label(owner.getRegistrationDate());
-    }
-
-    /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
-    default Integer checkDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /**
