@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
@@ -31,7 +32,18 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's age band derived from birthDate against registrationDate - see {@link AgeBand};
+     * null when either date is absent. */
+    default String ageBand(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        AgeBand ageBand = AgeBand.forOwner(owner);
+        return ageBand == null ? null : ageBand.name();
+    }
 
     /** The owner's derived duplicate-detection key - see {@link OwnerIdentities}. */
     default String identityKey(Owner owner) {
