@@ -38,9 +38,17 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * Formats the owner's canonical API self link as {@code "/api/owners/<id>"}.
+     */
+    default String formatSelfLink(Owner owner) {
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Formats the owner's stored names for display as {@code "LastName, FirstName"}.
