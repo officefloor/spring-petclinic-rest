@@ -52,5 +52,11 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    /**
+     * The person's name formatted as {@code "LastName, FirstName"} from the stored names.
+     */
+    public String getDisplayName() {
+        return this.lastName + ", " + this.firstName;
+    }
 
 }
