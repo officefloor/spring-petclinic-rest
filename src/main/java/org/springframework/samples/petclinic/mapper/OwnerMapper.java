@@ -60,10 +60,11 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
     }
 
-    /** The owner's region, derived from its city via the fixed city-to-region table
-     *  (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
+    /** The owner's region, derived from its postcode range first (NSW 2000-2099, VIC 3000-3099,
+     *  QLD 4000-4099), falling back to the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
+     *  Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
     default String locality(Owner owner) {
-        return Locality.region(owner.getCity());
+        return Locality.region(owner.getCity(), owner.getPostcode());
     }
 
     /** The owner's preferred contact channel: 'EMAIL' when an email address is on file,

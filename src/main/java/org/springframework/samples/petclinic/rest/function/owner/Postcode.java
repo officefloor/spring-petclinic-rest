@@ -37,4 +37,20 @@ public final class Postcode {
         int value = Integer.parseInt(postcode);
         return value >= range[0] && value <= range[1];
     }
+
+    /** The region whose fixed range contains {@code postcode}, or {@code null} when the postcode
+     *  is absent, malformed, or falls in no known range. */
+    public static String region(String postcode) {
+        if (!isWellFormed(postcode)) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }
