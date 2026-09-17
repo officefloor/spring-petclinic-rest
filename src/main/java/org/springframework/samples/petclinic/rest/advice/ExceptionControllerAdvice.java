@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.error.InvalidTelephoneException;
@@ -254,6 +255,29 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateHouseholdException} thrown when an owner is created whose last name and
+     * address match those of an existing owner and the request did not opt in to a shared household.
+     * Returns a 409 Conflict naming the offending fields.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        logger.debug("Duplicate household at {} {}: {} / {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("lastName", "address"));
         return ResponseEntity.status(status).body(detail);
     }
 

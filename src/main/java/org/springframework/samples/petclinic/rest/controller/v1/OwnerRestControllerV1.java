@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -68,6 +69,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerRequestValidator ownerRequestValidator;
 
+    private final HouseholdDuplicateValidator householdDuplicateValidator;
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -79,6 +82,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerRequestValidator ownerRequestValidator,
+                                 HouseholdDuplicateValidator householdDuplicateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator) {
@@ -87,6 +91,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerRequestValidator = ownerRequestValidator;
+        this.householdDuplicateValidator = householdDuplicateValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
@@ -121,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         this.ownerRequestValidator.validate(ownerFieldsDto);
+        this.householdDuplicateValidator.validate(ownerFieldsDto);
         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
