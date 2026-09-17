@@ -22,7 +22,8 @@ public final class OwnerIdentities {
     }
 
     /**
-     * Canonical identity key for the given components: the SHA-256 hex of
+     * Canonical identity key for the given components: the SHA-256 hex of the version-2 pre-image
+     * (see {@link OwnerIdentityVersion#tagged}) of
      * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. {@code telephone}
      * is normalized to E.164 and {@code email} lower-cased before assembly; a {@code null}
      * telephone or email contributes an empty string.
@@ -30,7 +31,7 @@ public final class OwnerIdentities {
     public static String key(String telephone, String email, String lastName) {
         String canonical = part(OwnerTelephones.toE164(telephone)) + "|"
                 + part(OwnerEmails.normalize(email)) + "|" + Soundex.encode(lastName);
-        return Sha256.hex(canonical);
+        return Sha256.hex(OwnerIdentityVersion.tagged(canonical));
     }
 
     /** Canonical {@link #key(String, String, String)} for an existing owner's stored fields. */

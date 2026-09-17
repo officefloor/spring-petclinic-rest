@@ -20,13 +20,14 @@ final class OwnerHouseholds {
     }
 
     /**
-     * Deterministic household identifier for {@code lastName} + {@code postcode}: the first 12
-     * hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Every owner in
-     * the same household resolves to the same value regardless of when they are created.
+     * Deterministic household identifier for {@code lastName} + {@code postcode}: the first 12 hex
+     * characters of SHA-256 over the version-2 pre-image (see {@link OwnerIdentityVersion#tagged})
+     * of {@code normalizedLastName + '|' + postcode}. Every owner in the same household resolves to
+     * the same value regardless of when they are created.
      */
     static String id(String lastName, String postcode) {
         String key = normalizeLastName(lastName) + "|" + (postcode == null ? "" : postcode);
-        return Sha256.hex(key).substring(0, 12);
+        return Sha256.hex(OwnerIdentityVersion.tagged(key)).substring(0, 12);
     }
 
     /** Deterministic household id for an existing owner's stored last name and postcode. */
