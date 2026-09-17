@@ -1,0 +1,251 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2491452b5..71762ba4b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -36,6 +36,12 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "address")
+     @NotEmpty
+     private String address;
+@@ -83,6 +89,22 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+index edf3b798d..50dfb58e6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -14,6 +14,12 @@ import java.util.Map;
+  * uses it to store the canonical value and {@link ValidateOwnerFields} uses it to reject an
+  * address that is blank once normalized. The transformation is idempotent, so normalizing an
+  * already-normalized address is a no-op.
++ *
++ * <p>An address may arrive in two forms: the structured {@code addressLine1} /
++ * {@code addressLine2} fields (preferred) or the flat {@code address} field (kept for
++ * backward compatibility). {@link #line1} picks the structured first line when present,
++ * falling back to the flat address, and {@link #compose} builds the single canonical address
++ * string returned to clients.
+  */
+ final class AddressNormalizer {
+ 
+@@ -43,4 +49,28 @@ final class AddressNormalizer {
+         }
+         return sb.toString();
+     }
++
++    /**
++     * The effective first address line: the structured {@code addressLine1} when non-blank,
++     * otherwise the flat {@code address}. This is the single point that prefers the structured
++     * form over the flat one.
++     */
++    static String line1(String addressLine1, String flatAddress) {
++        return isBlank(addressLine1) ? flatAddress : addressLine1;
++    }
++
++    /**
++     * The composed, canonical address: the normalized {@code addressLine1}, with a single space
++     * and the normalized {@code addressLine2} appended when {@code addressLine2} is present.
++     */
++    static String compose(String addressLine1, String addressLine2) {
++        String first = normalize(addressLine1);
++        String second = normalize(addressLine2);
++        return second.isEmpty() ? first : first + " " + second;
++    }
++
++    /** Whether {@code value} is null or contains only whitespace. */
++    static boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+index 61a639b74..0c6245f19 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -6,14 +6,26 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ /**
+  * Create-owner step: rewrites the address into canonical form (see
+  * {@link AddressNormalizer}) so the stored and returned address is trimmed, collapsed,
+- * upper-cased and has common abbreviations expanded. Runs after {@link ValidateOwnerFields}
+- * (which guarantees the value is non-blank once normalized) and before {@link BuildOwner},
+- * mutating the published body in place. Mirrors {@link NormalizeOwnerTelephone} and
+- * {@link NormalizeOwnerEmail}.
++ * upper-cased and has common abbreviations expanded. Normalization applies to whichever
++ * structured fields ({@code addressLine1}, {@code addressLine2}) were supplied, and the flat
++ * {@code address} is (re)written to the composed canonical string: the normalized first line,
++ * preferring the structured form, with the normalized second line appended when present.
++ *
++ * <p>Runs after {@link ValidateOwnerFields} (which guarantees an address was supplied in one
++ * form or the other) and before {@link BuildOwner}, mutating the published body in place.
++ * Mirrors {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail}.
+  */
+ public class NormalizeOwnerAddress {
+ 
+     public void service(@Val OwnerFieldsDto request) {
+-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
++        String line1 = AddressNormalizer.line1(request.getAddressLine1(), request.getAddress());
++        String composed = AddressNormalizer.compose(line1, request.getAddressLine2());
++        if (!AddressNormalizer.isBlank(request.getAddressLine1())) {
++            request.setAddressLine1(AddressNormalizer.normalize(request.getAddressLine1()));
++        }
++        if (!AddressNormalizer.isBlank(request.getAddressLine2())) {
++            request.setAddressLine2(AddressNormalizer.normalize(request.getAddressLine2()));
++        }
++        request.setAddress(composed);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 2e491db6f..81200a1cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -20,9 +20,7 @@ public class ValidateOwnerFields {
+         List<String> missing = new ArrayList<>();
+         require("firstName", request.getFirstName(), missing);
+         require("lastName", request.getLastName(), missing);
+-        // Address is required once normalized, so a value that is blank after
+-        // normalization (e.g. only whitespace) is rejected here rather than stored empty.
+-        require("address", AddressNormalizer.normalize(request.getAddress()), missing);
++        requireAddress(request, missing);
+         require("city", request.getCity(), missing);
+         require("telephone", request.getTelephone(), missing);
+         if (!missing.isEmpty()) {
+@@ -31,6 +29,17 @@ public class ValidateOwnerFields {
+         validated.set(request);
+     }
+ 
++    // An address must be supplied in one form or the other: a non-blank structured
++    // 'addressLine1', or the flat 'address' (blank once normalized, e.g. only whitespace,
++    // does not count).
++    private static void requireAddress(OwnerFieldsDto request, List<String> missing) {
++        boolean structured = !AddressNormalizer.isBlank(request.getAddressLine1());
++        boolean flat = !AddressNormalizer.normalize(request.getAddress()).isEmpty();
++        if (!structured && !flat) {
++            missing.add("address");
++        }
++    }
++
+     private static void require(String name, String value, List<String> missing) {
+         if (value == null || value.isBlank()) {
+             missing.add(name);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 42be811d2..4c9665b14 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   postcode VARCHAR(4),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index afddac444..5a7d1405a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -39,6 +39,8 @@ CREATE TABLE owners (
+   id         INTEGER IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   postcode   VARCHAR(4),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 161c35a32..853d3352b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   address VARCHAR(255),
+   city VARCHAR(80),
+   postcode VARCHAR(4),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6458ede55..a37fff7b6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                                       first_name TEXT,
+                                       last_name  TEXT,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
+                                       postcode   TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4994fb710..82bab505b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,9 +2009,30 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        addressLine1:
++          title: Address line 1
++          description: >-
++            The first line of the owner's structured postal address (e.g. street number
++            and name). Preferred over the flat 'address' when supplied; normalized on input
++            (trimmed, whitespace collapsed, upper-cased, common abbreviations expanded).
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: >-
++            The optional second line of the owner's structured postal address (e.g. unit or
++            apartment). Normalized on input like 'addressLine1' when supplied.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The owner's postal address. Accepted as flat input for backward compatibility, and
++            always returned as the composed, normalized address (normalized 'addressLine1', plus
++            a single space and the normalized 'addressLine2' when present).
+           type: string
+           minLength: 1
+           maxLength: 255
+@@ -2078,7 +2099,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
