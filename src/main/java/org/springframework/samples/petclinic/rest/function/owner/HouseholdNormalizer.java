@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
@@ -24,11 +25,12 @@ public final class HouseholdNormalizer {
 
     /**
      * The stable household identifier for an owner: the first 12 hex characters of the SHA-256 of the
-     * household {@link #key(String, String) key}. Owners with equal keys share the same id, and the id
-     * never changes for a given (last name, postcode), so it can be recomputed rather than stored.
+     * household {@link #key(String, String) key} with the {@link IdentityVersion version tag} mixed in.
+     * Owners with equal keys share the same id, and the id never changes for a given (last name,
+     * postcode), so it can be recomputed rather than stored.
      */
     public static String id(String lastName, String postcode) {
-        return Sha256.prefix(key(lastName, postcode), 12);
+        return Sha256.prefix(IdentityVersion.tagged(key(lastName, postcode)), 12);
     }
 
     /**

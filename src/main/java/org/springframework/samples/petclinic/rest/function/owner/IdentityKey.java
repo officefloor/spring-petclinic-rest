@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
 
@@ -24,10 +25,12 @@ public final class IdentityKey {
     /**
      * Builds the identity key from its parts: the SHA-256 hex over the telephone in canonical E.164
      * form (see {@link TelephoneNormalizer}), the email lower-cased or empty when absent or blank (see
-     * {@link EmailNormalizer}) and the {@link Soundex} of the last name, separated by '|'.
+     * {@link EmailNormalizer}) and the {@link Soundex} of the last name, separated by '|', with the
+     * {@link IdentityVersion version tag} mixed in.
      */
     public static String of(String telephone, String email, String lastName) {
-        return Sha256.hex(normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|" + Soundex.of(lastName));
+        return Sha256.hex(IdentityVersion.tagged(
+                normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|" + Soundex.of(lastName)));
     }
 
     private static String normalizeTelephone(String telephone) {

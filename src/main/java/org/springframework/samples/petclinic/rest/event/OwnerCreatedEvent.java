@@ -7,17 +7,22 @@ package org.springframework.samples.petclinic.rest.event;
  * membership level, under the {@code OWNER_CREATED} event type.
  *
  * <p>The {@code primaryIdentifier} is the value that identifies the owner — the unified
- * {@code memberId} — and is serialized under the {@code memberId} key.
+ * {@code memberId} — and is serialized under the {@code memberId} key. Every event carries the audit
+ * {@link #SCHEMA_VERSION schema version} so consumers can tell which shape they are reading.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String primaryIdentifier, Integer membershipLevel) {
 
     /** The event type discriminator carried in the serialized form. */
     public static final String EVENT = "OWNER_CREATED";
 
+    /** The version of the audit event schema carried in the serialized form. */
+    public static final int SCHEMA_VERSION = 2;
+
     /** Renders the event as a compact JSON object with fields in the documented order. */
     public String toJson() {
         return "{"
-                + "\"seq\":" + seq
+                + "\"schemaVersion\":" + SCHEMA_VERSION
+                + ",\"seq\":" + seq
                 + ",\"ownerId\":" + ownerId
                 + ",\"memberId\":" + jsonString(primaryIdentifier)
                 + ",\"membershipLevel\":" + membershipLevel
