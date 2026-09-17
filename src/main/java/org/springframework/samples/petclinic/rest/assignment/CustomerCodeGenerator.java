@@ -16,10 +16,14 @@
 
 package org.springframework.samples.petclinic.rest.assignment;
 
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Regions;
 import org.springframework.samples.petclinic.model.Sha256;
+import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,21 +31,59 @@ import org.springframework.stereotype.Component;
  * region derived from the postcode (see {@link Regions#regionOfPostcode(String)}) and HASH8 is the
  * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
  * last name (e.g. {@code 'NSW-1A2B3C4D'}).
+ *
+ * <p>When the formatted code collides with an existing owner's {@code customerCode}, {@code '-<n>'}
+ * is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners
+ * always receive distinct customer codes.
  */
 @Component
 public class CustomerCodeGenerator {
 
     private static final int HASH_LENGTH = 8;
 
+    private final ClinicService clinicService;
+
+    public CustomerCodeGenerator(ClinicService clinicService) {
+        this.clinicService = clinicService;
+    }
+
     /**
      * @param postcode  the owner's postcode, used to derive the REGION prefix
      * @param telephone the owner's normalized telephone, hashed with the last name
      * @param lastName  the owner's last name, hashed with the telephone
-     * @return the formatted customer code
+     * @return the formatted customer code, de-duplicated against existing owners
      */
     public String generate(String postcode, String telephone, String lastName) {
         String region = Regions.regionOfPostcode(postcode);
         String hash8 = Sha256.hex(telephone + lastName).substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
-        return region + "-" + hash8;
+        return deduplicate(region + "-" + hash8);
+    }
+
+    /**
+     * Return {@code base} if no existing owner already uses it; otherwise append {@code '-<n>'}
+     * with the smallest {@code n >= 2} that is not yet taken.
+     */
+    private String deduplicate(String base) {
+        Set<String> existing = existingCustomerCodes();
+        if (!existing.contains(base)) {
+            return base;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = base + "-" + n;
+            if (!existing.contains(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    private Set<String> existingCustomerCodes() {
+        Set<String> codes = new HashSet<>();
+        for (Owner owner : this.clinicService.findAllOwners()) {
+            String code = owner.getCustomerCode();
+            if (code != null) {
+                codes.add(code);
+            }
+        }
+        return codes;
     }
 }
