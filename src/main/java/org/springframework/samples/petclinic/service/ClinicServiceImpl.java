@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -246,6 +247,23 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public boolean existsOwnerByTelephone(String telephone) throws DataAccessException {
         return ownerRepository.existsByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
+        String normalizedAddress = normalizeForComparison(address);
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .anyMatch(owner -> normalizeForComparison(owner.getAddress()).equals(normalizedAddress));
+    }
+
+    /**
+     * Canonicalize a free-text field for identity comparison: trim, collapse internal runs of
+     * whitespace to a single space and lower-case, so values differing only in casing or spacing
+     * are treated as equal.
+     */
+    private static String normalizeForComparison(String value) {
+        return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @Override
