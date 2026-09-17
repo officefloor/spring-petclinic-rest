@@ -1,0 +1,191 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/model/FiscalYear.java
+new file mode 100644
+index 000000000..638ca9998
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/FiscalYear.java
+@@ -0,0 +1,58 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.time.Month;
++
++/**
++ * Fiscal-year calendar rules. The fiscal year runs from 1 July to 30 June and is identified by
++ * the calendar year in which it ends: a date on or after 1 July belongs to the fiscal year that
++ * ends in the following calendar year (e.g. 18 September 2026 is in the fiscal year ending 2027).
++ */
++public final class FiscalYear {
++
++    /** The month on whose first day each fiscal year starts. */
++    private static final Month START = Month.JULY;
++
++    private FiscalYear() {
++    }
++
++    /**
++     * The calendar year in which the fiscal year containing the given date ends. Dates on or after
++     * 1 July belong to the fiscal year ending the following calendar year; earlier dates belong to
++     * the one ending in their own calendar year.
++     */
++    public static int endingYear(LocalDate date) {
++        return date.getMonthValue() >= START.getValue() ? date.getYear() + 1 : date.getYear();
++    }
++
++    /**
++     * The fiscal year of the given date formatted {@code 'FY<YY>'}, where YY is the last two digits
++     * of its {@link #endingYear(LocalDate) ending year} (e.g. {@code 'FY27'}).
++     */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", endingYear(date) % 100);
++    }
++
++    /**
++     * The number of whole fiscal years elapsed from {@code from} to {@code to}: the count of 1 July
++     * boundaries crossed between the two dates. Two dates in the same fiscal year give 0.
++     */
++    public static long elapsed(LocalDate from, LocalDate to) {
++        return endingYear(to) - endingYear(from);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1ee3ca78b..763795e94 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -23,7 +23,6 @@ import jakarta.validation.constraints.Pattern;
+ 
+ import java.time.LocalDate;
+ import java.time.Period;
+-import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -284,15 +283,27 @@ public class Owner extends Person {
+ 
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
+-     * last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
+-     * from the owner's own fields; absent until both the customer code and registration date
+-     * have been assigned.
++     * last two digits of the {@link #getFiscalYear() fiscal year} of the business-day-adjusted
++     * registration date (e.g. {@code 'SMI-0007-M27'}). Derived from the owner's own fields;
++     * absent until both the customer code and registration date have been assigned.
+      */
+     public String getMembershipNumber() {
+         if (this.customerCode == null || this.registrationDate == null) {
+             return null;
+         }
+-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
++        return String.format("%s-M%02d", this.customerCode, FiscalYear.endingYear(this.registrationDate) % 100);
++    }
++
++    /**
++     * The owner's fiscal year, formatted {@code 'FY<YY>'} and derived from the business-day-adjusted
++     * {@link #getRegistrationDate() registration date}. The fiscal year starts on 1 July; see
++     * {@link FiscalYear}. Absent until a registration date has been assigned.
++     */
++    public String getFiscalYear() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return FiscalYear.label(this.registrationDate);
+     }
+ 
+     /**
+@@ -307,22 +318,24 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's tenure in whole days: the number of days elapsed from the
+-     * {@link #getRegistrationDate() registration date} up to today. A freshly registered owner has
+-     * a tenure of zero. Absent until a registration date is present.
++     * The owner's tenure in whole elapsed fiscal years: the number of 1 July boundaries crossed
++     * from the {@link #getRegistrationDate() registration date} up to today (see {@link FiscalYear}).
++     * An owner still in their registration fiscal year has a tenure of zero. Absent until a
++     * registration date is present.
+      */
+-    public Long getTenureDays() {
++    public Long getTenureFiscalYears() {
+         if (this.registrationDate == null) {
+             return null;
+         }
+-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++        return FiscalYear.elapsed(this.registrationDate, LocalDate.now());
+     }
+ 
+     /**
+      * The owner's membership points, a score derived from the owner's own fields: starting from 0,
+      * the owner earns 2 points when an email address is present, 1 point when this owner has no
+      * namesakes ({@code namesakeCount} is 0), 2 points for a household of 3 or more members, and 3
+-     * points once the owner's {@link #getTenureDays() tenure} exceeds 365 days.
++     * points once the owner's {@link #getTenureFiscalYears() tenure} spans at least one full fiscal
++     * year (the registration and current dates fall in different fiscal years).
+      */
+     public Integer getMembershipPoints() {
+         int points = 0;
+@@ -338,8 +351,8 @@ public class Owner extends Person {
+         if (sharedHousehold) {
+             points += 2;
+         }
+-        Long tenureDays = getTenureDays();
+-        boolean tenured = tenureDays != null && tenureDays > 365;
++        Long tenureFiscalYears = getTenureFiscalYears();
++        boolean tenured = tenureFiscalYears != null && tenureFiscalYears >= 1;
+         if (tenured) {
+             points += 3;
+         }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2fe52c305..9ee6f2812 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2178,10 +2178,22 @@ components:
+               title: Membership number
+               description: >-
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+-                where YY is the last two digits of the registration date's year
+-                (e.g. 'SMI-0007-M26'). Derived from the owner's own fields.
++                where YY is the last two digits of the fiscal year (starting
++                1 July) of the business-day-adjusted registration date
++                (e.g. 'SMI-0007-M27'). Derived from the owner's own fields.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'SMI-0007-M27'
++              readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the owner's business-day-adjusted
++                registration date, formatted 'FY<YY>'. The fiscal year runs
++                1 July to 30 June and is identified by the last two digits of
++                the calendar year in which it ends (e.g. a registration on
++                18 September 2026 falls in 'FY27').
++              type: string
++              example: 'FY27'
+               readOnly: true
+             membershipPoints:
+               title: Membership points
+@@ -2190,7 +2202,9 @@ components:
+                 own fields: starting from 0, the owner earns 2 points when an
+                 email address is present, 1 point when the owner has no namesakes
+                 (namesakeCount is 0), 2 points for a household of 3 or more
+-                members, and 3 points once tenure exceeds 365 days.
++                members, and 3 points once the owner's tenure spans at least one
++                full fiscal year (the registration and current dates fall in
++                different fiscal years).
+               type: integer
+               format: int32
+               minimum: 0
