@@ -49,6 +49,9 @@ public class Owner extends Person {
     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String telephone;
 
+    @Column(name = "email")
+    private String email;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -74,6 +77,18 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = telephone;
+    }
+
+    public String getEmail() {
+        return this.email;
+    }
+
+    /**
+     * Stores the email in its canonical lower-cased form so it is always persisted and
+     * returned lower-cased, regardless of the casing supplied by the client.
+     */
+    public void setEmail(String email) {
+        this.email = email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 
     protected Set<Pet> getPetsInternal() {
@@ -147,6 +162,7 @@ public class Owner extends Person {
             .append("address", this.address)
             .append("city", this.city)
             .append("telephone", this.telephone)
+            .append("email", this.email)
             .toString();
     }
 }
