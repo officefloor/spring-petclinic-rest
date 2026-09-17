@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.error.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.error.RequiredFieldsMissingException;
 import org.springframework.security.access.AccessDeniedException;
@@ -208,6 +209,28 @@ public class ExceptionControllerAdvice {
             e.getRejectedValue());
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateTelephoneException} thrown when an owner is created with a normalized
+     * telephone number that is already used by another owner. Returns a 409 Conflict naming the
+     * offending field.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+        logger.debug("Duplicate telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getTelephone());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("telephone"));
         return ResponseEntity.status(status).body(detail);
     }
