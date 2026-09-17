@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.error.DuplicateOwnerException;
+import org.springframework.samples.petclinic.rest.error.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.error.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.error.InvalidTelephoneException;
@@ -301,6 +302,28 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link FutureRegistrationDateException} thrown when an owner is created with a supplied
+     * registration date later than the server's current date. Returns a 400 Bad Request naming the
+     * offending field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        logger.debug("Future registration date at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRegistrationDate());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
         return ResponseEntity.status(status).body(detail);
     }
 
