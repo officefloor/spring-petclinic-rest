@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bfa429025..c1d910b13 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
++    @Mapping(target = "membershipTier", expression = "java(resolveMembershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+@@ -56,6 +57,16 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /**
++     * Resolves the owner's membership tier: {@code SILVER} when the owner has no namesakes
++     * (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
++     */
++    default OwnerDto.MembershipTierEnum resolveMembershipTier(Owner owner) {
++        boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 46106426d..a2127122b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2118,6 +2118,15 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: "'SILVER' when the owner has no namesakes (namesakeCount is 0) and an email is present, otherwise 'BRONZE'."
++              type: string
++              enum:
++                - BRONZE
++                - SILVER
++              example: 'SILVER'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
