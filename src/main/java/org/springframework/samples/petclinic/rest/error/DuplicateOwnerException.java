@@ -17,20 +17,20 @@
 package org.springframework.samples.petclinic.rest.error;
 
 /**
- * Thrown when an owner is created with an email address whose lower-cased form is already used by
- * another owner. Carries the conflicting normalized value so the REST layer can report what was
- * rejected.
+ * Thrown when an owner is created whose whole identity key (normalized telephone, email and
+ * household id) matches that of an existing owner. Carries the conflicting key so the REST layer
+ * can report what was rejected.
  */
-public class DuplicateEmailException extends RuntimeException {
+public class DuplicateOwnerException extends RuntimeException {
 
-    private final String email;
+    private final String identityKey;
 
-    public DuplicateEmailException(String email) {
-        super("An owner with email '" + email + "' already exists");
-        this.email = email;
+    public DuplicateOwnerException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
+        this.identityKey = identityKey;
     }
 
-    public String getEmail() {
-        return this.email;
+    public String getIdentityKey() {
+        return this.identityKey;
     }
 }

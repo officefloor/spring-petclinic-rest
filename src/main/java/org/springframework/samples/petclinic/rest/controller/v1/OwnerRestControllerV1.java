@@ -36,16 +36,15 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
-import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
+import org.springframework.samples.petclinic.rest.validation.DuplicateOwnerValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
-import org.springframework.samples.petclinic.rest.validation.EmailUniquenessValidator;
-import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -76,7 +75,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerRequestValidator ownerRequestValidator;
 
-    private final HouseholdDuplicateValidator householdDuplicateValidator;
+    private final DuplicateOwnerValidator duplicateOwnerValidator;
 
     private final CityOwnerLimitValidator cityOwnerLimitValidator;
 
@@ -86,11 +85,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
-    private final EmailUniquenessValidator emailUniquenessValidator;
-
     private final AddressNormalizer addressNormalizer;
 
     private final CustomerCodeGenerator customerCodeGenerator;
+
+    private final HouseholdIdGenerator householdIdGenerator;
 
     private final HouseholdRegistrar householdRegistrar;
 
@@ -103,14 +102,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerRequestValidator ownerRequestValidator,
-                                 HouseholdDuplicateValidator householdDuplicateValidator,
+                                 DuplicateOwnerValidator duplicateOwnerValidator,
                                  CityOwnerLimitValidator cityOwnerLimitValidator,
                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 EmailUniquenessValidator emailUniquenessValidator,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
+                                 HouseholdIdGenerator householdIdGenerator,
                                  HouseholdRegistrar householdRegistrar,
                                  OwnerAuditLogger ownerAuditLogger,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator) {
@@ -119,14 +118,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerRequestValidator = ownerRequestValidator;
-        this.householdDuplicateValidator = householdDuplicateValidator;
+        this.duplicateOwnerValidator = duplicateOwnerValidator;
         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
-        this.emailUniquenessValidator = emailUniquenessValidator;
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.householdIdGenerator = householdIdGenerator;
         this.householdRegistrar = householdRegistrar;
         this.ownerAuditLogger = ownerAuditLogger;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
@@ -172,24 +171,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         this.ownerRequestValidator.validate(ownerFieldsDto);
-        this.householdDuplicateValidator.validate(ownerFieldsDto);
         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
         this.dailyOwnerLimitValidator.validate(ownerFieldsDto.getRegistrationDate());
-        String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
-        ownerFieldsDto.setTelephone(telephone);
+        ownerFieldsDto.setTelephone(this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone()));
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
-        this.emailUniquenessValidator.validate(ownerFieldsDto.getEmail());
-        if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
-            throw new DuplicateTelephoneException(telephone);
-        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (sharesHousehold) {
+            owner.setHouseholdId(
+                this.householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
+        }
+        this.duplicateOwnerValidator.validate(owner);
         owner.setCustomerCode(
             this.customerCodeGenerator.generate(owner.getCity(), owner.getLastName(),
                 this.clinicService.countOwnersInCity(owner.getCity())));
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (sharesHousehold) {
             owner.setHouseholdSize(this.householdRegistrar.register(owner));
         }
         this.clinicService.saveOwner(owner);

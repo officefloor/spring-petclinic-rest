@@ -142,6 +142,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's identity key: the single derived value used to detect duplicate owners, formed
+     * as {@code normalizedTelephone + '|' + email + '|' + householdId} where an absent telephone,
+     * email or household contributes an empty string. Two owners are duplicates only when their
+     * whole identity keys are equal, so housemates that share a {@code householdId} but hold
+     * different telephones have distinct identity keys and are both allowed.
+     */
+    public String getIdentityKey() {
+        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
      * last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
      * from the owner's own fields; absent until both the customer code and registration date
