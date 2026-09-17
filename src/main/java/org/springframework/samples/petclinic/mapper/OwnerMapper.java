@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.CityRegion;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -27,6 +29,11 @@ public interface OwnerMapper {
     /** The owner's name formatted as 'LastName, FirstName'. */
     default String displayName(Owner owner) {
         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /** The canonical region derived from the owner's city (see {@link CityRegion#of(String)}). */
+    default String locality(Owner owner) {
+        return owner == null ? null : CityRegion.of(owner.getCity());
     }
 
     /** The upper-cased first letters of the first and last name, e.g. 'J.S.'. */
