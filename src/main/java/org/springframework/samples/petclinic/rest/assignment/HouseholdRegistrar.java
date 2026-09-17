@@ -48,19 +48,23 @@ public class HouseholdRegistrar {
      * housemates that lack it. The caller is responsible for saving {@code owner} itself.
      *
      * @param owner the owner being created, not yet saved
-     * @return the stable household identifier assigned to the owner
+     * @return the number of members in the household once {@code owner} joins, counting the
+     * joining owner and every existing housemate at the same last name and address
      */
-    public String register(Owner owner) {
+    public int register(Owner owner) {
         String householdId = this.householdIdGenerator.generate(owner.getLastName(), owner.getAddress());
         owner.setHouseholdId(householdId);
         String key = this.householdKey.of(owner.getLastName(), owner.getAddress());
+        int members = 1;
         for (Owner housemate : this.clinicService.findAllOwners()) {
-            if (this.householdKey.of(housemate.getLastName(), housemate.getAddress()).equals(key)
-                && !householdId.equals(housemate.getHouseholdId())) {
-                housemate.setHouseholdId(householdId);
-                this.clinicService.saveOwner(housemate);
+            if (this.householdKey.of(housemate.getLastName(), housemate.getAddress()).equals(key)) {
+                members++;
+                if (!householdId.equals(housemate.getHouseholdId())) {
+                    housemate.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(housemate);
+                }
             }
         }
-        return householdId;
+        return members;
     }
 }

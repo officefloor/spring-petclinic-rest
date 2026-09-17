@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -130,6 +133,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
      * last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
@@ -144,11 +155,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code "SILVER"} when this owner has no namesakes
-     * ({@code namesakeCount} is 0) and an email address is present, otherwise
-     * {@code "BRONZE"}. Derived from the owner's own fields.
+     * The owner's membership tier: {@code "GOLD"} when the owner's household
+     * ({@code householdSize}) has three or more members; otherwise {@code "SILVER"} when this
+     * owner has no namesakes ({@code namesakeCount} is 0) and an email address is present, and
+     * {@code "BRONZE"} in every remaining case. Derived from the owner's own fields.
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         return unique && hasEmail ? "SILVER" : "BRONZE";

@@ -184,7 +184,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            this.householdRegistrar.register(owner);
+            owner.setHouseholdSize(this.householdRegistrar.register(owner));
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.created(owner);
