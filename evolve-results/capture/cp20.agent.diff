@@ -1,0 +1,158 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0f60fb8c6..9d4da31d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.BusinessDay;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+@@ -135,14 +136,14 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * On first persist, default the registration date to the server's current date
+-     * when the client did not supply one, leaving any supplied date untouched.
++     * On first persist, default the registration date to the server's current date when the
++     * client did not supply one, then roll the effective date forward so it always falls on a
++     * business day (a weekend moves to the following Monday).
+      */
+     @PrePersist
+     private void defaultRegistrationDate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
+-        }
++        LocalDate effectiveDate = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
++        this.registrationDate = BusinessDay.rollForward(effectiveDate);
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8464eca5e..572a72f50 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -101,7 +101,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        if (this.clinicService.isDailyOwnerLimitReached()) {
++        owner.setRegistrationDate(this.clinicService.resolveRegistrationDate(owner.getRegistrationDate()));
++        if (this.clinicService.isDailyOwnerLimitReached(owner.getRegistrationDate())) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (this.clinicService.existsOwnerByTelephone(owner.getTelephone())) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 31e283806..a59970c85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -15,6 +15,7 @@
+  */
+ package org.springframework.samples.petclinic.service;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Set;
+@@ -60,7 +61,8 @@ public interface ClinicService {
+ 	boolean existsOwnerByTelephone(String telephone) throws DataAccessException;
+ 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
+ 	boolean isCityAtCapacity(String city) throws DataAccessException;
+-	boolean isDailyOwnerLimitReached() throws DataAccessException;
++	LocalDate resolveRegistrationDate(LocalDate registrationDate);
++	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;
+ 	long countNamesakes(String firstName, String lastName) throws DataAccessException;
+ 	String assignHousehold(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 403cf2f3c..040d37f26 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.BusinessDay;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -274,14 +275,21 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * The maximum number of owners that may be created in a single day; once this many owners
+-     * have already been registered today no further owners may be created until the next day.
++     * have already been registered on a given business day no further owners may be created for
++     * that day.
+      */
+     static final long DAILY_OWNER_LIMIT = 100;
+ 
++    @Override
++    public LocalDate resolveRegistrationDate(LocalDate registrationDate) {
++        LocalDate effectiveDate = registrationDate == null ? LocalDate.now() : registrationDate;
++        return BusinessDay.rollForward(effectiveDate);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+-    public boolean isDailyOwnerLimitReached() throws DataAccessException {
+-        return ownerRepository.countByRegistrationDate(LocalDate.now()) >= DAILY_OWNER_LIMIT;
++    public boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException {
++        return ownerRepository.countByRegistrationDate(registrationDate) >= DAILY_OWNER_LIMIT;
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+new file mode 100644
+index 000000000..a15ff4a68
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Utility for aligning dates to business days.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    /**
++     * Roll {@code date} forward to the next business day: a Saturday or Sunday moves to the
++     * following Monday, while any weekday is returned unchanged.
++     *
++     * @param date the date to align
++     * @return the same date when it already falls on a business day, otherwise the next Monday
++     */
++    public static LocalDate rollForward(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
