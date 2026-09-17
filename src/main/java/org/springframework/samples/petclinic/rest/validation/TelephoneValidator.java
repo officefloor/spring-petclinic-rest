@@ -7,6 +7,6 @@ public class TelephoneValidator implements ConstraintValidator<Telephone, String
 
     @Override
     public boolean isValid(String telephone, ConstraintValidatorContext context) {
-        return TelephoneNormalizer.normalize(telephone).length() == 10;
+        return TelephoneNormalizer.toE164(telephone) != null;
     }
 }

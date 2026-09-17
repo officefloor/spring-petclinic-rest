@@ -52,12 +52,12 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * On create, store the telephone as its bare 10 digits. Validation ({@code @Telephone})
-     * has already guaranteed the stripped value is exactly 10 digits.
+     * Store the telephone in E.164 form. Validation ({@code @Telephone}) has already guaranteed
+     * the raw value normalizes to a valid E.164 number.
      */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return TelephoneNormalizer.normalize(telephone);
+        return TelephoneNormalizer.toE164(telephone);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
