@@ -26,7 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(resolveMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -67,23 +67,21 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** The household size (members after this owner's create) at or above which the tier is GOLD. */
-    int GOLD_HOUSEHOLD_SIZE = 3;
-
     /**
-     * Resolves the owner's membership tier: {@code GOLD} when the owner's household had
-     * {@value #GOLD_HOUSEHOLD_SIZE} or more members once this owner was created; otherwise
-     * {@code SILVER} when the owner has no namesakes (namesakeCount is 0) and an email is present,
-     * otherwise {@code BRONZE}.
+     * Resolves the owner's numeric membership level, assigned on creation: starts at {@code 1},
+     * plus {@code 1} when an email is present, plus {@code 1} when the owner has no namesakes
+     * (namesakeCount is 0), capped at {@code 3} (level {@code 4} is reserved for tenure).
      */
-    default OwnerDto.MembershipTierEnum resolveMembershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= GOLD_HOUSEHOLD_SIZE) {
-            return OwnerDto.MembershipTierEnum.GOLD;
-        }
-        boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
+    default Integer resolveMembershipLevel(Owner owner) {
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        if (hasEmail) {
+            level++;
+        }
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     @Mapping(target = "id", ignore = true)
