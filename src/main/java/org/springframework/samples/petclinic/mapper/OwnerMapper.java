@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
+import org.springframework.samples.petclinic.rest.function.owner.Luhn;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
@@ -24,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
@@ -58,6 +60,13 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+    }
+
+    /** The Luhn check digit (0-9) over the digits of the owner's customerCode; absent until the
+     *  customer code has been assigned. */
+    default Integer checkDigit(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        return customerCode == null ? null : Luhn.checkDigit(customerCode);
     }
 
     /** The owner's region, derived from its postcode range first (NSW 2000-2099, VIC 3000-3099,
