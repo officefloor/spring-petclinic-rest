@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index ad55b09f7..b2c92a60a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -1,17 +1,29 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.HashSet;
++import java.util.Set;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns a new owner's {@code customerCode} before it is saved. The code is
+  * {@code <REGION>-<HASH8>} (see {@link OwnerCustomerCodes}): the region derived from the owner's
+  * postcode and a hash of their telephone and last name, so it is a stable function of the owner's
+- * own identity rather than a per-city sequence.
++ * own identity rather than a per-city sequence. When that code collides with an existing owner's,
++ * it is de-duplicated by appending {@code -<n>} (smallest {@code n} of 2 or more that is unique).
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
+-        owner.setCustomerCode(OwnerCustomerCodes.forOwner(owner));
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String base = OwnerCustomerCodes.forOwner(owner);
++        Set<String> taken = new HashSet<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getCustomerCode() != null) {
++                taken.add(existing.getCustomerCode());
++            }
++        }
++        owner.setCustomerCode(OwnerCustomerCodes.deduplicate(base, taken));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCodes.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCodes.java
+index 54440b9cb..2319e103e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCustomerCodes.java
+@@ -1,6 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Locale;
++import java.util.Set;
+ 
+ import org.springframework.samples.petclinic.model.Locality;
+ import org.springframework.samples.petclinic.model.Owner;
+@@ -26,6 +27,22 @@ final class OwnerCustomerCodes {
+         return format(owner.getPostcode(), owner.getTelephone(), owner.getLastName());
+     }
+ 
++    /**
++     * De-duplicates {@code base} against the already-{@code taken} codes: returns {@code base} when
++     * it is free, otherwise {@code base-<n>} using the smallest {@code n} of 2 or more that is unused.
++     */
++    static String deduplicate(String base, Set<String> taken) {
++        if (!taken.contains(base)) {
++            return base;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = base + "-" + n;
++            if (!taken.contains(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /** Format {@code postcode}, {@code telephone} and {@code lastName} as {@code <REGION>-<HASH8>}. */
+     static String format(String postcode, String telephone, String lastName) {
+         return Locality.forPostcode(postcode) + "-" + hash8(telephone, lastName);
