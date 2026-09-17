@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+new file mode 100644
+index 000000000..9dafb295f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.CustomerCode;
++
++/**
++ * Guarantees the assigned customerCode is unique across owners. When the code computed by
++ * {@link AssignCustomerCode} already belongs to an existing owner, it appends {@code -<n>} with the
++ * smallest {@code n} of 2 or more that makes it unique (see {@link CustomerCode#dedupe}). Runs before
++ * {@link SaveOwner}, so the owner being created is not yet persisted and cannot collide with itself.
++ * Mutates the built {@link Owner} in place.
++ */
++public class DeduplicateCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        Set<String> existing = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            if (other.getCustomerCode() != null) {
++                existing.add(other.getCustomerCode());
++            }
++        }
++        owner.setCustomerCode(CustomerCode.dedupe(owner.getCustomerCode(), existing));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+index 720a0b98c..78441da10 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.util;
+ 
++import java.util.Collection;
++
+ /**
+  * The owner's region-and-hash identity. The customerCode is formatted {@code <REGION>-<HASH8>} where
+  * REGION is the region derived from the owner's postcode (see {@link Locality}) and HASH8 is the first
+@@ -25,6 +27,23 @@ public final class CustomerCode {
+         return region + "-" + Sha256.prefix(orEmpty(normalizedTelephone) + orEmpty(lastName), HASH_LENGTH);
+     }
+ 
++    /**
++     * De-duplicates {@code candidate} against the {@code existing} customerCodes. Returns the candidate
++     * unchanged when it does not collide; otherwise appends {@code -<n>} with the smallest {@code n} of 2
++     * or more that yields a value absent from {@code existing}.
++     */
++    public static String dedupe(String candidate, Collection<String> existing) {
++        if (!existing.contains(candidate)) {
++            return candidate;
++        }
++        for (int n = 2; ; n++) {
++            String deduped = candidate + "-" + n;
++            if (!existing.contains(deduped)) {
++                return deduped;
++            }
++        }
++    }
++
+     /** The region portion (before the first '-') of a customerCode, or {@code null} when absent. */
+     public static String regionOf(String customerCode) {
+         if (customerCode == null) {
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7d529777d..43549941e 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -60,6 +60,11 @@ flagBulkSignup:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
++  next: deduplicateCustomerCode
++
++deduplicateCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateCustomerCode
++  govern: [ transaction ]
+   next: assignHousehold
+ 
+ assignHousehold:
