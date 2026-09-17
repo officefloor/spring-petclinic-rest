@@ -28,6 +28,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
@@ -93,6 +94,19 @@ public interface OwnerMapper {
             return null;
         }
         return Timezone.forRegion(locality(owner));
+    }
+
+    /** The owner's honorific title and last name, space-separated (e.g. 'DR Who'); just the
+     * last name when no title is stored. */
+    default String salutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        if (title == null || title.isEmpty()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /** Format the stored names as 'LastName, FirstName'. */
