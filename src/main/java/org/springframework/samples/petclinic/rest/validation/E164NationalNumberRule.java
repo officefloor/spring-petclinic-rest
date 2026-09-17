@@ -51,4 +51,25 @@ public final class E164NationalNumberRule {
         }
         return true;
     }
+
+    /**
+     * The country calling code that a normalized E.164 number begins with.
+     *
+     * @param e164 a normalized E.164 string ({@code '+'} followed by digits), as produced by
+     *             {@link TelephoneNormalizer#toE164(String)}; may be {@code null}
+     * @return the matching country calling code (longest-first), or {@code null} when the number is
+     *         {@code null} or starts with no known country code
+     */
+    public static String countryCode(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        for (String code : CODES_BY_LENGTH) {
+            if (digits.startsWith(code)) {
+                return code;
+            }
+        }
+        return null;
+    }
 }

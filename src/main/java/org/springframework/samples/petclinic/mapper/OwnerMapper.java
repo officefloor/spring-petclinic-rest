@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.util.Luhn;
 
@@ -23,6 +24,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
@@ -40,6 +42,14 @@ public interface OwnerMapper {
      */
     default String formatDisplayName(Owner owner) {
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Formats the owner's stored E.164 telephone for human display (country code, a space and the
+     * national digits grouped in threes), leaving the raw {@code telephone} in E.164 form.
+     */
+    default String formatTelephoneDisplay(Owner owner) {
+        return TelephoneFormatter.toDisplay(owner.getTelephone());
     }
 
     /**
