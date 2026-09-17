@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ba8b6fa3a..dc1af6d66 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
+      * last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
+@@ -144,11 +155,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "SILVER"} when this owner has no namesakes
+-     * ({@code namesakeCount} is 0) and an email address is present, otherwise
+-     * {@code "BRONZE"}. Derived from the owner's own fields.
++     * The owner's membership tier: {@code "GOLD"} when the owner's household
++     * ({@code householdSize}) has three or more members; otherwise {@code "SILVER"} when this
++     * owner has no namesakes ({@code namesakeCount} is 0) and an email address is present, and
++     * {@code "BRONZE"} in every remaining case. Derived from the owner's own fields.
+      */
+     public String getMembershipTier() {
++        if (this.householdSize != null && this.householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+         boolean hasEmail = this.email != null && !this.email.isEmpty();
+         return unique && hasEmail ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdRegistrar.java b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdRegistrar.java
+index 4ebb4bc13..b938071af 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdRegistrar.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/assignment/HouseholdRegistrar.java
+@@ -48,19 +48,23 @@ public class HouseholdRegistrar {
+      * housemates that lack it. The caller is responsible for saving {@code owner} itself.
+      *
+      * @param owner the owner being created, not yet saved
+-     * @return the stable household identifier assigned to the owner
++     * @return the number of members in the household once {@code owner} joins, counting the
++     * joining owner and every existing housemate at the same last name and address
+      */
+-    public String register(Owner owner) {
++    public int register(Owner owner) {
+         String householdId = this.householdIdGenerator.generate(owner.getLastName(), owner.getAddress());
+         owner.setHouseholdId(householdId);
+         String key = this.householdKey.of(owner.getLastName(), owner.getAddress());
++        int members = 1;
+         for (Owner housemate : this.clinicService.findAllOwners()) {
+-            if (this.householdKey.of(housemate.getLastName(), housemate.getAddress()).equals(key)
+-                && !householdId.equals(housemate.getHouseholdId())) {
+-                housemate.setHouseholdId(householdId);
+-                this.clinicService.saveOwner(housemate);
++            if (this.householdKey.of(housemate.getLastName(), housemate.getAddress()).equals(key)) {
++                members++;
++                if (!householdId.equals(housemate.getHouseholdId())) {
++                    housemate.setHouseholdId(householdId);
++                    this.clinicService.saveOwner(housemate);
++                }
+             }
+         }
+-        return householdId;
++        return members;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 391c6ee20..5500dfb7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -184,7 +184,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(
+             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+-            this.householdRegistrar.register(owner);
++            owner.setHouseholdSize(this.householdRegistrar.register(owner));
+         }
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditLogger.created(owner);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index aa945722d..909cd7c0f 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 893aa49a8..d33d3cdb4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c0161d411..0acb89392 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..0f7089afd 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 74ba71d0a..6eced76a1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,11 +2126,14 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address is present,
+-                otherwise 'BRONZE'. Derived from the owner's own fields.
++                The owner's membership tier: 'GOLD' when the owner's household
++                has three or more members; otherwise 'SILVER' when the owner has
++                no namesakes (namesakeCount is 0) and an email address is
++                present, and 'BRONZE' in every remaining case. Derived from the
++                owner's own fields.
+               type: string
+               enum:
++                - GOLD
+                 - SILVER
+                 - BRONZE
+               example: 'SILVER'
