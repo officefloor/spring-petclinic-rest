@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
+import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
@@ -89,6 +90,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdRegistrar householdRegistrar;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -101,7 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
-                                 HouseholdRegistrar householdRegistrar) {
+                                 HouseholdRegistrar householdRegistrar,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -115,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdRegistrar = householdRegistrar;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -167,6 +172,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.householdRegistrar.register(owner);
         }
         this.clinicService.saveOwner(owner);
+        this.ownerAuditLogger.created(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
