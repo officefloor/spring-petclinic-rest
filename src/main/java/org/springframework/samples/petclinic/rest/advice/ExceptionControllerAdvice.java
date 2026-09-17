@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
@@ -278,6 +279,28 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("lastName", "address"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityOwnerLimitExceededException} thrown when an owner is created in a city that
+     * already contains the maximum permitted number of owners. Returns a 409 Conflict naming the
+     * offending field.
+     *
+     * @param e The {@link CityOwnerLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityOwnerLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityOwnerLimitExceededException(CityOwnerLimitExceededException e, HttpServletRequest request) {
+        logger.debug("City owner limit exceeded at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("city"));
         return ResponseEntity.status(status).body(detail);
     }
 
