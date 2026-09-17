@@ -87,6 +87,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles a {@link BusinessRuleViolationException} raised when a request is rejected by a
+     * business rule, returning the rule's HTTP status with an RFC 7807 {@code problem+json} body.
+     *
+     * @param e The {@link BusinessRuleViolationException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} carrying the problem detail and the rule's HTTP status
+     */
+    @ExceptionHandler(BusinessRuleViolationException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleBusinessRuleViolationException(BusinessRuleViolationException e, HttpServletRequest request) {
+        logger.warn("Request rejected at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        HttpStatus status = e.getStatus();
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setTitle(e.getTitle());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
      *
      * @param e The {@link Exception} to be handled

@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.BusinessRuleViolationException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -127,14 +128,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.isRegistrationDateInFuture(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new BusinessRuleViolationException(HttpStatus.BAD_REQUEST,
+                "Invalid registration date", "The registration date must not be in the future");
         }
         owner.setRegistrationDate(this.clinicService.resolveRegistrationDate(owner.getRegistrationDate()));
         if (this.clinicService.isDailyOwnerLimitReached(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new BusinessRuleViolationException(HttpStatus.TOO_MANY_REQUESTS,
+                "Daily owner limit reached", "The daily limit for new owner registrations has been reached");
         }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new BusinessRuleViolationException(HttpStatus.CONFLICT,
+                "City at capacity", "The city has reached its maximum number of registered owners");
         }
         // Assign the deterministic householdId (derived from last name and postcode) so owners in
         // the same household share it automatically.
@@ -143,7 +147,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Reject an exact duplicate: an owner whose whole identity key (normalized telephone,
         // email and the Soundex of the last name) already exists.
         if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new BusinessRuleViolationException(HttpStatus.CONFLICT,
+                "Duplicate owner", "An owner with the same identity already exists");
         }
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner));

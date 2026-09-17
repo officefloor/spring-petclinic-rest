@@ -60,6 +60,9 @@ public final class LocalityResolver {
      * @return the canonical region string when the city is in the table, otherwise {@code "UNKNOWN"}
      */
     public static String resolve(String city) {
+        if (city == null) {
+            return UNKNOWN;
+        }
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
 
