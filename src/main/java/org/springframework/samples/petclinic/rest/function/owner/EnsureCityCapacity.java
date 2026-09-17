@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Rejects a create request whose city has already reached capacity: a city is full once it holds
- * {@link #CAPACITY} or more existing owners, compared case-insensitively (as {@link AssignCustomerCode}
- * counts a city). A full city is a 409 via {@link CityAtCapacityException}.
+ * {@link #CAPACITY} or more existing owners, compared case-insensitively. A full city is a 409 via
+ * {@link CityAtCapacityException}.
  */
 public class EnsureCityCapacity {
 

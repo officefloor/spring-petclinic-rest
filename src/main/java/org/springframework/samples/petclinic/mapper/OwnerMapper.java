@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.ContactPreference;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
@@ -38,9 +39,17 @@ public interface OwnerMapper {
         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
     }
 
-    /** The canonical region derived from the owner (see {@link Locality#of(String, String)}). */
+    /**
+     * The canonical region taken from the owner's region-and-hash identity: the REGION portion of the
+     * customerCode (see {@link CustomerCode}). Falls back to deriving the region directly from the
+     * city and postcode (see {@link Locality}) for an owner that has no customerCode yet.
+     */
     default String locality(Owner owner) {
-        return owner == null ? null : Locality.of(owner.getCity(), owner.getPostcode());
+        if (owner == null) {
+            return null;
+        }
+        String region = CustomerCode.regionOf(owner.getCustomerCode());
+        return region != null ? region : Locality.of(owner.getCity(), owner.getPostcode());
     }
 
     /** The upper-cased first letters of the first and last name, e.g. 'J.S.'. */
@@ -52,7 +61,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registration date's year, e.g. 'SYD-SMI-0007-M26'.
+     * last two digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
      */
     default String membershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {

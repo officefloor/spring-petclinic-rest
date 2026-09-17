@@ -2,27 +2,21 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.Locality;
 
 /**
- * Assigns the owner's customerCode, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is the
- * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the last
- * name and NNNN a per-city 4-digit zero-padded sequence equal to one more than the owners already in
- * that city (e.g. {@code SYD-SMI-0007}). Runs before {@link SaveOwner}, so the count excludes the
- * owner currently being created. Mutates the built {@link Owner} in place.
+ * Assigns the owner's customerCode, formatted {@code <REGION>-<HASH8>} where REGION is the region
+ * derived from the owner's postcode (falling back to the city; see {@link Locality}) and HASH8 is the
+ * first eight upper-case hex characters of SHA-256 over the normalized telephone and last name (see
+ * {@link CustomerCode}). The owner's telephone is already in canonical E.164 form here, having been
+ * normalized upstream by {@link NormalizeTelephone}. The identity no longer carries a per-city
+ * sequence, so it does not depend on other owners. Mutates the built {@link Owner} in place.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city = owner.getCity();
-        long sequence = ownerRepository.findAll().stream()
-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-                .count() + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", prefix(city), prefix(owner.getLastName()), sequence));
-    }
-
-    /** The upper-cased first three letters of the value (or fewer when it is shorter). */
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    public void service(@Val Owner owner) {
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        owner.setCustomerCode(CustomerCode.of(region, owner.getTelephone(), owner.getLastName()));
     }
 }
