@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
 
 /**
  * Rejects a create request whose normalized telephone is already used by any existing owner. Runs
- * after {@link NormalizeTelephone}, so the request telephone is already the canonical digits-only
- * form; each stored telephone is normalized the same way before comparison. A collision is a 409 via
+ * after {@link NormalizeTelephone}, so the request telephone is already the canonical E.164 form;
+ * each stored telephone is normalized the same way before comparison. A collision is a 409 via
  * {@link DuplicateTelephoneException}.
  */
 public class EnsureUniqueTelephone {
@@ -18,7 +18,7 @@ public class EnsureUniqueTelephone {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner owner : ownerRepository.findAll()) {
-            if (telephone.equals(TelephoneNormalizer.digitsOnly(owner.getTelephone()))) {
+            if (telephone.equals(TelephoneNormalizer.toE164(owner.getTelephone()))) {
                 throw new DuplicateTelephoneException(telephone);
             }
         }
