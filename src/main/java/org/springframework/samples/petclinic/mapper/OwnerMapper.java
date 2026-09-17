@@ -30,6 +30,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -46,6 +47,18 @@ public interface OwnerMapper {
     /** The owner's name formatted as 'LastName, FirstName'. */
     default String displayName(Owner owner) {
         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * The owner's salutation: the honorific title followed by a space and the last name (e.g.
+     * 'DR who'), or just the last name when no title is given.
+     */
+    default String salutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        return title == null || title.isBlank() ? owner.getLastName() : title + " " + owner.getLastName();
     }
 
     /**
