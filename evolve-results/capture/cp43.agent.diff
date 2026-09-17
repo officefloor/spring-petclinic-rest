@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ced9857bc..f12ff8d73 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.ContactPreference;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Locality;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.MembershipNumber;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
+ 
+@@ -81,10 +82,7 @@ public interface OwnerMapper {
+      * last two digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
+      */
+     default String membershipNumber(Owner owner) {
+-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+-            return null;
+-        }
+-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++        return MembershipNumber.of(owner);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 5128d38c8..c11b9a317 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,6 +5,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.MembershipNumber;
+ import org.springframework.samples.petclinic.util.MembershipPoints;
+ 
+ /**
+@@ -19,8 +20,8 @@ public class AuditOwnerCreated {
+ 
+     public void service(@Val Owner owner) {
+         Integer membershipPoints = MembershipPoints.of(owner);
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                membershipPoints, MembershipLevel.forPoints(membershipPoints));
++                membershipPoints, MembershipLevel.forPoints(membershipPoints), MembershipNumber.of(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipNumber.java
+new file mode 100644
+index 000000000..cdd878411
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipNumber.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Formats an owner's membership number as '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the last two
++ * digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
++ */
++public final class MembershipNumber {
++
++    private MembershipNumber() {
++    }
++
++    /**
++     * The membership number for {@code owner}, or {@code null} when the owner or the customer code or
++     * registration date it is derived from is {@code null}.
++     */
++    public static String of(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++    }
++}
