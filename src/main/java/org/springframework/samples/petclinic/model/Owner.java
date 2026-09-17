@@ -17,13 +17,13 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.BusinessDay;
+import org.springframework.samples.petclinic.util.FiscalYear;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -194,12 +194,22 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure in days: the number of whole days from its {@link #registrationDate} to
-     * the current date. A brand-new owner registered today has zero tenure.
+     * The fiscal year of the owner's {@link #registrationDate}, as the {@code "FY<YY>"} label of the
+     * fiscal year (starting 1 July) that contains the business-day-adjusted registration date.
      */
     @Transient
-    public long getTenureDays() {
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+    public String getFiscalYear() {
+        return FiscalYear.label(this.registrationDate);
+    }
+
+    /**
+     * The owner's tenure in fiscal years: the number of fiscal years elapsed from its
+     * {@link #registrationDate} to the current date. An owner registered in the current fiscal year
+     * has zero tenure.
+     */
+    @Transient
+    public int getTenureFiscalYears() {
+        return FiscalYear.yearsBetween(this.registrationDate, LocalDate.now());
     }
 
     /**

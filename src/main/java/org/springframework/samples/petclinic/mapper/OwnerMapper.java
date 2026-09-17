@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "timezone", expression = "java(resolveTimezone(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(owner.getFiscalYear())")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(resolveMembershipPoints(owner))")
@@ -90,10 +91,11 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code "<customerCode>-M<YY>"}, where YY is the
-     * last two digits of the registration date year, e.g. {@code "LON-SMI-0007-M26"}.
+     * last two digits of the {@linkplain Owner#getFiscalYear() fiscal year} of the registration
+     * date, e.g. {@code "LON-SMI-0007-M26"}.
      */
     default String formatMembershipNumber(Owner owner) {
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return owner.getCustomerCode() + "-M" + owner.getFiscalYear().substring(2);
     }
 
     /**
@@ -103,8 +105,8 @@ public interface OwnerMapper {
         return Luhn.checkDigit(owner.getCustomerCode());
     }
 
-    /** The minimum tenure, in days, an owner must exceed to earn the tenure membership points. */
-    int TENURE_POINTS_THRESHOLD_DAYS = 365;
+    /** The minimum tenure, in fiscal years, an owner must exceed to earn the tenure membership points. */
+    int TENURE_POINTS_THRESHOLD_FISCAL_YEARS = 1;
 
     /** The minimum household size that earns the household membership points. */
     int HOUSEHOLD_POINTS_THRESHOLD = 3;
@@ -113,7 +115,7 @@ public interface OwnerMapper {
      * Resolves the owner's membership points: starts at {@code 0}, plus {@code 2} when an email is
      * present, plus {@code 1} when the owner has no namesakes (namesakeCount is 0), plus {@code 2}
      * when the owner belongs to a household of {@value #HOUSEHOLD_POINTS_THRESHOLD} or more, plus
-     * {@code 3} when the owner's tenure exceeds {@value #TENURE_POINTS_THRESHOLD_DAYS} days.
+     * {@code 3} when the owner's tenure exceeds {@value #TENURE_POINTS_THRESHOLD_FISCAL_YEARS} fiscal year.
      */
     default Integer resolveMembershipPoints(Owner owner) {
         int points = 0;
@@ -127,7 +129,7 @@ public interface OwnerMapper {
         if (householdSize != null && householdSize >= HOUSEHOLD_POINTS_THRESHOLD) {
             points += 2;
         }
-        if (owner.getTenureDays() > TENURE_POINTS_THRESHOLD_DAYS) {
+        if (owner.getTenureFiscalYears() > TENURE_POINTS_THRESHOLD_FISCAL_YEARS) {
             points += 3;
         }
         return points;
