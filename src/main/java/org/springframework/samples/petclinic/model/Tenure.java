@@ -16,12 +16,12 @@
 package org.springframework.samples.petclinic.model;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
- * How long an owner has been a member, in whole days, measured from their
- * {@link Owner#getRegistrationDate() registrationDate} to the current date. A freshly
- * registered owner has zero tenure, and an owner without a registration date has none.
+ * How long an owner has been a member, measured in whole elapsed fiscal years from their
+ * {@link Owner#getRegistrationDate() registrationDate} to the current date (see
+ * {@link FiscalYear}). An owner registered within the current fiscal year has zero tenure,
+ * and an owner without a registration date has none.
  */
 public final class Tenure {
 
@@ -29,17 +29,17 @@ public final class Tenure {
     }
 
     /**
-     * Derive the owner's tenure in whole days as of today.
+     * Derive the owner's tenure as the number of whole fiscal years elapsed since registration.
      *
      * @param owner the owner (must not be {@code null}).
-     * @return the number of days since registration, or {@code 0} when the owner has no
-     *         registration date (or has not yet reached it).
+     * @return the number of elapsed fiscal years since registration, or {@code 0} when the owner
+     *         has no registration date (or has not yet reached it).
      */
-    public static long inDays(Owner owner) {
+    public static long inFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return Math.max(0, ChronoUnit.DAYS.between(registrationDate, LocalDate.now()));
+        return FiscalYear.yearsBetween(registrationDate, LocalDate.now());
     }
 }

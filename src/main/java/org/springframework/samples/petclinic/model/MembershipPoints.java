@@ -21,9 +21,9 @@ package org.springframework.samples.petclinic.model;
  * <p>The score starts at {@code 0} and accumulates: a present email adds
  * {@value #EMAIL_POINTS}; having no namesakes (namesakeCount is 0) adds
  * {@value #NO_NAMESAKE_POINTS}; a household of {@value #LARGE_HOUSEHOLD_SIZE} or more
- * adds {@value #LARGE_HOUSEHOLD_POINTS}; and tenure of more than {@value #TENURE_DAYS}
- * days adds {@value #TENURE_POINTS}. The resulting points are mapped to a level by
- * {@link MembershipLevel}.
+ * adds {@value #LARGE_HOUSEHOLD_POINTS}; and tenure of more than
+ * {@value #TENURE_FISCAL_YEARS} elapsed fiscal year adds {@value #TENURE_POINTS}. The
+ * resulting points are mapped to a level by {@link MembershipLevel}.
  */
 public final class MembershipPoints {
 
@@ -39,10 +39,10 @@ public final class MembershipPoints {
     /** Points added for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more. */
     public static final int LARGE_HOUSEHOLD_POINTS = 2;
 
-    /** Tenure, in days, that an owner must exceed to earn the tenure points. */
-    public static final int TENURE_DAYS = 365;
+    /** Elapsed fiscal years that an owner's tenure must exceed to earn the tenure points. */
+    public static final int TENURE_FISCAL_YEARS = 1;
 
-    /** Points added when tenure exceeds {@value #TENURE_DAYS} days. */
+    /** Points added when tenure exceeds {@value #TENURE_FISCAL_YEARS} elapsed fiscal year. */
     public static final int TENURE_POINTS = 3;
 
     private MembershipPoints() {
@@ -65,7 +65,7 @@ public final class MembershipPoints {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
-        if (Tenure.inDays(owner) > TENURE_DAYS) {
+        if (Tenure.inFiscalYears(owner) > TENURE_FISCAL_YEARS) {
             points += TENURE_POINTS;
         }
         return points;

@@ -19,8 +19,9 @@ package org.springframework.samples.petclinic.model;
  * Formats an owner's membership number from the owner's own fields.
  *
  * <p>The number is formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the last
- * two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). It is
- * {@code null} until both the customer code and registration date are assigned.
+ * two digits of the {@link FiscalYear fiscal year} of the registrationDate
+ * (e.g. 'NSW-1A2B3C4D-M26'). It is {@code null} until both the customer code and
+ * registration date are assigned.
  */
 public final class MembershipNumber {
 
@@ -38,6 +39,6 @@ public final class MembershipNumber {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        return owner.getCustomerCode() + "-M" + FiscalYear.twoDigitYear(owner.getRegistrationDate());
     }
 }

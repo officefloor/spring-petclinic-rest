@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.ContactPreference;
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.MembershipNumber;
@@ -32,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -139,6 +141,20 @@ public interface OwnerMapper {
      */
     default String membershipNumber(Owner owner) {
         return MembershipNumber.of(owner);
+    }
+
+    /**
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the last two digits of the
+     * fiscal year (starting 1 July) of the registrationDate; null until a registration date is
+     * assigned.
+     *
+     * @see FiscalYear
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return FiscalYear.label(owner.getRegistrationDate());
     }
 
     /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
