@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
@@ -32,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName'. */
@@ -102,6 +104,16 @@ public interface OwnerMapper {
      */
     default String identityKey(Owner owner) {
         return owner == null ? null : IdentityKey.forOwner(owner);
+    }
+
+    /**
+     * The owner's age band (see {@link AgeBand}): 'MINOR' under 18, 'ADULT' from 18 to 64 and
+     * 'SENIOR' at 65 or older, measured from the birth date against the registration date, or
+     * {@code null} when no birth date was given.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        AgeBand band = AgeBand.of(owner);
+        return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
     }
 
     Owner toOwner(OwnerDto ownerDto);
