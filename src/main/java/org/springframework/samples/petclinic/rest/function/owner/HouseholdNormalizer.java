@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.util.Sha256;
  * {@link #id(String, String) household id}, which is a pure, stable function of those two fields — so
  * it is stamped on every owner at creation ({@link AssignHousehold}) rather than looked up.
  *
- * <p>The id feeds every rule that keys off the household: the duplicate block
- * ({@link EnsureUniqueIdentity}), the household-size count ({@link CountHousehold}) and the
- * possible-duplicate flag ({@link FlagPossibleDuplicate}) all decide membership with
- * {@link #belongsTo(Owner, String)}. Not a pipeline step, so it is free to expose plain helpers.
+ * <p>The id feeds the rules that key off the household: the household-size count
+ * ({@link CountHousehold}) and the membership-level ceiling ({@link CapMembershipLevel}) decide
+ * membership with {@link #belongsTo(Owner, String)}. (Duplicate detection and the possible-duplicate
+ * flag instead key off the {@link IdentityKey}.) Not a pipeline step, so it is free to expose plain
+ * helpers.
  */
 public final class HouseholdNormalizer {
 
