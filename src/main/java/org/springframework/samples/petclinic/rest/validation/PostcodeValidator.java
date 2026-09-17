@@ -16,7 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.model.Regions;
@@ -35,12 +34,6 @@ public class PostcodeValidator {
 
     private static final Pattern FOUR_DIGITS = Pattern.compile("\\d{4}");
 
-    /** Region -&gt; inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_RANGES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
     /**
      * @param owner the submitted owner fields
      * @throws InvalidPostcodeException if a postcode is present but is not 4 digits or is out of
@@ -54,7 +47,7 @@ public class PostcodeValidator {
         if (!FOUR_DIGITS.matcher(postcode).matches()) {
             throw new InvalidPostcodeException(postcode);
         }
-        int[] range = REGION_RANGES.get(Regions.regionOf(owner.getCity()));
+        int[] range = Regions.rangeOf(Regions.regionOfCity(owner.getCity()));
         if (range != null) {
             int value = Integer.parseInt(postcode);
             if (value < range[0] || value > range[1]) {
