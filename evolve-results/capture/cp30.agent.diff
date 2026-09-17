@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 56ed8fb91..b85a49af2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+-import org.springframework.samples.petclinic.util.CityRegion;
+ import org.springframework.samples.petclinic.util.ContactPreference;
++import org.springframework.samples.petclinic.util.Locality;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ 
+ import java.util.Collection;
+@@ -36,9 +36,9 @@ public interface OwnerMapper {
+         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
+     }
+ 
+-    /** The canonical region derived from the owner's city (see {@link CityRegion#of(String)}). */
++    /** The canonical region derived from the owner (see {@link Locality#of(String, String)}). */
+     default String locality(Owner owner) {
+-        return owner == null ? null : CityRegion.of(owner.getCity());
++        return owner == null ? null : Locality.of(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /** The upper-cased first letters of the first and last name, e.g. 'J.S.'. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Locality.java b/src/main/java/org/springframework/samples/petclinic/util/Locality.java
+new file mode 100644
+index 000000000..228e71774
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Locality.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.regex.Pattern;
++
++/**
++ * Derives an owner's locality (its canonical region). The postcode is preferred: the region whose
++ * postcode range contains it (see {@link RegionPostcodes#regionOf(int)}) wins, which disambiguates
++ * cities that share a name. Only when the postcode is absent, malformed or in no known range does it
++ * fall back to the city-to-region table (see {@link CityRegion#of(String)}). Known cities therefore
++ * resolve to the same region as before.
++ */
++public final class Locality {
++
++    private static final Pattern FOUR_DIGITS = Pattern.compile("\\d{4}");
++
++    private Locality() {
++    }
++
++    /**
++     * The canonical region for {@code city} and {@code postcode}, preferring the postcode and falling
++     * back to the city. Never {@code null}: an unresolved city yields {@link CityRegion#UNKNOWN}.
++     */
++    public static String of(String city, String postcode) {
++        String fromPostcode = regionOfPostcode(postcode);
++        return fromPostcode != null ? fromPostcode : CityRegion.of(city);
++    }
++
++    /** The region for a well-formed 4-digit postcode in a known range, else {@code null}. */
++    private static String regionOfPostcode(String postcode) {
++        if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
++            return null;
++        }
++        return RegionPostcodes.regionOf(Integer.parseInt(postcode));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegionPostcodes.java b/src/main/java/org/springframework/samples/petclinic/util/RegionPostcodes.java
+index 87ec6cf2b..e0a9cf9e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/RegionPostcodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegionPostcodes.java
+@@ -27,4 +27,18 @@ public final class RegionPostcodes {
+         int[] range = REGION_RANGES.get(region);
+         return range == null || (postcode >= range[0] && postcode <= range[1]);
+     }
++
++    /**
++     * The canonical region whose inclusive range contains {@code postcode}, or {@code null} when no
++     * known range does. The reverse of {@link #allows(String, int)}.
++     */
++    public static String regionOf(int postcode) {
++        for (Map.Entry<String, int[]> entry : REGION_RANGES.entrySet()) {
++            int[] range = entry.getValue();
++            if (postcode >= range[0] && postcode <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
