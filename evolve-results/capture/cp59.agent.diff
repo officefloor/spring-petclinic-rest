@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/BusinessRuleViolationException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/BusinessRuleViolationException.java
+new file mode 100644
+index 000000000..cde9cdb09
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/BusinessRuleViolationException.java
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Signals that a request was rejected by a business rule (as opposed to a framework-level
++ * validation failure). Carries the HTTP status to return together with the short {@code title}
++ * and human-readable {@code detail} that populate the RFC 7807 {@code application/problem+json}
++ * response produced by {@link ExceptionControllerAdvice}.
++ */
++public class BusinessRuleViolationException extends RuntimeException {
++
++    private final HttpStatus status;
++
++    private final String title;
++
++    /**
++     * @param status the HTTP status the rejection maps to (e.g. 400, 409, 429)
++     * @param title  a short, human-readable summary of the problem type
++     * @param detail a human-readable explanation specific to this occurrence
++     */
++    public BusinessRuleViolationException(HttpStatus status, String title, String detail) {
++        super(detail);
++        this.status = status;
++        this.title = title;
++    }
++
++    public HttpStatus getStatus() {
++        return this.status;
++    }
++
++    public String getTitle() {
++        return this.title;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index e3773f786..c66b0e033 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -86,6 +86,24 @@ public class ExceptionControllerAdvice {
+         throw e;
+     }
+ 
++    /**
++     * Handles a {@link BusinessRuleViolationException} raised when a request is rejected by a
++     * business rule, returning the rule's HTTP status with an RFC 7807 {@code problem+json} body.
++     *
++     * @param e The {@link BusinessRuleViolationException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} carrying the problem detail and the rule's HTTP status
++     */
++    @ExceptionHandler(BusinessRuleViolationException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleBusinessRuleViolationException(BusinessRuleViolationException e, HttpServletRequest request) {
++        logger.warn("Request rejected at {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
++        HttpStatus status = e.getStatus();
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        detail.setTitle(e.getTitle());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8325d6d0d..7b6061fb4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.BusinessRuleViolationException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -127,14 +128,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (this.clinicService.isRegistrationDateInFuture(owner.getRegistrationDate())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new BusinessRuleViolationException(HttpStatus.BAD_REQUEST,
++                "Invalid registration date", "The registration date must not be in the future");
+         }
+         owner.setRegistrationDate(this.clinicService.resolveRegistrationDate(owner.getRegistrationDate()));
+         if (this.clinicService.isDailyOwnerLimitReached(owner.getRegistrationDate())) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new BusinessRuleViolationException(HttpStatus.TOO_MANY_REQUESTS,
++                "Daily owner limit reached", "The daily limit for new owner registrations has been reached");
+         }
+         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new BusinessRuleViolationException(HttpStatus.CONFLICT,
++                "City at capacity", "The city has reached its maximum number of registered owners");
+         }
+         // Assign the deterministic householdId (derived from last name and postcode) so owners in
+         // the same household share it automatically.
+@@ -143,7 +147,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Reject an exact duplicate: an owner whose whole identity key (normalized telephone,
+         // email and the Soundex of the last name) already exists.
+         if (this.clinicService.existsOwnerWithIdentityKey(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new BusinessRuleViolationException(HttpStatus.CONFLICT,
++                "Duplicate owner", "An owner with the same identity already exists");
+         }
+         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+index d2458f983..05164ea63 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+@@ -60,6 +60,9 @@ public final class LocalityResolver {
+      * @return the canonical region string when the city is in the table, otherwise {@code "UNKNOWN"}
+      */
+     public static String resolve(String city) {
++        if (city == null) {
++            return UNKNOWN;
++        }
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ 
