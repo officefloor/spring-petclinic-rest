@@ -1,0 +1,186 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d75357d52..74da6a76a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -53,9 +53,15 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+     }
+ 
+-    /** The owner's membership tier: 'SILVER' when the owner has no namesakes (namesakeCount is 0)
+-     *  and an email on file, otherwise 'BRONZE'. */
++    /** The owner's membership tier: 'GOLD' when the owner's household (owners sharing the same
++     *  householdId) has 3 or more members; otherwise 'SILVER' when the owner has no namesakes
++     *  (namesakeCount is 0) and an email on file, and 'BRONZE' otherwise. The household size is
++     *  supplied on the owner (see {@code Owner.getHouseholdSize()}) by the responding step. */
+     default String membershipTier(Owner owner) {
++        Integer householdSize = owner.getHouseholdSize();
++        if (householdSize != null && householdSize >= 3) {
++            return "GOLD";
++        }
+         Integer namesakeCount = owner.getNamesakeCount();
+         String email = owner.getEmail();
+         boolean silver = namesakeCount != null && namesakeCount == 0 && email != null && !email.isBlank();
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e11606d82..068085b4f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,10 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    /** Number of owners in this owner's household, derived at response time (not persisted). */
++    @Transient
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -132,6 +136,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index b7098a76d..10d1cbbf3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -1,10 +1,12 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.nio.charset.StandardCharsets;
++import java.util.Collection;
+ import java.util.Locale;
+ import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * The single definition of an owner "household": owners sharing the same last name and
+@@ -32,6 +34,28 @@ final class Household {
+                 && AddressNormalizer.normalize(address).equals(AddressNormalizer.normalize(owner.getAddress()));
+     }
+ 
++    /** The number of owners in {@code owner}'s household — those sharing its {@code householdId} — or
++     *  1 when it belongs to no shared household (its {@code householdId} is unset). */
++    static int size(Owner owner, OwnerRepository ownerRepository) {
++        return size(owner, ownerRepository.findAll());
++    }
++
++    /** As {@link #size(Owner, OwnerRepository)} but counting within an already-loaded set of owners,
++     *  so a whole page can be sized from a single query. */
++    static int size(Owner owner, Collection<Owner> owners) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return 1;
++        }
++        int count = 0;
++        for (Owner other : owners) {
++            if (householdId.equals(other.getHouseholdId())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
+     /** The stable identifier shared by every owner in the household keyed by {@code lastName} and {@code address}. */
+     static String id(String lastName, String address) {
+         String key = normalizeName(lastName) + "\n" + AddressNormalizer.normalize(address);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+index c9b3a3f1e..aacef85dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+@@ -23,6 +23,8 @@ public class ListOwners {
+             response.send(ResponseEntity.notFound().build());
+             return;
+         }
++        Collection<Owner> allOwners = ownerRepository.findAll();
++        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
+         response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+index 31398909f..a0ef92cb4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Collection;
++
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+@@ -23,6 +25,8 @@ public class ListOwnersPage {
+         Page<Owner> owners = lastName != null
+                 ? ownerRepository.findByLastName(lastName, pageable)
+                 : ownerRepository.findAll(pageable);
++        Collection<Owner> allOwners = ownerRepository.findAll();
++        owners.forEach(owner -> owner.setHouseholdSize(Household.size(owner, allOwners)));
+         response.send(ownerMapper.toOwnerPageDto(owners));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index d75a085d5..48c515e57 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -11,6 +11,7 @@ public class RespondWithOwner {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
++        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(dto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index ff1e4b9c0..095bb4019 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -14,6 +14,7 @@ public class RespondWithOwnerCreated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
++        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index c1da85ae3..77cdf8871 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -13,6 +13,7 @@ public class RespondWithOwnerUpdated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
++        owner.setHouseholdSize(Household.size(owner, ownerRepository));
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d4c374f04..53a6a9723 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2129,9 +2129,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner has no namesakes
+-                (namesakeCount is 0) and an email on file, otherwise 'BRONZE'. Derived
+-                from the owner's own namesakeCount and email.
++                The owner's membership tier: 'GOLD' when the owner's household (owners
++                sharing the same householdId) has 3 or more members; otherwise 'SILVER'
++                when the owner has no namesakes (namesakeCount is 0) and an email on file,
++                and 'BRONZE' otherwise.
+               type: string
+               example: 'SILVER'
+               readOnly: true
