@@ -21,6 +21,17 @@ final class SameCity {
         return normalize(owner.getCity()).equals(normalize(city));
     }
 
+    /** How many of {@code owners} are in {@code city}. */
+    static int count(Iterable<Owner> owners, String city) {
+        int inCity = 0;
+        for (Owner owner : owners) {
+            if (matches(owner, city)) {
+                inCity++;
+            }
+        }
+        return inCity;
+    }
+
     /** A city name trimmed and lower-cased, so comparison is case-insensitive. */
     private static String normalize(String value) {
         return value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
