@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+import org.springframework.samples.petclinic.rest.function.owner.TelephoneNormalizer;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.ContactPreference;
@@ -34,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName'. */
@@ -115,6 +117,15 @@ public interface OwnerMapper {
     default OwnerDto.AgeBandEnum ageBand(Owner owner) {
         AgeBand band = AgeBand.of(owner);
         return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
+    }
+
+    /**
+     * The stored E.164 telephone formatted for humans (see
+     * {@link TelephoneNormalizer#toDisplay(String)}): the country code, a space, then the national
+     * digits grouped in threes, e.g. '+61 412 345 678'. The raw telephone stays in E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        return owner == null ? null : TelephoneNormalizer.toDisplay(owner.getTelephone());
     }
 
     Owner toOwner(OwnerDto ownerDto);

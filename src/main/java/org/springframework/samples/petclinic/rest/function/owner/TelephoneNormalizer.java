@@ -59,6 +59,42 @@ public final class TelephoneNormalizer {
         return "+" + digits;
     }
 
+    /** Size of each national-digit group in the human-readable display form. */
+    private static final int DISPLAY_GROUP_SIZE = 3;
+
+    /**
+     * Formats a canonical E.164 number for humans as its country code, a space, then the national
+     * digits grouped in threes (e.g. '+61412345678' -&gt; '+61 412 345 678'). The country code is
+     * identified from {@link #NATIONAL_LENGTH_BY_COUNTRY} (longest match first); a number whose
+     * country code has no configured rule simply has all its digits grouped after the '+'. Expects
+     * the canonical form produced by {@link #toE164(String)}; a value not in that form is returned
+     * unchanged.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        for (String countryCode : NATIONAL_LENGTH_BY_COUNTRY.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /** Splits a run of digits into space-separated groups of {@link #DISPLAY_GROUP_SIZE}. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % DISPLAY_GROUP_SIZE == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
     /**
      * Whether an E.164 number's national-number length matches what its country code requires (e.g.
      * '+61' expects 9 national digits, '+1' expects 10). Numbers whose country code has no configured
