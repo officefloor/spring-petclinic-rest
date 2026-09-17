@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.idempotency.OwnerCreationIdempotencyStore;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.AddressFormNormalizer;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailDomainValidator;
@@ -91,6 +92,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CityOwnerLimitValidator cityOwnerLimitValidator;
 
+    private final CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+
     private final DailyOwnerLimitValidator dailyOwnerLimitValidator;
 
     private final RegistrationDateValidator registrationDateValidator;
@@ -126,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  DuplicateOwnerValidator duplicateOwnerValidator,
                                  PossibleDuplicateDetector possibleDuplicateDetector,
                                  CityOwnerLimitValidator cityOwnerLimitValidator,
+                                 CityCapacityWarningEvaluator cityCapacityWarningEvaluator,
                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
                                  RegistrationDateValidator registrationDateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
@@ -148,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.duplicateOwnerValidator = duplicateOwnerValidator;
         this.possibleDuplicateDetector = possibleDuplicateDetector;
         this.cityOwnerLimitValidator = cityOwnerLimitValidator;
+        this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
         this.registrationDateValidator = registrationDateValidator;
         this.telephoneNormalizer = telephoneNormalizer;
@@ -164,12 +169,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Map an owner to its DTO and stamp the current bulk-signup warning onto it, so every
-     * single-owner response reflects whether more than 80 owners have been created today.
+     * Map an owner to its DTO and stamp the current warnings onto it, so every single-owner
+     * response reflects whether more than 80 owners have been created today and whether the
+     * owner's city is approaching its capacity limit.
      */
     private OwnerDto toOwnerDto(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(this.bulkSignupWarningEvaluator.isBulkSignupInEffect());
+        ownerDto.setCapacityWarning(this.cityCapacityWarningEvaluator.isApproachingCapacity(owner.getCity()));
         return ownerDto;
     }
 
