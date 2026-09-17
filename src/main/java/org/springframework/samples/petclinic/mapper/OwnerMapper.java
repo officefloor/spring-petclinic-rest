@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName'. */
@@ -44,6 +45,20 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * The owner's membership tier: 'SILVER' when the owner has a unique name (namesakeCount is
+     * zero) and an email address is present, otherwise 'BRONZE'.
+     */
+    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer namesakeCount = owner.getNamesakeCount();
+        boolean uniqueName = namesakeCount != null && namesakeCount == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return uniqueName && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
     }
 
     Owner toOwner(OwnerDto ownerDto);
