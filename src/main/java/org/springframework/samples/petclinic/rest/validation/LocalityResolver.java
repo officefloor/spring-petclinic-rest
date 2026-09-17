@@ -62,4 +62,15 @@ public final class LocalityResolver {
     public static String resolve(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * Whether {@code region} is a known canonical region (NSW, VIC or QLD) rather than the
+     * {@link #UNKNOWN} sentinel or {@code null}.
+     *
+     * @param region a canonical region string, possibly {@code null}
+     * @return {@code true} when the region is a known region, {@code false} otherwise
+     */
+    public static boolean isKnownRegion(String region) {
+        return region != null && !UNKNOWN.equals(region);
+    }
 }

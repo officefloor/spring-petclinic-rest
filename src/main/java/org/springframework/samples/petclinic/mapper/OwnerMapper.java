@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
@@ -36,6 +37,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(resolveOwnerSegment(owner))")
     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
@@ -170,6 +172,21 @@ public interface OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /** The minimum membership level that qualifies an owner for the {@code PREMIUM} tier. */
+    int PREMIUM_TIER_MIN_LEVEL = 3;
+
+    /**
+     * Resolves the owner's segment, formatted {@code "<TIER>_<AREA>"}. TIER is {@code "PREMIUM"} when
+     * the owner's {@linkplain #resolveMembershipLevel membership level} is at least
+     * {@value #PREMIUM_TIER_MIN_LEVEL}, otherwise {@code "STANDARD"}. AREA is {@code "METRO"} when the
+     * owner's {@linkplain #resolveLocality locality} is a known region, otherwise {@code "REGIONAL"}.
+     */
+    default String resolveOwnerSegment(Owner owner) {
+        String tier = resolveMembershipLevel(owner) >= PREMIUM_TIER_MIN_LEVEL ? "PREMIUM" : "STANDARD";
+        String area = LocalityResolver.isKnownRegion(resolveLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
