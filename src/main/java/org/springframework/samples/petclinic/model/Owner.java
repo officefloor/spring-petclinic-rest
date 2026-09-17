@@ -441,6 +441,17 @@ public class Owner extends Person {
         this.registrationDate = BusinessDay.onOrAfter(this.registrationDate);
     }
 
+    /**
+     * The owner's self link: the canonical API path of this owner, formatted
+     * {@code "/api/owners/<id>"}. Absent until the owner has been assigned an id.
+     */
+    public String getSelfLink() {
+        if (this.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + this.getId();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
