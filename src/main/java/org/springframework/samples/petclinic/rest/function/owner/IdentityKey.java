@@ -3,13 +3,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The single derived duplicate-detection key for owners: the canonical telephone, the canonical email
- * (empty when absent) and the household id (empty when the owner is in no shared household), joined by
- * '|'. {@link EnsureUniqueIdentity} rejects a create request whose whole key equals an existing
- * owner's, and {@link org.springframework.samples.petclinic.mapper.OwnerMapper} returns it on the
- * response. Consolidating telephone, email and household into one key means two owners collide only on
- * an exact full-key match: sharing a household (same household id) but differing in telephone yields
- * different keys and is allowed. Not a pipeline step, so it exposes plain helpers.
+ * A derived, opaque summary of an owner's contact identity: the canonical telephone, the canonical
+ * email (empty when absent) and the household id, joined by '|'.
+ * {@link org.springframework.samples.petclinic.mapper.OwnerMapper} returns it on the response so a
+ * client can compare owners at a glance. Duplicate detection itself keys off the household id alone
+ * (see {@link EnsureUniqueIdentity}); this value simply surfaces the parts. Not a pipeline step, so it
+ * exposes plain helpers.
  */
 public final class IdentityKey {
 

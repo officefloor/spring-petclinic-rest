@@ -100,7 +100,8 @@ public interface OwnerMapper {
 
     /**
      * The owner's derived identity key (see {@link IdentityKey}): the canonical telephone, email and
-     * household id joined by '|'. The single value duplicate detection consolidates on.
+     * household id joined by '|'. A read-only summary of the owner's contact identity; duplicate
+     * detection itself keys off the household id.
      */
     default String identityKey(Owner owner) {
         return owner == null ? null : IdentityKey.forOwner(owner);

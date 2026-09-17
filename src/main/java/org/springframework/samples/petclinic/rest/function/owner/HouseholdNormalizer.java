@@ -1,15 +1,20 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
- * Canonical household comparison shared by the create pipeline: {@link AssignHousehold} uses it to
- * decide whether two owners share a household and to derive the shared household id (which in turn
- * feeds the household part of the {@link IdentityKey duplicate key}). A household is identified by last
- * name plus address: the last name is compared
- * case-insensitively with runs of whitespace collapsed to a single space and outer whitespace trimmed,
- * and the address is compared in its canonical form (see {@link AddressNormalizer}). Not a pipeline
- * step, so it is free to expose plain helpers.
+ * Canonical household identity shared by the create pipeline. A household is keyed on
+ * <em>last name plus postcode</em>: the last name is compared case-insensitively with runs of
+ * whitespace collapsed to a single space and outer whitespace trimmed, and the postcode is compared
+ * verbatim. Owners with equal keys are the same household and therefore share the same
+ * {@link #id(String, String) household id}, which is a pure, stable function of those two fields — so
+ * it is stamped on every owner at creation ({@link AssignHousehold}) rather than looked up.
+ *
+ * <p>The id feeds every rule that keys off the household: the duplicate block
+ * ({@link EnsureUniqueIdentity}), the household-size count ({@link CountHousehold}) and the
+ * possible-duplicate flag ({@link FlagPossibleDuplicate}) all decide membership with
+ * {@link #belongsTo(Owner, String)}. Not a pipeline step, so it is free to expose plain helpers.
  */
 public final class HouseholdNormalizer {
 
@@ -17,23 +22,29 @@ public final class HouseholdNormalizer {
     }
 
     /**
-     * The stable household identifier derived from an owner's last name and address. Owners with
-     * equal {@link #key(String, String) keys} share the same id, and the id never changes for a given
-     * household, so it can be recomputed for late joiners rather than stored and looked up.
+     * The stable household identifier for an owner: the first 12 hex characters of the SHA-256 of the
+     * household {@link #key(String, String) key}. Owners with equal keys share the same id, and the id
+     * never changes for a given (last name, postcode), so it can be recomputed rather than stored.
      */
-    public static String id(String lastName, String address) {
-        return "H-" + Sha256.prefix(key(lastName, address), 12);
+    public static String id(String lastName, String postcode) {
+        return Sha256.prefix(key(lastName, postcode), 12);
     }
 
     /**
-     * Builds the canonical household key for an owner from its last name and address. Two owners
-     * belong to the same household when their keys are equal. Either field may be {@code null}, which
-     * normalizes to an empty token.
+     * Builds the canonical household key: the normalized last name and the postcode joined by '|'.
+     * Two owners belong to the same household when their keys are equal. Either field may be
+     * {@code null}, which normalizes to an empty token.
      */
-    public static String key(String lastName, String address) {
-        // '\n' separates the fields so that a boundary shift (e.g. "ab"+"c" vs "a"+"bc") cannot forge a
-        // collision; it never appears in a normalized value.
-        return normalizeName(lastName) + "\n" + AddressNormalizer.normalize(address);
+    public static String key(String lastName, String postcode) {
+        return normalizeName(lastName) + "|" + orEmpty(postcode);
+    }
+
+    /**
+     * Whether {@code owner} belongs to the household identified by {@code householdId}, i.e. its own
+     * (last name, postcode) hashes to that id. {@code false} when {@code householdId} is {@code null}.
+     */
+    public static boolean belongsTo(Owner owner, String householdId) {
+        return householdId != null && householdId.equals(id(owner.getLastName(), owner.getPostcode()));
     }
 
     /** Lower-cases and collapses whitespace to single spaces, trimming the ends; {@code null} → "". */
@@ -42,5 +53,9 @@ public final class HouseholdNormalizer {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }
