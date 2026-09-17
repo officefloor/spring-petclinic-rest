@@ -27,4 +27,18 @@ public final class RegionPostcodes {
         int[] range = REGION_RANGES.get(region);
         return range == null || (postcode >= range[0] && postcode <= range[1]);
     }
+
+    /**
+     * The canonical region whose inclusive range contains {@code postcode}, or {@code null} when no
+     * known range does. The reverse of {@link #allows(String, int)}.
+     */
+    public static String regionOf(int postcode) {
+        for (Map.Entry<String, int[]> entry : REGION_RANGES.entrySet()) {
+            int[] range = entry.getValue();
+            if (postcode >= range[0] && postcode <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }

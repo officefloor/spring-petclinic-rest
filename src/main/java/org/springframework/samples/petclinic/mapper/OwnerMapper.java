@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
-import org.springframework.samples.petclinic.util.CityRegion;
 import org.springframework.samples.petclinic.util.ContactPreference;
+import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 import java.util.Collection;
@@ -36,9 +36,9 @@ public interface OwnerMapper {
         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
     }
 
-    /** The canonical region derived from the owner's city (see {@link CityRegion#of(String)}). */
+    /** The canonical region derived from the owner (see {@link Locality#of(String, String)}). */
     default String locality(Owner owner) {
-        return owner == null ? null : CityRegion.of(owner.getCity());
+        return owner == null ? null : Locality.of(owner.getCity(), owner.getPostcode());
     }
 
     /** The upper-cased first letters of the first and last name, e.g. 'J.S.'. */
