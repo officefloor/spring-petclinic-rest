@@ -6,7 +6,10 @@ import java.lang.annotation.*;
 
 /**
  * Validates that a telephone number can be normalized to E.164 form (see
- * {@link TelephoneNormalizer#toE164(String)}): a leading {@code '+'} with 8 to 15 digits.
+ * {@link TelephoneNormalizer#toE164(String)}): a leading {@code '+'} with 8 to 15 digits, whose
+ * national-number length also matches its country code (see
+ * {@link E164NationalNumberRule#hasValidNationalLength(String)}, e.g. {@code +61} requires 9
+ * national digits and {@code +1} requires 10).
  */
 @Target({ ElementType.FIELD })
 @Retention(RetentionPolicy.RUNTIME)
