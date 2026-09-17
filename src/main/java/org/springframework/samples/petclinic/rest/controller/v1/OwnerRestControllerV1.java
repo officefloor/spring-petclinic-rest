@@ -130,6 +130,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount((int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize((int) this.clinicService.countHouseholdMembers(owner.getLastName(), owner.getAddress()));
         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
+        // Not a hard duplicate, but flag a soft match: an existing owner sharing this owner's last
+        // name and postcode with a different telephone.
+        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.auditCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

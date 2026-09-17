@@ -259,6 +259,26 @@ public class ClinicServiceImpl implements ClinicService {
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
+    /**
+     * Find an existing owner that this (not yet persisted) owner soft-matches: one sharing its last
+     * name (ignoring case) and postcode but carrying a different telephone, so it is not a hard
+     * identity-key duplicate. Returns the matching owner's id (the lowest when several match), or
+     * {@code null} when the owner has no postcode or nothing matches.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
+        if (owner.getPostcode() == null) {
+            return null;
+        }
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
