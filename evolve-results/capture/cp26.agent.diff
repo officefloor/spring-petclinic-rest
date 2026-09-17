@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalNumberRule.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalNumberRule.java
+new file mode 100644
+index 000000000..40e41b56f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalNumberRule.java
+@@ -0,0 +1,54 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Comparator;
++import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++
++/**
++ * Per-country rule for the national-number length of an E.164 telephone.
++ *
++ * <p>An E.164 number is a {@code '+'} followed by a country calling code and a national number.
++ * Each country fixes how many national digits it uses; this holds those known lengths (e.g. the
++ * {@code +61} Australian format carries 9 national digits, the {@code +1} North American format
++ * carries 10) and checks a normalized E.164 number against them. Numbers whose country code has no
++ * known length are left unconstrained (beyond the general E.164 shape enforced by
++ * {@link TelephoneNormalizer#toE164(String)}).
++ */
++public final class E164NationalNumberRule {
++
++    /** Known country calling codes mapped to their required national-number digit count. */
++    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of(
++            "1", 10,   // North American Numbering Plan
++            "61", 9);  // Australia
++
++    /** Country codes checked longest-first, so a longer code wins over a shorter prefix of it. */
++    private static final List<String> CODES_BY_LENGTH = NATIONAL_LENGTHS.keySet().stream()
++            .sorted(Comparator.comparingInt(String::length).reversed())
++            .collect(Collectors.toList());
++
++    private E164NationalNumberRule() {
++    }
++
++    /**
++     * Whether the national number of a normalized E.164 string has the length its country code
++     * requires. A number whose country code has no known length rule is accepted.
++     *
++     * @param e164 a normalized E.164 string ({@code '+'} followed by digits), as produced by
++     *             {@link TelephoneNormalizer#toE164(String)}; may be {@code null}
++     * @return {@code true} when the national-number length matches the country code (or the country
++     *         code is unknown), {@code false} otherwise (including for a {@code null} input)
++     */
++    public static boolean hasValidNationalLength(String e164) {
++        if (e164 == null) {
++            return false;
++        }
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        for (String code : CODES_BY_LENGTH) {
++            if (digits.startsWith(code)) {
++                return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
++            }
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/Telephone.java
+index c3c98e9d1..1328cdd16 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/Telephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/Telephone.java
+@@ -6,7 +6,10 @@ import java.lang.annotation.*;
+ 
+ /**
+  * Validates that a telephone number can be normalized to E.164 form (see
+- * {@link TelephoneNormalizer#toE164(String)}): a leading {@code '+'} with 8 to 15 digits.
++ * {@link TelephoneNormalizer#toE164(String)}): a leading {@code '+'} with 8 to 15 digits, whose
++ * national-number length also matches its country code (see
++ * {@link E164NationalNumberRule#hasValidNationalLength(String)}, e.g. {@code +61} requires 9
++ * national digits and {@code +1} requires 10).
+  */
+ @Target({ ElementType.FIELD })
+ @Retention(RetentionPolicy.RUNTIME)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+index 48a6c0b37..f5dc1c27f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+@@ -7,6 +7,7 @@ public class TelephoneValidator implements ConstraintValidator<Telephone, String
+ 
+     @Override
+     public boolean isValid(String telephone, ConstraintValidatorContext context) {
+-        return TelephoneNormalizer.toE164(telephone) != null;
++        String e164 = TelephoneNormalizer.toE164(telephone);
++        return e164 != null && E164NationalNumberRule.hasValidNationalLength(e164);
+     }
+ }
