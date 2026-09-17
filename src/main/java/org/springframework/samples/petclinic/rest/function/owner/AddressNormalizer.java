@@ -43,4 +43,41 @@ public final class AddressNormalizer {
         }
         return result.toString();
     }
+
+    /**
+     * Composes the flat address from a structured address: the {@link #normalize(String) normalized}
+     * first line, with a single space and the normalized second line appended when a second line is
+     * present. A blank second line yields just the first line.
+     */
+    public static String compose(String addressLine1, String addressLine2) {
+        String line1 = normalize(addressLine1);
+        String line2 = normalize(addressLine2);
+        if (line2.isEmpty()) {
+            return line1;
+        }
+        return line1.isEmpty() ? line2 : line1 + " " + line2;
+    }
+
+    /**
+     * Resolves an owner's canonical address from a request that may use the structured form
+     * ({@code addressLine1}/{@code addressLine2}) or the flat {@code address}. The structured form is
+     * preferred whenever {@code addressLine1} is non-blank: each line is normalized and the flat
+     * address is their {@link #compose(String, String) composition}. Otherwise only the flat address
+     * is normalized and no structured lines are kept, keeping the contract backward-compatible.
+     */
+    public static Normalized resolve(String addressLine1, String addressLine2, String flatAddress) {
+        String line1 = normalize(addressLine1);
+        if (line1.isEmpty()) {
+            return new Normalized(null, null, normalize(flatAddress));
+        }
+        String line2 = normalize(addressLine2);
+        return new Normalized(line1, line2.isEmpty() ? null : line2, compose(addressLine1, addressLine2));
+    }
+
+    /**
+     * A resolved address: the normalized structured lines ({@code null} when the flat form was used
+     * or a line was absent) and the flat {@code address} to store and return.
+     */
+    public record Normalized(String addressLine1, String addressLine2, String address) {
+    }
 }
