@@ -19,6 +19,7 @@ import org.springframework.samples.petclinic.util.MembershipLevel;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
+import org.springframework.samples.petclinic.util.RiskFlag;
 
 import java.util.Collection;
 import java.util.List;
@@ -43,6 +44,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The canonical API path of the owner: '/api/owners/' followed by the owner's id. */
@@ -177,6 +179,15 @@ public interface OwnerMapper {
      */
     default String telephoneDisplay(Owner owner) {
         return owner == null ? null : TelephoneNormalizer.toDisplay(owner.getTelephone());
+    }
+
+    /**
+     * The owner's risk follow-up signal (see {@link RiskFlag}): true when the owner is a possible
+     * duplicate, its city was over its soft capacity at creation, or its email domain is
+     * disposable-adjacent; false otherwise.
+     */
+    default Boolean riskFlag(Owner owner) {
+        return RiskFlag.of(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);
