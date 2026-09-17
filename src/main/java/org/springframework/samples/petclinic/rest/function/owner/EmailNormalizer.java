@@ -24,4 +24,13 @@ public final class EmailNormalizer {
     public static String normalize(String email) {
         return email.trim().toLowerCase();
     }
+
+    /** The domain part (after the {@code @}) of {@code email}, or {@code null} when it has none. */
+    public static String domainOf(String email) {
+        if (email == null) {
+            return null;
+        }
+        int at = email.lastIndexOf('@');
+        return at < 0 ? null : email.substring(at + 1);
+    }
 }
