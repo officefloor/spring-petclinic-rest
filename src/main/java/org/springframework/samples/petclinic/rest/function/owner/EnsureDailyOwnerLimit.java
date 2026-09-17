@@ -8,16 +8,18 @@ import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitExce
 
 /**
  * Create-owner step: rejects the request with a 429 when {@link #DAILY_LIMIT} or more owners
- * have already been registered today (by {@link Owner#getRegistrationDate()}). Reads only the
- * existing owners, so it can run before the new owner is built.
+ * have already been registered on today's business day (by {@link Owner#getRegistrationDate()}).
+ * The server date is rolled forward over weekends (see {@link BusinessDay}) so it matches the
+ * adjusted registration dates the new and existing owners carry. Reads only the existing owners,
+ * so it can run before the new owner is built.
  */
 public class EnsureDailyOwnerLimit {
 
-    /** The maximum number of owners that may be created on a single day. */
+    /** The maximum number of owners that may be created on a single business day. */
     static final int DAILY_LIMIT = 100;
 
     public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessDay.adjust(LocalDate.now());
         int createdToday = 0;
         for (Owner owner : ownerRepository.findAll()) {
             if (today.equals(owner.getRegistrationDate())) {
