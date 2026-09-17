@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -11,6 +12,10 @@ final class OwnerEmails {
 
     /** A single {@code @} separating a non-empty local part from a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /** Throwaway-mailbox providers whose addresses an owner may not register with. */
+    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+            "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmails() {
     }
@@ -23,5 +28,18 @@ final class OwnerEmails {
     /** Whether {@code email} is a syntactically valid address. */
     static boolean isValid(String email) {
         return email != null && EMAIL.matcher(email).matches();
+    }
+
+    /** Whether {@code email}'s domain is on the disposable-domain blocklist. */
+    static boolean isDisposableDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        return DISPOSABLE_DOMAINS.contains(domain);
     }
 }
