@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DisposableEmailRule;
@@ -15,6 +16,7 @@ import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 
 import java.util.Collection;
 import java.util.List;
@@ -36,7 +38,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(resolveOwnerSegment(owner))")
-    @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
+    @Mapping(target = "apiVersion", expression = "java(resolveApiVersion())")
+    @Mapping(target = "identity", expression = "java(resolveIdentity(owner))")
     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     @Mapping(target = "riskFlag", expression = "java(resolveRiskFlag(owner))")
@@ -80,12 +83,31 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (canonical region) from its postcode via the same resolver the
-     * {@code memberId} uses for its leading {@code <REGION>} segment, so the locality always agrees
-     * with the region encoded in the owner's identity.
+     * Derives the owner's locality: the plain canonical region resolved from its postcode. This is
+     * the user-facing region and never carries the identity version tag, so it stays plain (for
+     * example {@code "NSW"}) even though the {@code memberId} embeds a version-2 region code.
      */
     default String resolveLocality(Owner owner) {
         return LocalityResolver.resolveFromPostcode(owner.getPostcode());
+    }
+
+    /**
+     * Resolves the owner identity contract version exposed as the response {@code apiVersion}.
+     */
+    default Integer resolveApiVersion() {
+        return OwnerIdentityVersion.VERSION;
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers — {@code memberId}, {@code identityKey} and
+     * {@code householdId} — under the nested {@code identity} object.
+     */
+    default OwnerIdentityDto resolveIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
     }
 
     /**

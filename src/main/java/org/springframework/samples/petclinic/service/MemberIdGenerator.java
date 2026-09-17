@@ -22,15 +22,17 @@ import java.util.function.Predicate;
 import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Luhn;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.stereotype.Component;
 
 /**
  * Builds an owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where REGION is the
- * canonical region derived from the owner's postcode, FY is the two-digit fiscal year of the
- * registration date, HASH8 is the first eight upper-case hex characters of the SHA-256 of the
+ * version-2 {@linkplain OwnerIdentityVersion#regionCode(String) region code} (the canonical region
+ * derived from the owner's postcode with the version tag mixed in), FY is the two-digit fiscal year
+ * of the registration date, HASH8 is the first eight upper-case hex characters of the SHA-256 of the
  * owner's normalized telephone concatenated with the last name, and CHK is a single Luhn check digit
- * computed over the decimal digits of {@code <REGION><FY><HASH8>} (e.g. {@code "NSW261A2B3C4D9"}).
+ * computed over the decimal digits of {@code <REGION><FY><HASH8>} (e.g. {@code "NSWV2261A2B3C4D9"}).
  */
 @Component
 public class MemberIdGenerator {
@@ -51,7 +53,7 @@ public class MemberIdGenerator {
      */
     public String generate(String postcode, LocalDate registrationDate, String normalizedTelephone,
             String lastName) {
-        String region = LocalityResolver.resolveFromPostcode(postcode);
+        String region = OwnerIdentityVersion.regionCode(LocalityResolver.resolveFromPostcode(postcode));
         String fiscalYear = FiscalYear.twoDigit(registrationDate);
         String hash = Sha256.hex(normalizedTelephone + lastName)
             .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);

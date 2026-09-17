@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.service;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.stereotype.Component;
 
@@ -34,7 +35,8 @@ public class HouseholdIdGenerator {
 
     /**
      * Derive the stable household identifier for the given last name and postcode: the first 12
-     * hex characters of the SHA-256 of {@code normalizedLastName + '|' + postcode}.
+     * hex characters of the SHA-256 of the version-2 {@linkplain
+     * OwnerIdentityVersion#stampHashInput(String) stamped} {@code normalizedLastName + '|' + postcode}.
      *
      * @param lastName the household's last name
      * @param postcode the household's postcode
@@ -42,7 +44,7 @@ public class HouseholdIdGenerator {
      */
     public String generate(String lastName, String postcode) {
         String key = canonical(lastName) + "|" + (postcode == null ? "" : postcode);
-        return Sha256.hex(key).substring(0, 12);
+        return Sha256.hex(OwnerIdentityVersion.stampHashInput(key)).substring(0, 12);
     }
 
     /**

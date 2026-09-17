@@ -52,10 +52,11 @@ public class OwnerAuditor {
      */
     public void auditCreated(Owner owner) {
         Integer membershipLevel = this.ownerMapper.resolveMembershipLevel(owner);
+        String ownerSegment = this.ownerMapper.resolveOwnerSegment(owner);
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         OwnerCreatedEvent event = new OwnerCreatedEvent(this.sequence.incrementAndGet(),
-            owner.getId(), owner.getMemberId(), membershipLevel);
+            owner.getId(), owner.getMemberId(), membershipLevel, ownerSegment);
         AUDIT.info(this.jsonMapper.writeValueAsString(event));
     }
 }
