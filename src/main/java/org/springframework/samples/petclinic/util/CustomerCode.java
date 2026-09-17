@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
+import java.util.Collection;
+
 /**
  * The owner's region-and-hash identity. The customerCode is formatted {@code <REGION>-<HASH8>} where
  * REGION is the region derived from the owner's postcode (see {@link Locality}) and HASH8 is the first
@@ -23,6 +25,23 @@ public final class CustomerCode {
      */
     public static String of(String region, String normalizedTelephone, String lastName) {
         return region + "-" + Sha256.prefix(orEmpty(normalizedTelephone) + orEmpty(lastName), HASH_LENGTH);
+    }
+
+    /**
+     * De-duplicates {@code candidate} against the {@code existing} customerCodes. Returns the candidate
+     * unchanged when it does not collide; otherwise appends {@code -<n>} with the smallest {@code n} of 2
+     * or more that yields a value absent from {@code existing}.
+     */
+    public static String dedupe(String candidate, Collection<String> existing) {
+        if (!existing.contains(candidate)) {
+            return candidate;
+        }
+        for (int n = 2; ; n++) {
+            String deduped = candidate + "-" + n;
+            if (!existing.contains(deduped)) {
+                return deduped;
+            }
+        }
     }
 
     /** The region portion (before the first '-') of a customerCode, or {@code null} when absent. */
