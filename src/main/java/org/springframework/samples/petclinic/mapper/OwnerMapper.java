@@ -90,10 +90,16 @@ public interface OwnerMapper {
         return Luhn.checkDigit(owner.getCustomerCode());
     }
 
+    /** The minimum tenure, in days, an owner must exceed to qualify for membership level 4. */
+    int TENURE_LEVEL_THRESHOLD_DAYS = 365;
+
     /**
-     * Resolves the owner's numeric membership level, assigned on creation: starts at {@code 1},
-     * plus {@code 1} when an email is present, plus {@code 1} when the owner has no namesakes
-     * (namesakeCount is 0), capped at {@code 3} (level {@code 4} is reserved for tenure).
+     * Resolves the owner's numeric membership level: starts at {@code 1}, plus {@code 1} when an
+     * email is present, plus {@code 1} when the owner has no namesakes (namesakeCount is 0), plus
+     * {@code 1} when the owner's tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS} days. Since
+     * the pre-tenure factors cap at level {@code 3}, level {@code 4} requires tenure of more than
+     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days, which a newly created (zero-tenure) owner never
+     * has.
      */
     default Integer resolveMembershipLevel(Owner owner) {
         int level = 1;
@@ -103,7 +109,10 @@ public interface OwnerMapper {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
-        return Math.min(level, 3);
+        if (owner.getTenureDays() > TENURE_LEVEL_THRESHOLD_DAYS) {
+            level++;
+        }
+        return level;
     }
 
     /**

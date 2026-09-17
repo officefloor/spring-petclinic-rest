@@ -23,6 +23,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -143,6 +144,15 @@ public class Owner extends Person {
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's tenure in days: the number of whole days from its {@link #registrationDate} to
+     * the current date. A brand-new owner registered today has zero tenure.
+     */
+    @Transient
+    public long getTenureDays() {
+        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
     }
 
     /**
