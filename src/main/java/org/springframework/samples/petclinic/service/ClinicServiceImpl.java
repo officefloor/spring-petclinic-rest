@@ -130,6 +130,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public long countOwners() throws DataAccessException {
+        return ownerRepository.count();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException {
         if (lastName != null) {
             return ownerRepository.findByLastName(lastName, pageable);

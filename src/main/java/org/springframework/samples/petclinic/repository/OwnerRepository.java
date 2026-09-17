@@ -83,6 +83,13 @@ public interface OwnerRepository {
 	Collection<Owner> findAll() throws DataAccessException;
 
     Page<Owner> findAll(Pageable pageable) throws DataAccessException;
+
+    /**
+     * Count the total number of <code>Owner</code>s in the data store.
+     *
+     * @return the number of stored owners
+     */
+    long count() throws DataAccessException;
 	
     /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.

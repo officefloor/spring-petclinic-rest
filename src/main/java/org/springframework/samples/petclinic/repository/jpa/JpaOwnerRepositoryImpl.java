@@ -131,4 +131,9 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 		this.em.remove(this.em.contains(owner) ? owner : this.em.merge(owner));
 	}
 
+    @Override
+    public long count() throws DataAccessException {
+        return (long) this.em.createQuery("SELECT COUNT(owner) FROM Owner owner").getSingleResult();
+    }
+
 }
