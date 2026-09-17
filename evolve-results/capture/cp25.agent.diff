@@ -1,0 +1,192 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 177dc6fc6..88ca04f77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
++import org.springframework.samples.petclinic.rest.error.DuplicateEmailException;
+ import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
+@@ -260,6 +261,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateEmailException} thrown when an owner is created with an email address
++     * whose lower-cased form is already used by another owner. Returns a 409 Conflict naming the
++     * offending field.
++     *
++     * @param e The {@link DuplicateEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
++        logger.debug("Duplicate email at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getEmail());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
++        detail.setProperty("errors", List.of("email"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateHouseholdException} thrown when an owner is created whose last name and
+      * address match those of an existing owner and the request did not opt in to a shared household.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5500dfb7b..6e4f92c1f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
++import org.springframework.samples.petclinic.rest.validation.EmailUniquenessValidator;
+ import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
+ import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+@@ -85,6 +86,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final EmailNormalizer emailNormalizer;
+ 
++    private final EmailUniquenessValidator emailUniquenessValidator;
++
+     private final AddressNormalizer addressNormalizer;
+ 
+     private final CustomerCodeGenerator customerCodeGenerator;
+@@ -105,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
++                                 EmailUniquenessValidator emailUniquenessValidator,
+                                  AddressNormalizer addressNormalizer,
+                                  CustomerCodeGenerator customerCodeGenerator,
+                                  HouseholdRegistrar householdRegistrar,
+@@ -120,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
++        this.emailUniquenessValidator = emailUniquenessValidator;
+         this.addressNormalizer = addressNormalizer;
+         this.customerCodeGenerator = customerCodeGenerator;
+         this.householdRegistrar = householdRegistrar;
+@@ -173,6 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+         ownerFieldsDto.setTelephone(telephone);
+         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
++        this.emailUniquenessValidator.validate(ownerFieldsDto.getEmail());
+         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
+             throw new DuplicateTelephoneException(telephone);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateEmailException.java
+new file mode 100644
+index 000000000..8093122e8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateEmailException.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.error;
++
++/**
++ * Thrown when an owner is created with an email address whose lower-cased form is already used by
++ * another owner. Carries the conflicting normalized value so the REST layer can report what was
++ * rejected.
++ */
++public class DuplicateEmailException extends RuntimeException {
++
++    private final String email;
++
++    public DuplicateEmailException(String email) {
++        super("An owner with email '" + email + "' already exists");
++        this.email = email;
++    }
++
++    public String getEmail() {
++        return this.email;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailUniquenessValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailUniquenessValidator.java
+new file mode 100644
+index 000000000..f3f222d10
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailUniquenessValidator.java
+@@ -0,0 +1,58 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.rest.error.DuplicateEmailException;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++import org.springframework.util.StringUtils;
++
++/**
++ * Rejects creating an owner whose email address, compared by its lower-cased form, is already used
++ * by another owner. An owner without an email address is left unchecked, since email is optional.
++ */
++@Component
++public class EmailUniquenessValidator {
++
++    private final ClinicService clinicService;
++
++    public EmailUniquenessValidator(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * @param email the owner's email address (already normalized), or {@code null}/blank when none
++     * was supplied
++     * @throws DuplicateEmailException if another owner already uses the same email, compared
++     * case-insensitively
++     */
++    public void validate(String email) {
++        if (!StringUtils.hasText(email)) {
++            return;
++        }
++        String key = email.toLowerCase(Locale.ROOT);
++        boolean duplicate = this.clinicService.findAllOwners().stream()
++            .map(existing -> existing.getEmail())
++            .filter(StringUtils::hasText)
++            .anyMatch(existing -> existing.toLowerCase(Locale.ROOT).equals(key));
++        if (duplicate) {
++            throw new DuplicateEmailException(email);
++        }
++    }
++}
