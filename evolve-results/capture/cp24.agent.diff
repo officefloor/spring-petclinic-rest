@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index dc1af6d66..46685a772 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -155,18 +155,22 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier: {@code "GOLD"} when the owner's household
+-     * ({@code householdSize}) has three or more members; otherwise {@code "SILVER"} when this
+-     * owner has no namesakes ({@code namesakeCount} is 0) and an email address is present, and
+-     * {@code "BRONZE"} in every remaining case. Derived from the owner's own fields.
++     * The owner's membership level, a number from 1 to 3 derived from the owner's own fields:
++     * every owner starts at level 1, gains a level when an email address is present, and gains a
++     * further level when this owner has no namesakes ({@code namesakeCount} is 0). The result is
++     * capped at 3; level 4 is reserved for tenure.
+      */
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
++    public Integer getMembershipLevel() {
++        int level = 1;
++        boolean hasEmail = this.email != null && !this.email.isEmpty();
++        if (hasEmail) {
++            level++;
+         }
+         boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+-        boolean hasEmail = this.email != null && !this.email.isEmpty();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+index aed2933eb..ddf62e41d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerAuditLogger.java
+@@ -31,13 +31,13 @@ public class OwnerAuditLogger {
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     /**
+-     * Record that an owner was successfully created, capturing the assigned id, customer code and
+-     * resolved registration date.
++     * Record that an owner was successfully created, capturing the assigned id, customer code,
++     * resolved registration date and membership level.
+      *
+      * @param owner the owner that has just been persisted
+      */
+     public void created(Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6eced76a1..baf9e6b47 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,20 +2123,19 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household
+-                has three or more members; otherwise 'SILVER' when the owner has
+-                no namesakes (namesakeCount is 0) and an email address is
+-                present, and 'BRONZE' in every remaining case. Derived from the
+-                owner's own fields.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 derived from
++                the owner's own fields: every owner starts at level 1, gains a
++                level when an email address is present, and gains a further level
++                when the owner has no namesakes (namesakeCount is 0). The result
++                is capped at 3; level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 2
+               readOnly: true
+             displayName:
+               title: Display name
