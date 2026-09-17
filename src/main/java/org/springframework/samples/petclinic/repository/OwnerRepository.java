@@ -90,6 +90,19 @@ public interface OwnerRepository {
     }
 
     /**
+     * Count the existing <code>Owner</code>s whose city matches {@code city}, compared
+     * case-insensitively.
+     *
+     * @param city the city to count owners in
+     * @return the number of owners in that city
+     */
+    default long countInCity(String city) throws DataAccessException {
+        return findAll().stream()
+                .filter(owner -> city != null && city.equalsIgnoreCase(owner.getCity()))
+                .count();
+    }
+
+    /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
      *
      * @param owner the <code>Owner</code> to delete

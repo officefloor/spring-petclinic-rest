@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
-import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
@@ -19,10 +18,7 @@ public class EnsureCityCapacity {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws CityAtCapacityException {
         String city = request.getCity();
-        long existing = ownerRepository.findAll().stream()
-                .filter(owner -> city.equalsIgnoreCase(owner.getCity()))
-                .count();
-        if (existing >= CAPACITY) {
+        if (ownerRepository.countInCity(city) >= CAPACITY) {
             throw new CityAtCapacityException(city, CAPACITY);
         }
     }
