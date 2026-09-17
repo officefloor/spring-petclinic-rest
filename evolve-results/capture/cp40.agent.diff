@@ -1,0 +1,299 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0946d787b..2491452b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "membership_points")
++    private Integer membershipPoints;
++
+     @Column(name = "membership_level")
+     private Integer membershipLevel;
+ 
+@@ -160,6 +163,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getMembershipPoints() {
++        return this.membershipPoints;
++    }
++
++    public void setMembershipPoints(Integer membershipPoints) {
++        this.membershipPoints = membershipPoints;
++    }
++
+     public Integer getMembershipLevel() {
+         return this.membershipLevel;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index c682ca125..83d774ea5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -4,36 +4,26 @@ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Step of {@code POST /api/owners}: assigns the new owner's {@code membershipLevel} — a
+- * number from 1 to 4. It starts at 1, gains a level when the owner has an email on file,
+- * another when the owner has no namesakes ({@code namesakeCount} is 0), and the top level
+- * when the owner's {@link Tenure tenure} exceeds {@link #TENURE_LEVEL_DAYS} days. A newly
+- * created owner has zero tenure, so it never reaches level 4. It runs after
+- * {@link CountNamesakes} so the namesake count is known, and after
++ * Step of {@code POST /api/owners}: assigns the new owner's {@code membershipPoints} and the
++ * {@code membershipLevel} derived from them. The scoring rules and the points-to-level
++ * mapping live in {@link MembershipPoints}; this step gathers the factors and stores both
++ * values. It runs after {@link CountNamesakes} so the namesake count is known,
++ * {@link AssignHousehold} so the household is stamped, and
+  * {@link ResolveOwnerRegistrationDate} so the registration date is resolved, and before
+  * {@link SaveOwner} persists the owner and {@link AuditOwnerCreated} records the level. The
+- * value is stored with the row and returned unchanged on later reads.
++ * values are stored with the row and returned unchanged on later reads.
+  */
+ public class AssignMembershipLevel {
+ 
+-    /** Tenure, in days, that an owner must exceed to reach the top membership level (4). */
+-    private static final long TENURE_LEVEL_DAYS = 365;
+-
+-    public void service(@Val Owner owner) {
+-        int level = 1;
+-        String email = owner.getEmail();
+-        if (email != null && !email.isBlank()) {
+-            level++;
+-        }
+-        Integer namesakeCount = owner.getNamesakeCount();
+-        if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
+-        }
+-        if (Tenure.days(owner.getRegistrationDate(), LocalDate.now()) > TENURE_LEVEL_DAYS) {
+-            level++;
+-        }
+-        owner.setMembershipLevel(level);
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        // The new owner is not yet persisted, so it is counted here rather than by the repository.
++        long householdSize = Household.size(owner.getHouseholdId(), ownerRepository.findAll()) + 1;
++        long tenureDays = Tenure.days(owner.getRegistrationDate(), LocalDate.now());
++        int points = MembershipPoints.score(owner.getEmail(), owner.getNamesakeCount(), householdSize, tenureDays);
++        owner.setMembershipPoints(points);
++        owner.setMembershipLevel(MembershipPoints.level(points));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 1f46b0685..7546c5f48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -10,14 +10,15 @@ import org.springframework.samples.petclinic.model.Owner;
+  * Step of {@code POST /api/owners}: emits the create audit trail. Runs after
+  * {@link SaveOwner} so the owner carries its persisted id, logging one line to the
+  * dedicated {@code AUDIT} logger with the owner id, {@code customerCode},
+- * {@code registrationDate} and {@code membershipLevel}.
++ * {@code registrationDate}, {@code membershipPoints} and {@code membershipLevel}.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
++        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                owner.getMembershipPoints(), owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index df32b265f..9c99ffa1c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Locale;
+ 
++import org.springframework.samples.petclinic.model.Owner;
++
+ /**
+  * The single definition of an owner "household": owners sharing the same last name and
+  * postcode. The last name is compared case-insensitively with runs of whitespace collapsed
+@@ -31,6 +33,21 @@ final class Household {
+         return Sha256.hex(key, ID_LENGTH);
+     }
+ 
++    /** How many of the given owners belong to the household with {@code householdId}. Owners with a
++     *  null or non-matching {@code householdId} are not counted; a null {@code householdId} yields 0. */
++    static long size(String householdId, Iterable<Owner> owners) {
++        if (householdId == null) {
++            return 0;
++        }
++        long count = 0;
++        for (Owner owner : owners) {
++            if (householdId.equals(owner.getHouseholdId())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
+     /** A last name trimmed and lower-cased, with internal whitespace runs collapsed to a single space. */
+     private static String normalizeName(String value) {
+         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+new file mode 100644
+index 000000000..1d046b76e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+@@ -0,0 +1,63 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * The membership points system. An owner's score starts at 0 and gains points for the
++ * factors below; the score then maps to a membership level. The single place these rules
++ * live, keeping {@link AssignMembershipLevel} to orchestration.
++ *
++ * <ul>
++ *   <li>+2 when an email is on file,</li>
++ *   <li>+1 when the owner has no namesakes ({@code namesakeCount} is 0),</li>
++ *   <li>+2 for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more,</li>
++ *   <li>+3 for tenure over {@value #LONG_TENURE_DAYS} days.</li>
++ * </ul>
++ *
++ * The resulting points map to a level: 1 for 0-1, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
++ */
++final class MembershipPoints {
++
++    private static final int EMAIL_POINTS = 2;
++    private static final int NO_NAMESAKES_POINTS = 1;
++    private static final int LARGE_HOUSEHOLD_POINTS = 2;
++    private static final int LONG_TENURE_POINTS = 3;
++
++    /** Smallest household size that earns the household points. */
++    private static final int LARGE_HOUSEHOLD_SIZE = 3;
++    /** Tenure, in days, that must be exceeded to earn the tenure points. */
++    private static final long LONG_TENURE_DAYS = 365;
++
++    private MembershipPoints() {
++    }
++
++    /** The owner's membership score from its factors. */
++    static int score(String email, Integer namesakeCount, long householdSize, long tenureDays) {
++        int points = 0;
++        if (email != null && !email.isBlank()) {
++            points += EMAIL_POINTS;
++        }
++        if (namesakeCount != null && namesakeCount == 0) {
++            points += NO_NAMESAKES_POINTS;
++        }
++        if (householdSize >= LARGE_HOUSEHOLD_SIZE) {
++            points += LARGE_HOUSEHOLD_POINTS;
++        }
++        if (tenureDays > LONG_TENURE_DAYS) {
++            points += LONG_TENURE_POINTS;
++        }
++        return points;
++    }
++
++    /** The membership level a score maps to: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6+). */
++    static int level(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 3932bfb74..42be811d2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  membership_points INTEGER,
+   membership_level INTEGER,
+   possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index a9eae9e24..afddac444 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  membership_points INTEGER,
+   membership_level INTEGER,
+   possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index be97bdc21..161c35a32 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  membership_points INTEGER,
+   membership_level INTEGER,
+   possible_duplicate_of INTEGER,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 14daead3b..6458ede55 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
++                                      membership_points INTEGER,
+                                       membership_level INTEGER,
+                                       possible_duplicate_of INTEGER
+ );
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 30d279299..264894596 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2201,18 +2201,29 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership score, fixed at registration. Starts at 0 and gains
++                2 points for an email on file, 1 for no namesakes (namesakeCount is 0), 2 for
++                a household of 3 or more, and 3 for tenure over 365 days. Used to derive
++                'membershipLevel'.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3 fixed at registration:
+-                it starts at 1, gains a level when the owner has an email on file and
+-                another when the owner has no namesakes (namesakeCount is 0), and is
+-                capped at 3 (level 4 is reserved for tenure).
++                The owner's membership level, a number from 1 to 4 fixed at registration and
++                derived from 'membershipPoints': level 1 for 0-1 points, 2 for 2-3, 3 for
++                4-5, and 4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
