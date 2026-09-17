@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.LocalDate;
-
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
@@ -19,14 +17,7 @@ public class EnsureDailyOwnerLimit {
     static final int DAILY_LIMIT = 100;
 
     public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
-        LocalDate today = BusinessDay.adjust(LocalDate.now());
-        int createdToday = 0;
-        for (Owner owner : ownerRepository.findAll()) {
-            if (today.equals(owner.getRegistrationDate())) {
-                createdToday++;
-            }
-        }
-        if (createdToday >= DAILY_LIMIT) {
+        if (OwnersCreatedToday.count(ownerRepository) >= DAILY_LIMIT) {
             throw new DailyOwnerLimitException(DAILY_LIMIT);
         }
     }
