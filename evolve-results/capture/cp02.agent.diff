@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+new file mode 100644
+index 000000000..38b12d943
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request carries a telephone that is not exactly ten digits
++ * once every non-digit character has been stripped. Handled by
++ * {@link InvalidTelephoneExceptionHandler} as a 400.
++ */
++public class InvalidTelephoneException extends Exception {
++
++    public InvalidTelephoneException() {
++        super("Telephone must contain exactly 10 digits");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+new file mode 100644
+index 000000000..80d79e75a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+@@ -0,0 +1,15 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.ResponseEntity;
++
++public class InvalidTelephoneExceptionHandler {
++
++    public void handle(@Parameter InvalidTelephoneException ex,
++            ObjectResponse<ResponseEntity<FieldErrorsResponse>> response) {
++        response.send(ResponseEntity.badRequest().body(new FieldErrorsResponse(List.of("telephone"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+new file mode 100644
+index 000000000..304790916
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
++
++/**
++ * Create-owner step: normalizes the telephone by removing every non-digit character and
++ * requires exactly ten digits, rejecting anything else with a 400. Runs after
++ * {@link ValidateOwnerFields} (which guarantees a non-blank value) and before
++ * {@link BuildOwner}, mutating the published body in place so the stored and returned
++ * telephone is the normalized ten-digit value.
++ */
++public class NormalizeOwnerTelephone {
++
++    private static final int REQUIRED_DIGITS = 10;
++
++    public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
++        String digits = request.getTelephone().replaceAll("\\D", "");
++        if (digits.length() != REQUIRED_DIGITS) {
++            throw new InvalidTelephoneException();
++        }
++        request.setTelephone(digits);
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException.yml
+new file mode 100644
+index 000000000..d862f27e8
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 819f25a72..60288e9d6 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
+   govern: [ transaction ]
++  next: normalize
++
++normalize:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
++  govern: [ transaction ]
+   next: build
+ 
+ build:
