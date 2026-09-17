@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * Normalizes the address of a create request to its canonical form (see
  * {@link AddressNormalizer#normalize(String)}) before any other rule runs. Running first means the
  * required-field check ({@link ValidateOwnerFields}) rejects an address that is blank after
- * normalization, the household comparisons ({@link EnsureUniqueHousehold}, {@link AssignHousehold})
- * compare normalized addresses, and {@link BuildOwner} stores — and later responses return — the
+ * normalization, the household comparison ({@link AssignHousehold}) compares normalized addresses,
+ * and {@link BuildOwner} stores — and later responses return — the
  * normalized form. Binds the request body once and republishes it for the rest of the pipeline.
  */
 public class NormalizeAddress {

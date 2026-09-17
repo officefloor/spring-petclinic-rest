@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.util.CityRegion;
 import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.MembershipLevel;
@@ -27,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName'. */
@@ -73,6 +75,14 @@ public interface OwnerMapper {
     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
         ContactPreference preference = ContactPreference.of(owner);
         return preference == null ? null : OwnerDto.ContactPreferenceEnum.valueOf(preference.name());
+    }
+
+    /**
+     * The owner's derived identity key (see {@link IdentityKey}): the canonical telephone, email and
+     * household id joined by '|'. The single value duplicate detection consolidates on.
+     */
+    default String identityKey(Owner owner) {
+        return owner == null ? null : IdentityKey.forOwner(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);

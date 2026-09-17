@@ -5,9 +5,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Canonical household comparison shared by the create pipeline: {@link EnsureUniqueHousehold} uses it
- * to decide whether two owners share a household and {@link AssignHousehold} uses it to derive the
- * shared household id. A household is identified by last name plus address: the last name is compared
+ * Canonical household comparison shared by the create pipeline: {@link AssignHousehold} uses it to
+ * decide whether two owners share a household and to derive the shared household id (which in turn
+ * feeds the household part of the {@link IdentityKey duplicate key}). A household is identified by last
+ * name plus address: the last name is compared
  * case-insensitively with runs of whitespace collapsed to a single space and outer whitespace trimmed,
  * and the address is compared in its canonical form (see {@link AddressNormalizer}). Not a pipeline
  * step, so it is free to expose plain helpers.

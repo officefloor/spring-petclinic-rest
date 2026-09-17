@@ -5,8 +5,9 @@ import java.util.Map;
 
 /**
  * Canonical telephone normalization shared by the create pipeline: {@link NormalizeTelephone} stores
- * the E.164 form, {@link EnsureUniqueTelephone} compares by it and {@link ValidateTelephoneLength}
- * checks its national-number length. Not a pipeline step, so it is free to expose plain helpers.
+ * the E.164 form, {@link IdentityKey} uses it for the telephone part of the duplicate key and
+ * {@link ValidateTelephoneLength} checks its national-number length. Not a pipeline step, so it is
+ * free to expose plain helpers.
  */
 public final class TelephoneNormalizer {
 

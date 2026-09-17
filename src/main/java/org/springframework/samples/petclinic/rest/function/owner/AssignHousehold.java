@@ -10,9 +10,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * already occupied by an existing owner (same last name and address, see {@link HouseholdNormalizer}),
  * stamps the new owner and every existing member of that household with the same stable
  * {@link HouseholdNormalizer#id(String, String) household id}. Without {@code sharesHousehold} the
- * request never reaches here as a joiner — {@link EnsureUniqueHousehold} rejects the collision first —
- * so a lone owner keeps a null household id. Runs after {@link BuildOwner} and mutates the built
- * {@link Owner} in place; existing members are re-saved so a later read returns the shared id too.
+ * new owner is never treated as a joiner, so a lone owner keeps a null household id. The assigned id
+ * becomes the household part of the {@link IdentityKey duplicate key} that {@link EnsureUniqueIdentity}
+ * checks next, so two members of one household are distinguished only by their other key parts. Runs
+ * after {@link BuildOwner} and mutates the built {@link Owner} in place; existing members are re-saved
+ * so a later read returns the shared id too.
  */
 public class AssignHousehold {
 
