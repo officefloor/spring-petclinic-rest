@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.MembershipPoints;
 
 /**
  * Emits an audit trail entry once an owner has been persisted. Runs after {@link SaveOwner}, so the
@@ -17,8 +18,9 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        Integer membershipPoints = MembershipPoints.of(owner);
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner));
+                membershipPoints, MembershipLevel.forPoints(membershipPoints));
     }
 }

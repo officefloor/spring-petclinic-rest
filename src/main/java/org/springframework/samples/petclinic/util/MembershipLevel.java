@@ -1,44 +1,29 @@
 package org.springframework.samples.petclinic.util;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Derives an owner's membership level, a number from 1 to 4. It starts at 1, gains 1 when an email
- * address is present, gains 1 when the owner has a unique name (namesakeCount is zero), and gains 1
- * when the owner's {@link Tenure tenure} exceeds {@link #TENURE_DAYS} days, capped at 4. Because a
- * newly created owner has zero tenure, a new owner never exceeds level 3 — reaching level 4 always
- * requires tenure of more than a year.
+ * Bands {@link MembershipPoints membership points} into a membership level, a number from 1 to 4:
+ * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more points. Because a newly created
+ * owner has zero tenure, a new owner never earns the tenure points and so never exceeds level 3.
  */
 public final class MembershipLevel {
-
-    /** The lowest membership level every owner starts from. */
-    public static final int BASE = 1;
-
-    /** The highest level this rule awards. */
-    public static final int CAP = 4;
-
-    /** Tenure in days beyond which the top level is awarded. */
-    public static final int TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
 
-    /** The membership level for {@code owner}, or {@code null} when the owner is {@code null}. */
-    public static Integer of(Owner owner) {
-        if (owner == null) {
+    /** The membership level for {@code points}, or {@code null} when {@code points} is {@code null}. */
+    public static Integer forPoints(Integer points) {
+        if (points == null) {
             return null;
         }
-        int level = BASE;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+        if (points <= 1) {
+            return 1;
         }
-        Integer namesakeCount = owner.getNamesakeCount();
-        if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (Tenure.days(owner) > TENURE_DAYS) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, CAP);
+        return 4;
     }
 }

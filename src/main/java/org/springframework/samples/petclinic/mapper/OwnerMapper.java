@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.ContactPreference;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.MembershipPoints;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
@@ -83,12 +85,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 4 that starts
-     * at 1, gains 1 for a present email address, 1 for a unique name (namesakeCount is zero) and 1
-     * for tenure over a year, capped at 4.
+     * The owner's membership points (see {@link MembershipPoints}): a score that starts at 0 and
+     * gains 2 for a present email address, 1 for a unique name (namesakeCount is zero), 2 for a
+     * household of 3 or more and 3 for tenure over a year.
+     */
+    default Integer membershipPoints(Owner owner) {
+        return MembershipPoints.of(owner);
+    }
+
+    /**
+     * The owner's membership level (see {@link MembershipLevel}): the {@link #membershipPoints(Owner)
+     * membership points} banded into a number from 1 to 4 (1 for 0-1 points, 2 for 2-3, 3 for 4-5,
+     * 4 for 6 or more).
      */
     default Integer membershipLevel(Owner owner) {
-        return MembershipLevel.of(owner);
+        return MembershipLevel.forPoints(MembershipPoints.of(owner));
     }
 
     /**
