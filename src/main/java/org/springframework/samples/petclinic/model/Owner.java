@@ -23,7 +23,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -284,15 +283,27 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}). Derived
-     * from the owner's own fields; absent until both the customer code and registration date
-     * have been assigned.
+     * last two digits of the {@link #getFiscalYear() fiscal year} of the business-day-adjusted
+     * registration date (e.g. {@code 'SMI-0007-M27'}). Derived from the owner's own fields;
+     * absent until both the customer code and registration date have been assigned.
      */
     public String getMembershipNumber() {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, FiscalYear.endingYear(this.registrationDate) % 100);
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} and derived from the business-day-adjusted
+     * {@link #getRegistrationDate() registration date}. The fiscal year starts on 1 July; see
+     * {@link FiscalYear}. Absent until a registration date has been assigned.
+     */
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return FiscalYear.label(this.registrationDate);
     }
 
     /**
@@ -307,22 +318,24 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure in whole days: the number of days elapsed from the
-     * {@link #getRegistrationDate() registration date} up to today. A freshly registered owner has
-     * a tenure of zero. Absent until a registration date is present.
+     * The owner's tenure in whole elapsed fiscal years: the number of 1 July boundaries crossed
+     * from the {@link #getRegistrationDate() registration date} up to today (see {@link FiscalYear}).
+     * An owner still in their registration fiscal year has a tenure of zero. Absent until a
+     * registration date is present.
      */
-    public Long getTenureDays() {
+    public Long getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return null;
         }
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return FiscalYear.elapsed(this.registrationDate, LocalDate.now());
     }
 
     /**
      * The owner's membership points, a score derived from the owner's own fields: starting from 0,
      * the owner earns 2 points when an email address is present, 1 point when this owner has no
      * namesakes ({@code namesakeCount} is 0), 2 points for a household of 3 or more members, and 3
-     * points once the owner's {@link #getTenureDays() tenure} exceeds 365 days.
+     * points once the owner's {@link #getTenureFiscalYears() tenure} spans at least one full fiscal
+     * year (the registration and current dates fall in different fiscal years).
      */
     public Integer getMembershipPoints() {
         int points = 0;
@@ -338,8 +351,8 @@ public class Owner extends Person {
         if (sharedHousehold) {
             points += 2;
         }
-        Long tenureDays = getTenureDays();
-        boolean tenured = tenureDays != null && tenureDays > 365;
+        Long tenureFiscalYears = getTenureFiscalYears();
+        boolean tenured = tenureFiscalYears != null && tenureFiscalYears >= 1;
         if (tenured) {
             points += 3;
         }
