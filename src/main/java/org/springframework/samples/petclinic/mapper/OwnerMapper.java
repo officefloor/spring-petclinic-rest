@@ -32,11 +32,18 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's derived identity key: normalized telephone, email and household id joined. */
     default String identityKey(Owner owner) {
         return IdentityKey.of(owner);
+    }
+
+    /** Whether the owner was flagged as a possible duplicate at registration, i.e. it carries
+     *  the id of an existing owner it possibly duplicates. */
+    default boolean possibleDuplicate(Owner owner) {
+        return owner.getPossibleDuplicateOf() != null;
     }
 
     /** Format an owner's name for display as 'LastName, FirstName'. */
