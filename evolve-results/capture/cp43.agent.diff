@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3639d37f1..64fb31811 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.AgeBand;
+ import org.springframework.samples.petclinic.model.ContactPreference;
+ import org.springframework.samples.petclinic.model.Locality;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
++import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.MembershipPoints;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Timezone;
+@@ -123,10 +124,7 @@ public interface OwnerMapper {
+      * own fields; null until both the customer code and registration date are assigned.
+      */
+     default String membershipNumber(Owner owner) {
+-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+-            return null;
+-        }
+-        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++        return MembershipNumber.of(owner);
+     }
+ 
+     /** The Luhn check digit over the digits of the owner's customerCode; null until a code is assigned. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+new file mode 100644
+index 000000000..311e24a62
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Formats an owner's membership number from the owner's own fields.
++ *
++ * <p>The number is formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the last
++ * two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). It is
++ * {@code null} until both the customer code and registration date are assigned.
++ */
++public final class MembershipNumber {
++
++    private MembershipNumber() {
++    }
++
++    /**
++     * Derive the membership number for the given owner.
++     *
++     * @param owner the owner.
++     * @return the membership number, or {@code null} when the owner, its customer
++     *         code or its registration date is absent.
++     */
++    public static String of(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
++            return null;
++        }
++        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 7b635eb15..6867625b9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,19 +5,22 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
++import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Emits an audit trail entry once an owner has been persisted, capturing the
+- * generated id together with the assigned customer code, registration date and
+- * membership level.
++ * generated id together with the assigned customer code, registration date,
++ * membership level and membership number.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), MembershipLevel.of(owner));
++        AUDIT.info(
++                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), MembershipLevel.of(owner),
++                MembershipNumber.of(owner));
+     }
+ }
