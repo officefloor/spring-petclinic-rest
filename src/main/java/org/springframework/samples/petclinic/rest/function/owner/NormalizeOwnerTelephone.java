@@ -16,10 +16,15 @@ public class NormalizeOwnerTelephone {
     private static final int REQUIRED_DIGITS = 10;
 
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
-        String digits = request.getTelephone().replaceAll("\\D", "");
+        String digits = digitsOnly(request.getTelephone());
         if (digits.length() != REQUIRED_DIGITS) {
             throw new InvalidTelephoneException();
         }
         request.setTelephone(digits);
+    }
+
+    /** Strip every non-digit character, the shared definition of a normalized telephone. */
+    static String digitsOnly(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
