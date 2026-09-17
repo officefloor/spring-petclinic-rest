@@ -6,10 +6,8 @@ package org.springframework.samples.petclinic.rest.event;
  * {@code seq}, the owner's generated {@code ownerId}, its current primary identifier and the
  * membership level, under the {@code OWNER_CREATED} event type.
  *
- * <p>The {@code primaryIdentifier} is whatever identifies the owner today — the customerCode — and
- * whatever replaces it later (the memberId). It is serialized under the {@code customerCode} key
- * while the customerCode is primary; that key tracks the identifier when it is unified into the
- * memberId.
+ * <p>The {@code primaryIdentifier} is the value that identifies the owner — the unified
+ * {@code memberId} — and is serialized under the {@code memberId} key.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String primaryIdentifier, Integer membershipLevel) {
 
@@ -21,7 +19,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String primaryIdentif
         return "{"
                 + "\"seq\":" + seq
                 + ",\"ownerId\":" + ownerId
-                + ",\"customerCode\":" + jsonString(primaryIdentifier)
+                + ",\"memberId\":" + jsonString(primaryIdentifier)
                 + ",\"membershipLevel\":" + membershipLevel
                 + ",\"event\":" + jsonString(EVENT)
                 + "}";

@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Computes the Luhn check digit over the decimal digits contained in a value, ignoring any
- * non-digit characters (such as the separators in a customer code). A pure function of the value,
- * so it is derived at response time rather than stored on the entity.
+ * non-digit characters. A pure function of the value; used for the CHK segment of the
+ * {@link MemberId}.
  */
 public final class CheckDigit {
 

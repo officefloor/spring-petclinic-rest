@@ -6,8 +6,8 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Shared SHA-256 hex helper. A pure function of its input with no dependency on other owners, used
- * wherever the application needs a stable, opaque token derived from a value (the region-and-hash
- * customerCode in {@link CustomerCode}, the household id in
+ * wherever the application needs a stable, opaque token derived from a value (the HASH8 portion of
+ * the {@link MemberId}, the household id in
  * {@link org.springframework.samples.petclinic.rest.function.owner.HouseholdNormalizer}).
  */
 public final class Sha256 {

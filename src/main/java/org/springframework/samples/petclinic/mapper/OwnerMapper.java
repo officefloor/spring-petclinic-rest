@@ -11,13 +11,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneNormalizer;
 import org.springframework.samples.petclinic.util.AgeBand;
-import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.ContactPreference;
-import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Locality;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.MembershipLevel;
-import org.springframework.samples.petclinic.util.MembershipNumber;
 import org.springframework.samples.petclinic.util.MembershipPoints;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
@@ -37,9 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -72,15 +68,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * The canonical region taken from the owner's region-and-hash identity: the REGION portion of the
-     * customerCode (see {@link CustomerCode}). Falls back to deriving the region directly from the
-     * city and postcode (see {@link Locality}) for an owner that has no customerCode yet.
+     * The canonical region taken from the owner's identity: the REGION portion of the memberId (see
+     * {@link MemberId}). Falls back to deriving the region directly from the city and postcode (see
+     * {@link Locality}) for an owner that has no memberId yet.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String region = CustomerCode.regionOf(owner.getCustomerCode());
+        String region = MemberId.regionOf(owner.getMemberId());
         return region != null ? region : Locality.of(owner.getCity(), owner.getPostcode());
     }
 
@@ -101,14 +97,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registration date's year, e.g. 'NSW-1A2B3C4D-M26'.
-     */
-    default String membershipNumber(Owner owner) {
-        return MembershipNumber.of(owner);
-    }
-
-    /**
      * The owner's fiscal year (see {@link FiscalYear}) as 'FY&lt;YY&gt;', where YY is the last two
      * digits of the fiscal year (starting 1 July) of the business-day-adjusted registration date.
      * {@code null} when the owner or its registration date is {@code null}.
@@ -116,14 +104,6 @@ public interface OwnerMapper {
     default String fiscalYear(Owner owner) {
         return owner == null || owner.getRegistrationDate() == null ? null
             : FiscalYear.label(owner.getRegistrationDate());
-    }
-
-    /**
-     * The owner's check digit (see {@link CheckDigit}): the Luhn check digit over the digits of the
-     * customer code.
-     */
-    default Integer checkDigit(Owner owner) {
-        return owner == null ? null : CheckDigit.of(owner.getCustomerCode());
     }
 
     /**
