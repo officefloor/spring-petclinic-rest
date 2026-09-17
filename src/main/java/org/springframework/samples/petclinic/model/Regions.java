@@ -75,6 +75,15 @@ public final class Regions {
     }
 
     /**
+     * @param region a region name, may be {@link #UNKNOWN} or {@code null}
+     * @return {@code true} when {@code region} is one of the fixed canonical regions (NSW, VIC or
+     * QLD), {@code false} for {@link #UNKNOWN}, {@code null} or anything else
+     */
+    public static boolean isKnown(String region) {
+        return REGION_RANGES.containsKey(region);
+    }
+
+    /**
      * @param region a canonical region
      * @return that region's inclusive {low, high} postcode range, or {@code null} when the region has
      * no known range
