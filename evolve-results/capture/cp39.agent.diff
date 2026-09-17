@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index 64f4b3d14..6bffe5d78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -19,16 +19,21 @@ package org.springframework.samples.petclinic.model;
+  * Derives an owner's numeric membership level from the owner's own fields.
+  *
+  * <p>The level starts at {@value #MIN}; a present email adds one; having no
+- * namesakes (namesakeCount is 0) adds one; the total is capped at {@value #MAX}.
+- * Level 4 is reserved for tenure and is not awarded here.
++ * namesakes (namesakeCount is 0) adds one; and tenure of more than
++ * {@value #TENURE_DAYS} days adds one; the total is capped at {@value #MAX}.
++ * Level 4 requires tenure, so a newly registered owner (zero tenure) never
++ * exceeds level 3 no matter how the other factors fall.
+  */
+ public final class MembershipLevel {
+ 
+     /** The level every owner starts at. */
+     public static final int MIN = 1;
+ 
+-    /** The highest level derivable from an owner's own fields; level 4 is reserved for tenure. */
+-    public static final int MAX = 3;
++    /** The highest level attainable; only reached once the tenure factor applies. */
++    public static final int MAX = 4;
++
++    /** Tenure, in days, that an owner must exceed to earn the level-4 tenure factor. */
++    public static final int TENURE_DAYS = 365;
+ 
+     private MembershipLevel() {
+     }
+@@ -47,6 +52,9 @@ public final class MembershipLevel {
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+             level++;
+         }
++        if (Tenure.inDays(owner) > TENURE_DAYS) {
++            level++;
++        }
+         return Math.min(level, MAX);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Tenure.java b/src/main/java/org/springframework/samples/petclinic/model/Tenure.java
+new file mode 100644
+index 000000000..bbfa9b658
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Tenure.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++/**
++ * How long an owner has been a member, in whole days, measured from their
++ * {@link Owner#getRegistrationDate() registrationDate} to the current date. A freshly
++ * registered owner has zero tenure, and an owner without a registration date has none.
++ */
++public final class Tenure {
++
++    private Tenure() {
++    }
++
++    /**
++     * Derive the owner's tenure in whole days as of today.
++     *
++     * @param owner the owner (must not be {@code null}).
++     * @return the number of days since registration, or {@code 0} when the owner has no
++     *         registration date (or has not yet reached it).
++     */
++    public static long inDays(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        return Math.max(0, ChronoUnit.DAYS.between(registrationDate, LocalDate.now()));
++    }
++}
