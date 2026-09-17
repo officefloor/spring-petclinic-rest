@@ -190,8 +190,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.duplicateOwnerValidator.validate(owner);
         owner.setCustomerCode(
-            this.customerCodeGenerator.generate(owner.getCity(), owner.getLastName(),
-                this.clinicService.countOwnersInCity(owner.getCity())));
+            this.customerCodeGenerator.generate(owner.getPostcode(), owner.getTelephone(),
+                owner.getLastName()));
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {

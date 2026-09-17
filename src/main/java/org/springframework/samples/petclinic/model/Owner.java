@@ -211,12 +211,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region resolved by {@link Regions}, which prefers the
-     * {@link #getPostcode() postcode} range and falls back to the {@link #getCity() city} table,
-     * or {@code "UNKNOWN"} when neither resolves the region.
+     * The owner's locality: the REGION segment of the {@link #getCustomerCode() customer code} (the
+     * region derived from the postcode when the identity was assigned), or {@link Regions#UNKNOWN}
+     * before a customer code has been assigned.
      */
     public String getLocality() {
-        return Regions.localityOf(this.postcode, this.city);
+        if (this.customerCode == null) {
+            return Regions.UNKNOWN;
+        }
+        int separator = this.customerCode.indexOf('-');
+        return separator < 0 ? this.customerCode : this.customerCode.substring(0, separator);
     }
 
     /**

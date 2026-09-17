@@ -18,28 +18,30 @@ package org.springframework.samples.petclinic.rest.assignment;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Regions;
+import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
- * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
- * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
- * owners already in that city (e.g. {@code 'LON-SMI-0007'}).
+ * Builds an owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where REGION is the
+ * region derived from the postcode (see {@link Regions#regionOfPostcode(String)}) and HASH8 is the
+ * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
+ * last name (e.g. {@code 'NSW-1A2B3C4D'}).
  */
 @Component
 public class CustomerCodeGenerator {
 
+    private static final int HASH_LENGTH = 8;
+
     /**
-     * @param city          the owner's city, used for the CITY3 prefix
-     * @param lastName      the owner's last name, used for the LAST3 prefix
-     * @param cityOwnerCount the number of owners already stored in that city; the sequence is one greater
+     * @param postcode  the owner's postcode, used to derive the REGION prefix
+     * @param telephone the owner's normalized telephone, hashed with the last name
+     * @param lastName  the owner's last name, hashed with the telephone
      * @return the formatted customer code
      */
-    public String generate(String city, String lastName, long cityOwnerCount) {
-        return String.format("%s-%s-%04d", abbreviate(city), abbreviate(lastName), cityOwnerCount + 1);
-    }
-
-    private String abbreviate(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+    public String generate(String postcode, String telephone, String lastName) {
+        String region = Regions.regionOfPostcode(postcode);
+        String hash8 = Sha256.hex(telephone + lastName).substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
+        return region + "-" + hash8;
     }
 }

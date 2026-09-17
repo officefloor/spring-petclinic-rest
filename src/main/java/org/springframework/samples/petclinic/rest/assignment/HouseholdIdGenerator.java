@@ -16,11 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.assignment;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.stereotype.Component;
 
@@ -45,21 +43,6 @@ public class HouseholdIdGenerator {
      */
     public String generate(String lastName, String address) {
         String key = this.householdKey.of(lastName, address);
-        return "HH-" + sha256(key).substring(0, 12).toUpperCase(Locale.ROOT);
-    }
-
-    private static String sha256(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
-        }
+        return "HH-" + Sha256.hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 }

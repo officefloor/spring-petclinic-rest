@@ -42,20 +42,6 @@ public final class Regions {
     }
 
     /**
-     * Resolves the canonical region for an owner, preferring the postcode over the city: the region
-     * whose range contains {@code postcode} is used, and only when the postcode is absent or in no
-     * known range does the {@link #regionOfCity(String) city table} decide.
-     *
-     * @param postcode the owner's postcode, may be {@code null} or blank
-     * @param city the owner's city
-     * @return the canonical region, or {@link #UNKNOWN} when neither table matches
-     */
-    public static String localityOf(String postcode, String city) {
-        String byPostcode = regionOfPostcode(postcode);
-        return UNKNOWN.equals(byPostcode) ? regionOfCity(city) : byPostcode;
-    }
-
-    /**
      * @param city the city to resolve
      * @return the canonical region for {@code city}, or {@link #UNKNOWN} when the city is not in the
      * fixed table
