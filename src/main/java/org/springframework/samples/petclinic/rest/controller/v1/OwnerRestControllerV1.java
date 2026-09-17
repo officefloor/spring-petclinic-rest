@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
@@ -76,6 +77,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     private final CustomerCodeGenerator customerCodeGenerator;
 
     private final HouseholdRegistrar householdRegistrar;
@@ -88,6 +91,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdRegistrar householdRegistrar) {
         this.clinicService = clinicService;
@@ -98,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdRegistrar = householdRegistrar;
     }
@@ -130,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
         this.ownerRequestValidator.validate(ownerFieldsDto);
         this.householdDuplicateValidator.validate(ownerFieldsDto);
         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
