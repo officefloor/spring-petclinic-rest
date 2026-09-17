@@ -1,9 +1,12 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Canonical telephone normalization shared by the create pipeline: {@link NormalizeTelephone} stores
- * the E.164 form and {@link EnsureUniqueTelephone} compares by it. Not a pipeline step, so it is free
- * to expose plain helpers.
+ * the E.164 form, {@link EnsureUniqueTelephone} compares by it and {@link ValidateTelephoneLength}
+ * checks its national-number length. Not a pipeline step, so it is free to expose plain helpers.
  */
 public final class TelephoneNormalizer {
 
@@ -15,6 +18,17 @@ public final class TelephoneNormalizer {
 
     /** Default country code assumed when no leading '+' is present. */
     private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /**
+     * Required national-number digit count per E.164 country code. Ordered longest code first so
+     * {@link #hasValidNationalLength(String)} matches the most specific prefix (e.g. '61' before '1').
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY = new LinkedHashMap<>();
+
+    static {
+        NATIONAL_LENGTH_BY_COUNTRY.put("61", 9); // Australia
+        NATIONAL_LENGTH_BY_COUNTRY.put("1", 10); // NANP (e.g. US)
+    }
 
     private TelephoneNormalizer() {
     }
@@ -42,5 +56,25 @@ public final class TelephoneNormalizer {
             return null;
         }
         return "+" + digits;
+    }
+
+    /**
+     * Whether an E.164 number's national-number length matches what its country code requires (e.g.
+     * '+61' expects 9 national digits, '+1' expects 10). Numbers whose country code has no configured
+     * rule are accepted, so this only rejects a wrong length for a known country. Expects the canonical
+     * form produced by {@link #toE164(String)}.
+     */
+    public static boolean hasValidNationalLength(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return false;
+        }
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> rule : NATIONAL_LENGTH_BY_COUNTRY.entrySet()) {
+            String countryCode = rule.getKey();
+            if (digits.startsWith(countryCode)) {
+                return digits.length() - countryCode.length() == rule.getValue();
+            }
+        }
+        return true;
     }
 }
