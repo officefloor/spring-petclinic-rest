@@ -1,0 +1,255 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java
+index 076a1b2b7..f6960208e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagOwnerPossibleDuplicate.java
+@@ -4,14 +4,16 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.util.Soundex;
+ 
+ /**
+  * Flags a soft duplicate: an owner that passed the hard-duplicate check (see
+- * {@link RequireUniqueIdentity}) but still looks like it may duplicate an existing one because
+- * it shares that owner's lastName (compared case-insensitively) and postcode while giving a
+- * different telephone. Sets {@link Owner#getPossibleDuplicate() possibleDuplicate} true and
+- * {@link Owner#getPossibleDuplicateOf() possibleDuplicateOf} to the matching owner's id;
+- * otherwise leaves the flag false and no reference.
++ * {@link RequireUniqueIdentity}) but still looks like it may duplicate an existing one because it
++ * shares that owner's postcode and phonetically-equal last name ({@link Soundex}) while resolving
++ * to a different {@code identityKey} (see {@link OwnerIdentities}) — i.e. a different telephone or
++ * email. Sets {@link Owner#getPossibleDuplicate() possibleDuplicate} true and
++ * {@link Owner#getPossibleDuplicateOf() possibleDuplicateOf} to the matching owner's id; otherwise
++ * leaves the flag false and no reference.
+  *
+  * <p>A declared household member — one that opted in with {@code sharesHousehold} to join an
+  * existing (lastName, postcode) household — is never flagged: a declared member is not a
+@@ -26,10 +28,12 @@ public class FlagOwnerPossibleDuplicate {
+         Integer matchId = null;
+         boolean declaredMember = Boolean.TRUE.equals(request.getSharesHousehold());
+         if (!declaredMember && owner.getPostcode() != null) {
++            String identityKey = OwnerIdentities.of(owner);
++            String soundex = Soundex.encode(owner.getLastName());
+             for (Owner existing : ownerRepository.findAll()) {
+-                if (sameName(existing.getLastName(), owner.getLastName())
+-                        && owner.getPostcode().equals(existing.getPostcode())
+-                        && !sameTelephone(existing.getTelephone(), owner.getTelephone())
++                if (owner.getPostcode().equals(existing.getPostcode())
++                        && soundex.equals(Soundex.encode(existing.getLastName()))
++                        && !identityKey.equals(OwnerIdentities.of(existing))
+                         && (matchId == null || existing.getId() < matchId)) {
+                     matchId = existing.getId();
+                 }
+@@ -38,12 +42,4 @@ public class FlagOwnerPossibleDuplicate {
+         owner.setPossibleDuplicate(matchId != null);
+         owner.setPossibleDuplicateOf(matchId);
+     }
+-
+-    private static boolean sameName(String a, String b) {
+-        return a == null ? b == null : a.equalsIgnoreCase(b);
+-    }
+-
+-    private static boolean sameTelephone(String a, String b) {
+-        return a == null ? b == null : a.equals(b);
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentities.java
+index 0265e3c95..4094ec715 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentities.java
+@@ -1,18 +1,20 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.Sha256;
++import org.springframework.samples.petclinic.util.Soundex;
+ 
+ /**
+  * Shared owner identity for the create-owner pipeline: derives the single canonical
+  * {@code identityKey} that consolidates all duplicate detection.
+  *
+- * <p>The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId},
+- * with telephone canonicalized to E.164 (see {@link OwnerTelephones}) and email lower-cased
+- * (see {@link OwnerEmails}); a missing component contributes an empty string. The
+- * {@code householdId} is the deterministic (last name, postcode) household key (see
+- * {@link OwnerHouseholds}). Two owners share this key only when they are the same person in the
+- * same household — {@link RequireUniqueIdentity} uses it to reject an exact resubmission even of
+- * a declared household member.
++ * <p>The key is the lower-case hex SHA-256 (see {@link Sha256}) of
++ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with telephone
++ * canonicalized to E.164 (see {@link OwnerTelephones}), email lower-cased (see
++ * {@link OwnerEmails}) and the last name reduced to its Soundex code (see {@link Soundex}); a
++ * missing telephone or email contributes an empty string. Two owners share this key only when
++ * they submit the same telephone, email and phonetically-equal surname — {@link RequireUniqueIdentity}
++ * uses it to reject an exact resubmission.
+  */
+ public final class OwnerIdentities {
+ 
+@@ -20,18 +22,20 @@ public final class OwnerIdentities {
+     }
+ 
+     /**
+-     * Canonical identity key for the given components. {@code telephone} is normalized to
+-     * E.164 and {@code email} lower-cased before assembly; any {@code null} component
+-     * contributes an empty string.
++     * Canonical identity key for the given components: the SHA-256 hex of
++     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. {@code telephone}
++     * is normalized to E.164 and {@code email} lower-cased before assembly; a {@code null}
++     * telephone or email contributes an empty string.
+      */
+-    public static String key(String telephone, String email, String householdId) {
+-        return part(OwnerTelephones.toE164(telephone)) + "|" + part(OwnerEmails.normalize(email))
+-                + "|" + part(householdId);
++    public static String key(String telephone, String email, String lastName) {
++        String canonical = part(OwnerTelephones.toE164(telephone)) + "|"
++                + part(OwnerEmails.normalize(email)) + "|" + Soundex.encode(lastName);
++        return Sha256.hex(canonical);
+     }
+ 
+     /** Canonical {@link #key(String, String, String)} for an existing owner's stored fields. */
+     public static String of(Owner owner) {
+-        return key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
++        return key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+     }
+ 
+     private static String part(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index 0cfe8efc4..69114bd04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -9,23 +9,24 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
+ /**
+  * The single duplicate check for create-owner, responding 409 via
+  * {@link DuplicateOwnerException} on an <b>identity duplicate</b> — an existing owner with the same
+- * derived {@code identityKey} (telephone, email and household, see {@link OwnerIdentities}), i.e. an
+- * exact resubmission of an existing owner.
++ * derived {@code identityKey} (telephone, email and phonetic last name, see {@link OwnerIdentities}),
++ * i.e. an exact resubmission of an existing owner.
+  *
+- * <p>Several owners may share a household (same last name and postcode, see {@link OwnerHouseholds})
+- * without opting in: household co-membership is admitted and instead governed by the membership
+- * level ceiling ({@link AssignOwnerMembershipLevel}). Only an exact identity match is rejected here.
++ * <p>Two owners sharing only a last name and postcode but giving different telephones no longer
++ * collide here — telephone is part of the key — so they are admitted and instead flagged as a soft
++ * duplicate ({@link FlagOwnerPossibleDuplicate}). Household co-membership is likewise admitted and
++ * governed by the membership level ceiling ({@link AssignOwnerMembershipLevel}).
+  *
+  * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail} so the request
+- * telephone is already E.164 and its email lower-cased. The household component of the identity key
+- * matches the {@code householdId} that {@link AssignOwnerHousehold} later stores on the owner.
++ * telephone is already E.164 and its email lower-cased, and after {@link RequireOwnerEmailAllowed}
++ * so a blocklisted email is rejected first.
+  */
+ public class RequireUniqueIdentity {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateOwnerException {
+-        String householdId = OwnerHouseholds.id(request.getLastName(), request.getPostcode());
+-        String identityKey = OwnerIdentities.key(request.getTelephone(), request.getEmail(), householdId);
++        String identityKey = OwnerIdentities.key(request.getTelephone(), request.getEmail(),
++                request.getLastName());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (existing.isDeleted()) {
+                 continue; // a soft-deleted owner never blocks a new one
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..0dfb91e58
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,75 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * American Soundex phonetic encoding of a name: a letter followed by three digits (e.g.
++ * {@code "Robert"} and {@code "Rupert"} both encode to {@code "R163"}). Shared so every
++ * derivation that groups owners by how a surname sounds — the identity key and the
++ * soft-duplicate match — encodes it identically.
++ */
++public final class Soundex {
++
++    private Soundex() {
++    }
++
++    /**
++     * Soundex code for {@code value}: its first letter (upper-cased) followed by three digits
++     * derived from the remaining consonants, zero-padded or truncated to length four. Non-letters
++     * are ignored; a {@code null} or letter-free value yields an empty string.
++     *
++     * <p>Adjacent letters mapping to the same digit contribute it once; {@code 'h'} and {@code 'w'}
++     * do not break that adjacency, while a vowel does, so a code repeated across a vowel is emitted
++     * twice.
++     */
++    public static String encode(String value) {
++        if (value == null) {
++            return "";
++        }
++        StringBuilder letters = new StringBuilder();
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            if (Character.isLetter(c)) {
++                letters.append(Character.toUpperCase(c));
++            }
++        }
++        if (letters.length() == 0) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char previous = codeOf(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            if (c == 'H' || c == 'W') {
++                continue; // keeps the surrounding consonants adjacent, leaves previous unchanged
++            }
++            char digit = codeOf(c);
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            previous = digit; // a vowel (digit '0') resets, so a repeated code across it counts twice
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /** The Soundex digit for a letter, or {@code '0'} for vowels and other uncoded letters. */
++    private static char codeOf(char c) {
++        switch (c) {
++            case 'B': case 'F': case 'P': case 'V':
++                return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
++                return '2';
++            case 'D': case 'T':
++                return '3';
++            case 'L':
++                return '4';
++            case 'M': case 'N':
++                return '5';
++            case 'R':
++                return '6';
++            default:
++                return '0';
++        }
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f67bfc156..f51b16c83 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2182,11 +2182,12 @@ components:
+             identityKey:
+               title: Identity key
+               description: >-
+-                Derived duplicate-detection key formatted 'normalizedTelephone|email|householdId'
+-                (telephone in E.164, email lower-cased, each component empty when absent). Two
+-                owners are duplicates only when their whole identityKey is equal.
++                Derived duplicate-detection key - the lower-case hex SHA-256 of
++                'normalizedTelephone|lowerEmail|soundex(lastName)' (telephone in E.164, email
++                lower-cased, last name reduced to its Soundex code; telephone and email empty when
++                absent). Two owners are duplicates only when their whole identityKey is equal.
+               type: string
+-              example: '+61412345678|george.franklin@example.com|1a2b3c4d5e6f'
++              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
