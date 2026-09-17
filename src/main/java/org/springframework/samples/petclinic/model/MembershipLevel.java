@@ -44,6 +44,29 @@ public final class MembershipLevel {
     }
 
     /**
+     * The owner's effective membership level: the value fixed at creation time (capped against
+     * the household) when one was recorded, otherwise the level derived from the owner's points.
+     *
+     * @param owner the owner (must not be {@code null}).
+     * @return the effective level, from {@value #MIN} to {@value #MAX}.
+     */
+    public static int effective(Owner owner) {
+        Integer recorded = owner.getMembershipLevel();
+        return recorded != null ? recorded : of(owner);
+    }
+
+    /**
+     * Cap a level so it exceeds the highest level already held in the household by at most one.
+     *
+     * @param level             the owner's own derived level.
+     * @param householdMaxLevel the maximum effective level among the household's existing members.
+     * @return {@code level}, reduced to {@code householdMaxLevel + 1} when it would exceed it.
+     */
+    public static int cappedToHousehold(int level, int householdMaxLevel) {
+        return Math.min(level, householdMaxLevel + 1);
+    }
+
+    /**
      * Map a membership points total to its level.
      *
      * @param points the membership points (see {@link MembershipPoints}).

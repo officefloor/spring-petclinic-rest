@@ -189,8 +189,9 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's numeric membership level, mapped from the owner's membership points; null
-     * when there is no owner.
+     * The owner's numeric membership level: the value fixed at creation time (capped against the
+     * household) when recorded, otherwise mapped from the owner's membership points; null when
+     * there is no owner.
      *
      * @see MembershipLevel
      */
@@ -198,7 +199,7 @@ public interface OwnerMapper {
         if (owner == null) {
             return null;
         }
-        return MembershipLevel.of(owner);
+        return MembershipLevel.effective(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);

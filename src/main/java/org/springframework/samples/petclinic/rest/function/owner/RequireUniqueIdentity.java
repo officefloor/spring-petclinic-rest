@@ -8,44 +8,31 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
 
 /**
  * The single duplicate check for create-owner, responding 409 via
- * {@link DuplicateOwnerException} for either kind of duplicate:
+ * {@link DuplicateOwnerException} on an <b>identity duplicate</b> — an existing owner with the same
+ * derived {@code identityKey} (telephone, email and household, see {@link OwnerIdentities}), i.e. an
+ * exact resubmission of an existing owner.
  *
- * <ul>
- * <li><b>Household duplicate</b> — an existing owner shares the request's deterministic
- * {@code householdId} (same last name and postcode, see {@link OwnerHouseholds}). Rejected
- * unless the request opts in with {@code sharesHousehold}, which declares it a household member
- * and bypasses this block.</li>
- * <li><b>Identity duplicate</b> — an existing owner has the same derived {@code identityKey}
- * (telephone, email and household, see {@link OwnerIdentities}); this always rejects, so even a
- * declared member cannot be an exact resubmission of an existing owner.</li>
- * </ul>
+ * <p>Several owners may share a household (same last name and postcode, see {@link OwnerHouseholds})
+ * without opting in: household co-membership is admitted and instead governed by the membership
+ * level ceiling ({@link AssignOwnerMembershipLevel}). Only an exact identity match is rejected here.
  *
  * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail} so the request
- * telephone is already E.164 and its email lower-cased. The household component here matches the
- * {@code householdId} that {@link AssignOwnerHousehold} later stores on the owner.
+ * telephone is already E.164 and its email lower-cased. The household component of the identity key
+ * matches the {@code householdId} that {@link AssignOwnerHousehold} later stores on the owner.
  */
 public class RequireUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerException {
         String householdId = OwnerHouseholds.id(request.getLastName(), request.getPostcode());
-        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
-        boolean checkHousehold = !sharesHousehold && hasText(request.getPostcode());
         String identityKey = OwnerIdentities.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner never blocks a new one
             }
-            if (checkHousehold && householdId.equals(OwnerHouseholds.of(existing))) {
-                throw new DuplicateOwnerException(householdId);
-            }
             if (identityKey.equals(OwnerIdentities.of(existing))) {
                 throw new DuplicateOwnerException(identityKey);
             }
         }
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 }

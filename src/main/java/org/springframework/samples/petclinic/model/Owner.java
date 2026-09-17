@@ -84,6 +84,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -212,6 +215,19 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * The membership level fixed for this owner at creation time, capped against the household
+     * (see {@link org.springframework.samples.petclinic.model.MembershipLevel}); {@code null} for
+     * owners created before the level was recorded, whose level is derived on the fly.
+     */
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {
