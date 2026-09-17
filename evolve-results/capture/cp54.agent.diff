@@ -1,0 +1,149 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0d4f1d16d..fe6f7e732 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -91,6 +91,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private boolean capacityWarning;
++
+     @Column(name = "possible_duplicate")
+     private boolean possibleDuplicate;
+ 
+@@ -290,6 +293,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public boolean isCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public boolean isPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f4bfd69c4..f1d82008d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -146,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // than one level above its current highest-ranked member.
+         owner.setMembershipLevel(this.clinicService.resolveCappedMembershipLevel(owner));
+         owner.setBulkSignupWarning(this.clinicService.isBulkSignupWarranted(owner.getRegistrationDate()));
++        owner.setCapacityWarning(this.clinicService.isCityApproachingCapacity(owner.getCity()));
+         // Flag a soft match unless this is a declared household member (a declared member is not a
+         // suspected duplicate): an existing owner sharing this owner's postcode and last-name Soundex
+         // with a different identity key.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index af4181f62..ce08cfa75 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -61,6 +61,7 @@ public interface ClinicService {
+ 	boolean existsOwnerWithIdentityKey(Owner owner) throws DataAccessException;
+ 	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
+ 	boolean isCityAtCapacity(String city) throws DataAccessException;
++	boolean isCityApproachingCapacity(String city) throws DataAccessException;
+ 	boolean isRegistrationDateInFuture(LocalDate registrationDate);
+ 	LocalDate resolveRegistrationDate(LocalDate registrationDate);
+ 	boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 782912b1c..cbe589ceb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -300,12 +300,26 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     static final long CITY_CAPACITY = 50;
+ 
++    /**
++     * The number of owners a city may hold before further sign-ups there are flagged as
++     * approaching the {@link #CITY_CAPACITY capacity limit}; once a city holds at least this many
++     * (but fewer than {@code CITY_CAPACITY}) owners, subsequent creates in it carry the warning.
++     */
++    static final long CITY_CAPACITY_WARNING_THRESHOLD = 40;
++
+     @Override
+     @Transactional(readOnly = true)
+     public boolean isCityAtCapacity(String city) throws DataAccessException {
+         return ownerRepository.countByCityIgnoreCase(city) >= CITY_CAPACITY;
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean isCityApproachingCapacity(String city) throws DataAccessException {
++        long count = ownerRepository.countByCityIgnoreCase(city);
++        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
++    }
++
+     /**
+      * The maximum number of owners that may be created in a single day; once this many owners
+      * have already been registered on a given business day no further owners may be created for
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 99b02bc22..d2106a2f1 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7c91a51be..e30821b01 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,6 +54,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 7d463fc97..29007b1eb 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index f2d173563..7dac1f9b0 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       deleted BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cd3e4d978..13ae4afa0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2244,6 +2244,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already held between 40 and 49 owners (approaching the capacity limit of 50) at the time this owner was created, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: The derived key used for duplicate detection, the SHA-256 hex of '<normalizedTelephone>|<email or empty>|<Soundex of last name>'. Two owners are duplicates only when their whole identity keys are equal.
