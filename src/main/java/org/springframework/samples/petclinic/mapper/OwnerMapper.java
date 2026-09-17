@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
+    @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -74,14 +75,26 @@ public interface OwnerMapper {
      */
     default Integer resolveMembershipLevel(Owner owner) {
         int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
+        if (hasEmail(owner)) {
             level++;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Resolves the owner's preferred contact channel: {@code "EMAIL"} when an email is
+     * present, otherwise {@code "PHONE"}.
+     */
+    default String resolveContactPreference(Owner owner) {
+        return hasEmail(owner) ? "EMAIL" : "PHONE";
+    }
+
+    /** Whether the owner has a non-blank email address. */
+    private boolean hasEmail(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank();
     }
 
     @Mapping(target = "id", ignore = true)
