@@ -74,6 +74,15 @@ public interface OwnerRepository {
     boolean existsByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Report whether any <code>Owner</code> is already stored with the given email, matching
+     * case-insensitively.
+     *
+     * @param email the email to look for (compared ignoring case)
+     * @return <code>true</code> if at least one owner has this email
+     */
+    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
+
+    /**
      * Report the total number of <code>Owner</code>s currently stored.
      *
      * @return the count of all owners

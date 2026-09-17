@@ -113,6 +113,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.existsOwnerByTelephone(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()
+                && this.clinicService.existsOwnerByEmail(owner.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (this.clinicService.isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }

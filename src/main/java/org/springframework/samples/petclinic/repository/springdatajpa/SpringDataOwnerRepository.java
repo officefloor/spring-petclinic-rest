@@ -67,4 +67,7 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
 
     @Override
     boolean existsByTelephone(String telephone);
+
+    @Override
+    boolean existsByEmailIgnoreCase(String email);
 }
