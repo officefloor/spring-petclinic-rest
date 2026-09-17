@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 28b0c2988..b80d36c9b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
+@@ -36,6 +37,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(resolveMembershipLevel(owner))")
+     @Mapping(target = "contactPreference", expression = "java(resolveContactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(resolveAgeBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(resolveOwnerSegment(owner))")
+     @Mapping(target = "identityKey", expression = "java(owner.getIdentityKey())")
+     @Mapping(target = "salutation", expression = "java(owner.getSalutation())")
+     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
+@@ -172,6 +174,21 @@ public interface OwnerMapper {
+         return 4;
+     }
+ 
++    /** The minimum membership level that qualifies an owner for the {@code PREMIUM} tier. */
++    int PREMIUM_TIER_MIN_LEVEL = 3;
++
++    /**
++     * Resolves the owner's segment, formatted {@code "<TIER>_<AREA>"}. TIER is {@code "PREMIUM"} when
++     * the owner's {@linkplain #resolveMembershipLevel membership level} is at least
++     * {@value #PREMIUM_TIER_MIN_LEVEL}, otherwise {@code "STANDARD"}. AREA is {@code "METRO"} when the
++     * owner's {@linkplain #resolveLocality locality} is a known region, otherwise {@code "REGIONAL"}.
++     */
++    default String resolveOwnerSegment(Owner owner) {
++        String tier = resolveMembershipLevel(owner) >= PREMIUM_TIER_MIN_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = LocalityResolver.isKnownRegion(resolveLocality(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Resolves the owner's preferred contact channel: {@code "EMAIL"} when an email is
+      * present, otherwise {@code "PHONE"}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+index 36da63e1e..d2458f983 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+@@ -62,4 +62,15 @@ public final class LocalityResolver {
+     public static String resolve(String city) {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Whether {@code region} is a known canonical region (NSW, VIC or QLD) rather than the
++     * {@link #UNKNOWN} sentinel or {@code null}.
++     *
++     * @param region a canonical region string, possibly {@code null}
++     * @return {@code true} when the region is a known region, {@code false} otherwise
++     */
++    public static boolean isKnownRegion(String region) {
++        return region != null && !UNKNOWN.equals(region);
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 13ae4afa0..6889f066c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2238,6 +2238,15 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel
++                is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region
++                (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners had already been created for this owner's registration day at the time this owner was created, otherwise false.
