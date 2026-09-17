@@ -22,31 +22,35 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Rejects creating an owner that duplicates an existing one. All duplicate detection is folded into
- * the single derived {@link Owner#getIdentityKey() identityKey}: a new owner is a duplicate only
- * when its whole identity key equals that of an existing owner. Because the telephone is part of the
- * key, housemates that share a {@code householdId} but hold different telephones are not duplicates.
+ * Rejects creating an owner that duplicates an existing household. The household is keyed on (last
+ * name, postcode) through the {@link HouseholdKey}, so a new owner is a duplicate whenever an
+ * existing owner already belongs to the same household. The caller bypasses this check when the
+ * create deliberately declares a shared household.
  */
 @Component
 public class DuplicateOwnerValidator {
 
     private final ClinicService clinicService;
 
-    public DuplicateOwnerValidator(ClinicService clinicService) {
+    private final HouseholdKey householdKey;
+
+    public DuplicateOwnerValidator(ClinicService clinicService, HouseholdKey householdKey) {
         this.clinicService = clinicService;
+        this.householdKey = householdKey;
     }
 
     /**
      * @param owner the owner being created, with its telephone, email and household id already
      * resolved so its {@link Owner#getIdentityKey() identityKey} is final
-     * @throws DuplicateOwnerException if another owner already carries the same identity key
+     * @throws DuplicateOwnerException if another owner already belongs to the same household
      */
     public void validate(Owner owner) {
-        String identityKey = owner.getIdentityKey();
+        String key = this.householdKey.of(owner.getLastName(), owner.getPostcode());
         boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+            .anyMatch(existing -> key.equals(
+                this.householdKey.of(existing.getLastName(), existing.getPostcode())));
         if (duplicate) {
-            throw new DuplicateOwnerException(identityKey);
+            throw new DuplicateOwnerException(owner.getIdentityKey());
         }
     }
 }

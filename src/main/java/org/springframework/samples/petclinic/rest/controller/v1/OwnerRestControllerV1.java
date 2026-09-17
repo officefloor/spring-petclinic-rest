@@ -37,7 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.assignment.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.rest.assignment.HouseholdIdGenerator;
-import org.springframework.samples.petclinic.rest.assignment.HouseholdRegistrar;
+import org.springframework.samples.petclinic.rest.assignment.HouseholdSizeCalculator;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.signup.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
@@ -100,7 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdIdGenerator householdIdGenerator;
 
-    private final HouseholdRegistrar householdRegistrar;
+    private final HouseholdSizeCalculator householdSizeCalculator;
 
     private final OwnerAuditLogger ownerAuditLogger;
 
@@ -122,7 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdIdGenerator householdIdGenerator,
-                                 HouseholdRegistrar householdRegistrar,
+                                 HouseholdSizeCalculator householdSizeCalculator,
                                  OwnerAuditLogger ownerAuditLogger,
                                  BulkSignupWarningEvaluator bulkSignupWarningEvaluator) {
         this.clinicService = clinicService;
@@ -141,7 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdIdGenerator = householdIdGenerator;
-        this.householdRegistrar = householdRegistrar;
+        this.householdSizeCalculator = householdSizeCalculator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.bulkSignupWarningEvaluator = bulkSignupWarningEvaluator;
     }
@@ -195,22 +195,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        // The householdId is deterministic from (lastName, postcode), so every owner carries the
+        // identifier of its household automatically.
+        owner.setHouseholdId(
+            this.householdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         if (sharesHousehold) {
-            owner.setHouseholdId(
-                this.householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
+            // A declared household member is deliberately allowed and, being declared, is never a
+            // suspected duplicate.
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        } else {
+            this.duplicateOwnerValidator.validate(owner);
+            Integer possibleDuplicateOf = this.possibleDuplicateDetector.findPossibleDuplicate(owner);
+            owner.setPossibleDuplicate(possibleDuplicateOf != null);
+            owner.setPossibleDuplicateOf(possibleDuplicateOf);
         }
-        this.duplicateOwnerValidator.validate(owner);
-        Integer possibleDuplicateOf = this.possibleDuplicateDetector.findPossibleDuplicate(owner);
-        owner.setPossibleDuplicate(possibleDuplicateOf != null);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setCustomerCode(
             this.customerCodeGenerator.generate(owner.getPostcode(), owner.getTelephone(),
                 owner.getLastName()));
         owner.setNamesakeCount(
             (int) this.clinicService.countNamesakes(owner.getFirstName(), owner.getLastName()));
-        if (sharesHousehold) {
-            owner.setHouseholdSize(this.householdRegistrar.register(owner));
-        }
+        owner.setHouseholdSize(this.householdSizeCalculator.size(owner));
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.created(owner);
         OwnerDto ownerDto = toOwnerDto(owner);

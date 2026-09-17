@@ -22,22 +22,21 @@ import org.springframework.stereotype.Component;
 
 /**
  * Canonical identity of a household. Two owners belong to the same household when they share a last
- * name and address, compared case-insensitively and with collapsed whitespace. This class is the
- * single place that decides that equivalence so duplicate detection and household-id assignment stay
- * in agreement.
+ * name and postcode, the last name compared case-insensitively and with collapsed whitespace. This
+ * class is the single place that decides that equivalence so duplicate detection, household-size
+ * counting and household-id assignment stay in agreement.
  */
 @Component
 public class HouseholdKey {
 
     /**
      * @param lastName the owner's last name
-     * @param address  the owner's address
-     * @return a canonical key such that owners in the same household produce equal keys
+     * @param postcode the owner's postcode
+     * @return a canonical key {@code normalizedLastName + '|' + postcode} such that owners in the
+     * same household produce equal keys
      */
-    public String of(String lastName, String address) {
-        // Separate the two parts with a newline: normalization collapses all whitespace, so a
-        // newline cannot appear inside either part and the boundary is unambiguous.
-        return normalize(lastName) + "\n" + normalize(address);
+    public String of(String lastName, String postcode) {
+        return normalize(lastName) + "|" + (postcode == null ? "" : postcode);
     }
 
     /** Lower-case and collapse runs of whitespace to a single space so trivial formatting

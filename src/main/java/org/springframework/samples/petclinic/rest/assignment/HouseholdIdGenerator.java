@@ -16,16 +16,15 @@
 
 package org.springframework.samples.petclinic.rest.assignment;
 
-import java.util.Locale;
-
 import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.rest.validation.HouseholdKey;
 import org.springframework.stereotype.Component;
 
 /**
  * Derives an owner's {@code householdId}: a stable identifier shared by every owner in the same
- * household. Because it is a pure function of the {@link HouseholdKey}, owners in the same household
- * always yield the same value, formatted {@code 'HH-<12 upper-case hex>'}.
+ * household. Because it is a pure function of the {@link HouseholdKey} over (last name, postcode),
+ * owners with the same last name and postcode always yield the same value: the first 12 hex
+ * characters of the SHA-256 of that key.
  */
 @Component
 public class HouseholdIdGenerator {
@@ -38,11 +37,11 @@ public class HouseholdIdGenerator {
 
     /**
      * @param lastName the owner's last name
-     * @param address  the owner's address
-     * @return the stable household identifier for that last name and address
+     * @param postcode the owner's postcode
+     * @return the stable household identifier for that last name and postcode
      */
-    public String generate(String lastName, String address) {
-        String key = this.householdKey.of(lastName, address);
-        return "HH-" + Sha256.hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    public String generate(String lastName, String postcode) {
+        String key = this.householdKey.of(lastName, postcode);
+        return Sha256.hex(key).substring(0, 12);
     }
 }
