@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+import org.springframework.samples.petclinic.rest.validation.TimezoneResolver;
 import org.springframework.samples.petclinic.util.Luhn;
 
 import java.util.Collection;
@@ -27,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(resolveTimezone(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(computeCheckDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(resolveMembershipPoints(owner))")
@@ -74,6 +76,15 @@ public interface OwnerMapper {
     default String resolveLocality(Owner owner) {
         String customerCode = owner.getCustomerCode();
         return customerCode.substring(0, customerCode.indexOf('-'));
+    }
+
+    /**
+     * Derives the owner's IANA timezone from its {@linkplain #resolveLocality(Owner) locality}
+     * (canonical region) via the fixed region-to-timezone table, or {@code null} when the locality
+     * has no known timezone.
+     */
+    default String resolveTimezone(Owner owner) {
+        return TimezoneResolver.resolve(resolveLocality(owner));
     }
 
     /**
