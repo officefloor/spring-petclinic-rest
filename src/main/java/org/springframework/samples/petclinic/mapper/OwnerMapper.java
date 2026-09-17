@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.LocalityResolver;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -23,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "locality", expression = "java(resolveLocality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(resolveMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -47,6 +49,14 @@ public interface OwnerMapper {
     /** The upper-cased first letter of {@code name} followed by a dot. */
     private String initial(String name) {
         return Character.toUpperCase(name.charAt(0)) + ".";
+    }
+
+    /**
+     * Derives the owner's locality (canonical region) from its city via the fixed
+     * city-to-region table, yielding {@code "UNKNOWN"} for any city not in the table.
+     */
+    default String resolveLocality(Owner owner) {
+        return LocalityResolver.resolve(owner.getCity());
     }
 
     /**
