@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+new file mode 100644
+index 000000000..79ac8556a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Business-day calendar rules. A business day is any weekday; Saturday and Sunday are not.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    /**
++     * Return the given date if it is a business day, otherwise the next business day after it.
++     * A Saturday or Sunday is rolled forward to the following Monday; a weekday is returned
++     * unchanged.
++     */
++    public static LocalDate onOrAfter(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2a4e44dd9..ba8b6fa3a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -170,14 +170,18 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Default the registration date to the server's current date when none was
+-     * supplied, so a newly registered owner always has a registration date.
++     * Resolve the effective registration date before persisting: default it to the server's
++     * current date when none was supplied, then roll it forward off weekends so a newly
++     * registered owner always has a business-day registration date. Every value derived from it
++     * (such as the {@link #getMembershipNumber() membership number}) therefore uses the adjusted
++     * date.
+      */
+     @PrePersist
+-    private void defaultRegistrationDate() {
++    private void resolveRegistrationDate() {
+         if (this.registrationDate == null) {
+             this.registrationDate = LocalDate.now();
+         }
++        this.registrationDate = BusinessDay.onOrAfter(this.registrationDate);
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 79859f73e..fa2d162c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -149,7 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.ownerRequestValidator.validate(ownerFieldsDto);
+         this.householdDuplicateValidator.validate(ownerFieldsDto);
+         this.cityOwnerLimitValidator.validate(ownerFieldsDto);
+-        this.dailyOwnerLimitValidator.validate();
++        this.dailyOwnerLimitValidator.validate(ownerFieldsDto.getRegistrationDate());
+         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
+         ownerFieldsDto.setTelephone(telephone);
+         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java
+index d51649c64..81e603cd2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DailyOwnerLimitValidator.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.validation;
+ 
+ import java.time.LocalDate;
+ 
++import org.springframework.samples.petclinic.model.BusinessDay;
+ import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+@@ -38,13 +39,20 @@ public class DailyOwnerLimitValidator {
+     }
+ 
+     /**
++     * Enforce the daily create-limit for the business day this owner will be registered on: the
++     * supplied date (or the server's current date when none was supplied), rolled forward off
++     * weekends to match the date the owner will actually be stored under.
++     *
++     * @param suppliedRegistrationDate the client-supplied registration date, or {@code null} when
++     * none was supplied
+      * @throws DailyOwnerLimitExceededException if {@value #MAX_OWNERS_PER_DAY} or more owners have
+-     * already been registered today
++     * already been registered on that business day
+      */
+-    public void validate() {
+-        LocalDate today = LocalDate.now();
+-        if (this.clinicService.countOwnersRegisteredOn(today) >= MAX_OWNERS_PER_DAY) {
+-            throw new DailyOwnerLimitExceededException(today);
++    public void validate(LocalDate suppliedRegistrationDate) {
++        LocalDate registrationDate = BusinessDay.onOrAfter(
++            suppliedRegistrationDate != null ? suppliedRegistrationDate : LocalDate.now());
++        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
++            throw new DailyOwnerLimitExceededException(registrationDate);
+         }
+     }
+ }
