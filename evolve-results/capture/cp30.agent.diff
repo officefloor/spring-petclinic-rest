@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 257c4fb3b..fe78f972c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -54,11 +54,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's locality (canonical region) from its city via the fixed
+-     * city-to-region table, yielding {@code "UNKNOWN"} for any city not in the table.
++     * Derives the owner's locality (canonical region), preferring the postcode range over the
++     * city-to-region table and yielding {@code "UNKNOWN"} when neither identifies a region.
+      */
+     default String resolveLocality(Owner owner) {
+-        return LocalityResolver.resolve(owner.getCity());
++        return LocalityResolver.resolve(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+index 50b1a38ba..521e61bce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/LocalityResolver.java
+@@ -3,12 +3,15 @@ package org.springframework.samples.petclinic.rest.validation;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's locality (canonical region) from its city.
++ * Derives an owner's locality (canonical region), preferring the postcode over the city.
+  *
+- * <p>The city is looked up in a small, fixed city-to-region table
+- * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) and the matching
+- * canonical region string is returned. Any city not present in the table — including a
+- * {@code null} city — derives the sentinel locality {@code "UNKNOWN"}.
++ * <p>The postcode is looked up first via {@link PostcodeRule#regionForPostcode(String)}
++ * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}); the matching canonical
++ * region string is returned. When the postcode is absent or in no known range, the city is looked
++ * up in a small, fixed city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
++ * {@code Brisbane -> QLD}). Any city not present in the table — including a {@code null} city —
++ * derives the sentinel locality {@code "UNKNOWN"}. Preferring the postcode returns the same region
++ * for known cities but disambiguates cities that share a name.
+  */
+ public final class LocalityResolver {
+ 
+@@ -25,7 +28,20 @@ public final class LocalityResolver {
+     }
+ 
+     /**
+-     * Resolve the canonical region for a city.
++     * Resolve the canonical region, preferring the postcode over the city.
++     *
++     * @param city     the owner's city, possibly {@code null}
++     * @param postcode the owner's postcode, possibly {@code null}
++     * @return the region whose range contains the postcode; otherwise the region derived from the
++     *         city via {@link #resolve(String)} (which yields {@code "UNKNOWN"} for an unknown city)
++     */
++    public static String resolve(String city, String postcode) {
++        String region = PostcodeRule.regionForPostcode(postcode);
++        return region != null ? region : resolve(city);
++    }
++
++    /**
++     * Resolve the canonical region for a city alone.
+      *
+      * @param city the owner's city, possibly {@code null}
+      * @return the canonical region string when the city is in the table, otherwise {@code "UNKNOWN"}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeRule.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeRule.java
+index 7901ed2e0..a9992d694 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeRule.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeRule.java
+@@ -25,6 +25,28 @@ public final class PostcodeRule {
+     private PostcodeRule() {
+     }
+ 
++    /**
++     * Resolve the region whose fixed postcode range contains {@code postcode}.
++     *
++     * @param postcode the owner's postcode, possibly {@code null}
++     * @return the canonical region string whose inclusive range contains the four-digit
++     *         {@code postcode}, or {@code null} when the postcode is absent, malformed, or in no
++     *         known range
++     */
++    public static String regionForPostcode(String postcode) {
++        if (postcode == null || !FOUR_DIGITS.matcher(postcode).matches()) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Whether {@code postcode} is acceptable for {@code city}.
+      *
