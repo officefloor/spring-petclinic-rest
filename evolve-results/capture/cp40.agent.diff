@@ -1,0 +1,228 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 084312e8a..300f8c4b7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -16,6 +16,7 @@ import org.springframework.samples.petclinic.util.ContactPreference;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Locality;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.MembershipPoints;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -31,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+@@ -83,12 +85,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's membership level (see {@link MembershipLevel}): a number from 1 to 4 that starts
+-     * at 1, gains 1 for a present email address, 1 for a unique name (namesakeCount is zero) and 1
+-     * for tenure over a year, capped at 4.
++     * The owner's membership points (see {@link MembershipPoints}): a score that starts at 0 and
++     * gains 2 for a present email address, 1 for a unique name (namesakeCount is zero), 2 for a
++     * household of 3 or more and 3 for tenure over a year.
++     */
++    default Integer membershipPoints(Owner owner) {
++        return MembershipPoints.of(owner);
++    }
++
++    /**
++     * The owner's membership level (see {@link MembershipLevel}): the {@link #membershipPoints(Owner)
++     * membership points} banded into a number from 1 to 4 (1 for 0-1 points, 2 for 2-3, 3 for 4-5,
++     * 4 for 6 or more).
+      */
+     default Integer membershipLevel(Owner owner) {
+-        return MembershipLevel.of(owner);
++        return MembershipLevel.forPoints(MembershipPoints.of(owner));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index c7281e8af..5128d38c8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,6 +5,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
++import org.springframework.samples.petclinic.util.MembershipPoints;
+ 
+ /**
+  * Emits an audit trail entry once an owner has been persisted. Runs after {@link SaveOwner}, so the
+@@ -17,8 +18,9 @@ public class AuditOwnerCreated {
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++        Integer membershipPoints = MembershipPoints.of(owner);
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                MembershipLevel.of(owner));
++                membershipPoints, MembershipLevel.forPoints(membershipPoints));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index d1267b75b..fb0662c91 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -1,44 +1,29 @@
+ package org.springframework.samples.petclinic.util;
+ 
+-import org.springframework.samples.petclinic.model.Owner;
+-
+ /**
+- * Derives an owner's membership level, a number from 1 to 4. It starts at 1, gains 1 when an email
+- * address is present, gains 1 when the owner has a unique name (namesakeCount is zero), and gains 1
+- * when the owner's {@link Tenure tenure} exceeds {@link #TENURE_DAYS} days, capped at 4. Because a
+- * newly created owner has zero tenure, a new owner never exceeds level 3 — reaching level 4 always
+- * requires tenure of more than a year.
++ * Bands {@link MembershipPoints membership points} into a membership level, a number from 1 to 4:
++ * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more points. Because a newly created
++ * owner has zero tenure, a new owner never earns the tenure points and so never exceeds level 3.
+  */
+ public final class MembershipLevel {
+ 
+-    /** The lowest membership level every owner starts from. */
+-    public static final int BASE = 1;
+-
+-    /** The highest level this rule awards. */
+-    public static final int CAP = 4;
+-
+-    /** Tenure in days beyond which the top level is awarded. */
+-    public static final int TENURE_DAYS = 365;
+-
+     private MembershipLevel() {
+     }
+ 
+-    /** The membership level for {@code owner}, or {@code null} when the owner is {@code null}. */
+-    public static Integer of(Owner owner) {
+-        if (owner == null) {
++    /** The membership level for {@code points}, or {@code null} when {@code points} is {@code null}. */
++    public static Integer forPoints(Integer points) {
++        if (points == null) {
+             return null;
+         }
+-        int level = BASE;
+-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+-            level++;
++        if (points <= 1) {
++            return 1;
+         }
+-        Integer namesakeCount = owner.getNamesakeCount();
+-        if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
++        if (points <= 3) {
++            return 2;
+         }
+-        if (Tenure.days(owner) > TENURE_DAYS) {
+-            level++;
++        if (points <= 5) {
++            return 3;
+         }
+-        return Math.min(level, CAP);
++        return 4;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipPoints.java
+new file mode 100644
+index 000000000..b7682fbc7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipPoints.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Scores an owner's membership points. The score starts at 0 and gains {@link #EMAIL_POINTS} when an
++ * email address is present, {@link #UNIQUE_NAME_POINTS} when the owner has a unique name
++ * (namesakeCount is zero), {@link #HOUSEHOLD_POINTS} for a household of {@link #HOUSEHOLD_MIN} or more
++ * members, and {@link #TENURE_POINTS} when the owner's {@link Tenure tenure} exceeds
++ * {@link #TENURE_DAYS} days. Because a newly created owner has zero tenure, a new owner never earns
++ * the tenure points. The points band into a {@link MembershipLevel membership level}.
++ */
++public final class MembershipPoints {
++
++    /** Points awarded when an email address is present. */
++    public static final int EMAIL_POINTS = 2;
++
++    /** Points awarded when the owner has a unique name (namesakeCount is zero). */
++    public static final int UNIQUE_NAME_POINTS = 1;
++
++    /** Points awarded for a household of {@link #HOUSEHOLD_MIN} or more members. */
++    public static final int HOUSEHOLD_POINTS = 2;
++
++    /** Points awarded when tenure exceeds {@link #TENURE_DAYS} days. */
++    public static final int TENURE_POINTS = 3;
++
++    /** Household size at or above which the household points are awarded. */
++    public static final int HOUSEHOLD_MIN = 3;
++
++    /** Tenure in days beyond which the tenure points are awarded. */
++    public static final int TENURE_DAYS = 365;
++
++    private MembershipPoints() {
++    }
++
++    /** The membership points for {@code owner}, or {@code null} when the owner is {@code null}. */
++    public static Integer of(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        int points = 0;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            points += EMAIL_POINTS;
++        }
++        Integer namesakeCount = owner.getNamesakeCount();
++        if (namesakeCount != null && namesakeCount == 0) {
++            points += UNIQUE_NAME_POINTS;
++        }
++        Integer householdSize = owner.getHouseholdSize();
++        if (householdSize != null && householdSize >= HOUSEHOLD_MIN) {
++            points += HOUSEHOLD_POINTS;
++        }
++        if (Tenure.days(owner) > TENURE_DAYS) {
++            points += TENURE_POINTS;
++        }
++        return points;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4c61c73ea..c7616f455 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2185,13 +2185,23 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, a score that starts at 0 and gains 2 when an email
++                address is present, 1 when the owner has a unique name (namesakeCount is zero), 2
++                for a household of 3 or more members, and 3 when the owner's tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 4. It starts at 1, gains 1 when
+-                an email address is present, gains 1 when the owner has a unique name (namesakeCount
+-                is zero), and gains 1 when the owner's tenure exceeds 365 days, capped at 4. Because
+-                a newly created owner has zero tenure, a new owner never exceeds level 3.
++                The owner's membership level, a number from 1 to 4 derived from 'membershipPoints':
++                level 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more. Because a newly
++                created owner has zero tenure, a new owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
