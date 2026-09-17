@@ -1,0 +1,13 @@
+package org.springframework.samples.petclinic.rest.escalation;
+
+import net.officefloor.plugin.section.clazz.Parameter;
+import net.officefloor.web.ObjectResponse;
+import org.springframework.http.ResponseEntity;
+
+public class InvalidPostcodeExceptionHandler {
+
+    public void handle(@Parameter InvalidPostcodeException ex,
+            ObjectResponse<ResponseEntity<String>> response) {
+        response.send(ResponseEntity.badRequest().body(ex.getMessage()));
+    }
+}
