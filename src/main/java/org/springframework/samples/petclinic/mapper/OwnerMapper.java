@@ -38,7 +38,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     * last two digits of the registration date's year, e.g. 'SMI-0007-M26'.
+     * last two digits of the registration date's year, e.g. 'SYD-SMI-0007-M26'.
      */
     default String membershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
