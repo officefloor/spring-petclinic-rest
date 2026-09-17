@@ -1,0 +1,273 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a0bc2283a..ac9e9b708 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -245,9 +245,9 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
+-     * postcode while holding a different telephone. Resolved at creation and stored so it is
+-     * reported consistently on every later read.
++     * Whether this owner, though not a hard duplicate, matches an existing owner's last name by
++     * Soundex and shares its postcode while holding a different identity key. Resolved at creation
++     * and stored so it is reported consistently on every later read.
+      */
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+@@ -283,14 +283,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's identity key: the single derived value used to detect duplicate owners, formed
+-     * as {@code normalizedTelephone + '|' + email + '|' + householdId} where an absent telephone,
+-     * email or household contributes an empty string. Two owners are duplicates only when their
+-     * whole identity keys are equal, so housemates that share a {@code householdId} but hold
+-     * different telephones have distinct identity keys and are both allowed.
++     * The owner's identity key: the single derived value used to detect duplicate owners, formed as
++     * the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
++     * where an absent telephone or email contributes an empty string. Because the telephone is part
++     * of the key, housemates that share a last name and postcode but hold different telephones have
++     * distinct identity keys and are both allowed (and merely flagged as possible duplicates).
+      */
+     public String getIdentityKey() {
+-        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
++        String key = orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + Soundex.of(this.getLastName());
++        return Sha256.hex(key);
+     }
+ 
+     private static String orEmpty(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Soundex.java b/src/main/java/org/springframework/samples/petclinic/model/Soundex.java
+new file mode 100644
+index 000000000..239b761ef
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Soundex.java
+@@ -0,0 +1,85 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.util.Locale;
++
++/**
++ * Soundex helper shared across the domain: the single place that reduces a name to its standard
++ * American Soundex code (an initial letter followed by three digits, e.g. {@code "Robert"} and
++ * {@code "Rupert"} both yield {@code "R163"}), so every phonetic name comparison codes the same way.
++ */
++public final class Soundex {
++
++    private Soundex() {
++    }
++
++    /**
++     * Compute the four-character Soundex code of {@code name}: its first letter followed by three
++     * digits encoding the remaining consonants. Non-letters are ignored, case is irrelevant, and a
++     * value with no letters (null, blank or all punctuation) yields the empty string.
++     *
++     * @param name the name to encode
++     * @return the Soundex code, or {@code ""} when {@code name} contains no letters
++     */
++    public static String of(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char previousCode = codeOf(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char letter = letters.charAt(i);
++            char digit = codeOf(letter);
++            if (digit != '0' && digit != previousCode) {
++                code.append(digit);
++            }
++            // 'H' and 'W' do not separate two like-coded consonants, so they leave the running code
++            // untouched; every other letter (including vowels, which code to '0') resets it.
++            if (letter != 'H' && letter != 'W') {
++                previousCode = digit;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /** Map a letter to its Soundex digit, using {@code '0'} for the uncoded letters (vowels, y, h, w). */
++    private static char codeOf(char letter) {
++        switch (letter) {
++            case 'B': case 'F': case 'P': case 'V':
++                return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
++                return '2';
++            case 'D': case 'T':
++                return '3';
++            case 'L':
++                return '4';
++            case 'M': case 'N':
++                return '5';
++            case 'R':
++                return '6';
++            default:
++                return '0';
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateOwnerException.java
+index e177a6946..a5da8f8f9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateOwnerException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/error/DuplicateOwnerException.java
+@@ -17,9 +17,9 @@
+ package org.springframework.samples.petclinic.rest.error;
+ 
+ /**
+- * Thrown when an owner is created whose whole identity key (normalized telephone, email and
+- * household id) matches that of an existing owner. Carries the conflicting key so the REST layer
+- * can report what was rejected.
++ * Thrown when an owner is created whose whole identity key (a hash of normalized telephone, email
++ * and the Soundex of the last name) matches that of an existing owner. Carries the conflicting key
++ * so the REST layer can report what was rejected.
+  */
+ public class DuplicateOwnerException extends RuntimeException {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
+index d104f7d74..a48405df9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateOwnerValidator.java
+@@ -23,11 +23,11 @@ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Rejects creating an owner that hard-duplicates an existing one. A new owner is a duplicate only
+- * when its whole {@link Owner#getIdentityKey() identity key} (normalized telephone, email and
+- * household id) equals that of an existing owner, so housemates that share a household but hold
+- * different telephones are allowed (and merely flagged as {@link PossibleDuplicateDetector possible
+- * duplicates}). The caller bypasses this check when the create deliberately declares a shared
+- * household.
++ * when its whole {@link Owner#getIdentityKey() identity key} (a hash of normalized telephone, email
++ * and the Soundex of the last name) equals that of an existing owner, so housemates that share a
++ * last name and postcode but hold different telephones are allowed (and merely flagged as
++ * {@link PossibleDuplicateDetector possible duplicates}). The caller bypasses this check when the
++ * create deliberately declares a shared household.
+  */
+ @Component
+ public class DuplicateOwnerValidator {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
+index 64d9ee691..7851a36e6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PossibleDuplicateDetector.java
+@@ -20,16 +20,17 @@ import java.util.Comparator;
+ import java.util.Objects;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.model.Soundex;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ import org.springframework.util.StringUtils;
+ 
+ /**
+  * Detects a soft match between a newly created owner and an existing one: an owner that is not a
+- * hard {@link DuplicateOwnerValidator duplicate} but shares an existing owner's last name and
+- * postcode while holding a different telephone. Unlike the duplicate validator this never rejects
+- * the create; it merely reports the existing owner so the caller can flag the new one as a possible
+- * duplicate.
++ * hard {@link DuplicateOwnerValidator duplicate} but whose last name (compared phonetically by
++ * Soundex) and postcode match an existing owner while their {@link Owner#getIdentityKey() identity
++ * keys} differ. Unlike the duplicate validator this never rejects the create; it merely reports the
++ * existing owner so the caller can flag the new one as a possible duplicate.
+  */
+ @Component
+ public class PossibleDuplicateDetector {
+@@ -41,19 +42,22 @@ public class PossibleDuplicateDetector {
+     }
+ 
+     /**
+-     * @param owner the owner being created, with its telephone already normalized
+-     * @return the id of the lowest-id existing owner that shares this owner's last name and
+-     * postcode but holds a different telephone, or {@code null} when there is no such match
++     * @param owner the owner being created, with its telephone and email already normalized so its
++     * {@link Owner#getIdentityKey() identityKey} is final
++     * @return the id of the lowest-id existing owner whose last name (by Soundex) and postcode match
++     * this owner's but whose identity key differs, or {@code null} when there is no such match
+      */
+     public Integer findPossibleDuplicate(Owner owner) {
+         if (!StringUtils.hasText(owner.getPostcode())) {
+             return null;
+         }
+-        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
++        String soundex = Soundex.of(owner.getLastName());
++        String identityKey = owner.getIdentityKey();
++        return this.clinicService.findAllOwners().stream()
+             .filter(existing -> !existing.isDeleted())
+-            .filter(existing -> existing.getLastName().equalsIgnoreCase(owner.getLastName()))
++            .filter(existing -> soundex.equals(Soundex.of(existing.getLastName())))
+             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+-            .filter(existing -> !Objects.equals(owner.getTelephone(), existing.getTelephone()))
++            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
+             .map(Owner::getId)
+             .filter(Objects::nonNull)
+             .min(Comparator.naturalOrder())
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1aac89a7b..eeb401247 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2173,13 +2173,14 @@ components:
+             identityKey:
+               title: Identity key
+               description: >-
+-                The single derived value used to detect duplicate owners, formed
+-                as '<normalizedTelephone>|<email>|<householdId>' where a missing
+-                email or household id contributes an empty string. A create is
+-                rejected with 409 Conflict only when a new owner's whole identity
+-                key equals that of an existing owner.
++                The single derived value used to detect duplicate owners: the
++                SHA-256 hex digest of
++                '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>' where a
++                missing telephone or email contributes an empty string. A create
++                is rejected with 409 Conflict only when a new owner's whole
++                identity key equals that of an existing owner.
+               type: string
+-              example: '+61412345678||3f2a1b7c9d0e'
++              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+               readOnly: true
+             namesakeCount:
+               title: Namesake count
+@@ -2357,9 +2358,10 @@ components:
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
+-                True when this owner, though not a hard duplicate, shares an
+-                existing owner's last name and postcode while holding a different
+-                telephone; false otherwise. Such an owner is still created.
++                True when this owner, though not a hard duplicate, matches an
++                existing owner's last name by Soundex and shares its postcode
++                while holding a different identity key; false otherwise. Such an
++                owner is still created.
+               type: boolean
+               example: false
+               readOnly: true
+@@ -2367,8 +2369,8 @@ components:
+               title: Possible duplicate of
+               description: >-
+                 The id of the existing owner this owner is a possible duplicate
+-                of (same last name and postcode, different telephone). Absent
+-                when 'possibleDuplicate' is false.
++                of (last name matching by Soundex, same postcode, different
++                identity key). Absent when 'possibleDuplicate' is false.
+               type: integer
+               format: int32
+               minimum: 0
