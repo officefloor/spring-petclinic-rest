@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..e28db131e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request carries a normalized telephone that already belongs
++ * to another owner. Handled by {@link DuplicateTelephoneExceptionHandler} as a 409.
++ */
++public class DuplicateTelephoneException extends Exception {
++
++    public DuplicateTelephoneException(String telephone) {
++        super("Telephone already in use: " + telephone);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+new file mode 100644
+index 000000000..137a5ad4b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateTelephoneExceptionHandler {
++
++    public void handle(@Parameter DuplicateTelephoneException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
++                "Another owner already uses this telephone");
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java
+new file mode 100644
+index 000000000..aeecc0735
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
++
++/**
++ * Create-owner step: rejects the request with a 409 when its normalized telephone is
++ * already used by any existing owner. Runs after {@link NormalizeOwnerTelephone} (so the
++ * request holds the normalized value) and before {@link BuildOwner}, comparing against
++ * every stored telephone in its normalized form.
++ */
++public class EnsureUniqueTelephone {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateTelephoneException {
++        String telephone = NormalizeOwnerTelephone.digitsOnly(request.getTelephone());
++        for (Owner owner : ownerRepository.findAll()) {
++            if (telephone.equals(NormalizeOwnerTelephone.digitsOnly(owner.getTelephone()))) {
++                throw new DuplicateTelephoneException(telephone);
++            }
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 304790916..9a66f11b0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -16,10 +16,15 @@ public class NormalizeOwnerTelephone {
+     private static final int REQUIRED_DIGITS = 10;
+ 
+     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
+-        String digits = request.getTelephone().replaceAll("\\D", "");
++        String digits = digitsOnly(request.getTelephone());
+         if (digits.length() != REQUIRED_DIGITS) {
+             throw new InvalidTelephoneException();
+         }
+         request.setTelephone(digits);
+     }
++
++    /** Strip every non-digit character, the shared definition of a normalized telephone. */
++    static String digitsOnly(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
+ }
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+new file mode 100644
+index 000000000..08d58bf2d
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 60288e9d6..6e411b2de 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ validate:
+ normalize:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
+   govern: [ transaction ]
++  next: ensureUnique
++
++ensureUnique:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueTelephone
++  govern: [ transaction ]
+   next: build
+ 
+ build:
