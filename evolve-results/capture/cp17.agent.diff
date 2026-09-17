@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 45cbb3b1e..d75357d52 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.rest.function.owner.Locality;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
+@@ -23,6 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Format an owner's name for display as 'LastName, FirstName'. */
+@@ -60,6 +62,12 @@ public interface OwnerMapper {
+         return silver ? "SILVER" : "BRONZE";
+     }
+ 
++    /** The owner's region, derived from its city via the fixed city-to-region table
++     *  (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
++    default String locality(Owner owner) {
++        return Locality.region(owner.getCity());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+new file mode 100644
+index 000000000..4ca26f368
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * The single definition of an owner's locality: the canonical region derived from its city
++ * via a fixed city-to-region table. Cities not in the table resolve to {@code "UNKNOWN"}.
++ *
++ * <p>Lookup only; a pure function of the city, so the region is computed on read rather than
++ * stored.
++ */
++public final class Locality {
++
++    /** The unknown-region marker returned for any city not in {@link #CITY_REGION}. */
++    public static final String UNKNOWN = "UNKNOWN";
++
++    /** City -> canonical region. */
++    private static final Map<String, String> CITY_REGION =
++            Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    private Locality() {
++    }
++
++    /** The canonical region for {@code city}, or {@code "UNKNOWN"} when it is not in the table. */
++    public static String region(String city) {
++        return CITY_REGION.getOrDefault(city, UNKNOWN);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 05e05e8d3..042ebbaac 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2135,6 +2135,15 @@ components:
+               type: string
+               example: 'SILVER'
+               readOnly: true
++            locality:
++              title: Locality
++              description: >-
++                The owner's region, derived from its city via the fixed city-to-region
++                table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the
++                city is not in the table.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
