@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
@@ -29,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -85,6 +87,12 @@ public interface OwnerMapper {
     default String contactPreference(Owner owner) {
         String email = owner.getEmail();
         return email != null && !email.isBlank() ? "EMAIL" : "PHONE";
+    }
+
+    /** The owner's age band at its registration date, derived from its birth date: 'MINOR'
+     *  (under 18), 'ADULT' (18-64) or 'SENIOR' (65+); absent until a birth date is on file. */
+    default String ageBand(Owner owner) {
+        return AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
     }
 
     Owner toOwner(OwnerDto ownerDto);
