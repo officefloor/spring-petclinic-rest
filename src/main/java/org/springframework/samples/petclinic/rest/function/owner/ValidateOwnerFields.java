@@ -20,7 +20,9 @@ public class ValidateOwnerFields {
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
-        require("address", request.getAddress(), missing);
+        // Address is required once normalized, so a value that is blank after
+        // normalization (e.g. only whitespace) is rejected here rather than stored empty.
+        require("address", AddressNormalizer.normalize(request.getAddress()), missing);
         require("city", request.getCity(), missing);
         require("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
