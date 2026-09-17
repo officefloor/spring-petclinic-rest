@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.error.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.error.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.error.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.error.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.error.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.error.InvalidEmailException;
@@ -257,6 +258,28 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateEmailException} thrown when an owner is created with an email address
+     * whose lower-cased form is already used by another owner. Returns a 409 Conflict naming the
+     * offending field.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        logger.debug("Duplicate email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getEmail());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("email"));
         return ResponseEntity.status(status).body(detail);
     }
 

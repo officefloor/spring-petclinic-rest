@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitValidator;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.EmailUniquenessValidator;
 import org.springframework.samples.petclinic.rest.validation.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerRequestValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -85,6 +86,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final EmailUniquenessValidator emailUniquenessValidator;
+
     private final AddressNormalizer addressNormalizer;
 
     private final CustomerCodeGenerator customerCodeGenerator;
@@ -105,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  DailyOwnerLimitValidator dailyOwnerLimitValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 EmailUniquenessValidator emailUniquenessValidator,
                                  AddressNormalizer addressNormalizer,
                                  CustomerCodeGenerator customerCodeGenerator,
                                  HouseholdRegistrar householdRegistrar,
@@ -120,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.dailyOwnerLimitValidator = dailyOwnerLimitValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.emailUniquenessValidator = emailUniquenessValidator;
         this.addressNormalizer = addressNormalizer;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdRegistrar = householdRegistrar;
@@ -173,6 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = this.telephoneNormalizer.normalize(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         ownerFieldsDto.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
+        this.emailUniquenessValidator.validate(ownerFieldsDto.getEmail());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
         }
