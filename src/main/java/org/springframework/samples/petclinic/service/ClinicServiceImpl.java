@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.BusinessDay;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -274,14 +275,21 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * The maximum number of owners that may be created in a single day; once this many owners
-     * have already been registered today no further owners may be created until the next day.
+     * have already been registered on a given business day no further owners may be created for
+     * that day.
      */
     static final long DAILY_OWNER_LIMIT = 100;
 
     @Override
+    public LocalDate resolveRegistrationDate(LocalDate registrationDate) {
+        LocalDate effectiveDate = registrationDate == null ? LocalDate.now() : registrationDate;
+        return BusinessDay.rollForward(effectiveDate);
+    }
+
+    @Override
     @Transactional(readOnly = true)
-    public boolean isDailyOwnerLimitReached() throws DataAccessException {
-        return ownerRepository.countByRegistrationDate(LocalDate.now()) >= DAILY_OWNER_LIMIT;
+    public boolean isDailyOwnerLimitReached(LocalDate registrationDate) throws DataAccessException {
+        return ownerRepository.countByRegistrationDate(registrationDate) >= DAILY_OWNER_LIMIT;
     }
 
     @Override

@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.BusinessDay;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -135,14 +136,14 @@ public class Owner extends Person {
     }
 
     /**
-     * On first persist, default the registration date to the server's current date
-     * when the client did not supply one, leaving any supplied date untouched.
+     * On first persist, default the registration date to the server's current date when the
+     * client did not supply one, then roll the effective date forward so it always falls on a
+     * business day (a weekend moves to the following Monday).
      */
     @PrePersist
     private void defaultRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+        LocalDate effectiveDate = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
+        this.registrationDate = BusinessDay.rollForward(effectiveDate);
     }
 
     protected Set<Pet> getPetsInternal() {
