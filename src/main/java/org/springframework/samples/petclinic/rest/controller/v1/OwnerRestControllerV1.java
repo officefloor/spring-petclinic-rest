@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.BulkSignupWarningAssigner;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimiter;
@@ -88,6 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DailyRegistrationLimiter dailyRegistrationLimiter;
 
+    private final BulkSignupWarningAssigner bulkSignupWarningAssigner;
+
     private final OwnerCreationAuditLogger ownerCreationAuditLogger;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -102,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  NamesakeCounter namesakeCounter,
                                  CityCapacityChecker cityCapacityChecker,
                                  DailyRegistrationLimiter dailyRegistrationLimiter,
+                                 BulkSignupWarningAssigner bulkSignupWarningAssigner,
                                  OwnerCreationAuditLogger ownerCreationAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -115,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.namesakeCounter = namesakeCounter;
         this.cityCapacityChecker = cityCapacityChecker;
         this.dailyRegistrationLimiter = dailyRegistrationLimiter;
+        this.bulkSignupWarningAssigner = bulkSignupWarningAssigner;
         this.ownerCreationAuditLogger = ownerCreationAuditLogger;
     }
 
@@ -173,6 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.customerCodeAssigner.assign(owner);
         this.namesakeCounter.assign(owner);
+        this.bulkSignupWarningAssigner.assign(owner);
         this.clinicService.saveOwner(owner);
         this.ownerCreationAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
