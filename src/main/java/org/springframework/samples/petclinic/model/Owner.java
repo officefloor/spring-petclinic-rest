@@ -56,6 +56,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -134,6 +137,22 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's {@link AgeBand age band} on the {@link #registrationDate}, derived
+     * from the {@link #birthDate}, or {@code null} when no birth date is on file.
+     */
+    public AgeBand getAgeBand() {
+        return AgeBand.on(this.birthDate, this.registrationDate);
     }
 
     public LocalDate getRegistrationDate() {
