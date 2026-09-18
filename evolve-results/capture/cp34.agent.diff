@@ -1,0 +1,169 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+new file mode 100644
+index 000000000..234cf7ff8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * Classifies an owner's age into a band, computed as the completed years between a birth date
++ * and a reference date (the owner's registration date): {@code "MINOR"} under 18, {@code "ADULT"}
++ * for 18-64, {@code "SENIOR"} for 65 and over. Used to derive an owner's age band from its stored
++ * birth date.
++ */
++public final class AgeBand {
++
++    private AgeBand() {
++    }
++
++    /**
++     * The age band of someone born on {@code birthDate} as of {@code asOf}, or {@code null} when
++     * either date is absent (no birth date recorded, so no band can be derived).
++     */
++    public static String classify(LocalDate birthDate, LocalDate asOf) {
++        if (birthDate == null || asOf == null) {
++            return null;
++        }
++        int years = Period.between(birthDate, asOf).getYears();
++        if (years < 18) {
++            return "MINOR";
++        }
++        if (years < 65) {
++            return "ADULT";
++        }
++        return "SENIOR";
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9021ed54f..584dee65c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -126,6 +129,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+@@ -203,6 +214,16 @@ public class Owner extends Person {
+         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * The owner's age band: {@code "MINOR"}, {@code "ADULT"} or {@code "SENIOR"} derived from the
++     * birth date against the registration date (see {@link AgeBand}), or {@code null} when no birth
++     * date was supplied.
++     */
++    @Transient
++    public String getAgeBand() {
++        return AgeBand.classify(this.birthDate, this.registrationDate);
++    }
++
+     /**
+      * The owner's identity key: the single derived value all duplicate detection is expressed
+      * through, formed as {@code <normalizedTelephone>|<email or empty>|<householdId or empty>}.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9384aaece..4830a0195 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 53f838b2c..1ecde43af 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ee212dd71..424be26d7 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e45a25fb3..b6e3ada08 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+                                       household_id TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 743711720..5e00efe45 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2056,6 +2056,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: >-
++            The pet owner's date of birth. Optional; when supplied it is used to derive the
++            owner's age band (see 'ageBand') as of the registration date.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2181,6 +2189,15 @@ components:
+               type: string
+               example: 'PHONE'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band derived from the birth date against the registration date:
++                'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+). Absent when no birth date
++                was supplied.
++              type: string
++              example: 'ADULT'
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
