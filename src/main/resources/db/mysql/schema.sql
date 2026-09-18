@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(40),
   namesake_count INT,
   household_size INT,
+  membership_points INT,
   membership_level INT,
   possible_duplicate_of INT,
   INDEX(last_name)
