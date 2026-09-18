@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.util;
 /**
  * Luhn check-digit computation over the digits contained in a string. Non-digit
  * characters are ignored, so it works directly on formatted codes such as a
- * customer code ('PAR-FRA-0007').
+ * customer code ('NSW-1A2B3C4D').
  */
 public final class Luhn {
 

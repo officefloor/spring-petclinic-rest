@@ -1,9 +1,8 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
+
+import org.springframework.samples.petclinic.util.Sha256;
 
 /**
  * Identity of an owner's household. Two owners live in the same household when they share
@@ -38,25 +37,11 @@ final class Household {
      * canonical {@link #key(String, String) key}, so any member derives the same value.
      */
     static String id(String lastName, String address) {
-        return sha256Hex(key(lastName, address));
+        return Sha256.hex(key(lastName, address));
     }
 
     /** Case-insensitive form with leading/trailing and repeated internal whitespace collapsed. */
     private static String canonical(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

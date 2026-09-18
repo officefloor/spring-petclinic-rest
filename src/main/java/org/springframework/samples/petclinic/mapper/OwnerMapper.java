@@ -9,9 +9,9 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.util.CityRegion;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
-import org.springframework.samples.petclinic.util.PostcodeRange;
+import org.springframework.samples.petclinic.util.OwnerRegion;
 
 import java.util.Collection;
 import java.util.List;
@@ -44,7 +44,7 @@ public interface OwnerMapper {
     }
 
     /** The membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
-     *  the registrationDate year (e.g. 'LON-SMI-0007-M26'). Null when either source field is absent. */
+     *  the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Null when either source field is absent. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
@@ -58,12 +58,13 @@ public interface OwnerMapper {
         return owner.getCustomerCode() == null ? null : Luhn.checkDigit(owner.getCustomerCode());
     }
 
-    /** The owner's locality: the canonical region derived from its postcode range first,
-     *  falling back to the fixed city-to-region table when the postcode is absent or in no
-     *  known range, or 'UNKNOWN' when neither resolves a region. */
+    /** The owner's locality: the REGION segment of its customerCode, which is the canonical region
+     *  the code was built from. Falls back to deriving the region straight from the postcode and
+     *  city when the customerCode is absent (so an owner without one still resolves a locality). */
     default String locality(Owner owner) {
-        String byPostcode = PostcodeRange.regionForPostcode(owner.getPostcode());
-        return byPostcode != null ? byPostcode : CityRegion.locality(owner.getCity());
+        return owner.getCustomerCode() != null
+                ? CustomerCode.region(owner.getCustomerCode())
+                : OwnerRegion.of(owner.getPostcode(), owner.getCity());
     }
 
     /** The owner's preferred contact method: 'EMAIL' when an email address is present,
