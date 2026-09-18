@@ -53,6 +53,7 @@ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.IdempotencyKeyStore;
 import org.springframework.samples.petclinic.service.OwnerAuditor;
+import org.springframework.samples.petclinic.service.WelcomeNotifier;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -108,6 +109,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditor ownerAuditor;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     private final IdempotencyKeyStore idempotencyKeyStore;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -115,12 +118,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerAuditor ownerAuditor,
+                                 WelcomeNotifier welcomeNotifier,
                                  IdempotencyKeyStore idempotencyKeyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerAuditor = ownerAuditor;
+        this.welcomeNotifier = welcomeNotifier;
         this.idempotencyKeyStore = idempotencyKeyStore;
     }
 
@@ -199,6 +204,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.ownerCreated(owner);
+        this.welcomeNotifier.welcome(owner);
         if (idempotencyKey != null) {
             this.idempotencyKeyStore.remember(idempotencyKey, owner.getId());
         }
