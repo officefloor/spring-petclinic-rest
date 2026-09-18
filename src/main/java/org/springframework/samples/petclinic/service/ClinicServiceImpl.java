@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -265,6 +266,20 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(owner -> TextNormalizer.normalizeForComparison(owner.getLastName()).equals(targetLastName))
             .filter(owner -> TextNormalizer.normalizeForComparison(owner.getAddress()).equals(targetAddress))
             .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public String joinHousehold(Owner owner, Collection<Owner> existingMembers) throws DataAccessException {
+        String householdId = HouseholdIdGenerator.generate(owner.getLastName(), owner.getAddress());
+        owner.setHouseholdId(householdId);
+        for (Owner member : existingMembers) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        return householdId;
     }
 
     @Override

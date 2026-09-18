@@ -72,6 +72,17 @@ public interface ClinicService {
 	 */
 	Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException;
 
+	/**
+	 * Assign the given owner and every existing member of its household the same stable
+	 * {@code householdId}, persisting the change for any member that does not yet carry it. Used when
+	 * an owner is knowingly created into a shared household.
+	 *
+	 * @param owner the new owner joining the household
+	 * @param existingMembers the owners already in the household (may be empty)
+	 * @return the shared household identifier assigned to the owner
+	 */
+	String joinHousehold(Owner owner, Collection<Owner> existingMembers) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
