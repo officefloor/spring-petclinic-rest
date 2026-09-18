@@ -28,6 +28,9 @@ public class EnsureUniqueOwnerIdentity {
 
         String householdId = Household.id(request.getLastName(), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer holds its household identity
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateOwnerIdentityException(householdId);
             }

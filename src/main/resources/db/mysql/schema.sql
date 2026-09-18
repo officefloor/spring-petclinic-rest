@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_level INT,
   possible_duplicate BIT,
   possible_duplicate_of INT,
+  deleted BIT NOT NULL DEFAULT 0,
   INDEX(last_name)
 ) engine=InnoDB;
 

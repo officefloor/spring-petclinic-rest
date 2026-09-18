@@ -36,6 +36,7 @@ public class AssignOwnerPossibleDuplicate {
             return Optional.empty(); // a shared postcode is required to soft-match
         }
         return ownerRepository.findAll().stream()
+                .filter(existing -> !existing.isDeleted()) // a soft-deleted owner is not a duplicate match
                 .filter(existing -> sharesLastNameAndPostcode(owner, existing))
                 .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
                 .min(Comparator.comparing(Owner::getId));
