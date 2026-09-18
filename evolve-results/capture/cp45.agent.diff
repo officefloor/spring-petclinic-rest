@@ -1,0 +1,171 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 403e932cc..71576808a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
+ import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+ import org.springframework.samples.petclinic.rest.function.owner.Locality;
+ import org.springframework.samples.petclinic.rest.function.owner.Luhn;
++import org.springframework.samples.petclinic.rest.function.owner.Salutation;
+ import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
+ import org.springframework.samples.petclinic.rest.function.owner.Timezone;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -26,6 +27,7 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+@@ -55,6 +57,12 @@ public interface OwnerMapper {
+         return owner.getPossibleDuplicateOf() != null;
+     }
+ 
++    /** The owner's salutation: the optional title prefixed to the last name, or the last name
++     *  alone when no title is on file; see {@link Salutation}. */
++    default String salutation(Owner owner) {
++        return Salutation.of(owner.getTitle(), owner.getLastName());
++    }
++
+     /** Format an owner's name for display as 'LastName, FirstName'. */
+     default String displayName(Owner owner) {
+         return owner.getLastName() + ", " + owner.getFirstName();
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 71762ba4b..6f7be0d55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -36,6 +36,9 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "address_line1")
+     private String addressLine1;
+ 
+@@ -89,6 +92,14 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getAddressLine1() {
+         return this.addressLine1;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Salutation.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Salutation.java
+new file mode 100644
+index 000000000..835ba4b3e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Salutation.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * The single definition of an owner's salutation: the optional title (e.g. MR/MRS/MS/DR)
++ * prefixed to the last name, separated by a single space. When no title is on file the
++ * salutation is the last name alone.
++ *
++ * <p>A pure function of the title and last name, so it is composed on read rather than stored.
++ */
++public final class Salutation {
++
++    private Salutation() {
++    }
++
++    /** The salutation for {@code lastName}: {@code title + " " + lastName} when a title is
++     *  present, otherwise {@code lastName} on its own. */
++    public static String of(String title, String lastName) {
++        return title == null || title.isBlank() ? lastName : title + " " + lastName;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 4c9665b14..be54dbe79 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -30,6 +30,7 @@ CREATE INDEX idx_types_name ON types(name);
+ 
+ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
++  title VARCHAR(10),
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address_line1 VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 5a7d1405a..11cf96bb2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -37,6 +37,7 @@ CREATE INDEX types_name ON types (name);
+ 
+ CREATE TABLE owners (
+   id         INTEGER IDENTITY PRIMARY KEY,
++  title      VARCHAR(10),
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address_line1 VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 853d3352b..016831703 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS types (
+ 
+ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
++  title VARCHAR(10),
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address_line1 VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a37fff7b6..d3ac428a7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -25,6 +25,7 @@ CREATE INDEX ON types (name);
+ 
+ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++                                      title      TEXT,
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address_line1 TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 82bab505b..7b28c4370 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -1993,6 +1993,14 @@ components:
+       description: Editable fields of a pet owner.
+       type: object
+       properties:
++        title:
++          title: Title
++          description: >-
++            The owner's optional honorific title (e.g. MR, MRS, MS, DR). When supplied it is
++            prefixed to the last name to compose the derived 'salutation'.
++          type: string
++          maxLength: 10
++          example: DR
+         firstName:
+           title: First name
+           description: The first name of the pet owner.
+@@ -2116,6 +2124,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, composed as the optional 'title' prefixed to the last
++                name with a single space (e.g. 'DR Franklin'), or the last name alone when no
++                title is on file.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             displayName:
+               title: Display name
+               description: The owner's name formatted as 'LastName, FirstName'.
