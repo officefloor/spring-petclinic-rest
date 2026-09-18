@@ -22,7 +22,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -45,17 +44,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
-    }
-
-    /** The membership tier: 'GOLD' when the owner's household holds 3 or more members;
-     *  otherwise 'SILVER' when namesakeCount is 0 and an email is present, else 'BRONZE'. */
-    default String membershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return "GOLD";
-        }
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        return unique && hasEmail ? "SILVER" : "BRONZE";
     }
 
     /** The owner's locality: the canonical region derived from its city via the fixed
