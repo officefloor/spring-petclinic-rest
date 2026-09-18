@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.Luhn;
+import org.springframework.samples.petclinic.rest.function.owner.Salutation;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.function.owner.Timezone;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -26,6 +27,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
@@ -53,6 +55,12 @@ public interface OwnerMapper {
      *  the id of an existing owner it possibly duplicates. */
     default boolean possibleDuplicate(Owner owner) {
         return owner.getPossibleDuplicateOf() != null;
+    }
+
+    /** The owner's salutation: the optional title prefixed to the last name, or the last name
+     *  alone when no title is on file; see {@link Salutation}. */
+    default String salutation(Owner owner) {
+        return Salutation.of(owner.getTitle(), owner.getLastName());
     }
 
     /** Format an owner's name for display as 'LastName, FirstName'. */
