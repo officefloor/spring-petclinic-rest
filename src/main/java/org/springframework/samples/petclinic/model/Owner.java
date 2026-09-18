@@ -233,6 +233,16 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's IANA timezone, derived from its {@link #getLocality() locality} via the fixed
+     * region-to-timezone table (see {@link RegionTimezone}). {@code null} when the locality has no
+     * known timezone.
+     */
+    @Transient
+    public String getTimezone() {
+        return RegionTimezone.of(this.getLocality());
+    }
+
+    /**
      * The owner's check digit: the single Luhn check digit computed over the digits of the
      * {@code customerCode}, guarding against transcription errors of the code.
      */
