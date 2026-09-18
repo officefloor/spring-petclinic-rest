@@ -50,4 +50,17 @@ public final class RegistrationDatePolicy {
         }
         return date;
     }
+
+    /**
+     * Tells whether a supplied registration date lies in the future relative to the
+     * server's current date.
+     *
+     * @param suppliedDate the date supplied in the request, or {@code null} when omitted
+     * @return {@code true} when a non-null date is later than the server's current date;
+     *         {@code false} otherwise (an omitted date defaults to the server date and is
+     *         therefore never in the future)
+     */
+    public static boolean isAfterServerDate(LocalDate suppliedDate) {
+        return suppliedDate != null && suppliedDate.isAfter(LocalDate.now());
+    }
 }

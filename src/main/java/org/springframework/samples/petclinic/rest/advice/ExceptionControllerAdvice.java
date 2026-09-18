@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
@@ -62,6 +63,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the same identity already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has already reached its maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners that may be registered today has already been reached";
+    private static final String ERROR_FUTURE_REGISTRATION_DATE = "The registration date must not be later than the server date";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -238,6 +240,23 @@ public class ExceptionControllerAdvice {
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when a supplied registration date is
+     * later than the server's current date, returning a 400 Bad Request.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_FUTURE_REGISTRATION_DATE);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
     @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {

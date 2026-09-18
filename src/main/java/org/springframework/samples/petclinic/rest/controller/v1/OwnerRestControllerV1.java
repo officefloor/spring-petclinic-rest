@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceede
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
@@ -147,6 +148,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (this.clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity());
+        }
+        if (RegistrationDatePolicy.isAfterServerDate(owner.getRegistrationDate())) {
+            throw new FutureRegistrationDateException(owner.getRegistrationDate());
         }
         LocalDate registrationDate = RegistrationDatePolicy.effectiveDate(owner.getRegistrationDate());
         if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
