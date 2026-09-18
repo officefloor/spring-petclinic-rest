@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..6187713bb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+@@ -0,0 +1,86 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Knowledge of the known disposable-email providers, and how an address relates to them.
++ * <p>
++ * A domain is <em>disposable</em> when it is exactly one of the known throwaway providers;
++ * such addresses are rejected outright and never stored. A domain is
++ * <em>disposable-adjacent</em> when it is not itself on the blocklist but shares a known
++ * provider's registrable name — a subdomain of it (e.g. {@code inbox.mailinator.com}) or the
++ * same second-level label under a different suffix (e.g. {@code tempmail.io}). Such an address
++ * passes creation validation yet still resembles a throwaway mailbox, so it is treated as a
++ * risk signal rather than a hard rejection.
++ */
++public final class DisposableEmailDomains {
++
++    private static final Set<String> DISPOSABLE_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomains() {
++    }
++
++    /**
++     * @return {@code true} when {@code email}'s domain is exactly a known disposable provider
++     */
++    public static boolean isDisposable(String email) {
++        String domain = domainOf(email);
++        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
++    }
++
++    /**
++     * @return {@code true} when {@code email}'s domain is not itself a known disposable
++     * provider but shares one's registrable name (a subdomain of it, or the same second-level
++     * label under a different suffix)
++     */
++    public static boolean isAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null || DISPOSABLE_DOMAINS.contains(domain)) {
++            return false;
++        }
++        String label = secondLevelLabel(domain);
++        for (String disposable : DISPOSABLE_DOMAINS) {
++            if (label.equals(secondLevelLabel(disposable))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /** The lower-cased domain part of an address, or {@code null} when there is none. */
++    private static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return null;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        return domain.isEmpty() ? null : domain;
++    }
++
++    /** The label immediately left of the final suffix, e.g. {@code mailinator} for
++     *  {@code inbox.mailinator.com}; the whole domain when it carries no suffix. */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length < 2 ? domain : labels[labels.length - 2];
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index de27d7ac6..b53be18f1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -451,6 +451,21 @@ public class Owner extends Person {
+         this.capacityWarning = capacityWarning;
+     }
+ 
++    /**
++     * Whether this owner should be flagged for review, derived on read from the owner's own
++     * fields: {@code true} when any risk signal holds — the owner is a
++     * {@link #getPossibleDuplicate() possible duplicate}, its email domain is
++     * {@link DisposableEmailDomains#isAdjacent(String) disposable-adjacent}, or its city was
++     * over soft capacity when created (its {@link #getCapacityWarning() capacity warning} is
++     * set) — otherwise {@code false}.
++     */
++    @Transient
++    public boolean getRiskFlag() {
++        return Boolean.TRUE.equals(this.possibleDuplicate)
++            || Boolean.TRUE.equals(this.capacityWarning)
++            || DisposableEmailDomains.isAdjacent(this.email);
++    }
++
+     /**
+      * Whether this owner has been soft-deleted. A newly created owner is {@code false};
+      * {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record. Owners
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainChecker.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainChecker.java
+index ad1cc5653..7fd5525bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainChecker.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainChecker.java
+@@ -16,36 +16,24 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+-import java.util.Locale;
+-import java.util.Set;
+-
++import org.springframework.samples.petclinic.model.DisposableEmailDomains;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Recognises email addresses whose domain belongs to a known disposable-email provider.
+  * <p>
+  * Disposable domains are throwaway mailboxes unsuitable for owner contact, so an address on
+- * one of these domains is rejected rather than stored.
++ * one of these domains is rejected rather than stored. The provider knowledge itself lives in
++ * {@link DisposableEmailDomains}.
+  */
+ @Component
+ public class DisposableEmailDomainChecker {
+ 
+-    private static final Set<String> DISPOSABLE_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     /**
+      * @param email an email address as supplied by the client
+      * @return {@code true} when the address's domain is on the disposable-domain blocklist
+      */
+     public boolean isDisposable(String email) {
+-        if (email == null) {
+-            return false;
+-        }
+-        int at = email.lastIndexOf('@');
+-        if (at < 0) {
+-            return false;
+-        }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        return DISPOSABLE_DOMAINS.contains(domain);
++        return DisposableEmailDomains.isDisposable(email);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8c784ac13..9afff107f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2364,6 +2364,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether this owner should be flagged for review: true when any risk signal
++                holds — the owner is a possible duplicate, its email domain is
++                disposable-adjacent (resembles a known throwaway provider without being on the
++                blocklist), or its city was over soft capacity when created (its
++                'capacityWarning' is set) — otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
