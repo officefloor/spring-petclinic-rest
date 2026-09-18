@@ -26,8 +26,9 @@ import org.springframework.validation.Validator;
  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
  * request body: the address is canonicalised and then, like the other required text fields,
  * required to be present and non-blank; the telephone is canonicalised to E.164 form and
- * required to be a valid such number; and an optional email is required to be syntactically
- * valid and normalized to lower case.
+ * required to be a valid such number; an optional email is required to be syntactically
+ * valid and normalized to lower case; and an optional postcode, when present, is required to
+ * be a 4-digit code valid for the owner's city.
  * <p>
  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
  * recorded as a field error on the shared {@link Errors}, surfacing through the usual
@@ -48,11 +49,14 @@ public class OwnerFieldsValidator implements Validator {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final PostcodeValidator postcodeValidator;
+
     public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer, EmailNormalizer emailNormalizer,
-                                AddressNormalizer addressNormalizer) {
+                                AddressNormalizer addressNormalizer, PostcodeValidator postcodeValidator) {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.postcodeValidator = postcodeValidator;
     }
 
     @Override
@@ -71,6 +75,18 @@ public class OwnerFieldsValidator implements Validator {
             normalizeTelephone(owner, errors);
         }
         normalizeEmail(owner, errors);
+        validatePostcode(owner, errors);
+    }
+
+    private void validatePostcode(OwnerFieldsDto owner, Errors errors) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        if (!postcodeValidator.isValid(owner.getCity(), postcode)) {
+            errors.rejectValue("postcode", "postcode.invalid",
+                "must be a valid postcode for the city");
+        }
     }
 
     private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
