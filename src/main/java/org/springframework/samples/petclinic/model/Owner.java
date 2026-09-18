@@ -426,6 +426,19 @@ public class Owner extends Person {
         this.membershipLevel = membershipLevel;
     }
 
+    /**
+     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, derived on read from
+     * the owner's own fields (see {@link OwnerSegment}): the {@code TIER} is {@code PREMIUM}
+     * when the owner's {@link #getMembershipLevel() membership level} is 3 or more, otherwise
+     * {@code STANDARD}; the {@code AREA} is {@code METRO} when the owner's
+     * {@link #getLocality() locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code REGIONAL}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerSegment.of(this.membershipLevel, getLocality());
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
