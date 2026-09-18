@@ -17,45 +17,32 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.model.Sha256Hex;
 import org.springframework.stereotype.Component;
 
 /**
  * Assigns an owner's customer code on create.
  * <p>
- * The code is formatted {@code <CITY3>-<LAST3>-<NNNN>} where {@code CITY3} is the
- * upper-cased first three letters of the owner's city, {@code LAST3} the upper-cased
- * first three letters of the owner's last name, and {@code NNNN} is a per-city 4-digit
- * zero-padded sequence equal to one more than the number of owners already stored in
- * that city (e.g. {@code "SYD-SMI-0007"}).
+ * The code is formatted {@code <REGION>-<HASH8>} where {@code REGION} is the owner's
+ * {@link Owner#getRegion() region} (derived from its postcode, falling back to its city)
+ * and {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
+ * owner's normalized telephone concatenated with its last name (e.g. {@code "NSW-1A2B3C4D"}).
  */
 @Component
 public class CustomerCodeAssigner {
 
-    private final ClinicService clinicService;
-
-    public CustomerCodeAssigner(ClinicService clinicService) {
-        this.clinicService = clinicService;
-    }
+    /** Number of leading hex characters of the identity hash kept in the customer code. */
+    private static final int HASH_LENGTH = 8;
 
     /**
-     * Assigns {@code owner}'s customer code based on its city, last name and the current
-     * per-city owner count. Call this before the owner is saved so the sequence reflects
-     * the number of owners already stored in that city.
+     * Assigns {@code owner}'s customer code from its region and the hash of its normalized
+     * telephone and last name. Call this after the telephone has been normalized and before
+     * the owner is saved.
      *
      * @param owner the owner being created
      */
     public void assign(Owner owner) {
-        String cityPrefix = prefix(owner.getCity());
-        String lastNamePrefix = prefix(owner.getLastName());
-        long sequence = clinicService.countOwnersByCity(owner.getCity()) + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence));
-    }
-
-    /**
-     * The upper-cased first three letters of {@code value} (fewer if it is shorter).
-     */
-    private String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+        String hash = Sha256Hex.prefix(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
+        owner.setCustomerCode(owner.getRegion() + "-" + hash);
     }
 }

@@ -16,14 +16,12 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Sha256Hex;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
@@ -76,12 +74,7 @@ public class HouseholdMatcher {
      * @return a non-blank household identifier
      */
     public String householdId(Owner candidate) {
-        byte[] digest = sha256(householdKey(candidate));
-        StringBuilder sb = new StringBuilder(12);
-        for (int i = 0; i < 6; i++) {
-            sb.append(String.format("%02X", digest[i]));
-        }
-        return sb.toString();
+        return Sha256Hex.prefix(householdKey(candidate), 12);
     }
 
     private String householdKey(Owner owner) {
@@ -93,14 +86,5 @@ public class HouseholdMatcher {
             return "";
         }
         return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
-    }
-
-    private byte[] sha256(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
-        }
     }
 }

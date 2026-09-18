@@ -137,7 +137,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where
      * {@code YY} is the last two digits of the {@code registrationDate} year, e.g.
-     * {@code "SYD-SMI-0007-M26"}. Derived from the owner's own fields; {@code null} until
+     * {@code "NSW-1A2B3C4D-M26"}. Derived from the owner's own fields; {@code null} until
      * both the customer code and registration date have been assigned.
      */
     @Transient
@@ -162,15 +162,31 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived on read from the owner's
-     * {@link #postcode} via the fixed {@link RegionPostcodeTable}, falling back to the
-     * owner's {@link #city} via the fixed {@link CityRegionTable} when the postcode is
-     * absent or in no known range, or {@code "UNKNOWN"} when neither yields a region.
+     * The owner's region: the canonical region derived from the owner's {@link #postcode}
+     * via the fixed {@link RegionPostcodeTable}, falling back to the owner's {@link #city}
+     * via the fixed {@link CityRegionTable} when the postcode is absent or in no known
+     * range, or {@code "UNKNOWN"} when neither yields a region. This is the {@code REGION}
+     * segment of the owner's {@link #getCustomerCode() customer code}.
+     */
+    @Transient
+    public String getRegion() {
+        return RegionPostcodeTable.regionOf(this.postcode)
+            .orElseGet(() -> CityRegionTable.regionOf(this.city));
+    }
+
+    /**
+     * The owner's locality, read from its region-and-hash identity: the {@code REGION}
+     * segment (everything before the first {@code '-'}) of the owner's
+     * {@link #getCustomerCode() customer code}. Falls back to the owner's live
+     * {@link #getRegion() region} until a customer code has been assigned.
      */
     @Transient
     public String getLocality() {
-        return RegionPostcodeTable.regionOf(this.postcode)
-            .orElseGet(() -> CityRegionTable.regionOf(this.city));
+        if (this.customerCode == null) {
+            return getRegion();
+        }
+        int dash = this.customerCode.indexOf('-');
+        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
     }
 
     /**
