@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 87853b367..9885740b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -159,18 +159,22 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier, derived from the owner's own fields. Returns
+-     * {@code "GOLD"} when the owner belongs to a household of three or more
+-     * members, {@code "SILVER"} when the owner has no namesakes and a contact
+-     * email on file, and {@code "BRONZE"} otherwise.
++     * The owner's membership level, a number from 1 to 3 derived from the
++     * owner's own fields. Starts at {@code 1}, gains {@code 1} when a contact
++     * email is on file, gains {@code 1} when the owner has no namesakes, and is
++     * capped at {@code 3}. (Level {@code 4} is reserved for tenure.)
+      */
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
+-        }
++    public Integer getMembershipLevel() {
++        int level = 1;
+         boolean hasEmail = this.email != null && !this.email.isEmpty();
++        if (hasEmail) {
++            level += 1;
++        }
+         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
++        if (noNamesakes) {
++            level += 1;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     public Integer getNamesakeCount() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditor.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditor.java
+index 8a3f4ae6c..c9ad0bb62 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditor.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditor.java
+@@ -32,12 +32,12 @@ public class OwnerAuditor {
+ 
+     /**
+      * Record that an owner was successfully created, capturing its id, customer
+-     * code and (resolved) registration date.
++     * code, (resolved) registration date and membership level.
+      *
+      * @param owner the newly persisted owner
+      */
+     public void ownerCreated(Owner owner) {
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2080fa0b2..d0cc788c7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,19 +2099,17 @@ components:
+               type: string
+               example: PAR-FRA-0007-M20
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner belongs to a
+-                household of three or more members, 'SILVER' when the owner has
+-                no namesakes and a contact email on file, and 'BRONZE'
+-                otherwise.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: SILVER
++                The owner's membership level, a number from 1 to 3 derived from
++                the owner's own fields at creation: starting at 1, plus 1 when a
++                contact email is on file, plus 1 when the owner has no namesakes,
++                capped at 3. (Level 4 is reserved for tenure.)
++              type: integer
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             householdId:
+               title: Household ID
