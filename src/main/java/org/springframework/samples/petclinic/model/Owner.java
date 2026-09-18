@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 
 import jakarta.persistence.*;
@@ -159,6 +160,17 @@ public class Owner extends Person {
             return null;
         }
         return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+    }
+
+    /**
+     * The Luhn check digit (0-9) computed over the digits of the
+     * {@link #customerCode}, or {@code null} when no customer code is assigned.
+     */
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        return Luhn.checkDigit(this.customerCode);
     }
 
     public String getHouseholdId() {
