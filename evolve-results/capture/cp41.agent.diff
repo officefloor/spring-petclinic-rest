@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 19d24eb66..a5434bd34 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -77,6 +77,14 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByEmailIgnoreCase(String email) throws DataAccessException;
+ 
++    /**
++     * Report whether any <code>Owner</code> in the data store already holds the given customer code.
++     *
++     * @param customerCode the customer code to look for
++     * @return {@code true} if an owner with that customer code exists, {@code false} otherwise
++     */
++    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 4336caec1..c8d81c47d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -151,6 +151,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return owners;
+     }
+ 
++    @Override
++    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("customerCode", customerCode);
++        Long total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
++            params,
++            Long.class
++        );
++        return total != null && total > 0;
++    }
++
+     /**
+      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
+      * for the corresponding owner, if not already loaded.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 547c64510..4259d5287 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -104,6 +104,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
++        Query query = this.em.createQuery(
++            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
++        query.setParameter("customerCode", customerCode);
++        return (long) query.getSingleResult() > 0;
++    }
++
+     @Override
+     public Owner findById(int id) {
+         // using 'join fetch' because a single query should load both owners and pets
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 5c3526f74..79c9124dd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -67,4 +67,7 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)")
+     Collection<Owner> findByEmailIgnoreCase(@Param("email") String email);
++
++    @Override
++    boolean existsByCustomerCode(String customerCode);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index bd3898823..47080e378 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.service;
+ import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Locality;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -26,20 +27,51 @@ import org.springframework.stereotype.Component;
+  * <p>The code is the owner's {@link CustomerCode} identity {@code '<REGION>-<HASH8>'}: the region
+  * derived from the owner's postcode (via {@link Locality}, so it disambiguates cities that share a
+  * name and falls back to the city table) joined to a hash of the owner's normalized telephone and
+- * last name (e.g. {@code 'NSW-3F2A9C1D'}). It is derived purely from owner fields — there are no
+- * sequence numbers — so it needs no persistence lookups.
++ * last name (e.g. {@code 'NSW-3F2A9C1D'}).
++ *
++ * <p>Two owners that share the same normalized telephone and last name would otherwise be assigned
++ * the same identity, so when the computed code collides with an existing owner's customer code it is
++ * made unique by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that is still
++ * free.
+  */
+ @Component
+ public class CustomerCodeGenerator {
+ 
++    /** Smallest suffix used to disambiguate a colliding customer code. */
++    private static final int FIRST_SUFFIX = 2;
++
++    private final OwnerRepository ownerRepository;
++
++    public CustomerCodeGenerator(OwnerRepository ownerRepository) {
++        this.ownerRepository = ownerRepository;
++    }
++
+     /**
+-     * Generate the customer code for the given owner from its region and identity fields.
++     * Generate a unique customer code for the given owner from its region and identity fields.
+      *
+      * @param owner the owner being registered
+-     * @return the {@code '<REGION>-<HASH8>'} customer code
++     * @return the {@code '<REGION>-<HASH8>'} customer code, de-duplicated with a {@code '-<n>'} suffix
++     * when it would collide with an existing owner's code
+      */
+     public String generate(Owner owner) {
+         String region = Locality.of(owner.getCity(), owner.getPostcode());
+-        return CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
++        String code = CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
++        return deduplicate(code);
++    }
++
++    /**
++     * Return {@code code} unchanged when no owner holds it, otherwise the first {@code '<code>-<n>'}
++     * variant (starting at {@code n = 2}) that no owner holds yet.
++     */
++    private String deduplicate(String code) {
++        if (!ownerRepository.existsByCustomerCode(code)) {
++            return code;
++        }
++        for (int n = FIRST_SUFFIX; ; n++) {
++            String candidate = code + "-" + n;
++            if (!ownerRepository.existsByCustomerCode(candidate)) {
++                return candidate;
++            }
++        }
+     }
+ }
