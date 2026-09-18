@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.controller.MembershipLevelAssi
 import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.controller.OwnerCreationAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateAssigner;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateAssigner;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -105,6 +106,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerCreationAuditLogger ownerCreationAuditLogger;
 
+    private final PossibleDuplicateAssigner possibleDuplicateAssigner;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -122,7 +125,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CityCapacityChecker cityCapacityChecker,
                                  DailyRegistrationLimiter dailyRegistrationLimiter,
                                  BulkSignupWarningAssigner bulkSignupWarningAssigner,
-                                 OwnerCreationAuditLogger ownerCreationAuditLogger) {
+                                 OwnerCreationAuditLogger ownerCreationAuditLogger,
+                                 PossibleDuplicateAssigner possibleDuplicateAssigner) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -141,6 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.dailyRegistrationLimiter = dailyRegistrationLimiter;
         this.bulkSignupWarningAssigner = bulkSignupWarningAssigner;
         this.ownerCreationAuditLogger = ownerCreationAuditLogger;
+        this.possibleDuplicateAssigner = possibleDuplicateAssigner;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -197,6 +202,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.namesakeCounter.assign(owner);
         this.membershipLevelAssigner.assign(owner);
         this.bulkSignupWarningAssigner.assign(owner);
+        this.possibleDuplicateAssigner.assign(owner);
         this.clinicService.saveOwner(owner);
         this.ownerCreationAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

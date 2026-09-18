@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INTEGER,
   bulk_signup_warning BOOLEAN,
   membership_level INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER,
   INDEX(last_name)
 ) engine=InnoDB;
 
