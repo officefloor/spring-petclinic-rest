@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * Rejects a create-owner request that is missing or blank in any required field, before
  * {@link BuildOwner} runs. Collects every offending field so the response reports them all
  * at once. Publishes the validated body for later steps, since the HTTP body is read once.
+ * The address is checked in its normalized form (see {@link AddressNormalizer}), so an address
+ * that is blank only once whitespace is collapsed is rejected too.
  */
 public class ValidateRequiredOwnerFields {
 
@@ -22,7 +24,7 @@ public class ValidateRequiredOwnerFields {
     private static final List<Map.Entry<String, Function<OwnerFieldsDto, String>>> REQUIRED = List.of(
             Map.entry("firstName", OwnerFieldsDto::getFirstName),
             Map.entry("lastName", OwnerFieldsDto::getLastName),
-            Map.entry("address", OwnerFieldsDto::getAddress),
+            Map.entry("address", dto -> AddressNormalizer.normalize(dto.getAddress())),
             Map.entry("city", OwnerFieldsDto::getCity),
             Map.entry("telephone", OwnerFieldsDto::getTelephone));
 

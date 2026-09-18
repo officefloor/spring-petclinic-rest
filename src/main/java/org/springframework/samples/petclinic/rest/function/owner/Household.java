@@ -9,9 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Household identity shared by the create-owner steps. A household is the set of owners with the same
- * last name and address, compared case-insensitively with collapsed whitespace. Used by
- * {@link EnsureUniqueHousehold} to reject an un-opted-in duplicate and by {@link AssignHousehold} to
- * give members a single shared {@code householdId}.
+ * last name (compared case-insensitively with collapsed whitespace) and the same normalized address
+ * (see {@link AddressNormalizer}). Used by {@link EnsureUniqueHousehold} to reject an un-opted-in
+ * duplicate and by {@link AssignHousehold} to give members a single shared {@code householdId}.
  */
 final class Household {
 
@@ -26,12 +26,12 @@ final class Household {
     /** Whether {@code owner} belongs to the household identified by the given last name and address. */
     static boolean matches(Owner owner, String lastName, String address) {
         return canonical(owner.getLastName()).equals(canonical(lastName))
-                && canonical(owner.getAddress()).equals(canonical(address));
+                && AddressNormalizer.normalize(owner.getAddress()).equals(AddressNormalizer.normalize(address));
     }
 
     /** A stable identifier for the household at the given last name and address, of the form {@code H-<hex>}. */
     static String idFor(String lastName, String address) {
-        byte[] digest = sha256(canonical(lastName) + '|' + canonical(address));
+        byte[] digest = sha256(canonical(lastName) + '|' + AddressNormalizer.normalize(address));
         StringBuilder id = new StringBuilder("H-");
         for (int i = 0; i < 6; i++) {
             id.append(String.format("%02X", digest[i]));
