@@ -1,0 +1,169 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d3853733e..1ed4e3d4d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
+index ee997cb68..098edf077 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
+@@ -25,14 +25,13 @@ import org.springframework.validation.Validator;
+ /**
+  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
+  * request body: required text fields must be present and non-blank, the telephone is
+- * normalized to its bare digits and required to be exactly {@link TelephoneNormalizer#REQUIRED_DIGITS}
+- * digits long, and an optional email is required to be syntactically valid and normalized to
+- * lower case.
++ * canonicalised to E.164 form and required to be a valid such number, and an optional email is
++ * required to be syntactically valid and normalized to lower case.
+  * <p>
+  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
+  * recorded as a field error on the shared {@link Errors}, surfacing through the usual
+- * bad-request handling. A valid telephone is written back to the DTO in normalized form so it
+- * is stored and returned as its 10 digits.
++ * bad-request handling. A valid telephone is written back to the DTO in E.164 form so it
++ * is stored, returned and compared for duplicates as that canonical string.
+  *
+  * @author Vitaliy Fedoriv
+  */
+@@ -68,13 +67,10 @@ public class OwnerFieldsValidator implements Validator {
+     }
+ 
+     private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
+-        String digits = telephoneNormalizer.normalize(owner.getTelephone());
+-        if (telephoneNormalizer.hasRequiredLength(digits)) {
+-            owner.setTelephone(digits);
+-        } else {
+-            errors.rejectValue("telephone", "telephone.invalid",
+-                "must contain exactly " + TelephoneNormalizer.REQUIRED_DIGITS + " digits");
+-        }
++        telephoneNormalizer.toE164(owner.getTelephone()).ifPresentOrElse(
++            owner::setTelephone,
++            () -> errors.rejectValue("telephone", "telephone.invalid",
++                "must be a valid telephone number in E.164 form"));
+     }
+ 
+     private void normalizeEmail(OwnerFieldsDto owner, Errors errors) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+index b4550359c..2adc511b6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+@@ -16,37 +16,60 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import java.util.Optional;
++import java.util.regex.Pattern;
++
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Reduces an owner telephone number to its bare digits.
++ * Canonicalises an owner telephone number to E.164 form.
+  * <p>
+- * A canonical telephone is exactly {@link #REQUIRED_DIGITS} digits with every separator,
+- * prefix or other non-digit character removed, so numbers that differ only in formatting
+- * are stored and compared identically.
++ * Spaces, dashes and brackets are stripped. A leading {@code '+'} and its country code are
++ * kept when present; otherwise the {@link #DEFAULT_COUNTRY_CODE default country code} is
++ * assumed and a single leading {@code '0'} is dropped from the national digits. The result
++ * is a {@code '+'} followed by {@link #MIN_DIGITS}-{@link #MAX_DIGITS} digits, so numbers
++ * that differ only in formatting or in the way their country code is written are stored and
++ * compared identically.
+  */
+ @Component
+ public class TelephoneNormalizer {
+ 
+-    /** The exact number of digits a normalized telephone must contain. */
+-    public static final int REQUIRED_DIGITS = 10;
++    /** Country code assumed when the number carries no explicit {@code '+'} prefix. */
++    public static final String DEFAULT_COUNTRY_CODE = "61";
++
++    /** The fewest digits a valid E.164 number carries after the {@code '+'}. */
++    public static final int MIN_DIGITS = 8;
++
++    /** The most digits a valid E.164 number carries after the {@code '+'}. */
++    public static final int MAX_DIGITS = 15;
++
++    /** Separators removed before interpreting the number: spaces, dashes and brackets. */
++    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
+ 
+     /**
+-     * Strips every non-digit character from {@code raw}, keeping only its digits.
++     * Converts a raw telephone into its canonical E.164 representation.
+      *
+      * @param raw the telephone as supplied by the client, possibly {@code null}
+-     * @return the digits contained in {@code raw}; empty when {@code raw} is {@code null}
+-     *         or holds no digits
++     * @return the E.164 number ({@code '+'} then {@value #MIN_DIGITS}-{@value #MAX_DIGITS}
++     *         digits), or empty when {@code raw} cannot form a valid E.164 number
+      */
+-    public String normalize(String raw) {
+-        return raw == null ? "" : raw.replaceAll("\\D", "");
++    public Optional<String> toE164(String raw) {
++        if (raw == null) {
++            return Optional.empty();
++        }
++        String stripped = SEPARATORS.matcher(raw).replaceAll("");
++        String digits = stripped.startsWith("+")
++            ? stripped.substring(1)
++            : DEFAULT_COUNTRY_CODE + dropLeadingZero(stripped);
++        return isValid(digits) ? Optional.of("+" + digits) : Optional.empty();
+     }
+ 
+-    /**
+-     * @param digits an already-normalized telephone
+-     * @return {@code true} when it consists of exactly {@link #REQUIRED_DIGITS} digits
+-     */
+-    public boolean hasRequiredLength(String digits) {
+-        return digits != null && digits.length() == REQUIRED_DIGITS;
++    private String dropLeadingZero(String national) {
++        return national.startsWith("0") ? national.substring(1) : national;
++    }
++
++    private boolean isValid(String digits) {
++        return digits.chars().allMatch(c -> c >= '0' && c <= '9')
++            && digits.length() >= MIN_DIGITS && digits.length() <= MAX_DIGITS;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4aa3e6938..19676ab51 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2026,13 +2026,15 @@ components:
+         telephone:
+           title: Telephone number
+           description: >-
+-            The telephone number of the pet owner. On create it is normalized by
+-            stripping every non-digit character and must then contain exactly 10 digits;
+-            the normalized 10-digit value is stored and returned.
++            The telephone number of the pet owner. On create it is normalized to E.164
++            form: spaces, dashes and brackets are stripped, a leading '+' and country code
++            are kept when present, otherwise country code '+61' is assumed and a single
++            leading '0' is dropped from the national digits. The result must be a '+'
++            followed by 8 to 15 digits; that canonical value is stored and returned.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: >-
