@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -30,6 +33,11 @@ import org.springframework.stereotype.Component;
  * is a {@code '+'} followed by {@link #MIN_DIGITS}-{@link #MAX_DIGITS} digits, so numbers
  * that differ only in formatting or in the way their country code is written are stored and
  * compared identically.
+ * <p>
+ * For {@link #NATIONAL_LENGTHS known country codes} the national number (the digits after
+ * the country code) must additionally carry the exact number of digits that country uses
+ * (e.g. {@code '+61'} requires 9 national digits, {@code '+1'} requires 10); a number whose
+ * national part is the wrong length for its country is rejected.
  */
 @Component
 public class TelephoneNormalizer {
@@ -42,6 +50,18 @@ public class TelephoneNormalizer {
 
     /** The most digits a valid E.164 number carries after the {@code '+'}. */
     public static final int MAX_DIGITS = 15;
+
+    /**
+     * Country code (without {@code '+'}) to the exact national-number length it requires.
+     * Numbers whose country code is not listed here are checked only against the generic
+     * {@link #MIN_DIGITS}-{@link #MAX_DIGITS} bounds.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
+
+    /** Known country codes, longest first, so the country code is matched greedily. */
+    private static final List<String> COUNTRY_CODES = NATIONAL_LENGTHS.keySet().stream()
+        .sorted(Comparator.comparingInt(String::length).reversed())
+        .toList();
 
     /** Separators removed before interpreting the number: spaces, dashes and brackets. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
@@ -70,6 +90,19 @@ public class TelephoneNormalizer {
 
     private boolean isValid(String digits) {
         return digits.chars().allMatch(c -> c >= '0' && c <= '9')
-            && digits.length() >= MIN_DIGITS && digits.length() <= MAX_DIGITS;
+            && digits.length() >= MIN_DIGITS && digits.length() <= MAX_DIGITS
+            && hasValidNationalLength(digits);
+    }
+
+    /**
+     * Checks the national-number length for a known country code. Numbers whose leading
+     * digits match no known country code pass this check, relying on the generic bounds.
+     */
+    private boolean hasValidNationalLength(String digits) {
+        return COUNTRY_CODES.stream()
+            .filter(digits::startsWith)
+            .findFirst()
+            .map(code -> digits.length() - code.length() == NATIONAL_LENGTHS.get(code))
+            .orElse(true);
     }
 }
