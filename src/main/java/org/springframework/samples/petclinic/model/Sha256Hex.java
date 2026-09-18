@@ -44,6 +44,22 @@ public final class Sha256Hex {
         return sb.substring(0, length);
     }
 
+    /**
+     * The full lower-case hex encoding of the SHA-256 digest of the UTF-8 bytes of
+     * {@code value}: 64 hex characters.
+     *
+     * @param value the string to hash
+     * @return the 64-character lower-case hex digest
+     */
+    public static String hex(String value) {
+        byte[] digest = digest(value);
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
     private static byte[] digest(String value) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));

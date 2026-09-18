@@ -342,14 +342,18 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single value used to detect duplicate owners on
-     * create. It joins the owner's (already normalized) telephone, email and household id
-     * with {@code '|'} — {@code <telephone>|<email>|<householdId>} — a missing email or
-     * household id contributing an empty segment. Two owners are duplicates only when
-     * their whole identity keys are equal.
+     * create. It is the lower-case SHA-256 hex digest of the owner's (already normalized)
+     * telephone, lower-cased email and the {@link Soundex} code of its last name, joined
+     * with {@code '|'} — {@code sha256(<telephone>|<lowerEmail>|<soundex(lastName)>)} — a
+     * missing telephone or email contributing an empty segment. Two owners are duplicates
+     * only when their whole identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
-        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
+        String normalizedTelephone = orEmpty(this.telephone);
+        String lowerEmail = orEmpty(this.email).toLowerCase(Locale.ROOT);
+        String lastNameSoundex = Soundex.encode(getLastName());
+        return Sha256Hex.hex(normalizedTelephone + "|" + lowerEmail + "|" + lastNameSoundex);
     }
 
     private static String orEmpty(String value) {
@@ -416,10 +420,10 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner, when created, softly matched an already-stored owner: one that
-     * shares its last name and postcode but carries a different telephone. Assigned on
-     * create; when {@code true}, {@link #getPossibleDuplicateOf()} identifies the matched
-     * owner.
+     * Whether this owner, when created, softly matched an already-stored owner: one whose
+     * last name shares its {@link Soundex} code and whose postcode matches, while their
+     * {@link #getIdentityKey() identity keys} differ. Assigned on create; when {@code true},
+     * {@link #getPossibleDuplicateOf()} identifies the matched owner.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -430,8 +434,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the already-stored owner this owner softly matched on create (same last
-     * name and postcode, different telephone), or {@code null} when it matched none.
+     * The id of the already-stored owner this owner softly matched on create (matching
+     * last-name Soundex and postcode, differing identity key), or {@code null} when it
+     * matched none.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;

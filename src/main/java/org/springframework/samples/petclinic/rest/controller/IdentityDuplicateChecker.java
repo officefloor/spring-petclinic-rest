@@ -23,10 +23,11 @@ import org.springframework.stereotype.Component;
 /**
  * Detects, on create, whether a new owner duplicates an already-stored one. All duplicate
  * detection is consolidated into the owner's {@link Owner#getIdentityKey() identity key}
- * (telephone, email and household id combined): a candidate is a duplicate only when an
- * existing owner carries the exact same identity key. Because the telephone is part of the
- * key, owners that differ in any one of those parts — including two members of the same
- * household with different telephones — have distinct keys and are not duplicates.
+ * (a hash of the telephone, email and the last name's Soundex code): a candidate is a
+ * duplicate only when an existing owner carries the exact same identity key. Because the
+ * telephone is part of the key, owners that differ in any one of those parts — including two
+ * members of the same household with different telephones — have distinct keys and are not
+ * duplicates.
  */
 @Component
 public class IdentityDuplicateChecker {

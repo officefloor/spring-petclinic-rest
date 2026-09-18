@@ -20,16 +20,18 @@ import java.util.Comparator;
 import java.util.Optional;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Soundex;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Finds, on create, an already-stored owner that a new owner softly matches: one that
- * shares the new owner's last name (compared ignoring case) and postcode while carrying a
- * different (already normalized) telephone. This is a weaker signal than the outright
- * {@link IdentityDuplicateChecker identity duplicate} that rejects a create; a soft match
- * merely flags the created owner as a possible duplicate. An owner with no postcode can
- * never softly match, since a shared postcode is part of the rule.
+ * Finds, on create, an already-stored owner that a new owner softly matches: one whose last
+ * name shares the new owner's {@link Soundex} code and whose postcode matches, while their
+ * {@link Owner#getIdentityKey() identity keys} differ. This is a weaker signal than the
+ * outright {@link IdentityDuplicateChecker identity duplicate} that rejects a create (an
+ * equal identity key); a soft match merely flags the created owner as a possible duplicate.
+ * An owner with no postcode can never softly match, since a shared postcode is part of the
+ * rule.
  */
 @Component
 public class PossibleDuplicateMatcher {
@@ -58,15 +60,7 @@ public class PossibleDuplicateMatcher {
 
     private boolean softlyMatches(Owner existing, Owner candidate) {
         return candidate.getPostcode().equals(existing.getPostcode())
-            && equalsIgnoreCase(existing.getLastName(), candidate.getLastName())
-            && !equals(existing.getTelephone(), candidate.getTelephone());
-    }
-
-    private boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
-    }
-
-    private boolean equals(String a, String b) {
-        return a == null ? b == null : a.equals(b);
+            && Soundex.encode(existing.getLastName()).equals(Soundex.encode(candidate.getLastName()))
+            && !existing.getIdentityKey().equals(candidate.getIdentityKey());
     }
 }
