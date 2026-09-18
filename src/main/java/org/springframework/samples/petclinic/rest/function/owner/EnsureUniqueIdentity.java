@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * because the telephone is part of the key, two members of one household with different telephones
  * have different keys and are both allowed; only an exact full-key match is a duplicate.
  *
- * <p>Runs after {@link AssignHousehold} so the new owner carries its final {@code householdId}, and
+ * <p>Runs after {@link AssignHouseholdId} so the new owner carries its final {@code householdId}, and
  * before {@link SaveOwner} so a collision is rejected with 409 before anything is persisted. Only
  * owners sharing the (already normalized) telephone can share the whole key, so those are the
  * candidates compared.
