@@ -60,6 +60,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	boolean ownerExistsWithTelephone(String telephone) throws DataAccessException;
+	boolean ownerExistsWithEmail(String email) throws DataAccessException;
 	long countOwners() throws DataAccessException;
 	long countOwnersByCity(String city) throws DataAccessException;
 	long countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
