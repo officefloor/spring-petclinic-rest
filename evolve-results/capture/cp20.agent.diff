@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 621ed67b9..c682dbbea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+@@ -67,14 +68,14 @@ public class Owner extends Person {
+     private Set<Pet> pets;
+ 
+     /**
+-     * Default the registration date to the server's current date when none was
+-     * supplied at creation time.
++     * Resolve the registration date at creation time: default it to the server's
++     * current date when none was supplied, and roll a weekend date forward to the
++     * next business day so every value derived from it (such as the membership
++     * number's year segment) uses the adjusted date.
+      */
+     @PrePersist
+-    private void defaultRegistrationDate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
+-        }
++    private void resolveRegistrationDate() {
++        this.registrationDate = RegistrationDatePolicy.effectiveDate(this.registrationDate);
+     }
+ 
+     public String getAddress() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7ca53df71..09e2714d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsE
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -131,8 +132,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+             throw new CityCapacityExceededException(owner.getCity());
+         }
+-        LocalDate registrationDate =
+-            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        LocalDate registrationDate = RegistrationDatePolicy.effectiveDate(owner.getRegistrationDate());
+         if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+             throw new DailyOwnerLimitExceededException(registrationDate);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java b/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java
+new file mode 100644
+index 000000000..6dfed022c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java
+@@ -0,0 +1,53 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.temporal.TemporalAdjusters;
++
++/**
++ * Resolves the effective registration date for an owner.
++ *
++ * <p>An owner is always registered on a business day. The supplied date defaults
++ * to the server's current date when none was provided, and a date that falls on a
++ * weekend (Saturday or Sunday) is rolled forward to the following Monday. The
++ * resulting date is the single source of truth for everything derived from the
++ * registration date (the stored value, the membership number's year segment, and
++ * the per-day create-limit).
++ */
++public final class RegistrationDatePolicy {
++
++    private RegistrationDatePolicy() {
++    }
++
++    /**
++     * Resolve the effective, business-day registration date.
++     *
++     * @param suppliedDate the date supplied in the request, or {@code null} to use
++     *                     the server's current date
++     * @return the supplied-or-defaulted date, rolled forward to the next Monday
++     *         when it falls on a weekend
++     */
++    public static LocalDate effectiveDate(LocalDate suppliedDate) {
++        LocalDate date = suppliedDate != null ? suppliedDate : LocalDate.now();
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        }
++        return date;
++    }
++}
