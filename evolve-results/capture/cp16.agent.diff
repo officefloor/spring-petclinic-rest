@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5fa888538..4670b7596 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -128,7 +128,7 @@ public class Owner extends Person {
+     /**
+      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'}
+      * where {@code YY} is the last two digits of the {@link #registrationDate}
+-     * year (e.g. {@code "SMI-0007-M26"}). Derived from the owner's own fields.
++     * year (e.g. {@code "LON-SMI-0007-M26"}). Derived from the owner's own fields.
+      */
+     public String getMembershipNumber() {
+         if (this.customerCode == null || this.registrationDate == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 7b4747476..b093ca1fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -100,6 +100,14 @@ public interface OwnerRepository {
+      * @return the number of persisted owners
+      */
+     long count() throws DataAccessException;
++
++    /**
++     * Count the number of <code>Owner</code>s in the data store located in the given city.
++     *
++     * @param city the city to match
++     * @return the number of persisted owners in that city
++     */
++    long countByCity(String city) throws DataAccessException;
+ 	
+     /**
+      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 7caf08600..dde265bf5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -245,6 +245,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 		return total == null ? 0 : total;
+ 	}
+ 
++	@Override
++	public long countByCity(String city) throws DataAccessException {
++		Map<String, Object> params = new HashMap<>();
++		params.put("city", city);
++		Long total = this.namedParameterJdbcTemplate.queryForObject(
++			"SELECT COUNT(*) FROM owners WHERE city = :city",
++			params,
++			Long.class);
++		return total == null ? 0 : total;
++	}
++
+ 	@Override
+ 	@Transactional
+ 	public void delete(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index ec23b7aff..088e3fb67 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -140,6 +140,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+ 		return (long) countQuery.getSingleResult();
+ 	}
+ 
++	@Override
++	public long countByCity(String city) throws DataAccessException {
++		Query countQuery = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.city = :city");
++		countQuery.setParameter("city", city);
++		return (long) countQuery.getSingleResult();
++	}
++
+ 	@Override
+ 	public void delete(Owner owner) throws DataAccessException {
+ 		this.em.remove(this.em.contains(owner) ? owner : this.em.merge(owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+index 4126b6a1a..fe0a8cf83 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -22,10 +22,11 @@ import org.springframework.stereotype.Component;
+ /**
+  * Produces the customer code assigned to a new {@link Owner}.
+  *
+- * <p>The code is formatted {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the
+- * upper-cased first three letters of the owner's last name and {@code NNNN} is a
+- * 4-digit zero-padded global sequence equal to one more than the current number
+- * of owners (e.g. {@code 'SMI-0007'}).
++ * <p>The code is formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
++ * and {@code LAST3} are the upper-cased first three letters of the owner's city
++ * and last name, and {@code NNNN} is a 4-digit zero-padded per-city sequence
++ * equal to one more than the number of owners already in that city (e.g.
++ * {@code 'LON-SMI-0007'}).
+  */
+ @Component
+ public class CustomerCodeGenerator {
+@@ -39,22 +40,22 @@ public class CustomerCodeGenerator {
+     }
+ 
+     /**
+-     * Generate the customer code for the given owner based on its last name and
+-     * the current owner count.
++     * Generate the customer code for the given owner based on its city, last
++     * name and the current number of owners in that city.
+      *
+      * @param owner the owner being registered
+-     * @return the {@code '<LAST3>-<NNNN>'} customer code
++     * @return the {@code '<CITY3>-<LAST3>-<NNNN>'} customer code
+      */
+     public String generate(Owner owner) {
+-        long sequence = ownerRepository.count() + 1;
+-        return String.format("%s-%04d", prefix(owner.getLastName()), sequence);
++        long sequence = ownerRepository.countByCity(owner.getCity()) + 1;
++        return String.format("%s-%s-%04d", prefix(owner.getCity()), prefix(owner.getLastName()), sequence);
+     }
+ 
+-    /** The upper-cased first three letters of the given last name. */
+-    private static String prefix(String lastName) {
++    /** The upper-cased first three letters of the given value. */
++    private static String prefix(String value) {
+         StringBuilder prefix = new StringBuilder(PREFIX_LENGTH);
+-        for (int i = 0; i < lastName.length() && prefix.length() < PREFIX_LENGTH; i++) {
+-            char c = lastName.charAt(i);
++        for (int i = 0; i < value.length() && prefix.length() < PREFIX_LENGTH; i++) {
++            char c = value.charAt(i);
+             if (Character.isLetter(c)) {
+                 prefix.append(Character.toUpperCase(c));
+             }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e5118d0e3..6d1edc89a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2083,11 +2083,13 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<LAST3>-<NNNN>': the
++                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>':
++                the upper-cased first three letters of the city, a hyphen, the
+                 upper-cased first three letters of the last name, a hyphen, and
+-                a 4-digit zero-padded global sequence assigned at registration.
++                a 4-digit zero-padded per-city sequence (one more than the
++                owners already in that city) assigned at registration.
+               type: string
+-              example: FRA-0007
++              example: PAR-FRA-0007
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+@@ -2095,7 +2097,7 @@ components:
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+                 where YY is the last two digits of the registration date year.
+               type: string
+-              example: FRA-0007-M20
++              example: PAR-FRA-0007-M20
+               readOnly: true
+             membershipTier:
+               title: Membership tier
