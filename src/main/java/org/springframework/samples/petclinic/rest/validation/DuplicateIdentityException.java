@@ -17,19 +17,20 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Raised when a new owner is submitted with a normalized telephone number that is already used by an
- * existing owner, so the client can be told the value conflicts with another record.
+ * Raised when a new owner's identity key (normalized telephone, email and household id, see
+ * {@code Owner#getIdentityKey()}) exactly matches that of an existing owner, so the client can be
+ * told the record duplicates another one.
  */
-public class DuplicateTelephoneException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    private final String telephone;
+    private final String identityKey;
 
-    public DuplicateTelephoneException(String telephone) {
-        super("Telephone is already used by another owner: " + telephone);
-        this.telephone = telephone;
+    public DuplicateIdentityException(String identityKey) {
+        super("An owner with the same identity key already exists: " + identityKey);
+        this.identityKey = identityKey;
     }
 
-    public String getTelephone() {
-        return this.telephone;
+    public String getIdentityKey() {
+        return this.identityKey;
     }
 }

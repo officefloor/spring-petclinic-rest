@@ -32,9 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.security.access.AccessDeniedException;
@@ -60,9 +58,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
-    private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone number already exists";
-    private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
-    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+    private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the same identity already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has already reached its maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners that may be registered today has already been reached";
 
@@ -216,54 +212,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException} raised when a new owner is submitted with a normalized
-     * telephone number that is already used by an existing owner, returning a 409 Conflict.
+     * Handles {@link DuplicateIdentityException} raised when a new owner's identity key (normalized
+     * telephone, email and household id) exactly matches that of an existing owner, returning a 409
+     * Conflict.
      *
-     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param e The {@link DuplicateIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateEmailException} raised when a new owner is submitted with a normalized
-     * (lower-cased) email that is already used by an existing owner, returning a 409 Conflict.
-     *
-     * @param e The {@link DuplicateEmailException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_EMAIL);
-        detail.setProperty("errors", List.of("email"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateHouseholdException} raised when a new owner shares an existing owner's
-     * last name and address (compared case-insensitively with collapsed whitespace) without opting in
-     * via {@code sharesHousehold}, returning a 409 Conflict.
-     *
-     * @param e The {@link DuplicateHouseholdException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
-        detail.setProperty("errors", List.of("lastName", "address"));
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
+        detail.setProperty("errors", List.of("identityKey"));
         return ResponseEntity.status(status).body(detail);
     }
 

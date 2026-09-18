@@ -63,6 +63,16 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
+	 * Determine whether a persisted owner already shares the given owner's identity key
+	 * (see {@link Owner#getIdentityKey()}) — the single signal used to reject duplicate owners.
+	 * Only an exact match of the whole key counts as a duplicate.
+	 *
+	 * @param owner the candidate owner whose identity key is checked
+	 * @return {@code true} if an existing owner has the same identity key, {@code false} otherwise
+	 */
+	boolean isDuplicateIdentity(Owner owner) throws DataAccessException;
+
+	/**
 	 * Retrieve the owners whose email matches the given value, compared case-insensitively.
 	 *
 	 * @param email the email to match, case-insensitively

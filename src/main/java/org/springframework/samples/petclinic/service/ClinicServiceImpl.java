@@ -276,6 +276,16 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isDuplicateIdentity(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
+        // The telephone is part of the identity key, so owners with a different telephone can never
+        // share it: narrow by telephone, then confirm the whole key matches.
+        return ownerRepository.findByTelephone(owner.getTelephone()).stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countOwnersByCity(String city) throws DataAccessException {
         return ownerRepository.countByCity(city);
     }

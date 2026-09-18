@@ -159,6 +159,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's identity key: the single derived value used to detect duplicate owners. It is the
+     * normalized telephone, the (lower-cased) email or an empty string when absent, and the
+     * household id or an empty string when absent, joined with {@code '|'} (e.g.
+     * {@code "+61412345678|jo@example.com|3F2A9C1D4B6E8071"}). Two owners are the same person only
+     * when their whole identity keys are equal; because the telephone is part of the key, household
+     * members with different telephones have different keys.
+     */
+    public String getIdentityKey() {
+        return String.join("|",
+            this.telephone == null ? "" : this.telephone,
+            this.email == null ? "" : this.email,
+            this.householdId == null ? "" : this.householdId);
+    }
+
+    /**
      * The owner's membership level, a number from 1 to 3 derived from the
      * owner's own fields. Starts at {@code 1}, gains {@code 1} when a contact
      * email is on file, gains {@code 1} when the owner has no namesakes, and is

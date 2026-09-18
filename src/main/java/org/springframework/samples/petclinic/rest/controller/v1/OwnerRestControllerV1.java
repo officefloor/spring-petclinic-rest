@@ -39,9 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
@@ -149,24 +147,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(registrationDate);
         }
-        String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
-        if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
-            throw new DuplicateTelephoneException(telephone);
-        }
-        String email = EmailNormalizer.normalize(owner.getEmail());
-        if (email != null && !this.clinicService.findOwnerByEmail(email).isEmpty()) {
-            throw new DuplicateEmailException(email);
-        }
-        Collection<Owner> household =
-            this.clinicService.findOwnersInHousehold(owner.getLastName(), owner.getAddress());
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!household.isEmpty() && !sharesHousehold) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-        }
-        owner.setTelephone(telephone);
-        owner.setEmail(email);
-        if (sharesHousehold) {
+        owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
+        owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            Collection<Owner> household =
+                this.clinicService.findOwnersInHousehold(owner.getLastName(), owner.getAddress());
             this.clinicService.joinHousehold(owner, household);
+        }
+        // A single identity key (telephone + email + household) drives duplicate detection: reject
+        // only when the whole key already belongs to another owner.
+        if (this.clinicService.isDuplicateIdentity(owner)) {
+            throw new DuplicateIdentityException(owner.getIdentityKey());
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.ownerCreated(owner);
