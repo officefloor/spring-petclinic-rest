@@ -7,8 +7,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
 
 /**
  * Rejects a create-owner request whose normalized telephone is already used by another owner, before
- * {@link BuildOwner} runs. Runs after {@link NormalizeOwnerTelephone} so the request holds the cleaned
- * digits that match how owner telephones are persisted. Rejects with 409 otherwise.
+ * {@link BuildOwner} runs. Runs after {@link NormalizeOwnerTelephone} so the request holds the E.164
+ * value that matches how owner telephones are persisted, making the comparison E.164-based. Rejects
+ * with 409 otherwise.
  */
 public class EnsureUniqueTelephone {
 
