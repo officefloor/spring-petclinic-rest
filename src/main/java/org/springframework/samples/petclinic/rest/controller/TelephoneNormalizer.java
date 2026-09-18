@@ -16,37 +16,60 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.Optional;
+import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Component;
 
 /**
- * Reduces an owner telephone number to its bare digits.
+ * Canonicalises an owner telephone number to E.164 form.
  * <p>
- * A canonical telephone is exactly {@link #REQUIRED_DIGITS} digits with every separator,
- * prefix or other non-digit character removed, so numbers that differ only in formatting
- * are stored and compared identically.
+ * Spaces, dashes and brackets are stripped. A leading {@code '+'} and its country code are
+ * kept when present; otherwise the {@link #DEFAULT_COUNTRY_CODE default country code} is
+ * assumed and a single leading {@code '0'} is dropped from the national digits. The result
+ * is a {@code '+'} followed by {@link #MIN_DIGITS}-{@link #MAX_DIGITS} digits, so numbers
+ * that differ only in formatting or in the way their country code is written are stored and
+ * compared identically.
  */
 @Component
 public class TelephoneNormalizer {
 
-    /** The exact number of digits a normalized telephone must contain. */
-    public static final int REQUIRED_DIGITS = 10;
+    /** Country code assumed when the number carries no explicit {@code '+'} prefix. */
+    public static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** The fewest digits a valid E.164 number carries after the {@code '+'}. */
+    public static final int MIN_DIGITS = 8;
+
+    /** The most digits a valid E.164 number carries after the {@code '+'}. */
+    public static final int MAX_DIGITS = 15;
+
+    /** Separators removed before interpreting the number: spaces, dashes and brackets. */
+    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
 
     /**
-     * Strips every non-digit character from {@code raw}, keeping only its digits.
+     * Converts a raw telephone into its canonical E.164 representation.
      *
      * @param raw the telephone as supplied by the client, possibly {@code null}
-     * @return the digits contained in {@code raw}; empty when {@code raw} is {@code null}
-     *         or holds no digits
+     * @return the E.164 number ({@code '+'} then {@value #MIN_DIGITS}-{@value #MAX_DIGITS}
+     *         digits), or empty when {@code raw} cannot form a valid E.164 number
      */
-    public String normalize(String raw) {
-        return raw == null ? "" : raw.replaceAll("\\D", "");
+    public Optional<String> toE164(String raw) {
+        if (raw == null) {
+            return Optional.empty();
+        }
+        String stripped = SEPARATORS.matcher(raw).replaceAll("");
+        String digits = stripped.startsWith("+")
+            ? stripped.substring(1)
+            : DEFAULT_COUNTRY_CODE + dropLeadingZero(stripped);
+        return isValid(digits) ? Optional.of("+" + digits) : Optional.empty();
     }
 
-    /**
-     * @param digits an already-normalized telephone
-     * @return {@code true} when it consists of exactly {@link #REQUIRED_DIGITS} digits
-     */
-    public boolean hasRequiredLength(String digits) {
-        return digits != null && digits.length() == REQUIRED_DIGITS;
+    private String dropLeadingZero(String national) {
+        return national.startsWith("0") ? national.substring(1) : national;
+    }
+
+    private boolean isValid(String digits) {
+        return digits.chars().allMatch(c -> c >= '0' && c <= '9')
+            && digits.length() >= MIN_DIGITS && digits.length() <= MAX_DIGITS;
     }
 }

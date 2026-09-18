@@ -25,14 +25,13 @@ import org.springframework.validation.Validator;
 /**
  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
  * request body: required text fields must be present and non-blank, the telephone is
- * normalized to its bare digits and required to be exactly {@link TelephoneNormalizer#REQUIRED_DIGITS}
- * digits long, and an optional email is required to be syntactically valid and normalized to
- * lower case.
+ * canonicalised to E.164 form and required to be a valid such number, and an optional email is
+ * required to be syntactically valid and normalized to lower case.
  * <p>
  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
  * recorded as a field error on the shared {@link Errors}, surfacing through the usual
- * bad-request handling. A valid telephone is written back to the DTO in normalized form so it
- * is stored and returned as its 10 digits.
+ * bad-request handling. A valid telephone is written back to the DTO in E.164 form so it
+ * is stored, returned and compared for duplicates as that canonical string.
  *
  * @author Vitaliy Fedoriv
  */
@@ -68,13 +67,10 @@ public class OwnerFieldsValidator implements Validator {
     }
 
     private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
-        String digits = telephoneNormalizer.normalize(owner.getTelephone());
-        if (telephoneNormalizer.hasRequiredLength(digits)) {
-            owner.setTelephone(digits);
-        } else {
-            errors.rejectValue("telephone", "telephone.invalid",
-                "must contain exactly " + TelephoneNormalizer.REQUIRED_DIGITS + " digits");
-        }
+        telephoneNormalizer.toE164(owner.getTelephone()).ifPresentOrElse(
+            owner::setTelephone,
+            () -> errors.rejectValue("telephone", "telephone.invalid",
+                "must be a valid telephone number in E.164 form"));
     }
 
     private void normalizeEmail(OwnerFieldsDto owner, Errors errors) {
