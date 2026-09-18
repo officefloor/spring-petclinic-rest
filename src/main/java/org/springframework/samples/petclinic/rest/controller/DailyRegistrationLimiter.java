@@ -16,7 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.time.Clock;
 import java.time.LocalDate;
 
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -25,10 +24,10 @@ import org.springframework.stereotype.Component;
 /**
  * Enforces, on create, the maximum number of owners that may be registered on a single day.
  * <p>
- * The day is at capacity once {@link #MAX_OWNERS_PER_DAY} owners already carry the server's
- * current date as their registration date, at which point no further owner may be created that
- * day. The count reflects the owners stored before this create, so it must be checked before the
- * owner is saved.
+ * A day is at capacity once {@link #MAX_OWNERS_PER_DAY} owners already carry it as their
+ * registration date, at which point no further owner may be registered on that day. The date
+ * checked is the new owner's effective, business-day-adjusted registration date. The count
+ * reflects the owners stored before this create, so it must be checked before the owner is saved.
  */
 @Component
 public class DailyRegistrationLimiter {
@@ -38,21 +37,19 @@ public class DailyRegistrationLimiter {
 
     private final ClinicService clinicService;
 
-    private final Clock clock;
-
-    public DailyRegistrationLimiter(ClinicService clinicService, Clock clock) {
+    public DailyRegistrationLimiter(ClinicService clinicService) {
         this.clinicService = clinicService;
-        this.clock = clock;
     }
 
     /**
-     * Returns whether the server's current date has already reached its owner-registration
-     * capacity, meaning no further owner may be created today. Call this before the owner is saved
-     * so it does not count itself.
+     * Returns whether {@code registrationDate} has already reached its owner-registration
+     * capacity, meaning no further owner may be registered on it. Call this before the owner is
+     * saved so it does not count itself.
      *
-     * @return {@code true} if {@link #MAX_OWNERS_PER_DAY} or more owners are already registered today
+     * @param registrationDate the new owner's effective, business-day-adjusted registration date
+     * @return {@code true} if {@link #MAX_OWNERS_PER_DAY} or more owners already carry that date
      */
-    public boolean isDailyLimitReached() {
-        return clinicService.countOwnersByRegistrationDate(LocalDate.now(clock)) >= MAX_OWNERS_PER_DAY;
+    public boolean isDailyLimitReached(LocalDate registrationDate) {
+        return clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY;
     }
 }

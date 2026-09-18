@@ -36,7 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
-import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
+import org.springframework.samples.petclinic.rest.controller.RegistrationDateAssigner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -73,7 +73,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
-    private final RegistrationDateDefaulter registrationDateDefaulter;
+    private final RegistrationDateAssigner registrationDateAssigner;
 
     private final CustomerCodeAssigner customerCodeAssigner;
 
@@ -92,7 +92,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
-                                 RegistrationDateDefaulter registrationDateDefaulter,
+                                 RegistrationDateAssigner registrationDateAssigner,
                                  CustomerCodeAssigner customerCodeAssigner,
                                  HouseholdDuplicateChecker householdDuplicateChecker,
                                  HouseholdAssigner householdAssigner,
@@ -104,7 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
-        this.registrationDateDefaulter = registrationDateDefaulter;
+        this.registrationDateAssigner = registrationDateAssigner;
         this.customerCodeAssigner = customerCodeAssigner;
         this.householdDuplicateChecker = householdDuplicateChecker;
         this.householdAssigner = householdAssigner;
@@ -148,13 +148,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        this.registrationDateAssigner.assign(owner);
         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (this.dailyRegistrationLimiter.isDailyLimitReached()) {
+        if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -165,7 +166,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (duplicate) {
             this.householdAssigner.assign(owner);
         }
-        this.registrationDateDefaulter.applyDefault(owner);
         this.customerCodeAssigner.assign(owner);
         this.namesakeCounter.assign(owner);
         this.clinicService.saveOwner(owner);
