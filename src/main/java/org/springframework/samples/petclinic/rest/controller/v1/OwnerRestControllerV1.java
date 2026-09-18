@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsE
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.OwnerAuditor;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -84,14 +85,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final OwnerAuditor ownerAuditor;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 OwnerAuditor ownerAuditor) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.ownerAuditor = ownerAuditor;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -152,6 +157,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.clinicService.joinHousehold(owner, household);
         }
         this.clinicService.saveOwner(owner);
+        this.ownerAuditor.ownerCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
