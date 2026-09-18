@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 213ce9b43..3b64b68cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -426,6 +426,19 @@ public class Owner extends Person {
+         this.membershipLevel = membershipLevel;
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}, derived on read from
++     * the owner's own fields (see {@link OwnerSegment}): the {@code TIER} is {@code PREMIUM}
++     * when the owner's {@link #getMembershipLevel() membership level} is 3 or more, otherwise
++     * {@code STANDARD}; the {@code AREA} is {@code METRO} when the owner's
++     * {@link #getLocality() locality} is a known region (NSW, VIC or QLD), otherwise
++     * {@code REGIONAL}.
++     */
++    @Transient
++    public String getOwnerSegment() {
++        return OwnerSegment.of(this.membershipLevel, getLocality());
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+new file mode 100644
+index 000000000..ab7a5d316
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The marketing segment an owner falls into, formatted {@code <TIER>_<AREA>}: a membership
++ * {@code TIER} of {@code PREMIUM} (membership level 3 or more) or {@code STANDARD}, and a
++ * geographic {@code AREA} of {@code METRO} (a known region) or {@code REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * The segment for an owner with the given membership level and locality: {@code PREMIUM}
++     * when {@code membershipLevel} is 3 or more (else {@code STANDARD}) joined by {@code '_'}
++     * to {@code METRO} when {@code locality} is a known region (else {@code REGIONAL}).
++     */
++    public static String of(Integer membershipLevel, String locality) {
++        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = locality != null && !CityRegionTable.UNKNOWN.equals(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4bf5c3d13..77b87b301 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2240,6 +2240,21 @@ components:
+               type: string
+               example: Australia/Sydney
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>', derived on read
++                from the owner's own fields. TIER is 'PREMIUM' when the owner's membershipLevel
++                is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the owner's locality is
++                a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: STANDARD_METRO
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
