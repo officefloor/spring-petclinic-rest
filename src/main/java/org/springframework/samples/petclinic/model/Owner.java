@@ -286,16 +286,20 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, read from its {@link #getMemberId() member id}: the
-     * {@code REGION} segment of the member id (see {@link MemberId#regionOf}). Falls back to
-     * the owner's live {@link #getRegion() region} until a member id has been assigned.
+     * The owner's locality: the plain region code (e.g. {@code "NSW"}), read from its
+     * {@link #getMemberId() member id}. The member id carries a version-2
+     * {@link IdentityVersion#regionCode(String) region code} in its {@code REGION} segment
+     * (see {@link MemberId#regionOf}); the {@code "V2"} version tag is stripped here (see
+     * {@link IdentityVersion#plainRegion(String)}) so the locality stays plain and never
+     * carries the tag. Falls back to the owner's live {@link #getRegion() region} until a
+     * member id has been assigned.
      */
     @Transient
     public String getLocality() {
         if (this.memberId == null) {
             return getRegion();
         }
-        return MemberId.regionOf(this.memberId);
+        return IdentityVersion.plainRegion(MemberId.regionOf(this.memberId));
     }
 
     /**
@@ -321,18 +325,21 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single value used to detect duplicate owners on
-     * create. It is the lower-case SHA-256 hex digest of the owner's (already normalized)
-     * telephone, lower-cased email and the {@link Soundex} code of its last name, joined
-     * with {@code '|'} — {@code sha256(<telephone>|<lowerEmail>|<soundex(lastName)>)} — a
-     * missing telephone or email contributing an empty segment. Two owners are duplicates
-     * only when their whole identity keys are equal.
+     * create. It is the lower-case SHA-256 hex digest of the fixed {@code "V2"}
+     * {@link IdentityVersion#TAG version tag} and the owner's (already normalized) telephone,
+     * lower-cased email and the {@link Soundex} code of its last name, joined with {@code '|'}
+     * — {@code sha256(V2|<telephone>|<lowerEmail>|<soundex(lastName)>)} — a missing telephone
+     * or email contributing an empty segment. Mixing in the version tag re-derives every key
+     * under version 2 while preserving the rule that two owners are duplicates only when their
+     * whole identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
         String normalizedTelephone = orEmpty(this.telephone);
         String lowerEmail = orEmpty(this.email).toLowerCase(Locale.ROOT);
         String lastNameSoundex = Soundex.encode(getLastName());
-        return Sha256Hex.hex(normalizedTelephone + "|" + lowerEmail + "|" + lastNameSoundex);
+        return Sha256Hex.hex(
+            IdentityVersion.TAG + "|" + normalizedTelephone + "|" + lowerEmail + "|" + lastNameSoundex);
     }
 
     private static String orEmpty(String value) {

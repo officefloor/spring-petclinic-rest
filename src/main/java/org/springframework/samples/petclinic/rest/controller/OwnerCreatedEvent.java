@@ -16,19 +16,21 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured record of a successful owner creation, serialized to the
  * {@code AUDIT} logger alongside the human-readable audit line.
  * <p>
- * The event carries the owner's id together with its
- * {@link Owner#getMemberId() member id}, the single value that identifies the owner,
- * so downstream consumers can follow the identifier. {@code seq} is a monotonically
- * increasing counter that orders creates.
+ * This is schema version 2 of the event, carried in {@code schemaVersion}: alongside the
+ * owner's id and its {@link Owner#getMemberId() member id} (the single value that identifies
+ * the owner) it carries the {@link Owner#getOwnerSegment() owner segment} recomputed from the
+ * owner's version-2 identity, so downstream consumers can follow the identifier and segment.
+ * {@code seq} is a monotonically increasing counter that orders creates.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-        String event) {
+public record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
+        Integer membershipLevel, String ownerSegment, String event) {
 
     private static final String OWNER_CREATED = "OWNER_CREATED";
 
@@ -37,7 +39,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Inte
      * this only after the owner has been saved so its id and derived fields are set.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(), owner.getMembershipLevel(),
-            OWNER_CREATED);
+        return new OwnerCreatedEvent(seq, IdentityVersion.NUMBER, owner.getId(), owner.getMemberId(),
+            owner.getMembershipLevel(), owner.getOwnerSegment(), OWNER_CREATED);
     }
 }

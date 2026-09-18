@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256Hex;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -66,14 +67,16 @@ public class HouseholdMatcher {
 
     /**
      * The stable identifier for {@code candidate}'s household: the first 12 hex characters of
-     * the SHA-256 digest of its (normalised) last name and postcode, joined by {@code '|'}, so
-     * that every owner sharing a last name and postcode resolves to the same value.
+     * the SHA-256 digest of the fixed {@code "V2"} {@link IdentityVersion#TAG version tag} and
+     * its (normalised) last name and postcode, joined by {@code '|'}, so that every owner
+     * sharing a last name and postcode resolves to the same value. Mixing in the version tag
+     * re-derives every id under version 2 while preserving that shared resolution.
      *
      * @param candidate an owner in the household
      * @return a non-blank household identifier
      */
     public String householdId(Owner candidate) {
-        return Sha256Hex.prefix(householdKey(candidate), 12);
+        return Sha256Hex.prefix(IdentityVersion.TAG + "|" + householdKey(candidate), 12);
     }
 
     private String householdKey(Owner owner) {

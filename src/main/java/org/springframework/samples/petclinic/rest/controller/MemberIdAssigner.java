@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -28,8 +29,9 @@ import org.springframework.stereotype.Component;
  * Assigns an owner's {@link Owner#getMemberId() member id} on create.
  * <p>
  * The id is formatted {@code <REGION><FY><HASH8><CHK>} (see {@link MemberId}) from the
- * owner's region, the fiscal year of its registration date and the hash of its normalized
- * telephone and last name. When the computed id collides with an already-stored owner's
+ * owner's version-2 {@link IdentityVersion#regionCode(String) region code}, the fiscal year
+ * of its registration date and the hash of its normalized telephone and last name. When the
+ * computed id collides with an already-stored owner's
  * member id, it is de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2
  * or more that makes it unique.
  */
@@ -51,7 +53,7 @@ public class MemberIdAssigner {
      * @param owner the owner being created
      */
     public void assign(Owner owner) {
-        String base = MemberId.of(owner.getRegion(), owner.getRegistrationDate(),
+        String base = MemberId.of(IdentityVersion.regionCode(owner.getRegion()), owner.getRegistrationDate(),
             owner.getTelephone(), owner.getLastName());
         owner.setMemberId(deduplicate(base));
     }
