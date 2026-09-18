@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
+import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -72,13 +73,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CustomerCodeAssigner customerCodeAssigner;
 
+    private final HouseholdDuplicateChecker householdDuplicateChecker;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  RegistrationDateDefaulter registrationDateDefaulter,
-                                 CustomerCodeAssigner customerCodeAssigner) {
+                                 CustomerCodeAssigner customerCodeAssigner,
+                                 HouseholdDuplicateChecker householdDuplicateChecker) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -86,6 +90,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.registrationDateDefaulter = registrationDateDefaulter;
         this.customerCodeAssigner = customerCodeAssigner;
+        this.householdDuplicateChecker = householdDuplicateChecker;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -124,6 +129,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && this.householdDuplicateChecker.isDuplicate(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.registrationDateDefaulter.applyDefault(owner);
