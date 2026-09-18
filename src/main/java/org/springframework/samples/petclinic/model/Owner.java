@@ -72,6 +72,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_points")
+    private Integer membershipPoints;
+
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
@@ -280,9 +283,23 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number assigned on create and never below 1.
-     * Levels 1 to 3 are earned from the owner's own fields at creation time (see
-     * {@code MembershipLevelAssigner}); level 4 is reserved for tenure.
+     * The owner's membership points, assigned on create by tallying the owner's standing:
+     * points for having an email address, for having no namesakes, for a large household and
+     * for tenure (see {@code MembershipLevelAssigner}). The points determine the owner's
+     * {@link #getMembershipLevel() membership level}.
+     */
+    public Integer getMembershipPoints() {
+        return this.membershipPoints;
+    }
+
+    public void setMembershipPoints(Integer membershipPoints) {
+        this.membershipPoints = membershipPoints;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4 assigned on create by banding the
+     * owner's {@link #getMembershipPoints() membership points} (see
+     * {@code MembershipLevelAssigner}).
      */
     public Integer getMembershipLevel() {
         return this.membershipLevel;

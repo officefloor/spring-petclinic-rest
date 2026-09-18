@@ -20,46 +20,82 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
- * Assigns, on create, the owner's numeric membership level.
+ * Assigns, on create, the owner's membership points and the numeric membership level they
+ * band into.
  * <p>
- * The level starts at {@link #BASE_LEVEL}, gains a point when the owner has an email
- * address, another when the owner has no namesakes ({@code namesakeCount} is 0), and a
- * final one for tenured members, up to {@link #MAX_LEVEL}. The top level requires tenure of
- * more than {@link #LEVEL_4_MIN_TENURE_DAYS} days; a newly created owner has not yet accrued
- * any tenure, so on create the level earned can never exceed 3. As it reads the owner's
- * namesake count, this must be assigned after {@link NamesakeCounter} and before the owner
- * is saved.
+ * Points start at zero and accrue from the owner's standing: {@link #EMAIL_POINTS} when the
+ * owner has an email address, {@link #NO_NAMESAKE_POINTS} when the owner has no namesakes
+ * ({@code namesakeCount} is 0), {@link #LARGE_HOUSEHOLD_POINTS} for a household of
+ * {@link #LARGE_HOUSEHOLD_MIN_SIZE} or more, and {@link #TENURE_POINTS} for tenure of more
+ * than {@link #QUALIFYING_TENURE_DAYS} days. The total bands into a level of 1 (0-1 points),
+ * 2 (2-3), 3 (4-5) or 4 (6 or more). A newly created owner has not yet accrued any tenure, so
+ * on create the tenure points are never earned. As it reads the owner's namesake count and
+ * household size, this must be assigned after {@link NamesakeCounter} and
+ * {@link HouseholdSizeAssigner}, and before the owner is saved.
  */
 @Component
 public class MembershipLevelAssigner {
 
-    /** The level every owner starts at. */
-    static final int BASE_LEVEL = 1;
+    /** Points awarded when the owner has an email address. */
+    static final int EMAIL_POINTS = 2;
 
-    /** The highest membership level an owner can hold; only reachable through tenure. */
-    static final int MAX_LEVEL = 4;
+    /** Points awarded when the owner has no namesakes ({@code namesakeCount} is 0). */
+    static final int NO_NAMESAKE_POINTS = 1;
 
-    /** Tenure, in days, an owner must exceed to reach the top {@link #MAX_LEVEL top level}. */
-    static final int LEVEL_4_MIN_TENURE_DAYS = 365;
+    /** Points awarded for a household of {@link #LARGE_HOUSEHOLD_MIN_SIZE} or more. */
+    static final int LARGE_HOUSEHOLD_POINTS = 2;
+
+    /** Points awarded for tenure of more than {@link #QUALIFYING_TENURE_DAYS} days. */
+    static final int TENURE_POINTS = 3;
+
+    /** Household size, in members, at or above which {@link #LARGE_HOUSEHOLD_POINTS} apply. */
+    static final int LARGE_HOUSEHOLD_MIN_SIZE = 3;
+
+    /** Tenure, in days, an owner must exceed to earn the {@link #TENURE_POINTS}. */
+    static final int QUALIFYING_TENURE_DAYS = 365;
 
     /**
-     * Assigns {@code owner}'s membership level from its own fields and tenure. Call this after
-     * the namesake count has been assigned and before the owner is saved.
+     * Assigns {@code owner}'s membership points and the level they band into. Call this after
+     * the namesake count and household size have been assigned and before the owner is saved.
      *
      * @param owner the owner being created
      */
     public void assign(Owner owner) {
-        int level = BASE_LEVEL;
+        int points = points(owner);
+        owner.setMembershipPoints(points);
+        owner.setMembershipLevel(levelForPoints(points));
+    }
+
+    /** The owner's total membership points, tallied from its standing. */
+    private int points(Owner owner) {
+        int points = 0;
         if (hasEmail(owner)) {
-            level++;
+            points += EMAIL_POINTS;
         }
         if (hasNoNamesakes(owner)) {
-            level++;
+            points += NO_NAMESAKE_POINTS;
+        }
+        if (hasLargeHousehold(owner)) {
+            points += LARGE_HOUSEHOLD_POINTS;
         }
         if (hasQualifyingTenure(owner)) {
-            level++;
+            points += TENURE_POINTS;
         }
-        owner.setMembershipLevel(Math.min(level, MAX_LEVEL));
+        return points;
+    }
+
+    /** Bands a point total into a membership level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    private int levelForPoints(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     private boolean hasEmail(Owner owner) {
@@ -70,13 +106,17 @@ public class MembershipLevelAssigner {
         return owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
     }
 
+    private boolean hasLargeHousehold(Owner owner) {
+        return owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_MIN_SIZE;
+    }
+
     /**
-     * Whether the owner's tenure exceeds the {@link #LEVEL_4_MIN_TENURE_DAYS} that the top
-     * level requires. A newly created owner has not yet accrued any tenure, so on create this
-     * is always {@code false} and a new owner never exceeds level 3.
+     * Whether the owner's tenure exceeds the {@link #QUALIFYING_TENURE_DAYS} the tenure points
+     * require. A newly created owner has not yet accrued any tenure, so on create this is
+     * always {@code false} and a new owner never earns the tenure points.
      */
     private boolean hasQualifyingTenure(Owner owner) {
-        return tenureDays(owner) > LEVEL_4_MIN_TENURE_DAYS;
+        return tenureDays(owner) > QUALIFYING_TENURE_DAYS;
     }
 
     /** The whole days the owner has been a member; zero for an owner being created. */
