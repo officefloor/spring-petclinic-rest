@@ -26,6 +26,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
@@ -39,6 +40,11 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's canonical relative URL, '/api/owners/' followed by its id. */
+    default String selfLink(Owner owner) {
+        return "/api/owners/" + owner.getId();
+    }
 
     /** The owner's stored E.164 telephone formatted for people to read (country code, space,
      *  national digits grouped in threes), or null when it is not a recognised E.164 number.
