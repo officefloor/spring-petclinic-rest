@@ -177,6 +177,15 @@ public class Owner extends Person {
         return Math.min(level, 3);
     }
 
+    /**
+     * The owner's preferred contact channel, derived from the fields on file:
+     * {@code "EMAIL"} when a contact email is present, otherwise {@code "PHONE"}.
+     */
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
