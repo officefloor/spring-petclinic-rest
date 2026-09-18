@@ -143,6 +143,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's locality: the canonical region derived from the city via the fixed
+     * {@link CityRegion} table, or {@code "UNKNOWN"} when the city is not in the table.
+     */
+    @Transient
+    public String getLocality() {
+        return CityRegion.of(this.city);
+    }
+
+    /**
      * The owner's membership tier, derived from its state: {@code SILVER} when the owner had no
      * namesakes at creation ({@link #getNamesakeCount()} is 0) and has an email address, otherwise
      * {@code BRONZE}.
