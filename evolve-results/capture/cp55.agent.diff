@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b9108fa2e..35a8ab3c5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
+ import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+ import org.springframework.samples.petclinic.rest.function.owner.Locality;
+ import org.springframework.samples.petclinic.rest.function.owner.Luhn;
++import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
+ import org.springframework.samples.petclinic.rest.function.owner.Salutation;
+ import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
+ import org.springframework.samples.petclinic.rest.function.owner.Timezone;
+@@ -39,6 +40,7 @@ public interface OwnerMapper {
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+@@ -141,6 +143,13 @@ public interface OwnerMapper {
+         return AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
+     }
+ 
++    /** The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' at
++     *  membershipLevel 3 or more else 'STANDARD'; AREA is 'METRO' for a known region (its
++     *  'locality' is NSW, VIC or QLD) else 'REGIONAL'. See {@link OwnerSegment}. */
++    default String ownerSegment(Owner owner) {
++        return OwnerSegment.of(owner.getMembershipLevel(), locality(owner));
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+index 46e277ba1..1789ac306 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Locality.java
+@@ -1,6 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Map;
++import java.util.Set;
+ 
+ /**
+  * The single definition of an owner's locality: the canonical region derived from its
+@@ -20,9 +21,18 @@ public final class Locality {
+     private static final Map<String, String> CITY_REGION =
+             Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    /** The canonical regions this application recognises. */
++    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
++
+     private Locality() {
+     }
+ 
++    /** Whether {@code region} is one of the known canonical regions (NSW, VIC or QLD), i.e. any
++     *  region other than {@link #UNKNOWN}. */
++    public static boolean isKnown(String region) {
++        return KNOWN_REGIONS.contains(region);
++    }
++
+     /** The canonical region for {@code city} via the city-to-region table alone, or
+      *  {@code "UNKNOWN"} when it is not in the table. */
+     public static String region(String city) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..5516cabb5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * The single definition of an owner's segment, formatted {@code '<TIER>_<AREA>'} and one of
++ * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++ * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} at membershipLevel 3 or more, otherwise
++ * {@code STANDARD}; AREA is {@code METRO} for a known region (see {@link Locality#isKnown}),
++ * otherwise {@code REGIONAL}.
++ *
++ * <p>A pure function of the membership level and region, so it is composed on read rather than
++ * stored.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /** The segment for an owner with the given {@code membershipLevel} and canonical
++     *  {@code region} (see {@link Locality}). A missing membership level is treated as below
++     *  the premium threshold. */
++    public static String of(Integer membershipLevel, String region) {
++        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = Locality.isKnown(region) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 283053de8..60bd2e4e0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2334,6 +2334,16 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>' and one of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM'
++                when 'membershipLevel' is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when
++                the 'locality' is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
