@@ -232,32 +232,58 @@ public class Owner extends Person {
             this.householdId == null ? "" : this.householdId);
     }
 
-    /** Tenure, in days, beyond which an owner reaches membership level {@code 4}. */
-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+    /** Tenure, in days, beyond which an owner earns the tenure membership points. */
+    private static final long TENURE_DAYS_FOR_POINTS = 365;
+
+    /** Household size at or above which an owner earns the household membership points. */
+    private static final int HOUSEHOLD_SIZE_FOR_POINTS = 3;
 
     /**
-     * The owner's membership level, a number from 1 to 4 derived from the
-     * owner's own fields. Starts at {@code 1}, gains {@code 1} when a contact
-     * email is on file, gains {@code 1} when the owner has no namesakes, gains
-     * {@code 1} when the owner's {@link #getTenureDays() tenure} exceeds
-     * {@value #TENURE_DAYS_FOR_LEVEL_4} days, and is capped at {@code 4}. Because
-     * a newly created owner has zero tenure, a new owner never exceeds level 3.
+     * The owner's membership points, a score derived from the owner's own
+     * fields. Starts at {@code 0}, gains {@code 2} when a contact email is on
+     * file, gains {@code 1} when the owner has no namesakes, gains {@code 2}
+     * when the owner belongs to a household of {@value #HOUSEHOLD_SIZE_FOR_POINTS}
+     * or more, and gains {@code 3} when the owner's {@link #getTenureDays()
+     * tenure} exceeds {@value #TENURE_DAYS_FOR_POINTS} days.
      */
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         if (hasEmail) {
-            level += 1;
+            points += 2;
         }
         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
         if (noNamesakes) {
-            level += 1;
+            points += 1;
+        }
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= HOUSEHOLD_SIZE_FOR_POINTS;
+        if (largeHousehold) {
+            points += 2;
         }
         Long tenureDays = getTenureDays();
-        if (tenureDays != null && tenureDays > TENURE_DAYS_FOR_LEVEL_4) {
-            level += 1;
+        if (tenureDays != null && tenureDays > TENURE_DAYS_FOR_POINTS) {
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4 mapped from the owner's
+     * {@link #getMembershipPoints() membership points}: {@code 1} for 0-1 points,
+     * {@code 2} for 2-3, {@code 3} for 4-5 and {@code 4} for 6 or more.
+     */
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
