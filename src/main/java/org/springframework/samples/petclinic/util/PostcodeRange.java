@@ -20,6 +20,30 @@ public final class PostcodeRange {
     }
 
     /**
+     * The region whose inclusive range contains {@code postcode}, or {@code null} when the
+     * postcode is absent, non-numeric or in no known range. This is the reverse of the
+     * {@link #BY_REGION region-to-range table} and the primary source of an owner's region.
+     */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : BY_REGION.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether the given 4-digit {@code postcode} is valid for {@code city}: within the
      * inclusive range of the city's region, or unconstrained when the region is unknown.
      * Assumes {@code postcode} is a 4-digit numeric string (as enforced by the DTO pattern).

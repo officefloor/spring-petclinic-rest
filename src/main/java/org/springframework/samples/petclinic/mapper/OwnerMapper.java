@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegion;
+import org.springframework.samples.petclinic.util.PostcodeRange;
 
 import java.util.Collection;
 import java.util.List;
@@ -49,10 +50,12 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** The owner's locality: the canonical region derived from its city via the fixed
-     *  city-to-region table, or 'UNKNOWN' when the city is not in the table. */
+    /** The owner's locality: the canonical region derived from its postcode range first,
+     *  falling back to the fixed city-to-region table when the postcode is absent or in no
+     *  known range, or 'UNKNOWN' when neither resolves a region. */
     default String locality(Owner owner) {
-        return CityRegion.locality(owner.getCity());
+        String byPostcode = PostcodeRange.regionForPostcode(owner.getPostcode());
+        return byPostcode != null ? byPostcode : CityRegion.locality(owner.getCity());
     }
 
     /** The owner's preferred contact method: 'EMAIL' when an email address is present,
