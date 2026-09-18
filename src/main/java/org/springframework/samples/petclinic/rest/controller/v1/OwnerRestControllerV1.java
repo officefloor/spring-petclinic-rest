@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigne
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimiter;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
+import org.springframework.samples.petclinic.rest.controller.HouseholdSizeAssigner;
 import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.controller.OwnerCreationAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
@@ -83,6 +84,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdAssigner householdAssigner;
 
+    private final HouseholdSizeAssigner householdSizeAssigner;
+
     private final NamesakeCounter namesakeCounter;
 
     private final CityCapacityChecker cityCapacityChecker;
@@ -102,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CustomerCodeAssigner customerCodeAssigner,
                                  HouseholdDuplicateChecker householdDuplicateChecker,
                                  HouseholdAssigner householdAssigner,
+                                 HouseholdSizeAssigner householdSizeAssigner,
                                  NamesakeCounter namesakeCounter,
                                  CityCapacityChecker cityCapacityChecker,
                                  DailyRegistrationLimiter dailyRegistrationLimiter,
@@ -116,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.customerCodeAssigner = customerCodeAssigner;
         this.householdDuplicateChecker = householdDuplicateChecker;
         this.householdAssigner = householdAssigner;
+        this.householdSizeAssigner = householdSizeAssigner;
         this.namesakeCounter = namesakeCounter;
         this.cityCapacityChecker = cityCapacityChecker;
         this.dailyRegistrationLimiter = dailyRegistrationLimiter;
@@ -176,6 +181,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (duplicate) {
             this.householdAssigner.assign(owner);
         }
+        this.householdSizeAssigner.assign(owner);
         this.customerCodeAssigner.assign(owner);
         this.namesakeCounter.assign(owner);
         this.bulkSignupWarningAssigner.assign(owner);

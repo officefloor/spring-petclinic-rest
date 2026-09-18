@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.model;
  * An owner's membership tier, derived from the owner's own fields.
  */
 public enum MembershipTier {
+    GOLD,
     SILVER,
     BRONZE
 }
