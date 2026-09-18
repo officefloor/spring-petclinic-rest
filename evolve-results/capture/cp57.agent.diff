@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnqueueWelcomeNotification.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnqueueWelcomeNotification.java
+new file mode 100644
+index 000000000..38624d91f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnqueueWelcomeNotification.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.notify.WelcomeNotifier;
++
++/**
++ * Enqueues the welcome notification for a successful owner create in {@code POST /api/owners},
++ * delegating to {@link WelcomeNotifier} which emits it to the dedicated {@code NOTIFY} logger. Runs
++ * after {@link SaveOwner} so the generated id is available, and before the response is sent.
++ */
++public class EnqueueWelcomeNotification {
++
++    public void service(@Val Owner owner, WelcomeNotifier welcomeNotifier) {
++        welcomeNotifier.welcome(owner);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/notify/WelcomeNotifier.java b/src/main/java/org/springframework/samples/petclinic/rest/notify/WelcomeNotifier.java
+new file mode 100644
+index 000000000..8e69232bb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/notify/WelcomeNotifier.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.notify;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Single sink for owner welcome notifications. Each enqueued notification is emitted to the
++ * dedicated {@code NOTIFY} logger, keyed by the owner's id and {@code memberId}, so the
++ * notification stream has one owner and is independent of the {@code AUDIT} trail.
++ */
++@Component
++public class WelcomeNotifier {
++
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
++    /** Enqueues a welcome notification for a freshly created {@code owner}. */
++    public void welcome(Owner owner) {
++        NOTIFY.info("welcome enqueued: id={} memberId={}", owner.getId(), owner.getMemberId());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index be7e9d5d0..39fc0da14 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -208,6 +208,13 @@ recordIdempotency:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: notify
++
++# Enqueue the welcome notification for the successful create, carrying the persisted owner id and
++# its memberId to the dedicated NOTIFY logger. Runs after save so the generated id is available.
++notify:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnqueueWelcomeNotification
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
