@@ -15,10 +15,6 @@
  */
 package org.springframework.samples.petclinic.util;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 /**
  * Derives the stable identifier shared by owners who belong to the same household, i.e. who share a
  * last name and address (compared case-insensitively with collapsed whitespace). Because the
@@ -43,16 +39,6 @@ public final class HouseholdIdGenerator {
     public static String generate(String lastName, String address) {
         String key = TextNormalizer.normalizeForComparison(lastName) + '\n'
             + TextNormalizer.normalizeForComparison(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(LENGTH);
-            for (int i = 0; hex.length() < LENGTH; i++) {
-                hex.append(String.format("%02X", digest[i]));
-            }
-            return hex.substring(0, LENGTH);
-        } catch (NoSuchAlgorithmException ex) {
-            // SHA-256 is required to be available on every JVM, so this cannot happen.
-            throw new IllegalStateException("SHA-256 algorithm not available", ex);
-        }
+        return Sha256.hexPrefix(key, LENGTH);
     }
 }

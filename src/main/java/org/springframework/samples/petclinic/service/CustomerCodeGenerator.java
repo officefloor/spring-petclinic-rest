@@ -15,51 +15,31 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.stereotype.Component;
 
 /**
  * Produces the customer code assigned to a new {@link Owner}.
  *
- * <p>The code is formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
- * and {@code LAST3} are the upper-cased first three letters of the owner's city
- * and last name, and {@code NNNN} is a 4-digit zero-padded per-city sequence
- * equal to one more than the number of owners already in that city (e.g.
- * {@code 'LON-SMI-0007'}).
+ * <p>The code is the owner's {@link CustomerCode} identity {@code '<REGION>-<HASH8>'}: the region
+ * derived from the owner's postcode (via {@link Locality}, so it disambiguates cities that share a
+ * name and falls back to the city table) joined to a hash of the owner's normalized telephone and
+ * last name (e.g. {@code 'NSW-3F2A9C1D'}). It is derived purely from owner fields — there are no
+ * sequence numbers — so it needs no persistence lookups.
  */
 @Component
 public class CustomerCodeGenerator {
 
-    private static final int PREFIX_LENGTH = 3;
-
-    private final OwnerRepository ownerRepository;
-
-    public CustomerCodeGenerator(OwnerRepository ownerRepository) {
-        this.ownerRepository = ownerRepository;
-    }
-
     /**
-     * Generate the customer code for the given owner based on its city, last
-     * name and the current number of owners in that city.
+     * Generate the customer code for the given owner from its region and identity fields.
      *
      * @param owner the owner being registered
-     * @return the {@code '<CITY3>-<LAST3>-<NNNN>'} customer code
+     * @return the {@code '<REGION>-<HASH8>'} customer code
      */
     public String generate(Owner owner) {
-        long sequence = ownerRepository.countByCity(owner.getCity()) + 1;
-        return String.format("%s-%s-%04d", prefix(owner.getCity()), prefix(owner.getLastName()), sequence);
-    }
-
-    /** The upper-cased first three letters of the given value. */
-    private static String prefix(String value) {
-        StringBuilder prefix = new StringBuilder(PREFIX_LENGTH);
-        for (int i = 0; i < value.length() && prefix.length() < PREFIX_LENGTH; i++) {
-            char c = value.charAt(i);
-            if (Character.isLetter(c)) {
-                prefix.append(Character.toUpperCase(c));
-            }
-        }
-        return prefix.toString();
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        return CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
     }
 }

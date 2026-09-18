@@ -110,12 +110,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived by {@link Locality} from
-     * its {@link #postcode} (preferred) and {@link #city}, or {@code "UNKNOWN"}
-     * when neither resolves to a known region.
+     * The owner's locality: the region component of its {@link #customerCode}
+     * identity (see {@link CustomerCode}), or {@code null} when no customer code
+     * is assigned. The region was derived from the owner's postcode and city when
+     * the identity was minted, so the locality now follows the identity rather than
+     * being recomputed from the current city and postcode.
      */
     public String getLocality() {
-        return Locality.of(this.city, this.postcode);
+        return CustomerCode.regionOf(this.customerCode);
     }
 
     public String getTelephone() {
@@ -153,7 +155,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'}
      * where {@code YY} is the last two digits of the {@link #registrationDate}
-     * year (e.g. {@code "LON-SMI-0007-M26"}). Derived from the owner's own fields.
+     * year (e.g. {@code "NSW-3F2A9C1D-M26"}). Derived from the owner's own fields.
      */
     public String getMembershipNumber() {
         if (this.customerCode == null || this.registrationDate == null) {
