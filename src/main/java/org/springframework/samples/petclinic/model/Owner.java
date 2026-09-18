@@ -123,6 +123,19 @@ public class Owner extends Person {
         return this.title + " " + getLastName();
     }
 
+    /**
+     * The owner's canonical API path, formatted {@code /api/owners/<id>}, e.g.
+     * {@code "/api/owners/1"}. Derived on read from the owner's {@link #getId() id};
+     * {@code null} until the owner has been persisted and assigned an id.
+     */
+    @Transient
+    public String getSelfLink() {
+        if (getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + getId();
+    }
+
     public String getAddress() {
         return this.address;
     }
