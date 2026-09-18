@@ -138,6 +138,16 @@ public class Owner extends Person {
         return CustomerCode.regionOf(this.customerCode);
     }
 
+    /**
+     * The owner's timezone: the IANA name for its {@linkplain #getLocality()
+     * locality}, from the fixed region-to-timezone table (see
+     * {@link RegionTimezone}), or {@code null} when the locality is absent or has
+     * no known timezone.
+     */
+    public String getTimezone() {
+        return RegionTimezone.zoneFor(getLocality());
+    }
+
     public String getTelephone() {
         return this.telephone;
     }
