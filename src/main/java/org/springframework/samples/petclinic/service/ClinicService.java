@@ -63,6 +63,14 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
+	 * Retrieve the owners whose email matches the given value, compared case-insensitively.
+	 *
+	 * @param email the email to match, case-insensitively
+	 * @return a <code>Collection</code> of matching <code>Owner</code>s (empty if none)
+	 */
+	Collection<Owner> findOwnerByEmail(String email) throws DataAccessException;
+
+	/**
 	 * Count the number of owners located in the given city.
 	 *
 	 * @param city the city to match

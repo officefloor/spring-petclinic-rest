@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -152,6 +153,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
         }
+        String email = EmailNormalizer.normalize(owner.getEmail());
+        if (email != null && !this.clinicService.findOwnerByEmail(email).isEmpty()) {
+            throw new DuplicateEmailException(email);
+        }
         Collection<Owner> household =
             this.clinicService.findOwnersInHousehold(owner.getLastName(), owner.getAddress());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -159,7 +164,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
         owner.setTelephone(telephone);
-        owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        owner.setEmail(email);
         if (sharesHousehold) {
             this.clinicService.joinHousehold(owner, household);
         }
