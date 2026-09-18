@@ -1,0 +1,570 @@
+{
+  "checkpoint": 50,
+  "checkpoint_id": "idempotency",
+  "phase": "Final",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "The request may carry an 'Idempotency-Key' header. When a create repeats with a key already seen, return the originally created owner with 200 instead of creating a duplicate.",
+    "prompt": "Implement the following change to the application so that it fully satisfies the\nspecification and all existing and new tests pass.\n\nAs you do, keep the code well structured: put each piece of logic where it belongs, in a\nsmall unit with a single responsibility, and reuse existing code instead of copying it. Do\nnot let any one class or method grow into a catch-all that accumulates unrelated logic. Run\nthe test suite and make it green before finishing.\n\nThe request may carry an 'Idempotency-Key' header. When a create repeats with a key already seen, return the originally created owner with 200 instead of creating a duplicate.\n"
+  },
+  "commit_sha": "4024cd193e1ff09048db23f417550e710d7f73ed",
+  "reset_sha": "",
+  "preagent_sha": "2704bd94f8bec9f4bf10b1fbcb3dbc65dc44594e",
+  "prev_sha": "2704bd94f8bec9f4bf10b1fbcb3dbc65dc44594e",
+  "base_sha": "ee199b9b0da67ba965aada522e10bb65d063f7c9",
+  "agent": {
+    "ok": true,
+    "cost_usd": 3.3672925,
+    "input_tokens": 108,
+    "output_tokens": 35584,
+    "cache_read_tokens": 3361685,
+    "cache_creation_tokens": 79519,
+    "num_turns": 54,
+    "duration_ms": 577676,
+    "duration_api_ms": 494693,
+    "model": "claude-opus-4-8",
+    "session_id": "53394209-ee59-435a-a741-04283bb42651",
+    "stop_reason": "success",
+    "result_text": "The implementation is complete and all tests pass. Here's a summary of what I did.\n\n## What changed\n\nThe `POST /api/owners` pipeline now honors an optional `Idempotency-Key` header: a repeat create with an already-seen key returns the originally created owner with **200**, instead of building a duplicate (which the existing identity check would reject with 409).\n\nI kept each piece of logic in its own small unit and reused the codebase's existing mechanisms (escalation-based short-circuit, `Out`/`@Val` state, Spring-bean injection):\n\n**New pieces**\n- `IdempotencyStore` (`@Component`) \u2014 the single home for idempotency knowledge: the header name, extracting the key from the request (`ServerHttpConnection`), and an in-memory `key \u2192 ownerId` map. It's intentionally non-transactional so a replay is recognized across the request (and transaction) that first stored it.\n- `CheckIdempotency` \u2014 new **first** step. If the key was seen before, it throws `IdempotentReplayException(ownerId)`, short-circuiting *before* any validation/build/persist. New or absent key \u2192 pipeline proceeds unchanged.\n- `RecordIdempotencyKey` \u2014 runs after `save` (id assigned), recording `key \u2192 owner.getId()`; a no-op when no key was sent.\n- `IdempotentReplayException` + its handler \u2014 the handler loads the original owner and responds 200 with the owner DTO, using the escalation mechanism already used throughout this codebase (`NotFound`, `DuplicateIdentity`, etc.).\n\n**Wiring**\n- `owners.POST.yml`: added `checkIdempotency` as the entry step (`next: validate`) and `recordIdempotency` between `resolveBulkWarning` and `respond`.\n- New escalation YAML mapping `IdempotentReplayException` to its handler (most-specific match, so it takes precedence over the generic `java.lang.Exception` handler).\n\n**Why escalation rather than a `@Flow` branch:** it's the pattern this codebase actually uses for \"respond and stop the pipeline,\" so the change stays consistent with the surrounding code. Owner\u2192pets is `FetchType.EAGER`, so the handler safely maps the loaded owner even though it runs outside the write-transaction governance.\n\n**Tests:** `AcceptanceTest.coreIdempotentRepeat` passes (same id returned, second call is 200), and the full suite is green (`BUILD SUCCESS`).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 3.3672925,
+        "input_tokens": 108,
+        "output_tokens": 35584,
+        "cache_read_tokens": 3361685,
+        "cache_creation_tokens": 79519,
+        "num_turns": 54,
+        "duration_ms": 577676,
+        "duration_api_ms": 494693,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp50.agent.jsonl",
+  "agent_diff_file": "cp50.agent.diff",
+  "build_log_file": "cp50.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 62,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared": true,
+      "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp39Tests#coreNewOwnerCappedBelowFour": true,
+      "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday": true,
+      "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName": true,
+      "org.springframework.samples.petclinic.acceptance.Cp46Tests#coreDeletedOwnerIgnoredByDuplicateCheck": true,
+      "org.springframework.samples.petclinic.acceptance.Cp46Tests#coreSoftDeleteFlagsAndRetains": true,
+      "org.springframework.samples.petclinic.acceptance.Cp42Tests#coreReturnsTimezoneForRegion": true,
+      "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreLocalityFromStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreHouseholdAddsPoints": true,
+      "org.springframework.samples.petclinic.acceptance.Cp41Tests#coreCustomerCodesStayUnique": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsOutOfRangePostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp48Tests#coreReturnsFiscalYear": true,
+      "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp49Tests#coreReturnsSelfLink": true,
+      "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence": true,
+      "org.springframework.samples.petclinic.acceptance.Cp40Tests#coreReturnsPointsAndLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhenNoAddressAtAll": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit": true,
+      "org.springframework.samples.petclinic.acceptance.Cp45Tests#coreComposesSalutation": true,
+      "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials": true,
+      "org.springframework.samples.petclinic.acceptance.Cp50Tests#coreIdempotentRepeat": true,
+      "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreHouseholdIdFromStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes": true,
+      "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand": true,
+      "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength": true,
+      "org.springframework.samples.petclinic.acceptance.Cp43Tests#coreAuditIncludesLevelAndNumber": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesAddressLine": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion": true,
+      "org.springframework.samples.petclinic.acceptance.Cp47Tests#coreDefaultDateIsBusinessDay": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp38Tests#errorRejectsDisposableDomain": true,
+      "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelFromPoints": true,
+      "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreYearSegmentIsFiscal": true,
+      "org.springframework.samples.petclinic.acceptance.Cp24Tests#corePointsDriveLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp37Tests#coreFormatsTelephoneDisplay": true,
+      "org.springframework.samples.petclinic.acceptance.Cp44Tests#coreNormalizesAndComposesStructuredAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp44Tests#functionalityStillAcceptsFlatAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared",
+        "passed": true,
+        "skipped": false,
+        "time": 0.065,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.455,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp39Tests#coreNewOwnerCappedBelowFour",
+        "passed": true,
+        "skipped": false,
+        "time": 0.046,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.025,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday",
+        "passed": true,
+        "skipped": false,
+        "time": 0.015,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp46Tests#coreDeletedOwnerIgnoredByDuplicateCheck",
+        "passed": true,
+        "skipped": false,
+        "time": 0.043,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp46Tests#coreSoftDeleteFlagsAndRetains",
+        "passed": true,
+        "skipped": false,
+        "time": 0.028,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp42Tests#coreReturnsTimezoneForRegion",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreLocalityFromStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreHouseholdAddsPoints",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp41Tests#coreCustomerCodesStayUnique",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.037,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsOutOfRangePostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.014,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp48Tests#coreReturnsFiscalYear",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.033,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp49Tests#coreReturnsSelfLink",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp40Tests#coreReturnsPointsAndLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhenNoAddressAtAll",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.006,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.014,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit",
+        "passed": true,
+        "skipped": false,
+        "time": 1.329,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp45Tests#coreComposesSalutation",
+        "passed": true,
+        "skipped": false,
+        "time": 0.022,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials",
+        "passed": true,
+        "skipped": false,
+        "time": 0.029,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp50Tests#coreIdempotentRepeat",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreHouseholdIdFromStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.055,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged",
+        "passed": true,
+        "skipped": false,
+        "time": 0.027,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.062,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.033,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes",
+        "passed": true,
+        "skipped": false,
+        "time": 0.054,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp43Tests#coreAuditIncludesLevelAndNumber",
+        "passed": true,
+        "skipped": false,
+        "time": 0.024,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.011,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.014,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesAddressLine",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.006,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion",
+        "passed": true,
+        "skipped": false,
+        "time": 0.838,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp47Tests#coreDefaultDateIsBusinessDay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.024,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.009,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.025,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp38Tests#errorRejectsDisposableDomain",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.017,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelFromPoints",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreYearSegmentIsFiscal",
+        "passed": true,
+        "skipped": false,
+        "time": 0.015,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp24Tests#corePointsDriveLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp37Tests#coreFormatsTelephoneDisplay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.022,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp44Tests#coreNormalizesAndComposesStructuredAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp44Tests#functionalityStillAcceptsFlatAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": {
+    "probe_cost_usd": 1.3713965,
+    "probe_input_tokens": 4,
+    "probe_cache_read_tokens": 42876,
+    "probe_recall": 0.5609756097560976,
+    "probe_text": "Here's the complete ordered pipeline for `POST /api/owners` as the code currently stands. The endpoint is defined entirely by OfficeFloor YAML at `src/main/resources/officefloor/rest/api/owners.POST.yml` (there is **no** Spring `@RestController` for it). Effective URL is `POST /petclinic/api/owners` (context-path `/petclinic/`). A `composition.authorize: hasRole('OWNER_ADMIN')` guard is declared but security is disabled by default (`petclinic.security.enable=false`).\n\nEach top-level YAML entry is one step, run in `next:` order. Steps from `build` onward run under `govern: [ transaction ]`, so all uniqueness reads, the insert and the audit commit as one transaction.\n\nLegend: **[V]** = validation (can reject the request), **[S]** = side-effect (mutation / state change / external effect).\n\n### Before the transaction (cheap rejections first)\n\n1. **[V] CheckIdempotency** \u2014 reads `Idempotency-Key` header; if already seen, throws `IdempotentReplayException` \u2192 returns the *original* owner with **200** (short-circuits everything).\n2. **[V] ValidateRequiredOwnerFields** \u2014 the only `@RequestBody` bind (note: bound **without** `@Valid`, so the DTO's JSR-380 annotations are *not* enforced here). Requires `firstName, lastName, address (or addressLine1/2), city, telephone`; missing \u2192 `MissingOwnerFieldsException` (400). **[S]** republishes the DTO as a variable for later steps.\n3. **[V] ValidateOwnerPostcode** \u2014 postcode optional; if present must be 4 digits and within the city's region range \u2192 else `InvalidPostcodeException` (400).\n4. **[S] NormalizeOwnerAddress** \u2014 mutates DTO: trims/collapses/upper-cases address lines, expands `ST\u2192STREET` etc., recomposes flat `address`.\n5. **[S] NormalizeOwnerTelephone** \u2014 rewrites telephone to E.164; unparseable \u2192 **[V]** `InvalidTelephoneException` (400).\n6. **[V] EnsureCityCapacity** \u2014 `countByCity >= 50` \u2192 `CityAtCapacityException` (409).\n7. **[V] ValidateRegistrationDate** \u2014 supplied date in the future \u2192 `FutureRegistrationDateException` (400).\n8. **[S] ResolveRegistrationDate** \u2014 effective date = supplied else today, rolled forward past weekends/2026 holidays; published as a variable.\n9. **[V] EnsureDailyOwnerLimit** \u2014 `countByRegistrationDate(resolvedDate) >= 100` \u2192 `DailyOwnerLimitException` (**429**).\n10. **[S] NormalizeOwnerEmail** \u2014 email optional; if present must match regex (**[V]** `InvalidEmailException` 400); stored lower-cased.\n11. **[V] RejectDisposableEmail** \u2014 domain in `{mailinator, tempmail, guerrillamail}.com` \u2192 `DisposableEmailException` (400).\n\n### Inside the transaction\n\n12. **[S] BuildOwner** \u2014 maps DTO \u2192 `Owner` entity (id/pets ignored; `sharesHousehold` not mapped).\n13. **[S] AssignHouseholdId** \u2014 `householdId = SHA-256(lastName|postcode)[0:12]`; **null when no postcode**.\n14. **[V] EnsureUniqueHousehold** \u2014 if householdId is occupied by a **non-deleted** owner and the request did not set `sharesHousehold=true` \u2192 `HouseholdDuplicateException` (409). **[S]** on opt-in, flags owner as a declared household member.\n15. **[V] EnsureUniqueIdentity** \u2014 identity key `telephone|email|householdId`; matches an existing **non-deleted** owner \u2192 `DuplicateIdentityException` (409).\n16. **[S] CountHouseholdMembers** \u2014 sets `householdSize` (1 if no household, else same-household count **+1**; note this count does **not** filter soft-deleted, unlike step 14).\n17. **[S] ApplyRegistrationDate** \u2014 overwrites entity date with the business-day-adjusted date.\n18. **[S] AssignCustomerCode** \u2014 `customerCode = <REGION>-<SHA-256(telephone+lastName)[0:8]>`.\n19. **[S] DeduplicateCustomerCode** \u2014 if code exists, appends `-<n>` for the smallest free n\u22652.\n20. **[S] AssignMembershipNumber** \u2014 `membershipNumber = <customerCode>-M<YY>` (fiscal year of adjusted date).\n21. **[S] CountNamesakes** \u2014 sets `namesakeCount` from case-insensitive first+last name matches.\n22. **[S] AssignMembership** \u2014 computes `membershipPoints` (from hasEmail, namesakeCount, householdSize, tenure=0) and `membershipLevel`.\n23. **[S] DetectPossibleDuplicate** \u2014 unless a declared household member, records `possibleDuplicateOf` = earliest same-household owner with a *different* telephone.\n24. **[S] SaveOwner** \u2014 `ownerRepository.save(owner)` \u2014 the actual insert; id assigned. (Owner entity's own `@NotEmpty`/`@Pattern` constraints are the last **[V]** enforced here at JPA persist.)\n25. **[S] AuditOwnerCreated** \u2014 logs id/customerCode/registrationDate/membershipLevel/membershipNumber to the `AUDIT` logger at INFO.\n26. **[S] ResolveBulkSignupWarning** \u2014 publishes `bulkSignupWarning = countByRegistrationDate(today) > 80` (note: uses *today*, not the resolved date).\n\n### After the transaction\n\n27. **[S] RecordIdempotencyKey** \u2014 if an `Idempotency-Key` was supplied, stores `key \u2192 owner.id` in the in-memory store (deliberately outside the transaction).\n28. **[S] RespondWithOwnerCreated** \u2014 sends **201 Created** with `Location: /api/owners/<id>` and the `OwnerDto` (including `bulkSignupWarning`).\n\n### Two inconsistencies worth flagging\n- **Soft-delete asymmetry:** the household *uniqueness* check (step 14) excludes soft-deleted owners, but the household *size* count (step 16) does not \u2014 so a household can be reported as empty for uniqueness yet size \u2265 2.\n- **Date mismatch:** the daily-limit guard (step 9) counts against the business-day-adjusted date, while the bulk-signup warning (step 26) counts against `today` \u2014 the two \"same-day volume\" numbers can diverge.\n\nDo you want me to dig into any single step (e.g. the exact E.164 or membership-points logic), or leave it here?"
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
