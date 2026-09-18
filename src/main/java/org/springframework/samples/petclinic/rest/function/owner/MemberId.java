@@ -10,12 +10,16 @@ import java.util.function.Predicate;
  * <ul>
  *   <li>{@code REGION} — the region derived from the owner's postcode (see {@link Locality});</li>
  *   <li>{@code FY} — the two-digit {@link FiscalYear fiscal year} of the registration date;</li>
- *   <li>{@code HASH8} — the first 8 upper-case hex characters of SHA-256 over the owner's
- *       normalized telephone followed by its last name (the same HASH8 the region-and-hash
- *       identity uses);</li>
+ *   <li>{@code HASH8} — the first 8 upper-case hex characters of SHA-256 over the
+ *       version-2-tagged preimage of the region, normalized telephone and last name (see
+ *       {@link IdentityVersion#tag(String)});</li>
  *   <li>{@code CHK} — a single {@link Luhn} check digit over the digits of
  *       {@code <REGION><FY><HASH8>}.</li>
  * </ul>
+ *
+ * <p>The region also feeds the {@code HASH8} preimage, so it is the region <em>used inside</em>
+ * the identifier; the visible {@code REGION} prefix, however, stays the plain region code so the
+ * derived 'locality', 'timezone' and owner segment read back the plain region, never the tag.
  *
  * <p>The region and fiscal-year segments can be read back from a formatted id (see
  * {@link #region} and {@link #fiscalYear}), so the derived region, locality and fiscal-year
@@ -38,12 +42,12 @@ public final class MemberId {
      * Format a member id {@code <REGION><FY><HASH8><CHK>}, e.g.
      * {@code format("NSW", 2026-07-01, "+61412345678", "Smithers")} yields
      * {@code "NSW261A2B3C4D<chk>"}: region {@code NSW}, fiscal year {@code 26}, the 8 upper-case
-     * hex HASH8 of SHA-256 over {@code telephone + lastName}, and the Luhn check digit over the
-     * digits of {@code <REGION><FY><HASH8>}.
+     * hex HASH8 of SHA-256 over the version-2-tagged region, telephone and last name, and the
+     * Luhn check digit over the digits of {@code <REGION><FY><HASH8>}.
      */
     public static String format(String region, LocalDate registrationDate, String telephone,
             String lastName) {
-        String base = region + fySegment(registrationDate) + hash8(telephone, lastName);
+        String base = region + fySegment(registrationDate) + hash8(region, telephone, lastName);
         return base + Luhn.checkDigit(base);
     }
 
@@ -99,8 +103,9 @@ public final class MemberId {
         return String.format("%02d", FiscalYear.shortYear(registrationDate));
     }
 
-    /** The first 8 upper-case hex characters of SHA-256 over {@code telephone + lastName}. */
-    private static String hash8(String telephone, String lastName) {
-        return Sha256.hex(telephone + lastName, HASH_LENGTH);
+    /** The first 8 upper-case hex characters of SHA-256 over the version-2-tagged region,
+     *  telephone and last name. */
+    private static String hash8(String region, String telephone, String lastName) {
+        return Sha256.hex(IdentityVersion.tag(region + "|" + telephone + "|" + lastName), HASH_LENGTH);
     }
 }

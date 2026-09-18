@@ -5,9 +5,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityVersion;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.MemberId;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
@@ -36,7 +38,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -52,7 +55,22 @@ public interface OwnerMapper {
         return TelephoneDisplay.of(owner.getTelephone());
     }
 
-    /** The owner's derived identity key: normalized telephone, email and household id joined. */
+    /** The owner-identity API version reported on every owner response; see {@link IdentityVersion}. */
+    default int apiVersion() {
+        return IdentityVersion.API_VERSION;
+    }
+
+    /** The owner's version-2 identity: the member id, household id and derived identity key
+     *  grouped together (see {@link IdentityVersion}). */
+    default IdentityDto identity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
+
+    /** The owner's derived identity key; see {@link IdentityKey}. */
     default String identityKey(Owner owner) {
         return IdentityKey.of(owner);
     }

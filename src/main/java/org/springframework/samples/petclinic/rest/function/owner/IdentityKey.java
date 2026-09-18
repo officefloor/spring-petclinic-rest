@@ -11,8 +11,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * of the whole hashed key rather than of any single field, and two owners whose last names
  * merely sound alike still collide.
  *
- * <p>Key = {@code sha256Hex(normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName))},
- * as the full 64-character lower-case hex digest. The telephone and email are already stored
+ * <p>Key = {@code sha256Hex(tag('V2', normalizedTelephone + '|' + lowerEmail + '|' +
+ * soundex(lastName)))}, as the full 64-character lower-case hex digest; the fixed version-2
+ * tag is mixed in (see {@link IdentityVersion#tag(String)}). The telephone and email are already stored
  * in canonical form ({@link NormalizeOwnerTelephone} stores the E.164 telephone,
  * {@link NormalizeOwnerEmail} the lower-cased email), so the key is built from the owner's
  * stored fields; email is lower-cased defensively so the comparison is case-insensitive.
@@ -35,7 +36,7 @@ public final class IdentityKey {
     /** The identity key for the given normalized telephone, email and last name. */
     public static String of(String telephone, String email, String lastName) {
         String raw = part(telephone) + "|" + lowerCased(email) + "|" + Soundex.of(lastName);
-        return Sha256.hexLower(raw);
+        return Sha256.hexLower(IdentityVersion.tag(raw));
     }
 
     /** A field value, or the empty string when absent. */
