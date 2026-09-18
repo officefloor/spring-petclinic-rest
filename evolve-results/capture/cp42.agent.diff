@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 30342fc9a..6a2e46058 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.OwnerRegion;
++import org.springframework.samples.petclinic.util.RegionTimezone;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -30,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -78,6 +80,13 @@ public interface OwnerMapper {
+                 : OwnerRegion.of(owner.getPostcode(), owner.getCity());
+     }
+ 
++    /** The owner's timezone: the IANA name from the fixed region-to-timezone table
++     *  (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane), keyed
++     *  off the owner's {@link #locality locality}. Null when the region has no mapped timezone. */
++    default String timezone(Owner owner) {
++        return RegionTimezone.of(locality(owner));
++    }
++
+     /** The owner's preferred contact method: 'EMAIL' when an email address is present,
+      *  otherwise 'PHONE'. */
+     default String contactPreference(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+new file mode 100644
+index 000000000..decff4b4a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Fixed region-to-timezone lookup. Maps each canonical region to its IANA timezone name
++ * (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane); every
++ * other region (including {@link CityRegion#UNKNOWN}) resolves to {@code null}.
++ */
++public final class RegionTimezone {
++
++    /** The pinned region-to-IANA-timezone table. */
++    private static final Map<String, String> TABLE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
++    private RegionTimezone() {
++    }
++
++    /**
++     * The IANA timezone name for the given {@code region}, or {@code null} when the region is
++     * not in the table (including a null region).
++     */
++    public static String of(String region) {
++        return region == null ? null : TABLE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 988c87225..aed2ea0d5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2122,6 +2122,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived from the locality via the fixed
++                region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane). Absent when the region has no mapped timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
