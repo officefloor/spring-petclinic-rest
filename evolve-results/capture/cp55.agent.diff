@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 00a017b8b..e6a834c6d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.OwnerRegion;
++import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
+ 
+ import java.util.Collection;
+@@ -39,6 +40,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** The owner's canonical relative URL, '/api/owners/' followed by its id. */
+@@ -133,6 +135,12 @@ public interface OwnerMapper {
+         return OwnerDto.AgeBandEnum.fromValue(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()));
+     }
+ 
++    /** The owner's marketing segment '&lt;TIER&gt;_&lt;AREA&gt;', derived from its membershipLevel and
++     *  {@link #locality locality}. See {@link OwnerSegment}. */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        return OwnerDto.OwnerSegmentEnum.fromValue(OwnerSegment.of(owner.getMembershipLevel(), locality(owner)));
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java b/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
+index 69e5ff042..57d9fff7e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CityRegion.java
+@@ -27,4 +27,12 @@ public final class CityRegion {
+     public static String locality(String city) {
+         return city == null ? UNKNOWN : TABLE.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Whether {@code region} is a known canonical region (one of the {@link #TABLE table}'s
++     * regions: NSW, VIC or QLD) rather than {@link #UNKNOWN} or absent.
++     */
++    public static boolean isKnown(String region) {
++        return TABLE.containsValue(region);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 000000000..5ff428e0a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Derives an owner's marketing segment '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
++ * owner's membership level is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the owner's
++ * {@link OwnerRegion region} is a {@link CityRegion#isKnown known region} (NSW, VIC or QLD),
++ * otherwise 'REGIONAL'.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * The segment for an owner with the given {@code membershipLevel} (null counts as below the
++     * premium threshold) and canonical {@code region}.
++     */
++    public static String of(Integer membershipLevel, String region) {
++        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = CityRegion.isKnown(region) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3d49133e2..a45bff0ab 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2195,6 +2195,20 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                owner's locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
