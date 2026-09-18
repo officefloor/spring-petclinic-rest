@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
@@ -22,11 +23,13 @@ final class Household {
     }
 
     /**
-     * Canonical household key: the last name trimmed, internal whitespace collapsed and
-     * lower-cased, joined to the postcode with {@code '|'} so distinct pairs never collide.
+     * Canonical household key: the {@link OwnerIdentityVersion#TAG version tag} then the last name
+     * trimmed, internal whitespace collapsed and lower-cased, joined to the postcode with
+     * {@code '|'} so distinct pairs never collide. The version tag is mixed in so a version-2
+     * household id can never repeat a version-1 one.
      */
     static String key(String lastName, String postcode) {
-        return canonical(lastName) + "|" + orEmpty(postcode);
+        return OwnerIdentityVersion.TAG + "|" + canonical(lastName) + "|" + orEmpty(postcode);
     }
 
     /**

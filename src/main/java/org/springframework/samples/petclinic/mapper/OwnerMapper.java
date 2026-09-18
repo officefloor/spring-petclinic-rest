@@ -10,9 +10,11 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.MemberId;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.OwnerRegion;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
@@ -35,7 +37,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
@@ -80,13 +83,11 @@ public interface OwnerMapper {
         return owner.getMemberId() == null ? null : "FY" + MemberId.fiscalYear(owner.getMemberId());
     }
 
-    /** The owner's locality: the REGION segment of its memberId, which is the canonical region the
-     *  id was built from. Falls back to deriving the region straight from the postcode and city when
-     *  the memberId is absent (so an owner without one still resolves a locality). */
+    /** The owner's locality: the plain canonical region derived from its postcode (falling back to
+     *  its city). Unlike the version-2 identifiers this carries no version tag, so it stays a plain
+     *  region code such as 'NSW'. See {@link OwnerRegion}. */
     default String locality(Owner owner) {
-        return owner.getMemberId() != null
-                ? MemberId.region(owner.getMemberId())
-                : OwnerRegion.of(owner.getPostcode(), owner.getCity());
+        return OwnerRegion.of(owner);
     }
 
     /** The owner's timezone: the IANA name from the fixed region-to-timezone table
@@ -102,10 +103,20 @@ public interface OwnerMapper {
         return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
     }
 
-    /** The owner's derived duplicate-detection identity key: the SHA-256 hex of the normalized
-     *  telephone, lower-cased email and soundex(lastName) joined by '|'. See {@link OwnerIdentity#key}. */
-    default String identityKey(Owner owner) {
-        return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+    /** The owner's version-2 identity: its server-assigned {@code memberId} and {@code householdId}
+     *  plus its derived duplicate-detection {@code identityKey}, grouped into one nested object. */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()));
+        return identity;
+    }
+
+    /** The version of the owner identity contract this response conforms to. See
+     *  {@link OwnerIdentityVersion}. */
+    default Integer apiVersion() {
+        return OwnerIdentityVersion.VERSION;
     }
 
     /** The owner's age band derived from its birthDate against its registrationDate, or null when
@@ -118,9 +129,10 @@ public interface OwnerMapper {
     }
 
     /** The owner's marketing segment '&lt;TIER&gt;_&lt;AREA&gt;', derived from its membershipLevel and
-     *  {@link #locality locality}. See {@link OwnerSegment}. */
+     *  plain {@link #locality locality} (never the version-tagged identifier region). See
+     *  {@link OwnerSegment}. */
     default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
-        return OwnerDto.OwnerSegmentEnum.fromValue(OwnerSegment.of(owner.getMembershipLevel(), locality(owner)));
+        return OwnerDto.OwnerSegmentEnum.fromValue(OwnerSegment.of(owner));
     }
 
     /** Whether the owner should be treated as elevated-risk: true when it is a possible

@@ -2159,9 +2159,10 @@ components:
             locality:
               title: Locality
               description: >-
-                The REGION segment of the owner's memberId: the canonical region the id was
-                built from (derived from the postcode range first, falling back to the fixed
-                city-to-region table Sydney->NSW, Melbourne->VIC, Brisbane->QLD, else 'UNKNOWN').
+                The owner's plain canonical region (derived from the postcode range first, falling
+                back to the fixed city-to-region table Sydney->NSW, Melbourne->VIC, Brisbane->QLD,
+                else 'UNKNOWN'). This is a plain region code and never carries the identifiers' 'V2'
+                version tag.
               type: string
               example: 'NSW'
               readOnly: true
@@ -2209,38 +2210,18 @@ components:
                 - STANDARD_REGIONAL
               example: 'STANDARD_METRO'
               readOnly: true
-            memberId:
-              title: Member id
+            apiVersion:
+              title: API version
               description: >-
-                Server-assigned member id formatted '<REGION><FY><HASH8><CHK>', where REGION is the
-                region derived from the owner's postcode, FY is the 2-digit fiscal year of the
-                registrationDate, HASH8 is the first 8 upper-case hex characters of
-                SHA-256(normalizedTelephone + lastName), and CHK is the Luhn check digit over the
-                digits of <REGION><FY><HASH8>. Deterministic from the owner's region, fiscal year
-                and identity, with no sequence number (a collision is de-duplicated with a '-<n>'
-                suffix).
-              type: string
-              example: 'NSW271A2B3C4D5'
+                The version of the owner identity contract this response conforms to. Always 2 for
+                the version-2 identity, whose derived identifiers carry a 'V2' tag and are grouped
+                under the 'identity' object.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                Stable identifier shared by every owner in the same household, derived
-                deterministically as the first 12 hex characters of SHA-256(normalizedLastName +
-                '|' + postcode). Assigned to every owner, so any two owners with the same lastName
-                and postcode share it automatically.
-              type: string
-              example: '9f2c1a...'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived duplicate-detection key: the SHA-256 hex digest of
-                'normalizedTelephone|lowerEmail|soundex(lastName)'. Two owners are duplicates
-                only when their whole identity keys are equal.
-              type: string
-              example: '3b8f...c1a9'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: >-
@@ -2349,6 +2330,49 @@ components:
               readOnly: true
           required:
             - pets
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 derived identifiers, grouped together. Every identifier mixes in a
+        fixed 'V2' version tag so no value repeats one produced under version 1.
+      type: object
+      properties:
+        memberId:
+          title: Member id
+          description: >-
+            Server-assigned member id formatted '<REGION><FY><HASH8><CHK>', where REGION is the
+            version-2 identifier region (the region derived from the owner's postcode with the 'V2'
+            tag mixed in), FY is the 2-digit fiscal year of the registrationDate, HASH8 is the first
+            8 upper-case hex characters of SHA-256(normalizedTelephone + lastName), and CHK is the
+            Luhn check digit over the digits of <REGION><FY><HASH8>. Deterministic from the owner's
+            region, fiscal year and identity, with no sequence number (a collision is de-duplicated
+            with a '-<n>' suffix).
+          type: string
+          example: 'V2NSW271A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            Stable identifier shared by every owner in the same household, derived deterministically
+            as the first 12 hex characters of SHA-256('V2' + '|' + normalizedLastName + '|' +
+            postcode). Assigned to every owner, so any two owners with the same lastName and postcode
+            share it automatically.
+          type: string
+          example: '9f2c1a...'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived duplicate-detection key: the SHA-256 hex digest of
+            'V2|normalizedTelephone|lowerEmail|soundex(lastName)'. Two owners are duplicates only
+            when their whole identity keys are equal.
+          type: string
+          example: '3b8f...c1a9'
+          readOnly: true
+      required:
+        - memberId
+        - householdId
+        - identityKey
     OwnerPage:
       title: Owner page
       description: A page of pet owners.
