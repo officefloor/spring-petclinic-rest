@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_level INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  capacity_warning BOOLEAN,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 

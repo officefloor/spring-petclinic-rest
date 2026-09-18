@@ -96,6 +96,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
@@ -456,6 +459,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner's city was approaching its owner capacity when the owner was
+     * created: {@code true} when the city already held between 40 and 49 owners (the hard
+     * limit is 50), otherwise {@code false}. Assigned on create.
+     */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     /**

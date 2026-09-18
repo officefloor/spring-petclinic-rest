@@ -196,6 +196,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        this.cityCapacityChecker.assignCapacityWarning(owner);
         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }

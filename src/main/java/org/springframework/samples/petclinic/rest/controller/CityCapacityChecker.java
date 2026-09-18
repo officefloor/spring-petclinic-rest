@@ -21,17 +21,23 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Enforces, on create, the limit of owners allowed per city.
+ * Enforces, on create, the limit of owners allowed per city and flags owners created while
+ * their city is approaching that limit.
  * <p>
  * A city is at capacity once it already contains {@link #MAX_OWNERS_PER_CITY} owners, at
- * which point no further owner may be created there. The count reflects the owners stored
- * before this create, so it must be checked before the owner is saved.
+ * which point no further owner may be created there. It is approaching capacity once it holds
+ * at least {@link #CAPACITY_WARNING_THRESHOLD} (but fewer than {@link #MAX_OWNERS_PER_CITY})
+ * owners. Both counts reflect the owners stored before this create, so they must be evaluated
+ * before the owner is saved.
  */
 @Component
 public class CityCapacityChecker {
 
     /** Maximum number of owners a single city may contain. */
     static final int MAX_OWNERS_PER_CITY = 50;
+
+    /** Number of owners at which a city is considered to be approaching capacity. */
+    static final int CAPACITY_WARNING_THRESHOLD = 40;
 
     private final ClinicService clinicService;
 
@@ -48,6 +54,24 @@ public class CityCapacityChecker {
      * @return {@code true} if the city already contains the maximum number of owners
      */
     public boolean isCityAtCapacity(Owner owner) {
-        return clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY;
+        return countOwnersInCity(owner) >= MAX_OWNERS_PER_CITY;
+    }
+
+    /**
+     * Assigns {@code owner}'s capacity warning: {@code true} when its city already holds
+     * between {@link #CAPACITY_WARNING_THRESHOLD} and {@link #MAX_OWNERS_PER_CITY} (exclusive)
+     * owners, otherwise {@code false}. Call this before the owner is saved so it does not
+     * count itself.
+     *
+     * @param owner the owner being created
+     */
+    public void assignCapacityWarning(Owner owner) {
+        long ownersInCity = countOwnersInCity(owner);
+        owner.setCapacityWarning(
+            ownersInCity >= CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY);
+    }
+
+    private long countOwnersInCity(Owner owner) {
+        return clinicService.countOwnersByCity(owner.getCity());
     }
 }
