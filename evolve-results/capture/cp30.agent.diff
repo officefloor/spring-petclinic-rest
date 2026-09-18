@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ebe540fbf..7d8e94636 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -150,12 +150,14 @@ public class Owner extends Person {
+ 
+     /**
+      * The owner's locality: the canonical region derived on read from the owner's
+-     * {@link #city} via the fixed {@link CityRegionTable}, or {@code "UNKNOWN"} when
+-     * the city has no known region.
++     * {@link #postcode} via the fixed {@link RegionPostcodeTable}, falling back to the
++     * owner's {@link #city} via the fixed {@link CityRegionTable} when the postcode is
++     * absent or in no known range, or {@code "UNKNOWN"} when neither yields a region.
+      */
+     @Transient
+     public String getLocality() {
+-        return CityRegionTable.regionOf(this.city);
++        return RegionPostcodeTable.regionOf(this.postcode)
++            .orElseGet(() -> CityRegionTable.regionOf(this.city));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
+index 2bd5861ef..c3061ef96 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodeTable.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import java.util.Map;
++import java.util.Optional;
+ 
+ /**
+  * Fixed lookup from a region code to its inclusive 4-digit postcode range.
+@@ -39,4 +40,19 @@ public final class RegionPostcodeTable {
+         int[] range = REGION_RANGES.get(region);
+         return range == null || (postcode >= range[0] && postcode <= range[1]);
+     }
++
++    /**
++     * The region whose inclusive range contains the given postcode, or empty when the
++     * postcode is absent, not numeric, or in no known range.
++     */
++    public static Optional<String> regionOf(String postcode) {
++        if (postcode == null || !postcode.matches("\\d+")) {
++            return Optional.empty();
++        }
++        int value = Integer.parseInt(postcode);
++        return REGION_RANGES.entrySet().stream()
++            .filter(e -> value >= e.getValue()[0] && value <= e.getValue()[1])
++            .map(Map.Entry::getKey)
++            .findFirst();
++    }
+ }
