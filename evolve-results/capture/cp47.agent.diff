@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+index ee1738250..cd78cbd70 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+@@ -18,32 +18,45 @@ package org.springframework.samples.petclinic.rest.controller;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Rolls a date forward onto a business day.
+  * <p>
+- * Saturdays and Sundays are not business days; either rolls forward to the following Monday.
+- * A date that already falls on a weekday is returned unchanged.
++ * Saturdays, Sundays and listed public holidays are not business days. Any such date is rolled
++ * forward one day at a time until it lands on a non-holiday weekday. A date that already falls on
++ * a business day is returned unchanged.
+  */
+ @Component
+ public class BusinessDayAdjuster {
+ 
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28));
++
+     /**
+-     * Returns {@code date} if it falls on a weekday, otherwise the next Monday.
++     * Returns {@code date} if it is a business day, otherwise the next non-holiday weekday.
+      *
+      * @param date the date to adjust
+-     * @return the same date when it is a business day, else the following Monday
++     * @return the same date when it is a business day, else the next business day
+      */
+     public LocalDate toBusinessDay(LocalDate date) {
+-        DayOfWeek dayOfWeek = date.getDayOfWeek();
+-        if (dayOfWeek == DayOfWeek.SATURDAY) {
+-            return date.plusDays(2);
+-        }
+-        if (dayOfWeek == DayOfWeek.SUNDAY) {
+-            return date.plusDays(1);
++        LocalDate adjusted = date;
++        while (!isBusinessDay(adjusted)) {
++            adjusted = adjusted.plusDays(1);
+         }
+-        return date;
++        return adjusted;
++    }
++
++    private boolean isBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        return dayOfWeek != DayOfWeek.SATURDAY
++            && dayOfWeek != DayOfWeek.SUNDAY
++            && !PUBLIC_HOLIDAYS.contains(date);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java
+index 61675f2e2..5efada359 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java
+@@ -27,9 +27,9 @@ import org.springframework.stereotype.Component;
+  * <p>
+  * The effective date is the one supplied in the request, or the server's current date when
+  * none was supplied so every stored owner carries the day it was registered. The effective
+- * date must fall on a business day: a Saturday or Sunday is rolled forward to the following
+- * Monday. Everything derived from the registration date (such as the membership number's year
+- * segment) therefore uses this adjusted business-day value.
++ * date must fall on a business day: a weekend or public holiday is rolled forward to the next
++ * non-holiday weekday. Everything derived from the registration date (such as the membership
++ * number's year segment) therefore uses this adjusted business-day value.
+  */
+ @Component
+ public class RegistrationDateAssigner {
+@@ -45,8 +45,8 @@ public class RegistrationDateAssigner {
+ 
+     /**
+      * Sets {@code owner}'s registration date to its effective value, defaulting to the server's
+-     * current date when none was supplied and rolling any weekend date forward to the next
+-     * business day.
++     * current date when none was supplied and rolling any weekend or public-holiday date forward
++     * to the next business day.
+      *
+      * @param owner the owner being created
+      */
