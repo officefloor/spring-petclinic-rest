@@ -1,0 +1,299 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+new file mode 100644
+index 000000000..ee1738250
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Rolls a date forward onto a business day.
++ * <p>
++ * Saturdays and Sundays are not business days; either rolls forward to the following Monday.
++ * A date that already falls on a weekday is returned unchanged.
++ */
++@Component
++public class BusinessDayAdjuster {
++
++    /**
++     * Returns {@code date} if it falls on a weekday, otherwise the next Monday.
++     *
++     * @param date the date to adjust
++     * @return the same date when it is a business day, else the following Monday
++     */
++    public LocalDate toBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimiter.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimiter.java
+index 23751ffbb..e9cf84b51 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimiter.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimiter.java
+@@ -16,7 +16,6 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+-import java.time.Clock;
+ import java.time.LocalDate;
+ 
+ import org.springframework.samples.petclinic.service.ClinicService;
+@@ -25,10 +24,10 @@ import org.springframework.stereotype.Component;
+ /**
+  * Enforces, on create, the maximum number of owners that may be registered on a single day.
+  * <p>
+- * The day is at capacity once {@link #MAX_OWNERS_PER_DAY} owners already carry the server's
+- * current date as their registration date, at which point no further owner may be created that
+- * day. The count reflects the owners stored before this create, so it must be checked before the
+- * owner is saved.
++ * A day is at capacity once {@link #MAX_OWNERS_PER_DAY} owners already carry it as their
++ * registration date, at which point no further owner may be registered on that day. The date
++ * checked is the new owner's effective, business-day-adjusted registration date. The count
++ * reflects the owners stored before this create, so it must be checked before the owner is saved.
+  */
+ @Component
+ public class DailyRegistrationLimiter {
+@@ -38,21 +37,19 @@ public class DailyRegistrationLimiter {
+ 
+     private final ClinicService clinicService;
+ 
+-    private final Clock clock;
+-
+-    public DailyRegistrationLimiter(ClinicService clinicService, Clock clock) {
++    public DailyRegistrationLimiter(ClinicService clinicService) {
+         this.clinicService = clinicService;
+-        this.clock = clock;
+     }
+ 
+     /**
+-     * Returns whether the server's current date has already reached its owner-registration
+-     * capacity, meaning no further owner may be created today. Call this before the owner is saved
+-     * so it does not count itself.
++     * Returns whether {@code registrationDate} has already reached its owner-registration
++     * capacity, meaning no further owner may be registered on it. Call this before the owner is
++     * saved so it does not count itself.
+      *
+-     * @return {@code true} if {@link #MAX_OWNERS_PER_DAY} or more owners are already registered today
++     * @param registrationDate the new owner's effective, business-day-adjusted registration date
++     * @return {@code true} if {@link #MAX_OWNERS_PER_DAY} or more owners already carry that date
+      */
+-    public boolean isDailyLimitReached() {
+-        return clinicService.countOwnersByRegistrationDate(LocalDate.now(clock)) >= MAX_OWNERS_PER_DAY;
++    public boolean isDailyLimitReached(LocalDate registrationDate) {
++        return clinicService.countOwnersByRegistrationDate(registrationDate) >= MAX_OWNERS_PER_DAY;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java
+new file mode 100644
+index 000000000..61675f2e2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateAssigner.java
+@@ -0,0 +1,59 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.Clock;
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Assigns an owner's effective registration date on create.
++ * <p>
++ * The effective date is the one supplied in the request, or the server's current date when
++ * none was supplied so every stored owner carries the day it was registered. The effective
++ * date must fall on a business day: a Saturday or Sunday is rolled forward to the following
++ * Monday. Everything derived from the registration date (such as the membership number's year
++ * segment) therefore uses this adjusted business-day value.
++ */
++@Component
++public class RegistrationDateAssigner {
++
++    private final Clock clock;
++
++    private final BusinessDayAdjuster businessDayAdjuster;
++
++    public RegistrationDateAssigner(Clock clock, BusinessDayAdjuster businessDayAdjuster) {
++        this.clock = clock;
++        this.businessDayAdjuster = businessDayAdjuster;
++    }
++
++    /**
++     * Sets {@code owner}'s registration date to its effective value, defaulting to the server's
++     * current date when none was supplied and rolling any weekend date forward to the next
++     * business day.
++     *
++     * @param owner the owner being created
++     */
++    public void assign(Owner owner) {
++        LocalDate effectiveDate = owner.getRegistrationDate() != null
++            ? owner.getRegistrationDate()
++            : LocalDate.now(clock);
++        owner.setRegistrationDate(businessDayAdjuster.toBusinessDay(effectiveDate));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java
+deleted file mode 100644
+index 92476df78..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java
++++ /dev/null
+@@ -1,52 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.controller;
+-
+-import java.time.Clock;
+-import java.time.LocalDate;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.stereotype.Component;
+-
+-/**
+- * Supplies an owner's registration date when the client did not provide one.
+- * <p>
+- * A registration date is optional on create; when absent it defaults to the server's
+- * current date so every stored owner carries the day it was registered. An explicitly
+- * supplied date is left untouched.
+- */
+-@Component
+-public class RegistrationDateDefaulter {
+-
+-    private final Clock clock;
+-
+-    public RegistrationDateDefaulter(Clock clock) {
+-        this.clock = clock;
+-    }
+-
+-    /**
+-     * Sets {@code owner}'s registration date to the server's current date unless one was
+-     * already supplied.
+-     *
+-     * @param owner the owner being created
+-     */
+-    public void applyDefault(Owner owner) {
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now(clock));
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e298de88f..c7b3c8ccb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,7 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
+ import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
+ import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
+ import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+-import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
++import org.springframework.samples.petclinic.rest.controller.RegistrationDateAssigner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.PetDto;
+@@ -73,7 +73,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerFieldsValidator ownerFieldsValidator;
+ 
+-    private final RegistrationDateDefaulter registrationDateDefaulter;
++    private final RegistrationDateAssigner registrationDateAssigner;
+ 
+     private final CustomerCodeAssigner customerCodeAssigner;
+ 
+@@ -92,7 +92,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  OwnerFieldsValidator ownerFieldsValidator,
+-                                 RegistrationDateDefaulter registrationDateDefaulter,
++                                 RegistrationDateAssigner registrationDateAssigner,
+                                  CustomerCodeAssigner customerCodeAssigner,
+                                  HouseholdDuplicateChecker householdDuplicateChecker,
+                                  HouseholdAssigner householdAssigner,
+@@ -104,7 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.ownerFieldsValidator = ownerFieldsValidator;
+-        this.registrationDateDefaulter = registrationDateDefaulter;
++        this.registrationDateAssigner = registrationDateAssigner;
+         this.customerCodeAssigner = customerCodeAssigner;
+         this.householdDuplicateChecker = householdDuplicateChecker;
+         this.householdAssigner = householdAssigner;
+@@ -148,13 +148,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        this.registrationDateAssigner.assign(owner);
+         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        if (this.dailyRegistrationLimiter.isDailyLimitReached()) {
++        if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+@@ -165,7 +166,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (duplicate) {
+             this.householdAssigner.assign(owner);
+         }
+-        this.registrationDateDefaulter.applyDefault(owner);
+         this.customerCodeAssigner.assign(owner);
+         this.namesakeCounter.assign(owner);
+         this.clinicService.saveOwner(owner);
