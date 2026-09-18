@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d14607d72..408205e94 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -37,7 +37,7 @@ public interface OwnerMapper {
+     }
+ 
+     /** The membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
+-     *  the registrationDate year (e.g. 'SMI-0007-M26'). Null when either source field is absent. */
++     *  the registrationDate year (e.g. 'LON-SMI-0007-M26'). Null when either source field is absent. */
+     default String membershipNumber(Owner owner) {
+         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+             return null;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 87b1b97fa..3f907db14 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -5,21 +5,29 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns a newly built owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'}
+- * where LAST3 is the upper-cased first three letters of the owner's last name and NNNN is a
+- * global 4-digit zero-padded sequence equal to one more than the current number of owners
+- * (e.g. 'SMI-0007'). The code is stored in place on the built entity so it is persisted and
+- * returned. Runs after {@link BuildOwner} and before the owner is saved, within the same
+- * transaction as the count so the sequence advances consistently.
++ * Assigns a newly built owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
++ * where CITY3 is the upper-cased first three letters of the owner's city, LAST3 the upper-cased
++ * first three letters of the owner's last name and NNNN is a per-city 4-digit zero-padded
++ * sequence equal to one more than the number of owners already in that city (e.g. 'LON-SMI-0007').
++ * The code is stored in place on the built entity so it is persisted and returned. Runs after
++ * {@link BuildOwner} and before the owner is saved, within the same transaction as the count so
++ * the sequence advances consistently.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        owner.setCustomerCode(customerCode(owner.getLastName(), ownerRepository.findAll().size()));
++        long cityCount = ownerRepository.findAll().stream()
++                .filter(existing -> owner.getCity().equalsIgnoreCase(existing.getCity()))
++                .count();
++        owner.setCustomerCode(customerCode(owner.getCity(), owner.getLastName(), cityCount));
+     }
+ 
+-    private static String customerCode(String lastName, int currentOwnerCount) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        return String.format("%s-%04d", prefix, currentOwnerCount + 1);
++    private static String customerCode(String city, String lastName, long cityOwnerCount) {
++        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), cityOwnerCount + 1);
++    }
++
++    /** The upper-cased first three letters (fewer if the value is shorter) of the given value. */
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index b968d8cc6..9b2e0b050 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -67,8 +67,9 @@ defaultRegistrationDate:
+   govern: [ transaction ]
+   next: assignCustomerCode
+ 
+-# Assign the '<LAST3>-<NNNN>' customer code, where NNNN is one more than the current owner
+-# count. Reads the count in the same transaction as the write so the sequence is consistent.
++# Assign the '<CITY3>-<LAST3>-<NNNN>' customer code, where NNNN is one more than the number
++# of owners already in this owner's city. Reads the count in the same transaction as the write
++# so the per-city sequence is consistent.
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCustomerCode
+   govern: [ transaction ]
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 33c8f3517..c9a503802 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2088,11 +2088,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                Server-assigned customer code formatted '<LAST3>-<NNNN>', where LAST3 is the
+-                upper-cased first three letters of lastName and NNNN is a global 4-digit
+-                zero-padded sequence assigned at creation.
++                Server-assigned customer code formatted '<CITY3>-<LAST3>-<NNNN>', where CITY3
++                is the upper-cased first three letters of city, LAST3 the upper-cased first
++                three letters of lastName and NNNN a per-city 4-digit zero-padded sequence
++                (one more than the owners already in that city) assigned at creation.
+               type: string
+-              example: 'FRA-0007'
++              example: 'PAR-FRA-0007'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2118,7 +2119,7 @@ components:
+                 Membership number derived as '<customerCode>-M<YY>', where YY is the last two
+                 digits of the registrationDate year.
+               type: string
+-              example: 'FRA-0007-M26'
++              example: 'PAR-FRA-0007-M26'
+               readOnly: true
+             membershipTier:
+               title: Membership tier
