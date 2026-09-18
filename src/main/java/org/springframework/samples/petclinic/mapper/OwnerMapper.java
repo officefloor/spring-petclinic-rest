@@ -19,9 +19,21 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds the owner's canonical API path, {@code "/api/owners/{id}"}, or {@code null}
+     * for an owner that has not yet been assigned an id.
+     */
+    default String selfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Formats an owner's stored names as {@code "LastName, FirstName"}.
