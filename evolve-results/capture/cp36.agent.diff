@@ -1,0 +1,199 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java
+index 9b318b950..df3ebc6ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java
+@@ -17,43 +17,33 @@
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Assigns owners who deliberately share a household (via the {@code sharesHousehold} flag)
+- * the household's stable shared identifier, back-filling any existing member that does not
+- * yet carry it so the whole household ends up tagged with the same value.
++ * Tags an owner, on create, with its household's stable shared identifier. The identifier is
++ * derived deterministically from the owner's last name and postcode (see
++ * {@link HouseholdMatcher}), so every owner in the same household ends up carrying the same
++ * value without any explicit linking or back-filling step.
+  */
+ @Component
+ public class HouseholdAssigner {
+ 
+     private final HouseholdMatcher householdMatcher;
+ 
+-    private final ClinicService clinicService;
+-
+-    public HouseholdAssigner(HouseholdMatcher householdMatcher, ClinicService clinicService) {
++    public HouseholdAssigner(HouseholdMatcher householdMatcher) {
+         this.householdMatcher = householdMatcher;
+-        this.clinicService = clinicService;
+     }
+ 
+     /**
+-     * Tags {@code candidate} with its household's shared identifier and back-fills the same
+-     * value onto existing members that lack one. The candidate is not saved here; the
+-     * caller persists it as part of the create.
++     * Tags {@code candidate} with its household's shared identifier. The candidate is not
++     * saved here; the caller persists it as part of the create.
+      *
+-     * @param candidate the owner being created into an existing household
++     * @param candidate the owner being created
+      * @return the shared household identifier applied to the candidate
+      */
+     public String assign(Owner candidate) {
+         String householdId = householdMatcher.householdId(candidate);
+         candidate.setHouseholdId(householdId);
+-        for (Owner member : householdMatcher.findMembers(candidate)) {
+-            if (member.getHouseholdId() == null) {
+-                member.setHouseholdId(householdId);
+-                clinicService.saveOwner(member);
+-            }
+-        }
+         return householdId;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java
+index 8bb2d5c4a..0b2b326ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java
+@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Detects, on create, whether an owner would duplicate an existing household, i.e. another
+- * owner already shares its last name and address (see {@link HouseholdMatcher} for how
++ * owner already shares its last name and postcode (see {@link HouseholdMatcher} for how
+  * household membership is determined).
+  */
+ @Component
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdMatcher.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdMatcher.java
+index 4b7b84010..2bd2485ea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdMatcher.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdMatcher.java
+@@ -29,11 +29,12 @@ import org.springframework.stereotype.Component;
+  * Groups owners into households and derives a household's stable shared identifier.
+  * <p>
+  * Two owners belong to the same household when they carry the same last name and the same
+- * address. The last name is compared leniently: surrounding whitespace is trimmed, internal
++ * postcode. The last name is compared leniently: surrounding whitespace is trimmed, internal
+  * runs of whitespace are collapsed to a single space and letters are compared without
+  * regard to case, so values that differ only in spacing or capitalisation are treated as
+- * equal. The address is compared in its canonical {@link AddressNormalizer normalized} form,
+- * the same form under which it is stored and returned.
++ * equal. The postcode is compared verbatim. Because the identifier is derived
++ * deterministically from these two fields, owners sharing a last name and postcode resolve
++ * to the same household without any explicit linking step.
+  */
+ @Component
+ public class HouseholdMatcher {
+@@ -43,11 +44,8 @@ public class HouseholdMatcher {
+ 
+     private final ClinicService clinicService;
+ 
+-    private final AddressNormalizer addressNormalizer;
+-
+-    public HouseholdMatcher(ClinicService clinicService, AddressNormalizer addressNormalizer) {
++    public HouseholdMatcher(ClinicService clinicService) {
+         this.clinicService = clinicService;
+-        this.addressNormalizer = addressNormalizer;
+     }
+ 
+     /**
+@@ -66,9 +64,9 @@ public class HouseholdMatcher {
+     }
+ 
+     /**
+-     * The stable identifier for {@code candidate}'s household, derived deterministically
+-     * from its (normalised) last name and address so that every member resolves to the
+-     * same value.
++     * The stable identifier for {@code candidate}'s household: the first 12 hex characters of
++     * the SHA-256 digest of its (normalised) last name and postcode, joined by {@code '|'}, so
++     * that every owner sharing a last name and postcode resolves to the same value.
+      *
+      * @param candidate an owner in the household
+      * @return a non-blank household identifier
+@@ -78,7 +76,7 @@ public class HouseholdMatcher {
+     }
+ 
+     private String householdKey(Owner owner) {
+-        return normalizeName(owner.getLastName()) + "\n" + addressNormalizer.normalize(owner.getAddress());
++        return normalizeName(owner.getLastName()) + "|" + orEmpty(owner.getPostcode());
+     }
+ 
+     private String normalizeName(String value) {
+@@ -87,4 +85,8 @@ public class HouseholdMatcher {
+         }
+         return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
+     }
++
++    private String orEmpty(String value) {
++        return value == null ? "" : value;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateAssigner.java
+index acb630265..44729c98c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateAssigner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateAssigner.java
+@@ -25,6 +25,10 @@ import org.springframework.stereotype.Component;
+  * Records, on create, whether a new owner softly matches an already-stored one (see
+  * {@link PossibleDuplicateMatcher}). Call this before the owner is saved so the match is
+  * computed against the owners stored before this create and not the owner itself.
++ * <p>
++ * An owner that deliberately joins an existing household (a declared household member) is
++ * never a suspected duplicate: it is expected to share a last name and postcode with the
++ * rest of the household, so it is left unflagged rather than run through the soft match.
+  */
+ @Component
+ public class PossibleDuplicateAssigner {
+@@ -37,12 +41,16 @@ public class PossibleDuplicateAssigner {
+ 
+     /**
+      * Assigns {@code owner}'s possible-duplicate flag and, when it softly matches an
+-     * existing owner, the matched owner's id.
++     * existing owner, the matched owner's id. A declared household member is never flagged.
+      *
+-     * @param owner the owner being created
++     * @param owner                   the owner being created
++     * @param declaredHouseholdMember whether the owner deliberately joined an existing
++     *                                household (and so is not a suspected duplicate)
+      */
+-    public void assign(Owner owner) {
+-        Optional<Owner> match = possibleDuplicateMatcher.findMatch(owner);
++    public void assign(Owner owner, boolean declaredHouseholdMember) {
++        Optional<Owner> match = declaredHouseholdMember
++            ? Optional.empty()
++            : possibleDuplicateMatcher.findMatch(owner);
+         owner.setPossibleDuplicate(match.isPresent());
+         owner.setPossibleDuplicateOf(match.map(Owner::getId).orElse(null));
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 97d52794c..dd31f45fa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -190,19 +190,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
++        this.householdAssigner.assign(owner);
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (sharesHousehold && this.householdDuplicateChecker.isDuplicate(owner)) {
+-            this.householdAssigner.assign(owner);
++        boolean householdDuplicate = this.householdDuplicateChecker.isDuplicate(owner);
++        if (householdDuplicate && !sharesHousehold) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (this.identityDuplicateChecker.isDuplicate(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        boolean declaredHouseholdMember = householdDuplicate && sharesHousehold;
+         this.householdSizeAssigner.assign(owner);
+         this.customerCodeAssigner.assign(owner);
+         this.namesakeCounter.assign(owner);
+         this.membershipLevelAssigner.assign(owner);
+         this.bulkSignupWarningAssigner.assign(owner);
+-        this.possibleDuplicateAssigner.assign(owner);
++        this.possibleDuplicateAssigner.assign(owner, declaredHouseholdMember);
+         this.clinicService.saveOwner(owner);
+         this.ownerCreationAuditLogger.logCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
