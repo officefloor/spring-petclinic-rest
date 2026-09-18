@@ -27,6 +27,9 @@ public class EnsureUniqueIdentity {
             return; // no postcode -> no household -> nothing to collide with
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer occupies its household
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateIdentityException(householdId);
             }

@@ -25,6 +25,9 @@ public class FlagPossibleDuplicate {
         }
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not a duplicate to flag against
+            }
             if (PossibleDuplicate.matches(existing, owner)) {
                 Integer id = existing.getId();
                 if (id != null && (matchId == null || id < matchId)) {
