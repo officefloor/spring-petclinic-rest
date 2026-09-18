@@ -26,4 +26,23 @@ public final class RegionPostcodes {
         int[] range = REGION_TO_RANGE.get(region);
         return range == null || (postcode >= range[0] && postcode <= range[1]);
     }
+
+    /**
+     * The region whose range contains {@code postcode}, or {@code null} when {@code postcode} is
+     * absent, not a 4-digit value, or in no known range. Used to derive locality from the postcode
+     * ahead of the city.
+     */
+    public static String regionOf(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_TO_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }
