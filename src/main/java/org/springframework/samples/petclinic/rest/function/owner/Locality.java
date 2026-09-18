@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The single definition of an owner's locality: the canonical region derived from its
@@ -20,7 +21,16 @@ public final class Locality {
     private static final Map<String, String> CITY_REGION =
             Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** The canonical regions this application recognises. */
+    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
+
     private Locality() {
+    }
+
+    /** Whether {@code region} is one of the known canonical regions (NSW, VIC or QLD), i.e. any
+     *  region other than {@link #UNKNOWN}. */
+    public static boolean isKnown(String region) {
+        return KNOWN_REGIONS.contains(region);
     }
 
     /** The canonical region for {@code city} via the city-to-region table alone, or

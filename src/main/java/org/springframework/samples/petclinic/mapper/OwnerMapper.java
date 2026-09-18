@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.Luhn;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.Salutation;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.function.owner.Timezone;
@@ -39,6 +40,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -139,6 +141,13 @@ public interface OwnerMapper {
      *  (under 18), 'ADULT' (18-64) or 'SENIOR' (65+); absent until a birth date is on file. */
     default String ageBand(Owner owner) {
         return AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
+    }
+
+    /** The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;': TIER is 'PREMIUM' at
+     *  membershipLevel 3 or more else 'STANDARD'; AREA is 'METRO' for a known region (its
+     *  'locality' is NSW, VIC or QLD) else 'REGIONAL'. See {@link OwnerSegment}. */
+    default String ownerSegment(Owner owner) {
+        return OwnerSegment.of(owner.getMembershipLevel(), locality(owner));
     }
 
     Owner toOwner(OwnerDto ownerDto);
