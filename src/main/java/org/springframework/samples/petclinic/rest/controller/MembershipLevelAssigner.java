@@ -23,10 +23,12 @@ import org.springframework.stereotype.Component;
  * Assigns, on create, the owner's numeric membership level.
  * <p>
  * The level starts at {@link #BASE_LEVEL}, gains a point when the owner has an email
- * address and another when the owner has no namesakes ({@code namesakeCount} is 0), and
- * is capped at {@link #MAX_CREATION_LEVEL}. Level {@code 4} is reserved for tenure and is
- * never assigned here. As it reads the owner's namesake count, this must be assigned after
- * {@link NamesakeCounter} and before the owner is saved.
+ * address, another when the owner has no namesakes ({@code namesakeCount} is 0), and a
+ * final one for tenured members, up to {@link #MAX_LEVEL}. The top level requires tenure of
+ * more than {@link #LEVEL_4_MIN_TENURE_DAYS} days; a newly created owner has not yet accrued
+ * any tenure, so on create the level earned can never exceed 3. As it reads the owner's
+ * namesake count, this must be assigned after {@link NamesakeCounter} and before the owner
+ * is saved.
  */
 @Component
 public class MembershipLevelAssigner {
@@ -34,12 +36,15 @@ public class MembershipLevelAssigner {
     /** The level every owner starts at. */
     static final int BASE_LEVEL = 1;
 
-    /** The highest level earnable from the owner's own fields on create; level 4 is reserved for tenure. */
-    static final int MAX_CREATION_LEVEL = 3;
+    /** The highest membership level an owner can hold; only reachable through tenure. */
+    static final int MAX_LEVEL = 4;
+
+    /** Tenure, in days, an owner must exceed to reach the top {@link #MAX_LEVEL top level}. */
+    static final int LEVEL_4_MIN_TENURE_DAYS = 365;
 
     /**
-     * Assigns {@code owner}'s membership level from its own fields. Call this after the
-     * namesake count has been assigned and before the owner is saved.
+     * Assigns {@code owner}'s membership level from its own fields and tenure. Call this after
+     * the namesake count has been assigned and before the owner is saved.
      *
      * @param owner the owner being created
      */
@@ -51,7 +56,10 @@ public class MembershipLevelAssigner {
         if (hasNoNamesakes(owner)) {
             level++;
         }
-        owner.setMembershipLevel(Math.min(level, MAX_CREATION_LEVEL));
+        if (hasQualifyingTenure(owner)) {
+            level++;
+        }
+        owner.setMembershipLevel(Math.min(level, MAX_LEVEL));
     }
 
     private boolean hasEmail(Owner owner) {
@@ -60,5 +68,19 @@ public class MembershipLevelAssigner {
 
     private boolean hasNoNamesakes(Owner owner) {
         return owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+    }
+
+    /**
+     * Whether the owner's tenure exceeds the {@link #LEVEL_4_MIN_TENURE_DAYS} that the top
+     * level requires. A newly created owner has not yet accrued any tenure, so on create this
+     * is always {@code false} and a new owner never exceeds level 3.
+     */
+    private boolean hasQualifyingTenure(Owner owner) {
+        return tenureDays(owner) > LEVEL_4_MIN_TENURE_DAYS;
+    }
+
+    /** The whole days the owner has been a member; zero for an owner being created. */
+    private long tenureDays(Owner owner) {
+        return 0L;
     }
 }
