@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Luhn.java b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+new file mode 100644
+index 000000000..c63bbd293
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Computes the Luhn check digit over the decimal digits contained in a string,
++ * ignoring any non-digit characters. Used to derive an owner's check digit from its
++ * customer code.
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /**
++     * The Luhn check digit (0-9) over the digits contained in {@code value}; non-digit
++     * characters are ignored and a {@code null} value is treated as containing no digits.
++     */
++    public static int checkDigit(String value) {
++        if (value == null) {
++            return 0;
++        }
++        int sum = 0;
++        boolean doubling = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubling) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubling = !doubling;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2a33695c9..f1ff9505e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -186,6 +186,15 @@ public class Owner extends Person {
+         return byPostcode != null ? byPostcode : CityRegion.of(this.city);
+     }
+ 
++    /**
++     * The owner's check digit: the single Luhn check digit computed over the digits of the
++     * {@code customerCode}, guarding against transcription errors of the code.
++     */
++    @Transient
++    public int getCheckDigit() {
++        return Luhn.checkDigit(this.customerCode);
++    }
++
+     /**
+      * The owner's preferred contact channel: {@code "EMAIL"} when an email address is
+      * present, otherwise {@code "PHONE"}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4f1c9adae..dff2db319 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2124,6 +2124,17 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                The single Luhn check digit (0-9) computed over the digits of the customerCode,
++                guarding against transcription errors of the code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
