@@ -153,7 +153,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        // Soft delete: retain the row and flag it deleted rather than removing it, so the owner is
+        // still readable but is ignored by the create endpoint's duplicate/identity checks.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -288,8 +291,10 @@ public class ClinicServiceImpl implements ClinicService {
             return false;
         }
         // Household members always share a last name (the household id is derived from last name and
-        // postcode), so narrow by last name, then confirm the household id matches.
+        // postcode), so narrow by last name, then confirm the household id matches. Soft-deleted
+        // owners are ignored so a household freed up by a deletion no longer blocks a create.
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 

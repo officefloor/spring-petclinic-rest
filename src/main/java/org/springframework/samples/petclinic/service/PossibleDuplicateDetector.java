@@ -55,6 +55,7 @@ public class PossibleDuplicateDetector {
         }
         String lastName = TextNormalizer.normalizeForComparison(owner.getLastName());
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(other -> !other.isDeleted())
             .filter(other -> TextNormalizer.normalizeForComparison(other.getLastName()).equals(lastName))
             .filter(other -> owner.getPostcode().equals(other.getPostcode()))
             .filter(other -> !Objects.equals(owner.getTelephone(), other.getTelephone()))

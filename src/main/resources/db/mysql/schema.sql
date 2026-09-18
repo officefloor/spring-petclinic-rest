@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
   registration_date DATE,
   customer_code VARCHAR(20),
   household_id VARCHAR(64),
+  deleted BOOLEAN DEFAULT FALSE NOT NULL,
   INDEX(last_name)
 ) engine=InnoDB;
 

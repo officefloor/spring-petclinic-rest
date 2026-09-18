@@ -66,7 +66,8 @@ public interface ClinicService {
 	 * Determine whether a persisted owner already belongs to the given owner's household, i.e.
 	 * shares its {@link Owner#getHouseholdId() household id} (derived from last name and postcode).
 	 * Because a household is keyed on last name and postcode, any existing member makes the given
-	 * owner a household duplicate. An owner with no household id (no postcode) is never a duplicate.
+	 * owner a household duplicate. An owner with no household id (no postcode) is never a duplicate,
+	 * and soft-deleted owners are ignored.
 	 *
 	 * @param owner the candidate owner whose household is checked
 	 * @return {@code true} if an existing owner shares the household, {@code false} otherwise

@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     /**
      * Whether this owner was knowingly created into a shared household (the request declared shared
      * membership). A declared member is not treated as a suspected duplicate. Set per request and
@@ -413,6 +416,20 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted: {@code DELETE /api/owners/{id}} flags the owner
+     * deleted and retains the row rather than removing it. A soft-deleted owner is still returned by
+     * a read, but is ignored by the create endpoint's duplicate and identity checks. A newly created
+     * owner is not deleted.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     protected Set<Pet> getPetsInternal() {
