@@ -139,7 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        resolveAddress(ownerFieldsDto);
         List<String> missingFields = OwnerFieldsValidator.findMissingFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
@@ -180,6 +180,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalize the submitted address form and resolve the canonical stored {@code address}.
+     * Whichever fields are supplied are normalized: the structured {@code addressLine1}/
+     * {@code addressLine2} are kept (blank lines dropped to {@code null}), and {@code address}
+     * is set to the composed structured address when {@code addressLine1} is present, otherwise
+     * to the normalized flat {@code address}. Everything downstream reads the resolved
+     * {@code address}, so it reflects the structured fields when present and the flat address
+     * otherwise.
+     */
+    private void resolveAddress(OwnerFieldsDto ownerFieldsDto) {
+        String line1 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+        ownerFieldsDto.setAddressLine1(line1.isEmpty() ? null : line1);
+        ownerFieldsDto.setAddressLine2(line2.isEmpty() ? null : line2);
+        if (ownerFieldsDto.getAddressLine1() != null) {
+            ownerFieldsDto.setAddress(
+                AddressNormalizer.compose(ownerFieldsDto.getAddressLine1(), ownerFieldsDto.getAddressLine2()));
+        } else {
+            ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
     }
 
     /**

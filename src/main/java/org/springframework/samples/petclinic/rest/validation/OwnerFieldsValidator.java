@@ -17,47 +17,49 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Validates that an owner supplies every mandatory field. A field is considered
- * missing when it is {@code null} or contains only whitespace.
+ * missing when it is {@code null} or contains only whitespace. The address is
+ * satisfied by either the structured {@code addressLine1} or the flat {@code address}.
  */
 public final class OwnerFieldsValidator {
-
-    /** The mandatory owner fields, mapped from their JSON name to their accessor. */
-    private static final Map<String, Function<OwnerFieldsDto, String>> REQUIRED_FIELDS = new LinkedHashMap<>();
-
-    static {
-        REQUIRED_FIELDS.put("firstName", OwnerFieldsDto::getFirstName);
-        REQUIRED_FIELDS.put("lastName", OwnerFieldsDto::getLastName);
-        REQUIRED_FIELDS.put("address", OwnerFieldsDto::getAddress);
-        REQUIRED_FIELDS.put("city", OwnerFieldsDto::getCity);
-        REQUIRED_FIELDS.put("telephone", OwnerFieldsDto::getTelephone);
-    }
 
     private OwnerFieldsValidator() {
     }
 
     /**
      * Returns the names of every mandatory field that is missing or blank, in declaration order.
+     * An owner must supply an address in either form (a non-blank {@code addressLine1} or the flat
+     * {@code address}); when neither is present {@code address} is reported missing.
      *
      * @param ownerFields the submitted owner fields
      * @return the names of the missing fields, or an empty list when all are present
      */
     public static List<String> findMissingFields(OwnerFieldsDto ownerFields) {
         List<String> missing = new ArrayList<>();
-        REQUIRED_FIELDS.forEach((name, accessor) -> {
-            String value = accessor.apply(ownerFields);
-            if (value == null || value.isBlank()) {
-                missing.add(name);
-            }
-        });
+        if (isBlank(ownerFields.getFirstName())) {
+            missing.add("firstName");
+        }
+        if (isBlank(ownerFields.getLastName())) {
+            missing.add("lastName");
+        }
+        if (isBlank(ownerFields.getAddressLine1()) && isBlank(ownerFields.getAddress())) {
+            missing.add("address");
+        }
+        if (isBlank(ownerFields.getCity())) {
+            missing.add("city");
+        }
+        if (isBlank(ownerFields.getTelephone())) {
+            missing.add("telephone");
+        }
         return missing;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
