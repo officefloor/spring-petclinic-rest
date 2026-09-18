@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneException.java
+new file mode 100644
+index 000000000..48745380a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneException.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by the create-owner pipeline when the request's normalized telephone is already
++ * used by another owner. Carries the offending telephone so
++ * {@link DuplicateOwnerTelephoneExceptionHandler} can report it. Handled as 409 Conflict.
++ */
++public class DuplicateOwnerTelephoneException extends Exception {
++
++    private final String telephone;
++
++    public DuplicateOwnerTelephoneException(String telephone) {
++        super("Owner telephone already in use: " + telephone);
++        this.telephone = telephone;
++    }
++
++    public String getTelephone() {
++        return this.telephone;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneExceptionHandler.java
+new file mode 100644
+index 000000000..62b22bf69
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerTelephoneExceptionHandler.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 409 Conflict when a create request reuses another owner's telephone number.
++ */
++public class DuplicateOwnerTelephoneExceptionHandler {
++
++    public void handle(@Parameter DuplicateOwnerTelephoneException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
++                "An owner with this telephone number already exists");
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java
+new file mode 100644
+index 000000000..022863fa1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException;
++
++/**
++ * Runs after {@link ValidateOwnerFields} in {@code POST /api/owners}, reading the
++ * already-normalized body as a variable. Rejects the request when its telephone is already
++ * used by another owner (comparing normalized telephones), throwing
++ * {@link DuplicateOwnerTelephoneException} for a 409 before any entity is built or persisted.
++ */
++public class EnsureUniqueOwnerTelephone {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateOwnerTelephoneException {
++
++        String telephone = OwnerTelephone.digits(request.getTelephone());
++        for (Owner existing : ownerRepository.findAll()) {
++            if (telephone.equals(OwnerTelephone.digits(existing.getTelephone()))) {
++                throw new DuplicateOwnerTelephoneException(telephone);
++            }
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 584d9b0aa..3aa81d614 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -23,8 +23,7 @@ public class NormalizeOwnerTelephone {
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> normalized)
+             throws InvalidOwnerFieldsException {
+ 
+-        String telephone = request.getTelephone();
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        String digits = OwnerTelephone.digits(request.getTelephone());
+         if (digits.length() != REQUIRED_DIGITS) {
+             throw new InvalidOwnerFieldsException(List.of("telephone"));
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+new file mode 100644
+index 000000000..fedf36fa3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Telephone normalization shared by the create-owner pipeline: keeps only the digit
++ * characters of a telephone, so values are compared and stored in one canonical form.
++ */
++public final class OwnerTelephone {
++
++    private OwnerTelephone() {
++    }
++
++    /** The digits of {@code telephone} with every other character stripped ("" when null). */
++    public static String digits(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException.yml
+new file mode 100644
+index 000000000..4c9fd198e
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 1d7cb7d0b..b8102b9ae 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -12,6 +12,13 @@ normalize:
+ # entity is built or persisted.
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
++  next: unique
++
++# Reject a telephone already used by another owner (comparing normalized telephones) with a
++# 409, before any entity is built or persisted. Reads the same transaction as the writes.
++unique:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueOwnerTelephone
++  govern: [ transaction ]
+   next: build
+ 
+ build:
