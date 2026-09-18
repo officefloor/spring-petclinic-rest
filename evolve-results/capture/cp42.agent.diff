@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 605c8ddc2..821562f49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -232,6 +232,16 @@ public class Owner extends Person {
+         return CustomerCode.regionOf(this.customerCode);
+     }
+ 
++    /**
++     * The owner's IANA timezone, derived from its {@link #getLocality() locality} via the fixed
++     * region-to-timezone table (see {@link RegionTimezone}). {@code null} when the locality has no
++     * known timezone.
++     */
++    @Transient
++    public String getTimezone() {
++        return RegionTimezone.of(this.getLocality());
++    }
++
+     /**
+      * The owner's check digit: the single Luhn check digit computed over the digits of the
+      * {@code customerCode}, guarding against transcription errors of the code.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RegionTimezone.java b/src/main/java/org/springframework/samples/petclinic/model/RegionTimezone.java
+new file mode 100644
+index 000000000..b15cd56a3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/RegionTimezone.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.model;
++
++import java.util.Map;
++
++/**
++ * Fixed region-to-timezone lookup used to derive an owner's IANA timezone from its
++ * {@link Owner#getLocality() locality} (see {@link CityRegion}). A region not listed here — including
++ * {@link CityRegion#UNKNOWN} — has no known timezone.
++ */
++public final class RegionTimezone {
++
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TO_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    private RegionTimezone() {
++    }
++
++    /** The IANA timezone name for {@code region}, or {@code null} when the region has no known timezone. */
++    public static String of(String region) {
++        return REGION_TO_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e616b0ff2..8b91970cb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2122,6 +2122,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone, derived from its locality (region) via the fixed
++                region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane). Absent when the locality has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
