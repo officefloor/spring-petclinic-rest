@@ -24,14 +24,16 @@ import org.springframework.validation.Validator;
 
 /**
  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
- * request body: required text fields must be present and non-blank, the telephone is
- * canonicalised to E.164 form and required to be a valid such number, and an optional email is
- * required to be syntactically valid and normalized to lower case.
+ * request body: the address is canonicalised and then, like the other required text fields,
+ * required to be present and non-blank; the telephone is canonicalised to E.164 form and
+ * required to be a valid such number; and an optional email is required to be syntactically
+ * valid and normalized to lower case.
  * <p>
  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
  * recorded as a field error on the shared {@link Errors}, surfacing through the usual
- * bad-request handling. A valid telephone is written back to the DTO in E.164 form so it
- * is stored, returned and compared for duplicates as that canonical string.
+ * bad-request handling. The canonical address and a valid telephone (in E.164 form) are
+ * written back to the DTO so they are stored, returned and compared for duplicates as those
+ * canonical strings.
  *
  * @author Vitaliy Fedoriv
  */
@@ -44,9 +46,13 @@ public class OwnerFieldsValidator implements Validator {
 
     private final EmailNormalizer emailNormalizer;
 
-    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer, EmailNormalizer emailNormalizer) {
+    private final AddressNormalizer addressNormalizer;
+
+    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer, EmailNormalizer emailNormalizer,
+                                AddressNormalizer addressNormalizer) {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @Override
@@ -57,6 +63,7 @@ public class OwnerFieldsValidator implements Validator {
     @Override
     public void validate(Object target, Errors errors) {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
+        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }

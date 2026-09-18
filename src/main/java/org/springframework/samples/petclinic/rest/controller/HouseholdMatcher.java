@@ -31,10 +31,11 @@ import org.springframework.stereotype.Component;
  * Groups owners into households and derives a household's stable shared identifier.
  * <p>
  * Two owners belong to the same household when they carry the same last name and the same
- * address. Both fields are compared leniently: surrounding whitespace is trimmed, internal
+ * address. The last name is compared leniently: surrounding whitespace is trimmed, internal
  * runs of whitespace are collapsed to a single space and letters are compared without
  * regard to case, so values that differ only in spacing or capitalisation are treated as
- * equal.
+ * equal. The address is compared in its canonical {@link AddressNormalizer normalized} form,
+ * the same form under which it is stored and returned.
  */
 @Component
 public class HouseholdMatcher {
@@ -44,8 +45,11 @@ public class HouseholdMatcher {
 
     private final ClinicService clinicService;
 
-    public HouseholdMatcher(ClinicService clinicService) {
+    private final AddressNormalizer addressNormalizer;
+
+    public HouseholdMatcher(ClinicService clinicService, AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
+        this.addressNormalizer = addressNormalizer;
     }
 
     /**
@@ -81,10 +85,10 @@ public class HouseholdMatcher {
     }
 
     private String householdKey(Owner owner) {
-        return normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
+        return normalizeName(owner.getLastName()) + "\n" + addressNormalizer.normalize(owner.getAddress());
     }
 
-    private String normalize(String value) {
+    private String normalizeName(String value) {
         if (value == null) {
             return "";
         }
