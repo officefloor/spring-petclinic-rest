@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
-import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.audit.OwnerAuditTrail;
 
@@ -13,7 +12,7 @@ import org.springframework.samples.petclinic.rest.audit.OwnerAuditTrail;
  */
 public class AuditOwnerCreated {
 
-    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerAuditTrail auditTrail) {
-        auditTrail.ownerCreated(owner, ownerMapper.membershipNumber(owner));
+    public void service(@Val Owner owner, OwnerAuditTrail auditTrail) {
+        auditTrail.ownerCreated(owner);
     }
 }

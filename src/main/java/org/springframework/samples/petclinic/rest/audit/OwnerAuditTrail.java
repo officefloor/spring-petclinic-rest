@@ -26,13 +26,12 @@ public class OwnerAuditTrail {
 
     /**
      * Records a successful owner create: the human-readable line and the structured
-     * {@code OWNER_CREATED} event. The {@code membershipNumber} is derived by the caller so this
-     * sink stays independent of the web mapping layer.
+     * {@code OWNER_CREATED} event, both keyed by the owner's {@code memberId}.
      */
-    public void ownerCreated(Owner owner, String membershipNumber) {
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), membershipNumber);
+    public void ownerCreated(Owner owner) {
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(this.sequence.incrementAndGet(), owner);
         AUDIT.info("{}", event.toJson(JSON));
     }

@@ -6,7 +6,7 @@ package org.springframework.samples.petclinic.util;
  * absent or in no known range, and {@link CityRegion#UNKNOWN} when neither resolves a region.
  *
  * <p>This is the single source of an owner's region, used both to build the region segment of the
- * {@link CustomerCode customer code} and to report the owner's locality.
+ * {@link MemberId member id} and to report the owner's locality.
  */
 public final class OwnerRegion {
 

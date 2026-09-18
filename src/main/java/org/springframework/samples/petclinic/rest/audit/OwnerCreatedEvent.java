@@ -7,15 +7,13 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Immutable structured audit event recording that an owner was created, emitted alongside the
  * human-readable audit line for {@code POST /api/owners}. Serialized to a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code event} is always
+ * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code event} is always
  * {@code OWNER_CREATED} and {@code seq} is a monotonically increasing sequence across creates.
  *
- * <p>The event carries the owner's <em>current primary identifier</em>. Today that is the
- * {@code customerCode}; when the customerCode is later unified into the {@code memberId} the event
- * must carry the memberId instead. That identifier is resolved in one place
- * ({@link #primaryIdentifier(Owner)}) so the switch is a single-line change.
+ * <p>The event carries the owner's <em>current primary identifier</em>, the {@code memberId},
+ * resolved in one place ({@link #primaryIdentifier(Owner)}).
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     private static final String EVENT_TYPE = "OWNER_CREATED";
@@ -26,12 +24,9 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
                 owner.getMembershipLevel(), EVENT_TYPE);
     }
 
-    /**
-     * The owner's current primary identifier. Today the {@code customerCode}; when the customerCode
-     * is unified into the {@code memberId} this is the single line that changes.
-     */
+    /** The owner's current primary identifier, the {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /** Renders this event as a JSON object string. */
