@@ -233,6 +233,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's IANA timezone name, derived on read from the owner's
+     * {@link #getLocality() locality} via the fixed {@link RegionTimezoneTable}, e.g.
+     * {@code "Australia/Sydney"} for {@code NSW}. {@code null} when the locality has no
+     * timezone in the table.
+     */
+    @Transient
+    public String getTimezone() {
+        return RegionTimezoneTable.timezoneOf(getLocality());
+    }
+
+    /**
      * The owner's preferred contact channel, derived on read from the owner's own
      * fields: {@code "EMAIL"} when the owner has an email address, otherwise
      * {@code "PHONE"}.
