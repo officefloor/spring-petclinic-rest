@@ -56,6 +56,16 @@ public interface OwnerRepository {
      */
     Owner findById(int id) throws DataAccessException;
 
+    /**
+     * Retrieve every <code>Owner</code> whose stored telephone exactly matches the given value. Used to
+     * enforce telephone uniqueness on create; the value passed is already normalized to bare digits, as
+     * are the telephones persisted for owners created through the REST API.
+     *
+     * @param telephone the normalized telephone to match
+     * @return the matching <code>Owner</code>s (empty if none)
+     */
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

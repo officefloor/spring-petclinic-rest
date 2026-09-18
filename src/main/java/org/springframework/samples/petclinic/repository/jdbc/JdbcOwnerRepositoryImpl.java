@@ -133,6 +133,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return owner;
     }
 
+    @Override
+    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("telephone", telephone);
+        return this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE telephone = :telephone",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+    }
+
     public void loadPetsAndVisits(final Owner owner) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", owner.getId());
