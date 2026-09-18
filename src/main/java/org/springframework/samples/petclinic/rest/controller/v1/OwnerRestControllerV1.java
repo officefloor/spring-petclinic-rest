@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
+import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -78,6 +79,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdAssigner householdAssigner;
 
+    private final NamesakeCounter namesakeCounter;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -86,7 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  RegistrationDateDefaulter registrationDateDefaulter,
                                  CustomerCodeAssigner customerCodeAssigner,
                                  HouseholdDuplicateChecker householdDuplicateChecker,
-                                 HouseholdAssigner householdAssigner) {
+                                 HouseholdAssigner householdAssigner,
+                                 NamesakeCounter namesakeCounter) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -96,6 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.customerCodeAssigner = customerCodeAssigner;
         this.householdDuplicateChecker = householdDuplicateChecker;
         this.householdAssigner = householdAssigner;
+        this.namesakeCounter = namesakeCounter;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -146,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.registrationDateDefaulter.applyDefault(owner);
         this.customerCodeAssigner.assign(owner);
+        this.namesakeCounter.assign(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
