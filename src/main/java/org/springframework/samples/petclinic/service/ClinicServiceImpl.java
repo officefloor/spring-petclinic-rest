@@ -53,6 +53,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final CustomerCodeGenerator customerCodeGenerator;
     private final NamesakeCounter namesakeCounter;
     private final HouseholdMemberCounter householdMemberCounter;
+    private final PossibleDuplicateDetector possibleDuplicateDetector;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -63,7 +64,8 @@ public class ClinicServiceImpl implements ClinicService {
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
         NamesakeCounter namesakeCounter,
-        HouseholdMemberCounter householdMemberCounter) {
+        HouseholdMemberCounter householdMemberCounter,
+        PossibleDuplicateDetector possibleDuplicateDetector) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -73,6 +75,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
         this.householdMemberCounter = householdMemberCounter;
+        this.possibleDuplicateDetector = possibleDuplicateDetector;
     }
 
     @Override
@@ -251,6 +254,9 @@ public class ClinicServiceImpl implements ClinicService {
             }
             owner.setNamesakeCount(namesakeCounter.count(owner));
             owner.setHouseholdSize(householdMemberCounter.count(owner));
+            Owner possibleDuplicate = possibleDuplicateDetector.findPossibleDuplicate(owner);
+            owner.setPossibleDuplicate(possibleDuplicate != null);
+            owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
         }
         ownerRepository.save(owner);
 
