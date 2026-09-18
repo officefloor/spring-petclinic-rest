@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegion;
+import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.PostcodeRange;
 
 import java.util.Collection;
@@ -24,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
@@ -48,6 +50,12 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /** The Luhn check digit over the digits of the customerCode. Null when the customerCode
+     *  is absent. */
+    default Integer checkDigit(Owner owner) {
+        return owner.getCustomerCode() == null ? null : Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /** The owner's locality: the canonical region derived from its postcode range first,
