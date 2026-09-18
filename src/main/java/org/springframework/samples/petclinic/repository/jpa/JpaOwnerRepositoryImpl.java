@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository.jpa;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -137,6 +138,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 	public long countByCity(String city) throws DataAccessException {
 		Query countQuery = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.city = :city");
 		countQuery.setParameter("city", city);
+		return (long) countQuery.getSingleResult();
+	}
+
+	@Override
+	public long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
+		Query countQuery = this.em.createQuery(
+			"SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate");
+		countQuery.setParameter("registrationDate", registrationDate);
 		return (long) countQuery.getSingleResult();
 	}
 
