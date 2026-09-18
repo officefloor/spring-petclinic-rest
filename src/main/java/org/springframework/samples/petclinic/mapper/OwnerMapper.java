@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerEmail;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -37,6 +38,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's canonical relative URL, '/api/owners/' followed by its id. */
@@ -119,6 +121,16 @@ public interface OwnerMapper {
      *  {@link #locality locality}. See {@link OwnerSegment}. */
     default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
         return OwnerDto.OwnerSegmentEnum.fromValue(OwnerSegment.of(owner.getMembershipLevel(), locality(owner)));
+    }
+
+    /** Whether the owner should be treated as elevated-risk: true when it is a possible
+     *  duplicate, its email domain is disposable-adjacent, or its city was over soft capacity
+     *  at creation (the {@code capacityWarning}); false otherwise. Each condition reuses state
+     *  already derived elsewhere in the owner pipeline. */
+    default boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+                || Boolean.TRUE.equals(owner.getCapacityWarning())
+                || OwnerEmail.isDisposableAdjacent(owner.getEmail());
     }
 
     Owner toOwner(OwnerDto ownerDto);
