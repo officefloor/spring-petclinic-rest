@@ -1,10 +1,9 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request's identity — its normalized telephone, email and
- * household, captured as an {@code identityKey} — already belongs to another owner and the
- * request did not opt in with {@code sharesHousehold}. Handled by
- * {@link DuplicateIdentityExceptionHandler} as a 409.
+ * Thrown when a create-owner request's identity — its normalized telephone, email and the
+ * soundex of its last name, captured as an {@code identityKey} — already belongs to another
+ * owner. Handled by {@link DuplicateIdentityExceptionHandler} as a 409.
  */
 public class DuplicateIdentityException extends Exception {
 

@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * linking. A household is keyed on the postcode, so an owner without one has no household and
  * is left unstamped.
  *
- * <p>Runs after {@link BuildOwner} and before {@link EnsureUniqueIdentity}, so the household
- * identifier is in place for the duplicate check that keys off it.
+ * <p>Runs after {@link BuildOwner}, so the household identifier is in place for the later
+ * household-scoped steps ({@link AssignMembershipLevel}) that key off it. Owner identity no
+ * longer depends on the household — see {@link IdentityKey}.
  */
 public class AssignHousehold {
 

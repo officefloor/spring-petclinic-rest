@@ -5,10 +5,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * The single definition of the project's SHA-256 hashing: the first {@code length} upper-case
- * hex characters of SHA-256 over the UTF-8 bytes of a string. Both the owner
- * {@link CustomerCode customer code} and the {@link Household household identifier} are derived
- * this way, so they share one implementation rather than each rolling their own digest.
+ * The single definition of the project's SHA-256 hashing over the UTF-8 bytes of a string.
+ * The owner {@link CustomerCode customer code} and {@link Household household identifier} take
+ * the first {@code length} upper-case hex characters; the owner {@link IdentityKey} takes the
+ * full lower-case digest — all share one implementation rather than each rolling their own.
  *
  * <p>Pure function of its inputs; no state.
  */
@@ -25,6 +25,16 @@ final class Sha256 {
             hex.append(String.format("%02X", digest[i]));
         }
         return hex.substring(0, length);
+    }
+
+    /** The full 64-character lower-case hex SHA-256 of {@code value}. */
+    static String hexLower(String value) {
+        byte[] digest = digest(value);
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
     }
 
     private static byte[] digest(String value) {
