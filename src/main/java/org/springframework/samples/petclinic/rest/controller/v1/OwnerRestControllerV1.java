@@ -31,7 +31,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.BulkSignupWarningAssigner;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
-import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
+import org.springframework.samples.petclinic.rest.controller.MemberIdAssigner;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimiter;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdSizeAssigner;
@@ -85,7 +85,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final RegistrationDateAssigner registrationDateAssigner;
 
-    private final CustomerCodeAssigner customerCodeAssigner;
+    private final MemberIdAssigner memberIdAssigner;
 
     private final IdentityDuplicateChecker identityDuplicateChecker;
 
@@ -116,7 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  RegistrationDateValidator registrationDateValidator,
                                  RegistrationDateAssigner registrationDateAssigner,
-                                 CustomerCodeAssigner customerCodeAssigner,
+                                 MemberIdAssigner memberIdAssigner,
                                  IdentityDuplicateChecker identityDuplicateChecker,
                                  HouseholdAssigner householdAssigner,
                                  HouseholdSizeAssigner householdSizeAssigner,
@@ -135,7 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.registrationDateValidator = registrationDateValidator;
         this.registrationDateAssigner = registrationDateAssigner;
-        this.customerCodeAssigner = customerCodeAssigner;
+        this.memberIdAssigner = memberIdAssigner;
         this.identityDuplicateChecker = identityDuplicateChecker;
         this.householdAssigner = householdAssigner;
         this.householdSizeAssigner = householdSizeAssigner;
@@ -206,7 +206,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         this.householdSizeAssigner.assign(owner);
-        this.customerCodeAssigner.assign(owner);
+        this.memberIdAssigner.assign(owner);
         this.namesakeCounter.assign(owner);
         this.membershipLevelAssigner.assign(owner);
         this.bulkSignupWarningAssigner.assign(owner);

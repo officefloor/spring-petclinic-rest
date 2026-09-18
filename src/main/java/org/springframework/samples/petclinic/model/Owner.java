@@ -69,8 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -244,66 +244,32 @@ public class Owner extends Person {
         return AgeBand.asOf(this.birthDate, this.registrationDate).name();
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
-    }
-
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
     /**
-     * The owner's current primary identifier: the single value that identifies the owner
-     * to the outside world. Today this is the {@link #getCustomerCode() customer code};
-     * once the customer code is unified into the member id this method will return the
-     * member id instead, so callers that must carry "the identifier" (such as the owner
-     * creation audit event) follow the migration automatically.
+     * The owner's member id: the single value that identifies the owner to the outside
+     * world, formatted {@code <REGION><FY><HASH8><CHK>} (see {@link MemberId}). Assigned on
+     * create and de-duplicated against already-stored owners; {@code null} until assigned.
      */
-    @Transient
-    public String getPrimaryIdentifier() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
+    }
+
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
-     * digits of the {@link FiscalYear fiscal year} the {@code registrationDate} falls in
-     * (the fiscal year starts on 1 July), e.g. {@code "FY26"}. Derived on read from the
-     * owner's registration date; {@code null} until it has been assigned.
+     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the two-digit
+     * {@code FY} segment carried by the owner's {@link #getMemberId() member id}, e.g.
+     * {@code "FY26"}. Derived on read from the member id, falling back to the owner's live
+     * {@link #registrationDate} until a member id has been assigned; {@code null} until
+     * either is available.
      */
     @Transient
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
-            return null;
+        if (this.memberId == null) {
+            return this.registrationDate == null ? null : FiscalYear.labelOf(this.registrationDate);
         }
-        return FiscalYear.labelOf(this.registrationDate);
-    }
-
-    /**
-     * The owner's membership number, formatted {@code <customerCode>-M<YY>} where
-     * {@code YY} is the last two digits of the {@link FiscalYear fiscal year} the
-     * {@code registrationDate} falls in (the fiscal year starts on 1 July), e.g.
-     * {@code "NSW-1A2B3C4D-M26"}. Derived from the owner's own fields; {@code null} until
-     * both the customer code and registration date have been assigned.
-     */
-    @Transient
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, FiscalYear.startYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's check digit: a single {@link Luhn} check digit computed over the digits
-     * of the owner's {@link #customerCode}. {@code null} until the customer code has been
-     * assigned.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        return Luhn.checkDigit(this.customerCode);
+        return "FY" + MemberId.fiscalYearOf(this.memberId);
     }
 
     /**
@@ -311,7 +277,7 @@ public class Owner extends Person {
      * via the fixed {@link RegionPostcodeTable}, falling back to the owner's {@link #city}
      * via the fixed {@link CityRegionTable} when the postcode is absent or in no known
      * range, or {@code "UNKNOWN"} when neither yields a region. This is the {@code REGION}
-     * segment of the owner's {@link #getCustomerCode() customer code}.
+     * segment of the owner's {@link #getMemberId() member id}.
      */
     @Transient
     public String getRegion() {
@@ -320,18 +286,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality, read from its region-and-hash identity: the {@code REGION}
-     * segment (everything before the first {@code '-'}) of the owner's
-     * {@link #getCustomerCode() customer code}. Falls back to the owner's live
-     * {@link #getRegion() region} until a customer code has been assigned.
+     * The owner's locality, read from its {@link #getMemberId() member id}: the
+     * {@code REGION} segment of the member id (see {@link MemberId#regionOf}). Falls back to
+     * the owner's live {@link #getRegion() region} until a member id has been assigned.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode == null) {
+        if (this.memberId == null) {
             return getRegion();
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
+        return MemberId.regionOf(this.memberId);
     }
 
     /**
@@ -573,7 +537,7 @@ public class Owner extends Person {
             .append("telephone", this.telephone)
             .append("email", this.email)
             .append("registrationDate", this.registrationDate)
-            .append("customerCode", this.customerCode)
+            .append("memberId", this.memberId)
             .toString();
     }
 }

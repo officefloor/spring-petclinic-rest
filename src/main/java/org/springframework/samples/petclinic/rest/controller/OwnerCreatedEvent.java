@@ -23,12 +23,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@code AUDIT} logger alongside the human-readable audit line.
  * <p>
  * The event carries the owner's id together with its
- * {@link Owner#getPrimaryIdentifier() current primary identifier} (the customer
- * code today, whatever replaces it later), so downstream consumers can follow the
- * identifier as it evolves. {@code seq} is a monotonically increasing counter that
- * orders creates.
+ * {@link Owner#getMemberId() member id}, the single value that identifies the owner,
+ * so downstream consumers can follow the identifier. {@code seq} is a monotonically
+ * increasing counter that orders creates.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     private static final String OWNER_CREATED = "OWNER_CREATED";
@@ -38,7 +37,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
      * this only after the owner has been saved so its id and derived fields are set.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(), owner.getMembershipLevel(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(), owner.getMembershipLevel(),
             OWNER_CREATED);
     }
 }

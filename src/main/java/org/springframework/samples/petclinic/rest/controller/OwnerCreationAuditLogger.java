@@ -30,11 +30,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Emits the audit trail for owner creation.
  * <p>
  * On a successful create a single line is written to the dedicated {@code AUDIT}
- * logger carrying the newly assigned owner id, its customer code, its
- * registration date, its membership level and its membership number, so the
- * side-effect can be observed independently of the REST response. The same create
- * additionally emits an immutable {@link OwnerCreatedEvent} serialized as JSON, so
- * the side-effect can also be consumed structurally.
+ * logger carrying the newly assigned owner id, its member id, its registration date
+ * and its membership level, so the side-effect can be observed independently of the
+ * REST response. The same create additionally emits an immutable
+ * {@link OwnerCreatedEvent} serialized as JSON, so the side-effect can also be
+ * consumed structurally.
  */
 @Component
 public class OwnerCreationAuditLogger {
@@ -53,9 +53,8 @@ public class OwnerCreationAuditLogger {
      * @param owner the owner that was created
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(this.sequence.incrementAndGet(), owner);
         AUDIT.info(MAPPER.writeValueAsString(event));
     }
