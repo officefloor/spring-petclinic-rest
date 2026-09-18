@@ -145,6 +145,17 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
+    /**
+     * The owner's membership tier, derived from the owner's own fields. Returns
+     * {@code "SILVER"} when the owner has no namesakes and a contact email on
+     * file, and {@code "BRONZE"} otherwise.
+     */
+    public String getMembershipTier() {
+        boolean hasEmail = this.email != null && !this.email.isEmpty();
+        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
