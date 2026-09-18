@@ -1,0 +1,240 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java b/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
+index 837ad90d3..43d39976f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CityRegionTable.java
+@@ -35,9 +35,12 @@ public final class CityRegionTable {
+ 
+     /**
+      * The canonical region code for the given city, or {@link #UNKNOWN} when the
+-     * city is not in the table.
++     * city is absent or not in the table.
+      */
+     public static String regionOf(String city) {
++        if (city == null) {
++            return UNKNOWN;
++        }
+         return CITY_REGIONS.getOrDefault(city, UNKNOWN);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+new file mode 100644
+index 000000000..7b231e8b8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Raised when an owner cannot be created because their city has already reached its owner
++ * capacity. Reported as {@code 409 Conflict}.
++ */
++public class CityAtCapacityException extends RestApiException {
++
++    public CityAtCapacityException() {
++        super(HttpStatus.CONFLICT, "The owner's city has reached its owner capacity");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java
+new file mode 100644
+index 000000000..5c38c6fdf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Raised when an owner cannot be created because the maximum number of registrations for the
++ * day has already been reached. Reported as {@code 429 Too Many Requests}.
++ */
++public class DailyRegistrationLimitException extends RestApiException {
++
++    public DailyRegistrationLimitException() {
++        super(HttpStatus.TOO_MANY_REQUESTS, "The daily owner registration limit has been reached");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+new file mode 100644
+index 000000000..878b541b0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Raised when an owner cannot be created because they duplicate the identity of an existing
++ * owner. Reported as {@code 409 Conflict}.
++ */
++public class DuplicateOwnerException extends RestApiException {
++
++    public DuplicateOwnerException() {
++        super(HttpStatus.CONFLICT, "An owner with the same identity already exists");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index e361fe671..d978cf616 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -86,6 +86,28 @@ public class ExceptionControllerAdvice {
+         throw e;
+     }
+ 
++    /**
++     * Handles business-rule rejections raised by the REST controllers, reporting each with the
++     * HTTP status it carries and an RFC7807 {@code application/problem+json} body. This keeps the
++     * controllers free of error-body construction: they signal a rejection by throwing, and the
++     * problem detail is built here, consistently with the other rejection handlers.
++     *
++     * @param e The {@link RestApiException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and the exception's status
++     */
++    @ExceptionHandler(RestApiException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRestApiException(RestApiException e, HttpServletRequest request) {
++        HttpStatus status = e.getStatus();
++        logger.warn("Request rejected at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiException.java
+new file mode 100644
+index 000000000..37cc78149
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiException.java
+@@ -0,0 +1,42 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Base type for business-rule rejections raised by REST controllers. Each carries the HTTP
++ * status the request must be rejected with and a human-readable detail; the shared exception
++ * handling turns it into an RFC7807 {@code application/problem+json} response, so controllers
++ * only have to signal <em>what</em> was rejected, not how the error body is shaped.
++ */
++public abstract class RestApiException extends RuntimeException {
++
++    private final HttpStatus status;
++
++    protected RestApiException(HttpStatus status, String detail) {
++        super(detail);
++        this.status = status;
++    }
++
++    /**
++     * @return the HTTP status this rejection must be reported with
++     */
++    public HttpStatus getStatus() {
++        return status;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c8d7091d8..c26b9b433 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,9 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
++import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
++import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.controller.BulkSignupWarningAssigner;
+ import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
+@@ -199,15 +202,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.registrationDateAssigner.assign(owner);
+         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new CityAtCapacityException();
+         }
+         this.cityCapacityChecker.assignCapacityWarning(owner);
+         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new DailyRegistrationLimitException();
+         }
+         this.householdAssigner.assign(owner);
+         if (this.identityDuplicateChecker.isDuplicate(owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new DuplicateOwnerException();
+         }
+         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         this.householdSizeAssigner.assign(owner);
