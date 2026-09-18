@@ -7,7 +7,8 @@ import java.util.Locale;
 
 /**
  * Identity of an owner's household. Two owners live in the same household when they share
- * the same last name and address, compared case-insensitively with collapsed whitespace.
+ * the same last name and address. The address is compared in its {@link OwnerAddress
+ * normalized} form and the last name case-insensitively with collapsed whitespace.
  *
  * <p>The {@link #id(String, String) household id} is derived deterministically from that
  * canonical key, so every member of a household computes the same stable identifier without
@@ -19,11 +20,12 @@ final class Household {
     }
 
     /**
-     * Canonical household key: last name and address, each trimmed, with internal whitespace
-     * collapsed and lower-cased, joined so distinct pairs never collide.
+     * Canonical household key: the last name trimmed, internal whitespace collapsed and
+     * lower-cased, and the address in its {@link OwnerAddress normalized} form, joined so
+     * distinct pairs never collide.
      */
     static String key(String lastName, String address) {
-        return canonical(lastName) + "\n" + canonical(address);
+        return canonical(lastName) + "\n" + OwnerAddress.normalize(address);
     }
 
     /** Whether the two (last name, address) pairs belong to the same household. */
