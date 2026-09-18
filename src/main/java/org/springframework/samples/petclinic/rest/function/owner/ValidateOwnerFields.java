@@ -10,17 +10,18 @@ import java.util.function.Supplier;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import net.officefloor.plugin.variable.Out;
+import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerFieldsException;
-import org.springframework.web.bind.annotation.RequestBody;
 
 /**
- * First step of {@code POST /api/owners}. Rejects a body that is missing or blank in any
- * required field ({@code firstName}, {@code lastName}, {@code address}, {@code city},
- * {@code telephone}), and also applies the DTO's declared format constraints. When any
- * field is invalid it throws {@link InvalidOwnerFieldsException} naming those fields, so
- * the response is a 400 listing them; otherwise it publishes the validated body for the
- * downstream build step. This is the pipeline's sole {@code @RequestBody} binding.
+ * Runs after {@link NormalizeOwnerTelephone} in {@code POST /api/owners}. Rejects a body
+ * that is missing or blank in any required field ({@code firstName}, {@code lastName},
+ * {@code address}, {@code city}, {@code telephone}), and also applies the DTO's declared
+ * format constraints. When any field is invalid it throws
+ * {@link InvalidOwnerFieldsException} naming those fields, so the response is a 400
+ * listing them; otherwise it publishes the validated body for the downstream build step.
+ * It reads the already-normalized body as a variable rather than binding {@code @RequestBody}.
  */
 public class ValidateOwnerFields {
 
@@ -35,7 +36,7 @@ public class ValidateOwnerFields {
         return fields;
     }
 
-    public void service(@RequestBody OwnerFieldsDto request, Validator validator,
+    public void service(@Val OwnerFieldsDto request, Validator validator,
             Out<OwnerFieldsDto> validated) throws InvalidOwnerFieldsException {
 
         // Preserve field-declaration order and de-duplicate fields flagged more than once.
