@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,7 @@ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.IdempotencyKeyStore;
 import org.springframework.samples.petclinic.service.OwnerAuditor;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
@@ -99,16 +101,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditor ownerAuditor;
 
+    private final IdempotencyKeyStore idempotencyKeyStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerAuditor ownerAuditor) {
+                                 OwnerAuditor ownerAuditor,
+                                 IdempotencyKeyStore idempotencyKeyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerAuditor = ownerAuditor;
+        this.idempotencyKeyStore = idempotencyKeyStore;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -138,7 +144,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        if (idempotencyKey != null) {
+            Optional<OwnerDto> existing = idempotencyKeyStore.findOwnerId(idempotencyKey)
+                .map(this.clinicService::findOwnerById)
+                .map(this::toOwnerDtoWithBulkSignupWarning);
+            if (existing.isPresent()) {
+                return new ResponseEntity<>(existing.get(), HttpStatus.OK);
+            }
+        }
         resolveAddress(ownerFieldsDto);
         List<String> missingFields = OwnerFieldsValidator.findMissingFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
@@ -176,6 +190,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.ownerCreated(owner);
+        if (idempotencyKey != null) {
+            this.idempotencyKeyStore.remember(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = toOwnerDtoWithBulkSignupWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
