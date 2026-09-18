@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 
@@ -24,7 +25,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -246,14 +246,25 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'}
-     * where {@code YY} is the last two digits of the {@link #registrationDate}
-     * year (e.g. {@code "NSW-3F2A9C1D-M26"}). Derived from the owner's own fields.
+     * where {@code YY} is the two-digit segment of the {@linkplain #getFiscalYear()
+     * fiscal year} of the {@link #registrationDate} (e.g. {@code "NSW-3F2A9C1D-M27"}
+     * for a registration in fiscal year 2027). Derived from the owner's own fields.
      */
     public String getMembershipNumber() {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, FiscalYear.yearSegment(this.registrationDate));
+    }
+
+    /**
+     * The owner's fiscal year: the {@code 'FY<YY>'} label (e.g. {@code "FY27"}) of the
+     * fiscal year the {@link #registrationDate} falls in, where a fiscal year starts on
+     * 1 July and is numbered by the calendar year in which it ends (see
+     * {@link FiscalYear}). {@code null} when no registration date is on file.
+     */
+    public String getFiscalYear() {
+        return FiscalYear.label(this.registrationDate);
     }
 
     /**
@@ -290,8 +301,8 @@ public class Owner extends Person {
             this.householdId == null ? "" : this.householdId);
     }
 
-    /** Tenure, in days, beyond which an owner earns the tenure membership points. */
-    private static final long TENURE_DAYS_FOR_POINTS = 365;
+    /** Tenure, in elapsed fiscal years, at or beyond which an owner earns the tenure membership points. */
+    private static final long TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     /** Household size at or above which an owner earns the household membership points. */
     private static final int HOUSEHOLD_SIZE_FOR_POINTS = 3;
@@ -301,8 +312,8 @@ public class Owner extends Person {
      * fields. Starts at {@code 0}, gains {@code 2} when a contact email is on
      * file, gains {@code 1} when the owner has no namesakes, gains {@code 2}
      * when the owner belongs to a household of {@value #HOUSEHOLD_SIZE_FOR_POINTS}
-     * or more, and gains {@code 3} when the owner's {@link #getTenureDays()
-     * tenure} exceeds {@value #TENURE_DAYS_FOR_POINTS} days.
+     * or more, and gains {@code 3} when the owner's {@link #getTenureFiscalYears()
+     * tenure} reaches {@value #TENURE_FISCAL_YEARS_FOR_POINTS} or more elapsed fiscal years.
      */
     public Integer getMembershipPoints() {
         int points = 0;
@@ -318,8 +329,8 @@ public class Owner extends Person {
         if (largeHousehold) {
             points += 2;
         }
-        Long tenureDays = getTenureDays();
-        if (tenureDays != null && tenureDays > TENURE_DAYS_FOR_POINTS) {
+        Long tenureFiscalYears = getTenureFiscalYears();
+        if (tenureFiscalYears != null && tenureFiscalYears >= TENURE_FISCAL_YEARS_FOR_POINTS) {
             points += 3;
         }
         return points;
@@ -345,15 +356,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure: the number of whole days from the {@link #registrationDate}
-     * to the server's current date, or {@code null} when no registration date is on
-     * file. Never negative for a registration date that is today or earlier.
+     * The owner's tenure: the number of whole fiscal years elapsed from the
+     * {@link #registrationDate} to the server's current date — the count of 1 July
+     * boundaries crossed between them (see {@link FiscalYear}), or {@code null} when no
+     * registration date is on file. Zero while both dates fall in the same fiscal year,
+     * and never negative for a registration date that is today or earlier.
      */
-    public Long getTenureDays() {
+    public Long getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return null;
         }
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return FiscalYear.elapsedYears(this.registrationDate, LocalDate.now());
     }
 
     /**
