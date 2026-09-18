@@ -28,6 +28,9 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.BulkSignupWarningAssigner;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
@@ -199,15 +202,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.registrationDateAssigner.assign(owner);
         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new CityAtCapacityException();
         }
         this.cityCapacityChecker.assignCapacityWarning(owner);
         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new DailyRegistrationLimitException();
         }
         this.householdAssigner.assign(owner);
         if (this.identityDuplicateChecker.isDuplicate(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new DuplicateOwnerException();
         }
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         this.householdSizeAssigner.assign(owner);

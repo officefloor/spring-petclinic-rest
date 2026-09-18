@@ -35,9 +35,12 @@ public final class CityRegionTable {
 
     /**
      * The canonical region code for the given city, or {@link #UNKNOWN} when the
-     * city is not in the table.
+     * city is absent or not in the table.
      */
     public static String regionOf(String city) {
+        if (city == null) {
+            return UNKNOWN;
+        }
         return CITY_REGIONS.getOrDefault(city, UNKNOWN);
     }
 }

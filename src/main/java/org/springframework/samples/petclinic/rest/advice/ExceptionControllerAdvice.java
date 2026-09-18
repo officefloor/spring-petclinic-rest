@@ -87,6 +87,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles business-rule rejections raised by the REST controllers, reporting each with the
+     * HTTP status it carries and an RFC7807 {@code application/problem+json} body. This keeps the
+     * controllers free of error-body construction: they signal a rejection by throwing, and the
+     * problem detail is built here, consistently with the other rejection handlers.
+     *
+     * @param e The {@link RestApiException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and the exception's status
+     */
+    @ExceptionHandler(RestApiException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRestApiException(RestApiException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.warn("Request rejected at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
      *
      * @param e The {@link Exception} to be handled
