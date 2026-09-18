@@ -150,12 +150,14 @@ public class Owner extends Person {
 
     /**
      * The owner's locality: the canonical region derived on read from the owner's
-     * {@link #city} via the fixed {@link CityRegionTable}, or {@code "UNKNOWN"} when
-     * the city has no known region.
+     * {@link #postcode} via the fixed {@link RegionPostcodeTable}, falling back to the
+     * owner's {@link #city} via the fixed {@link CityRegionTable} when the postcode is
+     * absent or in no known range, or {@code "UNKNOWN"} when neither yields a region.
      */
     @Transient
     public String getLocality() {
-        return CityRegionTable.regionOf(this.city);
+        return RegionPostcodeTable.regionOf(this.postcode)
+            .orElseGet(() -> CityRegionTable.regionOf(this.city));
     }
 
     /**

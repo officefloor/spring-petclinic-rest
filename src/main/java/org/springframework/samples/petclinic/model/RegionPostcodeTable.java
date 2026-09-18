@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Fixed lookup from a region code to its inclusive 4-digit postcode range.
@@ -38,5 +39,20 @@ public final class RegionPostcodeTable {
     public static boolean accepts(String region, int postcode) {
         int[] range = REGION_RANGES.get(region);
         return range == null || (postcode >= range[0] && postcode <= range[1]);
+    }
+
+    /**
+     * The region whose inclusive range contains the given postcode, or empty when the
+     * postcode is absent, not numeric, or in no known range.
+     */
+    public static Optional<String> regionOf(String postcode) {
+        if (postcode == null || !postcode.matches("\\d+")) {
+            return Optional.empty();
+        }
+        int value = Integer.parseInt(postcode);
+        return REGION_RANGES.entrySet().stream()
+            .filter(e -> value >= e.getValue()[0] && value <= e.getValue()[1])
+            .map(Map.Entry::getKey)
+            .findFirst();
     }
 }
