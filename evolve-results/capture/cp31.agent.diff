@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Luhn.java b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+new file mode 100644
+index 000000000..76fe2591a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+@@ -0,0 +1,53 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The Luhn check-digit algorithm, computed over the decimal digits contained in a string
++ * (any non-digit characters are ignored).
++ */
++final class Luhn {
++
++    private Luhn() {
++    }
++
++    /**
++     * The single Luhn check digit (0-9) over the digits contained in {@code value}.
++     *
++     * @param value the string whose decimal digits are checksummed
++     * @return the Luhn check digit
++     */
++    static int checkDigit(String value) {
++        int sum = 0;
++        boolean doubling = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubling) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubling = !doubling;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7d8e94636..06515f183 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -148,6 +148,19 @@ public class Owner extends Person {
+         return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+     }
+ 
++    /**
++     * The owner's check digit: a single {@link Luhn} check digit computed over the digits
++     * of the owner's {@link #customerCode}. {@code null} until the customer code has been
++     * assigned.
++     */
++    @Transient
++    public Integer getCheckDigit() {
++        if (this.customerCode == null) {
++            return null;
++        }
++        return Luhn.checkDigit(this.customerCode);
++    }
++
+     /**
+      * The owner's locality: the canonical region derived on read from the owner's
+      * {@link #postcode} via the fixed {@link RegionPostcodeTable}, falling back to the
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c571820f0..32b50ad24 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2100,6 +2100,17 @@ components:
+               type: string
+               example: SYD-FRA-0007
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the owner's
++                customer code. Derived on read from the customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
