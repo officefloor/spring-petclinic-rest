@@ -21,9 +21,7 @@ public class EnsureCityHasCapacity {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws CityAtCapacityException {
 
-        long cityCount = ownerRepository.findAll().stream()
-                .filter(existing -> request.getCity().equalsIgnoreCase(existing.getCity()))
-                .count();
+        long cityCount = ownerRepository.countInCity(request.getCity());
         if (cityCount >= CITY_CAPACITY) {
             throw new CityAtCapacityException(request.getCity());
         }

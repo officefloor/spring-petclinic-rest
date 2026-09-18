@@ -98,4 +98,18 @@ public interface OwnerRepository {
                 .count();
     }
 
+    /**
+     * Count the owners already residing in the given city, compared case-insensitively. Used by
+     * the per-city capacity rules (the hard cap and the approaching-capacity warning) so they
+     * share one definition of "owners in a city".
+     *
+     * @param city the city to count against
+     * @return the number of existing owners whose city equals {@code city} ignoring case
+     */
+    default long countInCity(String city) throws DataAccessException {
+        return findAll().stream()
+                .filter(owner -> city.equalsIgnoreCase(owner.getCity()))
+                .count();
+    }
+
 }
