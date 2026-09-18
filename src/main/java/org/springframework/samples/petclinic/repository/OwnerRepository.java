@@ -78,6 +78,14 @@ public interface OwnerRepository {
     Collection<Owner> findByEmailIgnoreCase(String email) throws DataAccessException;
 
     /**
+     * Report whether any <code>Owner</code> in the data store already holds the given customer code.
+     *
+     * @param customerCode the customer code to look for
+     * @return {@code true} if an owner with that customer code exists, {@code false} otherwise
+     */
+    boolean existsByCustomerCode(String customerCode) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

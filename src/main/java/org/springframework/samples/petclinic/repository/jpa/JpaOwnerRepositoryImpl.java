@@ -105,6 +105,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+        Query query = this.em.createQuery(
+            "SELECT COUNT(owner) FROM Owner owner WHERE owner.customerCode = :customerCode");
+        query.setParameter("customerCode", customerCode);
+        return (long) query.getSingleResult() > 0;
+    }
+
+    @Override
     public Owner findById(int id) {
         // using 'join fetch' because a single query should load both owners and pets
         // using 'left join fetch' because it might happen that an owner does not have pets yet

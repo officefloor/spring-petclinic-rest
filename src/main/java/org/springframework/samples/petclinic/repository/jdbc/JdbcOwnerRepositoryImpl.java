@@ -151,6 +151,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return owners;
     }
 
+    @Override
+    public boolean existsByCustomerCode(String customerCode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("customerCode", customerCode);
+        Long total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners WHERE customer_code = :customerCode",
+            params,
+            Long.class
+        );
+        return total != null && total > 0;
+    }
+
     /**
      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
      * for the corresponding owner, if not already loaded.
