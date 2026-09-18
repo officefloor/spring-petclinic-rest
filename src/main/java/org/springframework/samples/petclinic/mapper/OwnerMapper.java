@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.OwnerRegion;
+import org.springframework.samples.petclinic.util.RegionTimezone;
 
 import java.util.Collection;
 import java.util.List;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -76,6 +78,13 @@ public interface OwnerMapper {
         return owner.getCustomerCode() != null
                 ? CustomerCode.region(owner.getCustomerCode())
                 : OwnerRegion.of(owner.getPostcode(), owner.getCity());
+    }
+
+    /** The owner's timezone: the IANA name from the fixed region-to-timezone table
+     *  (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane), keyed
+     *  off the owner's {@link #locality locality}. Null when the region has no mapped timezone. */
+    default String timezone(Owner owner) {
+        return RegionTimezone.of(locality(owner));
     }
 
     /** The owner's preferred contact method: 'EMAIL' when an email address is present,
