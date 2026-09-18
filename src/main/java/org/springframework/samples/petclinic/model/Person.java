@@ -17,8 +17,11 @@ package org.springframework.samples.petclinic.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.Transient;
 
 import jakarta.validation.constraints.NotEmpty;
+
+import java.util.Locale;
 
 /**
  * Simple JavaBean domain object representing an person.
@@ -52,5 +55,17 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    /**
+     * The upper-cased first letters of the first and last name, each followed by a
+     * dot, e.g. {@code "J.S."} for John Smith.
+     */
+    @Transient
+    public String getInitials() {
+        return initial(this.firstName) + initial(this.lastName);
+    }
+
+    private static String initial(String name) {
+        return name.substring(0, 1).toUpperCase(Locale.ROOT) + ".";
+    }
 
 }
