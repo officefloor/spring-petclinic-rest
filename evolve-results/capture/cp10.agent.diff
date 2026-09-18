@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java
+new file mode 100644
+index 000000000..516840afb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateChecker.java
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.stereotype.Component;
++
++/**
++ * Detects, on create, whether an owner would duplicate an existing household.
++ * <p>
++ * Two owners share a household when they carry the same last name and the same address.
++ * Both fields are compared leniently: surrounding whitespace is trimmed, internal runs of
++ * whitespace are collapsed to a single space and letters are compared without regard to
++ * case, so values that differ only in spacing or capitalisation are treated as equal.
++ */
++@Component
++public class HouseholdDuplicateChecker {
++
++    /** Runs of whitespace collapsed to a single space before comparison. */
++    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
++
++    private final ClinicService clinicService;
++
++    public HouseholdDuplicateChecker(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * Reports whether an already-stored owner shares {@code candidate}'s household, i.e.
++     * has the same last name and address under the lenient comparison described above.
++     *
++     * @param candidate the owner being created
++     * @return {@code true} when another owner already occupies the same household
++     */
++    public boolean isDuplicate(Owner candidate) {
++        String lastName = normalize(candidate.getLastName());
++        String address = normalize(candidate.getAddress());
++        return clinicService.findAllOwners().stream()
++            .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
++                && normalize(existing.getAddress()).equals(address));
++    }
++
++    private String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2a9b3fb8e..4666c5db3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
++import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
+ import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -72,13 +73,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final CustomerCodeAssigner customerCodeAssigner;
+ 
++    private final HouseholdDuplicateChecker householdDuplicateChecker;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  OwnerFieldsValidator ownerFieldsValidator,
+                                  RegistrationDateDefaulter registrationDateDefaulter,
+-                                 CustomerCodeAssigner customerCodeAssigner) {
++                                 CustomerCodeAssigner customerCodeAssigner,
++                                 HouseholdDuplicateChecker householdDuplicateChecker) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -86,6 +90,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.ownerFieldsValidator = ownerFieldsValidator;
+         this.registrationDateDefaulter = registrationDateDefaulter;
+         this.customerCodeAssigner = customerCodeAssigner;
++        this.householdDuplicateChecker = householdDuplicateChecker;
+     }
+ 
+     @InitBinder("ownerFieldsDto")
+@@ -126,6 +131,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++            && this.householdDuplicateChecker.isDuplicate(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.registrationDateDefaulter.applyDefault(owner);
+         this.customerCodeAssigner.assign(owner);
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c9ea7912c..61a3139c5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2051,6 +2051,16 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Write-only flag set on create to acknowledge that this owner deliberately
++            shares a household with an existing owner. When true, the create is allowed
++            even though another owner already has the same last name and address;
++            otherwise such a duplicate is rejected. Never stored or returned.
++          type: boolean
++          writeOnly: true
++          example: true
+       required:
+         - firstName
+         - lastName
