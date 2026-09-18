@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -67,14 +68,14 @@ public class Owner extends Person {
     private Set<Pet> pets;
 
     /**
-     * Default the registration date to the server's current date when none was
-     * supplied at creation time.
+     * Resolve the registration date at creation time: default it to the server's
+     * current date when none was supplied, and roll a weekend date forward to the
+     * next business day so every value derived from it (such as the membership
+     * number's year segment) uses the adjusted date.
      */
     @PrePersist
-    private void defaultRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+    private void resolveRegistrationDate() {
+        this.registrationDate = RegistrationDatePolicy.effectiveDate(this.registrationDate);
     }
 
     public String getAddress() {
