@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index d3e7e1642..3938ede32 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -65,6 +65,15 @@ public interface OwnerRepository {
+      */
+     boolean existsByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Report whether any <code>Owner</code> is already stored whose email matches the given one,
++     * compared case-insensitively (i.e. by lower-cased email).
++     *
++     * @param email the email to look for
++     * @return <code>true</code> when at least one owner already uses this email, ignoring case
++     */
++    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
++
+     /**
+      * Report the total number of <code>Owner</code>s currently stored.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 465bdeaaa..2e91892cb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -160,6 +160,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return count != null && count > 0;
+     }
+ 
++    @Override
++    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("email", email);
++        Long count = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE LOWER(email) = LOWER(:email)",
++            params,
++            Long.class);
++        return count != null && count > 0;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Long count = this.namedParameterJdbcTemplate.queryForObject(
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 3180e86e8..e55b07bfa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -97,6 +97,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult() > 0;
+     }
+ 
++    @Override
++    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
++        Query query = this.em.createQuery(
++            "SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)");
++        query.setParameter("email", email);
++        return (long) query.getSingleResult() > 0;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner");
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 410cd8f17..27038a731 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -172,6 +172,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (owner.getEmail() != null && this.clinicService.ownerExistsWithEmail(owner.getEmail())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 1f72889dc..2e7295941 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -60,6 +60,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	boolean ownerExistsWithTelephone(String telephone) throws DataAccessException;
++	boolean ownerExistsWithEmail(String email) throws DataAccessException;
+ 	long countOwners() throws DataAccessException;
+ 	long countOwnersByCity(String city) throws DataAccessException;
+ 	long countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 25e332e39..c9750664b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -243,6 +243,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.existsByTelephone(telephone);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean ownerExistsWithEmail(String email) throws DataAccessException {
++        return ownerRepository.existsByEmailIgnoreCase(email);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public long countOwners() throws DataAccessException {
