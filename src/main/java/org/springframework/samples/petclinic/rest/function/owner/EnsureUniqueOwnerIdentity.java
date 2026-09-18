@@ -8,12 +8,13 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerIdent
 
 /**
  * Runs in {@code POST /api/owners} after {@link ValidateOwnerFields}, reading the
- * already-normalized body as a variable. Enforces one household per (lastName, postcode): it
- * derives the request's {@link Household#id(String, String) household id} and rejects the request
- * with a 409 when an existing owner already belongs to that household, before any entity is built
- * or persisted.
+ * already-normalized body as a variable. Rejects a <em>hard</em> duplicate — an existing owner with
+ * the same identity, i.e. the same {@link Household#id(String, String) household id} (lastName +
+ * postcode) <em>and</em> the same telephone — with a 409, before any entity is built or persisted.
  *
- * <p>A request that opts in with {@code sharesHousehold=true} bypasses this block: it is a
+ * <p>A same-household owner with a <em>different</em> telephone is not a hard duplicate: it is
+ * created and flagged downstream as a possible duplicate by {@link AssignOwnerPossibleDuplicate}.
+ * A request that opts in with {@code sharesHousehold=true} bypasses this block entirely: it is a
  * declared member of the household and is created alongside the existing one(s). Reads the same
  * transaction as the writes.
  */
@@ -31,7 +32,8 @@ public class EnsureUniqueOwnerIdentity {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner no longer holds its household identity
             }
-            if (householdId.equals(existing.getHouseholdId())) {
+            if (householdId.equals(existing.getHouseholdId())
+                    && request.getTelephone().equals(existing.getTelephone())) {
                 throw new DuplicateOwnerIdentityException(householdId);
             }
         }
