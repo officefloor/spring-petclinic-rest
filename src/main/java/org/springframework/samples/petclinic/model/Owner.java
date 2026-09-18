@@ -270,6 +270,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's self link: the canonical REST path to this owner, {@code "/api/owners/<id>"}.
+     * {@code null} until the owner has been assigned an id.
+     */
+    @Transient
+    public String getSelfLink() {
+        return (this.getId() != null) ? "/api/owners/" + this.getId() : null;
+    }
+
+    /**
      * The owner's locality: the REGION portion of its {@code customerCode} (see
      * {@link CustomerCode}), which is the region derived from the postcode or city at creation. This
      * disambiguates cities that share a name. Yields {@code "UNKNOWN"} when the owner has no customer
