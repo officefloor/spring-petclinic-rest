@@ -250,6 +250,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public long countOwnersByCity(String city) throws DataAccessException {
+        return ownerRepository.countByCity(city);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
     }

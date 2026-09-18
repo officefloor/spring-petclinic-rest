@@ -23,10 +23,11 @@ import org.springframework.stereotype.Component;
 /**
  * Assigns an owner's customer code on create.
  * <p>
- * The code is formatted {@code <LAST3>-<NNNN>} where {@code LAST3} is the upper-cased
- * first three letters of the owner's last name and {@code NNNN} is a global 4-digit
- * zero-padded sequence equal to one more than the current number of stored owners
- * (e.g. {@code "SMI-0007"}).
+ * The code is formatted {@code <CITY3>-<LAST3>-<NNNN>} where {@code CITY3} is the
+ * upper-cased first three letters of the owner's city, {@code LAST3} the upper-cased
+ * first three letters of the owner's last name, and {@code NNNN} is a per-city 4-digit
+ * zero-padded sequence equal to one more than the number of owners already stored in
+ * that city (e.g. {@code "SYD-SMI-0007"}).
  */
 @Component
 public class CustomerCodeAssigner {
@@ -38,16 +39,23 @@ public class CustomerCodeAssigner {
     }
 
     /**
-     * Assigns {@code owner}'s customer code based on its last name and the current owner
-     * count. Call this before the owner is saved so the sequence reflects the number of
-     * owners already stored.
+     * Assigns {@code owner}'s customer code based on its city, last name and the current
+     * per-city owner count. Call this before the owner is saved so the sequence reflects
+     * the number of owners already stored in that city.
      *
      * @param owner the owner being created
      */
     public void assign(Owner owner) {
-        String lastName = owner.getLastName();
-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        long sequence = clinicService.countOwners() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+        String cityPrefix = prefix(owner.getCity());
+        String lastNamePrefix = prefix(owner.getLastName());
+        long sequence = clinicService.countOwnersByCity(owner.getCity()) + 1;
+        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence));
+    }
+
+    /**
+     * The upper-cased first three letters of {@code value} (fewer if it is shorter).
+     */
+    private String prefix(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }

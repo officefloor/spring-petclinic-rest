@@ -71,6 +71,14 @@ public interface OwnerRepository {
      */
     long count() throws DataAccessException;
 
+    /**
+     * Report the number of <code>Owner</code>s currently stored in the given city.
+     *
+     * @param city the city to count owners for
+     * @return the count of stored owners whose city equals <code>city</code>
+     */
+    long countByCity(String city) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
