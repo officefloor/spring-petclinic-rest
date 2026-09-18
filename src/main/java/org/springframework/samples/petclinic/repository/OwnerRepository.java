@@ -57,6 +57,16 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Retrieve <code>Owner</code>s from the data store whose last name equals the given name,
+     * ignoring letter case.
+     *
+     * @param lastName the last name to match, case-insensitively
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

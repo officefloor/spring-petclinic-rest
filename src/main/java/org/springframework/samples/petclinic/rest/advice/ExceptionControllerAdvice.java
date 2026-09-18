@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
@@ -57,6 +58,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone number already exists";
+    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -221,6 +223,24 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
         detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateHouseholdException} raised when a new owner shares an existing owner's
+     * last name and address (compared case-insensitively with collapsed whitespace) without opting in
+     * via {@code sharesHousehold}, returning a 409 Conflict.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        detail.setProperty("errors", List.of("lastName", "address"));
         return ResponseEntity.status(status).body(detail);
     }
 

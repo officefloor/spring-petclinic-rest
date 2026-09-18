@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -252,6 +254,17 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
         return ownerRepository.findByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException {
+        String targetLastName = TextNormalizer.normalizeForComparison(lastName);
+        String targetAddress = TextNormalizer.normalizeForComparison(address);
+        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
+            .filter(owner -> TextNormalizer.normalizeForComparison(owner.getLastName()).equals(targetLastName))
+            .filter(owner -> TextNormalizer.normalizeForComparison(owner.getAddress()).equals(targetAddress))
+            .collect(Collectors.toList());
     }
 
     @Override

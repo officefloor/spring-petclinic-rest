@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.MissingOwnerFieldsException;
@@ -113,6 +114,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && !this.clinicService.findOwnersInHousehold(owner.getLastName(), owner.getAddress()).isEmpty()) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
         owner.setTelephone(telephone);
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));

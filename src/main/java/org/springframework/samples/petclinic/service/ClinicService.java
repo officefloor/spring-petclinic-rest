@@ -61,6 +61,17 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
+	/**
+	 * Retrieve the owners that belong to the same household as the given last name and address, i.e.
+	 * whose last name and address both match when compared case-insensitively with collapsed
+	 * whitespace.
+	 *
+	 * @param lastName the last name to match
+	 * @param address the address to match
+	 * @return a <code>Collection</code> of matching <code>Owner</code>s (empty if none)
+	 */
+	Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
