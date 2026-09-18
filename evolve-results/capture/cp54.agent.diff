@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+new file mode 100644
+index 000000000..942eadb82
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The single definition of the approaching-capacity warning: it is raised once a city already
++ * holds at least {@link #THRESHOLD} owners but has not yet reached the hard limit enforced by
++ * {@link EnsureCityHasCapacity} (compared case-insensitively, see {@link SameCity}). Surfaced on
++ * every owner response so callers can spot a city nearing capacity before the create is rejected.
++ */
++final class CapacityWarning {
++
++    /** Owners already in a city at or above which the approaching-capacity warning is raised. */
++    static final int THRESHOLD = 40;
++
++    private CapacityWarning() {
++    }
++
++    /** Whether {@code city} already holds between {@link #THRESHOLD} and one below the limit. */
++    static boolean isRaised(String city, OwnerRepository ownerRepository) {
++        int inCity = SameCity.count(ownerRepository.findAll(), city);
++        return inCity >= THRESHOLD && inCity < EnsureCityHasCapacity.CAPACITY;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+index d1ede1aef..9e9578ea9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ /**
+  * The single place that turns an {@link Owner} into its response {@link OwnerDto}: maps the
+- * entity and stamps the current bulk-signup warning. Shared by every step that returns an owner
+- * — the create (201), the read (200) and the idempotent replay (200) — so all owner responses
+- * carry an identical representation.
++ * entity and stamps the current bulk-signup and approaching-capacity warnings. Shared by every
++ * step that returns an owner — the create (201), the read (200) and the idempotent replay (200)
++ * — so all owner responses carry an identical representation.
+  */
+ public final class OwnerResponses {
+ 
+@@ -19,6 +19,7 @@ public final class OwnerResponses {
+     public static OwnerDto toDto(Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.isRaised(owner.getCity(), ownerRepository));
+         return dto;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6cfe1e745..283053de8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2308,6 +2308,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 owners, signalling
++                that it is approaching the hard capacity limit of 50; false otherwise. Evaluated
++                against the current owners each time the owner is returned.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
