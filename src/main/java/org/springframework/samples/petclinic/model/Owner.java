@@ -187,6 +187,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's check digit: the single Luhn check digit computed over the digits of the
+     * {@code customerCode}, guarding against transcription errors of the code.
+     */
+    @Transient
+    public int getCheckDigit() {
+        return Luhn.checkDigit(this.customerCode);
+    }
+
+    /**
      * The owner's preferred contact channel: {@code "EMAIL"} when an email address is
      * present, otherwise {@code "PHONE"}.
      */
