@@ -39,6 +39,8 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailValidator;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
@@ -159,6 +161,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        if (DisposableEmailValidator.isDisposable(owner.getEmail())) {
+            throw new DisposableEmailException(owner.getEmail());
+        }
         // The household is keyed on (last name, postcode): the id is deterministic, so owners with
         // the same last name and postcode share it automatically.
         owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));

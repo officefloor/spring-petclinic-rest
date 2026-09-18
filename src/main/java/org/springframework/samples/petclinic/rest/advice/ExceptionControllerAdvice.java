@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
@@ -64,6 +65,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has already reached its maximum number of owners";
     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners that may be registered today has already been reached";
     private static final String ERROR_FUTURE_REGISTRATION_DATE = "The registration date must not be later than the server date";
+    private static final String ERROR_DISPOSABLE_EMAIL = "The owner's email domain is not accepted";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -254,6 +256,23 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_FUTURE_REGISTRATION_DATE);
         detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailException} raised when the owner's email domain is on the
+     * disposable-domain blocklist, returning a 400 Bad Request.
+     *
+     * @param e The {@link DisposableEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DISPOSABLE_EMAIL);
+        detail.setProperty("errors", List.of("email"));
         return ResponseEntity.status(status).body(detail);
     }
 
