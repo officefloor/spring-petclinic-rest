@@ -16,28 +16,21 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Map;
-
 import org.springframework.samples.petclinic.model.CityRegion;
+import org.springframework.samples.petclinic.model.PostcodeRegion;
 
 /**
  * Validates an owner's optional postcode against the fixed postcode range of its
  * city's region.
  *
- * <p>The ranges are keyed by the region derived from the city via
- * {@link CityRegion}: {@code NSW 2000-2099}, {@code VIC 3000-3099} and
- * {@code QLD 4000-4099} (all inclusive). A city whose region has no known range
+ * <p>The ranges live in {@link PostcodeRegion} and are keyed by the region derived
+ * from the city via {@link CityRegion}: {@code NSW 2000-2099}, {@code VIC 3000-3099}
+ * and {@code QLD 4000-4099} (all inclusive). A city whose region has no known range
  * (including {@link CityRegion#UNKNOWN}) accepts any postcode. Format (four
  * digits) is enforced separately by Bean Validation on the request DTO, so this
  * class only checks membership of the region's range.
  */
 public final class PostcodeValidator {
-
-    /** Region -> inclusive 4-digit postcode range {@code {low, high}}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
 
     private PostcodeValidator() {
     }
@@ -57,11 +50,12 @@ public final class PostcodeValidator {
         if (postcode == null || postcode.isBlank()) {
             return true;
         }
-        int[] range = REGION_POSTCODES.get(CityRegion.regionFor(city));
-        if (range == null) {
+        String region = CityRegion.regionFor(city);
+        if (!PostcodeRegion.hasRange(region)) {
             return true;
         }
-        int value = Integer.parseInt(postcode.trim());
-        return value >= range[0] && value <= range[1];
+        // Ranges are disjoint, so the postcode is valid for the city's region
+        // exactly when its own region matches.
+        return region.equals(PostcodeRegion.regionFor(postcode));
     }
 }

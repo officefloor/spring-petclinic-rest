@@ -109,12 +109,12 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived from its {@link #city}
-     * via the fixed {@link CityRegion} table, or {@code "UNKNOWN"} when the city
-     * is not in the table.
+     * The owner's locality: the canonical region derived by {@link Locality} from
+     * its {@link #postcode} (preferred) and {@link #city}, or {@code "UNKNOWN"}
+     * when neither resolves to a known region.
      */
     public String getLocality() {
-        return CityRegion.regionFor(this.city);
+        return Locality.of(this.city, this.postcode);
     }
 
     public String getTelephone() {
