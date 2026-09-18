@@ -77,6 +77,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * Number of owners that may be registered on the current business day before a create/read
+     * response flags {@code bulkSignupWarning}. Once more than this many owners exist for the day,
+     * the warning is raised.
+     */
+    static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -121,7 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        return new ResponseEntity<>(toOwnerDtoWithBulkSignupWarning(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -158,10 +165,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditor.ownerCreated(owner);
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDtoWithBulkSignupWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Map an owner to its DTO and stamp {@code bulkSignupWarning}, which reflects whether more than
+     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been registered on the current
+     * business day.
+     */
+    private OwnerDto toOwnerDtoWithBulkSignupWarning(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        LocalDate today = RegistrationDatePolicy.effectiveDate(null);
+        ownerDto.setBulkSignupWarning(
+            this.clinicService.countOwnersRegisteredOn(today) > BULK_SIGNUP_WARNING_THRESHOLD);
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
