@@ -23,11 +23,15 @@ import org.springframework.validation.ValidationUtils;
 import org.springframework.validation.Validator;
 
 /**
- * Rejects an {@link OwnerFieldsDto} whose required text fields are missing or blank.
+ * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
+ * request body: required text fields must be present and non-blank, and the telephone is
+ * normalized to its bare digits and required to be exactly {@link TelephoneNormalizer#REQUIRED_DIGITS}
+ * digits long.
  * <p>
- * Registered on the owner controller through {@code @InitBinder} so it runs as part of the
- * standard {@code @Valid} pass on the request body: every rejected field is recorded as a
- * field error on the shared {@link Errors}, surfacing through the usual bad-request handling.
+ * Registered on the owner controller through {@code @InitBinder} so every rejected field is
+ * recorded as a field error on the shared {@link Errors}, surfacing through the usual
+ * bad-request handling. A valid telephone is written back to the DTO in normalized form so it
+ * is stored and returned as its 10 digits.
  *
  * @author Vitaliy Fedoriv
  */
@@ -35,6 +39,12 @@ import org.springframework.validation.Validator;
 public class OwnerFieldsValidator implements Validator {
 
     private static final String[] REQUIRED_FIELDS = {"firstName", "lastName", "address", "city", "telephone"};
+
+    private final TelephoneNormalizer telephoneNormalizer;
+
+    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer) {
+        this.telephoneNormalizer = telephoneNormalizer;
+    }
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -45,6 +55,19 @@ public class OwnerFieldsValidator implements Validator {
     public void validate(Object target, Errors errors) {
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
+        }
+        if (!errors.hasFieldErrors("telephone")) {
+            normalizeTelephone((OwnerFieldsDto) target, errors);
+        }
+    }
+
+    private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
+        String digits = telephoneNormalizer.normalize(owner.getTelephone());
+        if (telephoneNormalizer.hasRequiredLength(digits)) {
+            owner.setTelephone(digits);
+        } else {
+            errors.rejectValue("telephone", "telephone.invalid",
+                "must contain exactly " + TelephoneNormalizer.REQUIRED_DIGITS + " digits");
         }
     }
 }
