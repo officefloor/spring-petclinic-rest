@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.model;
 
+import java.util.function.Predicate;
+
 /**
  * The owner customer code identity, formatted {@code <REGION>-<HASH8>}: REGION is the region code
  * derived from the owner's postcode (falling back to its city, else {@link CityRegion#UNKNOWN}) and
@@ -24,6 +26,23 @@ public final class CustomerCode {
      */
     public static String of(String region, String telephone, String lastName) {
         return region + "-" + Sha256.hex(telephone + lastName).substring(0, HASH_LENGTH);
+    }
+
+    /**
+     * A unique variant of {@code base}: {@code base} itself when {@code taken} reports it free,
+     * otherwise {@code base-<n>} with the smallest {@code n >= 2} that {@code taken} reports free.
+     * Used to de-duplicate a derived code against the codes already in use.
+     */
+    public static String deduplicate(String base, Predicate<String> taken) {
+        if (!taken.test(base)) {
+            return base;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = base + "-" + n;
+            if (!taken.test(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**

@@ -106,6 +106,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
         return query.getResultList();
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.customerCode = :customerCode");
+        query.setParameter("customerCode", customerCode);
+        return query.getResultList();
+    }
+
 
     @Override
     public void save(Owner owner) {

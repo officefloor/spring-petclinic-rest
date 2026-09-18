@@ -156,6 +156,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         );
     }
 
+    @Override
+    public Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("customerCode", customerCode);
+        return this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone, customer_code FROM owners WHERE customer_code = :customerCode",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+    }
+
     public void loadPetsAndVisits(final Owner owner) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", owner.getId());
