@@ -41,4 +41,15 @@ public final class OwnerAddress {
         }
         return sb.toString();
     }
+
+    /**
+     * The composed canonical address from a structured pair: the {@link #normalize(String)
+     * normalized} {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended only when that second line is present (non-blank once normalized).
+     */
+    public static String compose(String addressLine1, String addressLine2) {
+        String line1 = normalize(addressLine1);
+        String line2 = normalize(addressLine2);
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
+    }
 }
