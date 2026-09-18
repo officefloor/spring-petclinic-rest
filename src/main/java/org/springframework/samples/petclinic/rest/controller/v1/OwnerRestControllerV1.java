@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
 import org.springframework.samples.petclinic.rest.controller.OwnerCreationAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateAssigner;
+import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -78,6 +79,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
+    private final RegistrationDateValidator registrationDateValidator;
+
     private final RegistrationDateAssigner registrationDateAssigner;
 
     private final CustomerCodeAssigner customerCodeAssigner;
@@ -107,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
+                                 RegistrationDateValidator registrationDateValidator,
                                  RegistrationDateAssigner registrationDateAssigner,
                                  CustomerCodeAssigner customerCodeAssigner,
                                  HouseholdDuplicateChecker householdDuplicateChecker,
@@ -124,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
+        this.registrationDateValidator = registrationDateValidator;
         this.registrationDateAssigner = registrationDateAssigner;
         this.customerCodeAssigner = customerCodeAssigner;
         this.householdDuplicateChecker = householdDuplicateChecker;
@@ -140,7 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @InitBinder("ownerFieldsDto")
     void initOwnerFieldsBinder(WebDataBinder binder) {
-        binder.addValidators(ownerFieldsValidator);
+        binder.addValidators(ownerFieldsValidator, registrationDateValidator);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
