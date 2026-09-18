@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * The owner's customer code, {@code '<REGION>-<HASH8>'}: the owner's {@link OwnerRegion region}
@@ -25,6 +26,23 @@ public final class CustomerCode {
      */
     public static String of(String region, String normalizedTelephone, String lastName) {
         return region + SEPARATOR + hash8(orEmpty(normalizedTelephone) + orEmpty(lastName));
+    }
+
+    /**
+     * De-duplicates {@code customerCode} against the codes already {@code taken}: if it is unused it
+     * is returned unchanged, otherwise {@code '-<n>'} is appended with the smallest {@code n >= 2}
+     * that yields a code not already taken (e.g. {@code 'NSW-1A2B3C4D'} → {@code 'NSW-1A2B3C4D-2'}).
+     */
+    public static String deduplicate(String customerCode, Set<String> taken) {
+        if (!taken.contains(customerCode)) {
+            return customerCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = customerCode + SEPARATOR + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /** The REGION segment of a customer code (the text before the first {@code '-'}). */
