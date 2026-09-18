@@ -16,7 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
-import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -38,11 +37,6 @@ public final class TelephoneNormalizer {
 
     private static final int MAX_DIGITS = 15;
 
-    /** Recognised country codes (the digits after {@code '+'}) mapped to their required national-number length. */
-    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY = Map.of(
-            "61", 9,
-            "1", 10);
-
     private TelephoneNormalizer() {
     }
 
@@ -61,7 +55,7 @@ public final class TelephoneNormalizer {
         String countryCode;
         String national;
         if (hasCountryCode) {
-            countryCode = recognisedCountryCode(digits);
+            countryCode = CountryDialingCodes.matching(digits);
             national = countryCode == null ? digits : digits.substring(countryCode.length());
         } else {
             countryCode = DEFAULT_COUNTRY_CODE;
@@ -74,25 +68,10 @@ public final class TelephoneNormalizer {
         if (digitCount < MIN_DIGITS || digitCount > MAX_DIGITS) {
             throw new InvalidTelephoneException(telephone);
         }
-        Integer requiredNationalLength = countryCode == null ? null : NATIONAL_LENGTH_BY_COUNTRY.get(countryCode);
+        Integer requiredNationalLength = CountryDialingCodes.nationalLength(countryCode);
         if (requiredNationalLength != null && national.length() != requiredNationalLength) {
             throw new InvalidTelephoneException(telephone);
         }
         return e164;
-    }
-
-    /**
-     * Returns the recognised country code that the given digit string begins with, or {@code null}
-     * when no known country code matches. Longer codes are preferred so a specific match wins over
-     * a shorter prefix.
-     */
-    private static String recognisedCountryCode(String digits) {
-        String match = null;
-        for (String code : NATIONAL_LENGTH_BY_COUNTRY.keySet()) {
-            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
-                match = code;
-            }
-        }
-        return match;
     }
 }

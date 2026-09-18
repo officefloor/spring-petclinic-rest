@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
 
 import java.util.Collection;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -29,6 +31,16 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Formats an owner's stored E.164 telephone for human display (see {@link TelephoneFormatter}).
+     */
+    default String telephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return TelephoneFormatter.format(owner.getTelephone());
     }
 
     Owner toOwner(OwnerDto ownerDto);
