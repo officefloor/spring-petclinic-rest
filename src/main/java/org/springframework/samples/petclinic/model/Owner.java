@@ -93,6 +93,15 @@ public class Owner extends Person {
         this.city = city;
     }
 
+    /**
+     * The owner's locality: the canonical region derived from its {@link #city}
+     * via the fixed {@link CityRegion} table, or {@code "UNKNOWN"} when the city
+     * is not in the table.
+     */
+    public String getLocality() {
+        return CityRegion.regionFor(this.city);
+    }
+
     public String getTelephone() {
         return this.telephone;
     }
