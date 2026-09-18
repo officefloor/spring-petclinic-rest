@@ -1,0 +1,51 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7eb306b24..2a33695c9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -175,12 +175,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's locality: the canonical region derived from the city via the fixed
+-     * {@link CityRegion} table, or {@code "UNKNOWN"} when the city is not in the table.
++     * The owner's locality: the canonical region derived from the postcode range via
++     * {@link RegionPostcodes}, falling back to the city via the fixed {@link CityRegion} table when
++     * the postcode is absent or in no known range. This disambiguates cities that share a name.
++     * Yields {@code "UNKNOWN"} when neither postcode nor city resolves to a region.
+      */
+     @Transient
+     public String getLocality() {
+-        return CityRegion.of(this.city);
++        String byPostcode = RegionPostcodes.regionOf(this.postcode);
++        return byPostcode != null ? byPostcode : CityRegion.of(this.city);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodes.java b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodes.java
+index 5ea1687ad..e6aa565b2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/RegionPostcodes.java
+@@ -26,4 +26,23 @@ public final class RegionPostcodes {
+         int[] range = REGION_TO_RANGE.get(region);
+         return range == null || (postcode >= range[0] && postcode <= range[1]);
+     }
++
++    /**
++     * The region whose range contains {@code postcode}, or {@code null} when {@code postcode} is
++     * absent, not a 4-digit value, or in no known range. Used to derive locality from the postcode
++     * ahead of the city.
++     */
++    public static String regionOf(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_TO_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
