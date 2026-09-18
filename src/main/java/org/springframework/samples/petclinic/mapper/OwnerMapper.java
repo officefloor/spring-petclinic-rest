@@ -37,7 +37,7 @@ public interface OwnerMapper {
     }
 
     /** The membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
-     *  the registrationDate year (e.g. 'SMI-0007-M26'). Null when either source field is absent. */
+     *  the registrationDate year (e.g. 'LON-SMI-0007-M26'). Null when either source field is absent. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
