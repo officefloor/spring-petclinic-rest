@@ -250,6 +250,18 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's current primary identifier: the {@link #getCustomerCode() customer code}.
+     *
+     * <p>Consumers such as audit events depend on "the primary identifier" through this single
+     * accessor rather than on whichever field currently holds it, so when the customer code is
+     * later unified into the member id only this method changes and the identifier the events
+     * carry follows automatically.
+     */
+    public String getPrimaryIdentifier() {
+        return getCustomerCode();
+    }
+
+    /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'}
      * where {@code YY} is the two-digit segment of the {@linkplain #getFiscalYear()
      * fiscal year} of the {@link #registrationDate} (e.g. {@code "NSW-3F2A9C1D-M27"}
