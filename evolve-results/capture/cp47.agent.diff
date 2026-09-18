@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java b/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java
+index f841ed45f..6d21133ec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegistrationDatePolicy.java
+@@ -17,20 +17,31 @@ package org.springframework.samples.petclinic.util;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+-import java.time.temporal.TemporalAdjusters;
++import java.util.Set;
+ 
+ /**
+  * Resolves the effective registration date for an owner.
+  *
+  * <p>An owner is always registered on a business day. The supplied date defaults
+  * to the server's current date when none was provided, and a date that falls on a
+- * weekend (Saturday or Sunday) is rolled forward to the following Monday. The
+- * resulting date is the single source of truth for everything derived from the
+- * registration date (the stored value, the membership number's year segment, and
+- * the per-day create-limit).
++ * weekend (Saturday or Sunday) or a listed public holiday is rolled forward to the
++ * next non-holiday business day. The resulting date is the single source of truth
++ * for everything derived from the registration date (the stored value, the
++ * membership number's year segment, and the per-day create-limit).
+  */
+ public final class RegistrationDatePolicy {
+ 
++    /**
++     * The fixed list of public holidays that are not business days.
++     */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28)
++    );
++
+     private RegistrationDatePolicy() {
+     }
+ 
+@@ -39,18 +50,30 @@ public final class RegistrationDatePolicy {
+      *
+      * @param suppliedDate the date supplied in the request, or {@code null} to use
+      *                     the server's current date
+-     * @return the supplied-or-defaulted date, rolled forward to the next Monday
+-     *         when it falls on a weekend
++     * @return the supplied-or-defaulted date, rolled forward to the next business
++     *         day when it falls on a weekend or a public holiday
+      */
+     public static LocalDate effectiveDate(LocalDate suppliedDate) {
+         LocalDate date = suppliedDate != null ? suppliedDate : LocalDate.now();
+-        DayOfWeek dayOfWeek = date.getDayOfWeek();
+-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+-            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        while (!isBusinessDay(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
+ 
++    /**
++     * Tells whether a date is a business day: a weekday that is not a public holiday.
++     *
++     * @param date the date to test
++     * @return {@code true} when the date is neither a weekend day nor a public holiday
++     */
++    private static boolean isBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        return dayOfWeek != DayOfWeek.SATURDAY
++            && dayOfWeek != DayOfWeek.SUNDAY
++            && !PUBLIC_HOLIDAYS.contains(date);
++    }
++
+     /**
+      * Tells whether a supplied registration date lies in the future relative to the
+      * server's current date.
