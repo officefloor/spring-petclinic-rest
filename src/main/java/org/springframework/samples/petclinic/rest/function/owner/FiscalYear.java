@@ -10,9 +10,9 @@ import java.time.Month;
  * identified by the calendar year in which it starts and labelled {@code "FY<YY>"} from that
  * year's last two digits (e.g. 1 July 2026 – 30 June 2027 is {@code "FY26"}).
  *
- * <p>Provides the fiscal basis for every date-derived value: the membership number's year
- * segment and the {@code fiscalYear} field (both via {@code OwnerMapper}), and an owner's
- * {@link Tenure tenure} measured in elapsed fiscal years.
+ * <p>Provides the fiscal basis for every date-derived value: the {@link MemberId member id}'s
+ * {@code FY} segment (which the {@code fiscalYear} field is then read back from), and an
+ * owner's {@link Tenure tenure} measured in elapsed fiscal years.
  */
 public final class FiscalYear {
 
@@ -29,15 +29,10 @@ public final class FiscalYear {
     }
 
     /** The last two digits of the starting calendar year of the fiscal year containing
-     *  {@code date} — the {@code YY} shared by the fiscal-year label and the membership number. */
+     *  {@code date} — the {@code YY} used for the {@link MemberId member id}'s {@code FY}
+     *  segment and the fiscal-year field read back from it. */
     public static int shortYear(LocalDate date) {
         return startYear(date) % 100;
-    }
-
-    /** The fiscal-year label {@code "FY<YY>"} for {@code date}, or {@code null} when the date
-     *  is absent. */
-    public static String label(LocalDate date) {
-        return date == null ? null : String.format("FY%02d", shortYear(date));
     }
 
     /** Whole fiscal years elapsed from {@code from} to {@code to} — the number of 1 July

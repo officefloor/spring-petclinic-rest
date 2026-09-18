@@ -8,8 +8,6 @@ import org.springframework.samples.petclinic.model.Owner;
  * The single definition of two owners being in the same city, compared case-insensitively
  * (leading and trailing whitespace ignored). Provides the membership test used to count how
  * many existing owners already live in a new owner's city.
- *
- * @see AssignOwnerCustomerCode derives the per-city sequence of the customer code.
  */
 final class SameCity {
 

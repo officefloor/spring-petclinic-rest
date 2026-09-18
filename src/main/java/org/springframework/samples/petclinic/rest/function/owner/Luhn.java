@@ -4,9 +4,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * The single definition of the <em>Luhn check digit</em>: the digit (0-9) that, appended to
  * a sequence of digits, makes the whole pass the Luhn checksum. Non-digit characters in the
  * input are ignored, so it can be computed directly over a formatted value such as a
- * {@link CustomerCode}.
+ * {@link MemberId member id}.
  *
- * <p>Pure function of its input; the digit is computed on read rather than stored.
+ * <p>Pure function of its input.
  */
 public final class Luhn {
 

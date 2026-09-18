@@ -6,8 +6,8 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * The single definition of the project's SHA-256 hashing over the UTF-8 bytes of a string.
- * The owner {@link CustomerCode customer code} and {@link Household household identifier} take
- * the first {@code length} upper-case hex characters; the owner {@link IdentityKey} takes the
+ * The owner {@link MemberId member id} and {@link Household household identifier} take the
+ * first {@code length} upper-case hex characters; the owner {@link IdentityKey} takes the
  * full lower-case digest — all share one implementation rather than each rolling their own.
  *
  * <p>Pure function of its inputs; no state.

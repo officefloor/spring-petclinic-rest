@@ -7,11 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
-import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
-import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
-import org.springframework.samples.petclinic.rest.function.owner.Luhn;
+import org.springframework.samples.petclinic.rest.function.owner.MemberId;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.Salutation;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
@@ -19,7 +17,6 @@ import org.springframework.samples.petclinic.rest.function.owner.Timezone;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -33,9 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -88,38 +83,19 @@ public interface OwnerMapper {
         return name == null || name.isEmpty() ? "" : Character.toUpperCase(name.charAt(0)) + ".";
     }
 
-    /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     *  fiscal year of the registration date (see {@link FiscalYear}, e.g. 'SPR-SMI-0007-M26').
-     *  Absent until both the customer code and registration date have been assigned. */
-    default String membershipNumber(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        LocalDate registrationDate = owner.getRegistrationDate();
-        if (customerCode == null || registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", customerCode, FiscalYear.shortYear(registrationDate));
-    }
-
-    /** The owner's fiscal year, formatted 'FY&lt;YY&gt;' from the fiscal year of the
-     *  registration date (see {@link FiscalYear}); absent until the registration date is set. */
+    /** The owner's fiscal year, formatted 'FY&lt;YY&gt;', read back from the fiscal-year segment of
+     *  its memberId (see {@link MemberId}); absent until the memberId has been assigned. */
     default String fiscalYear(Owner owner) {
-        return FiscalYear.label(owner.getRegistrationDate());
+        return MemberId.fiscalYear(owner.getMemberId());
     }
 
-    /** The Luhn check digit (0-9) over the digits of the owner's customerCode; absent until the
-     *  customer code has been assigned. */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        return customerCode == null ? null : Luhn.checkDigit(customerCode);
-    }
-
-    /** The owner's region, read back from the region segment of its customerCode (the identity's
-     *  {@code <REGION>-<HASH8>} form). Until the customer code has been assigned it falls back to
-     *  deriving the region from the postcode range first (NSW 2000-2099, VIC 3000-3099,
+    /** The owner's region, read back from the region segment of its memberId (the identity's
+     *  {@code <REGION><FY><HASH8><CHK>} form). Until the memberId has been assigned it falls back
+     *  to deriving the region from the postcode range first (NSW 2000-2099, VIC 3000-3099,
      *  QLD 4000-4099), then the city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
      *  Brisbane-&gt;QLD), or 'UNKNOWN' otherwise. */
     default String locality(Owner owner) {
-        String region = CustomerCode.region(owner.getCustomerCode());
+        String region = MemberId.region(owner.getMemberId());
         return region != null ? region : Locality.region(owner.getCity(), owner.getPostcode());
     }
 
