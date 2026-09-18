@@ -63,16 +63,15 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
-	 * Determine whether a persisted owner already belongs to the given owner's household, i.e.
-	 * shares its {@link Owner#getHouseholdId() household id} (derived from last name and postcode).
-	 * Because a household is keyed on last name and postcode, any existing member makes the given
-	 * owner a household duplicate. An owner with no household id (no postcode) is never a duplicate,
-	 * and soft-deleted owners are ignored.
+	 * Determine whether a persisted owner is the same person as the given owner, i.e. shares its
+	 * {@link Owner#getIdentityKey() identity key} (normalized telephone, email and household id).
+	 * Household members with different telephones have different identity keys and so are not
+	 * duplicates of one another; soft-deleted owners are ignored.
 	 *
-	 * @param owner the candidate owner whose household is checked
-	 * @return {@code true} if an existing owner shares the household, {@code false} otherwise
+	 * @param owner the candidate owner whose identity is checked
+	 * @return {@code true} if an existing owner has the same identity key, {@code false} otherwise
 	 */
-	boolean isHouseholdDuplicate(Owner owner) throws DataAccessException;
+	boolean isIdentityDuplicate(Owner owner) throws DataAccessException;
 
 	/**
 	 * Retrieve the owners whose email matches the given value, compared case-insensitively.

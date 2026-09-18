@@ -84,6 +84,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -340,9 +343,20 @@ public class Owner extends Person {
      * The owner's membership level, a number from 1 to 4 mapped from the owner's
      * {@link #getMembershipPoints() membership points}: {@code 1} for 0-1 points,
      * {@code 2} for 2-3, {@code 3} for 4-5 and {@code 4} for 6 or more.
+     *
+     * <p>The level is held down to the {@linkplain #getMembershipLevelCap()
+     * household ceiling} when one applies, so a new owner never outranks its
+     * household by more than one level.
      */
     public Integer getMembershipLevel() {
-        int points = getMembershipPoints();
+        int level = pointsToLevel(getMembershipPoints());
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    private static int pointsToLevel(int points) {
         if (points <= 1) {
             return 1;
         }
@@ -353,6 +367,19 @@ public class Owner extends Person {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membership
+     * level}: one above the highest level among its household's existing members
+     * when it was created, or {@code null} when no household member capped it.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     /**

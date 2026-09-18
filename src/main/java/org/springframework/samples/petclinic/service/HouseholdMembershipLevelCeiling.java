@@ -19,26 +19,32 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
- * Counts the members of an owner's household — the owners that share its
- * {@link Owner#getHouseholdId() household id}, as found by {@link HouseholdMembers}.
+ * Computes the membership-level ceiling for a new owner: its
+ * {@link Owner#getMembershipLevel() membership level} may not exceed one above
+ * the highest membership level among the existing members of its household.
  */
 @Component
-public class HouseholdMemberCounter {
+public class HouseholdMembershipLevelCeiling {
 
     private final HouseholdMembers householdMembers;
 
-    public HouseholdMemberCounter(HouseholdMembers householdMembers) {
+    public HouseholdMembershipLevelCeiling(HouseholdMembers householdMembers) {
         this.householdMembers = householdMembers;
     }
 
     /**
-     * Count the members of the given owner's household, including the owner
-     * itself. An owner with no household id is a household of one.
+     * The highest membership level the given new owner may reach, being one above
+     * the current maximum membership level among its household's members.
      *
      * @param owner the owner being registered
-     * @return the number of household members once the owner is included
+     * @return the ceiling to apply, or {@code null} when the household has no
+     *         existing member and therefore no cap applies
      */
-    public int count(Owner owner) {
-        return householdMembers.of(owner).size() + 1;
+    public Integer ceilingFor(Owner owner) {
+        return householdMembers.of(owner).stream()
+            .map(Owner::getMembershipLevel)
+            .max(Integer::compareTo)
+            .map(max -> max + 1)
+            .orElse(null);
     }
 }

@@ -183,9 +183,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         owner.setDeclaredHouseholdMember(declaredHouseholdMember);
-        // A second owner in an existing household is a duplicate, unless it declares shared
-        // membership — in which case it is created as a known household member.
-        if (!declaredHouseholdMember && this.clinicService.isHouseholdDuplicate(owner)) {
+        // An owner whose identity key matches an existing owner is the same person and is rejected,
+        // unless it declares shared membership — in which case it is created as a known household
+        // member. Household members with different telephones have distinct identity keys and are
+        // not duplicates.
+        if (!declaredHouseholdMember && this.clinicService.isIdentityDuplicate(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
         this.clinicService.saveOwner(owner);

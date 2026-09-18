@@ -50,6 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final CustomerCodeGenerator customerCodeGenerator;
     private final NamesakeCounter namesakeCounter;
     private final HouseholdMemberCounter householdMemberCounter;
+    private final HouseholdMembershipLevelCeiling householdMembershipLevelCeiling;
     private final PossibleDuplicateDetector possibleDuplicateDetector;
 
     public ClinicServiceImpl(
@@ -62,6 +63,7 @@ public class ClinicServiceImpl implements ClinicService {
         CustomerCodeGenerator customerCodeGenerator,
         NamesakeCounter namesakeCounter,
         HouseholdMemberCounter householdMemberCounter,
+        HouseholdMembershipLevelCeiling householdMembershipLevelCeiling,
         PossibleDuplicateDetector possibleDuplicateDetector) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
@@ -72,6 +74,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
         this.householdMemberCounter = householdMemberCounter;
+        this.householdMembershipLevelCeiling = householdMembershipLevelCeiling;
         this.possibleDuplicateDetector = possibleDuplicateDetector;
     }
 
@@ -254,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
             }
             owner.setNamesakeCount(namesakeCounter.count(owner));
             owner.setHouseholdSize(householdMemberCounter.count(owner));
+            owner.setMembershipLevelCap(householdMembershipLevelCeiling.ceilingFor(owner));
             // A declared household member is knowingly created into a shared household, so it is not
             // a suspected duplicate; otherwise fall back to the soft-duplicate signal.
             Owner possibleDuplicate = owner.isDeclaredHouseholdMember()
@@ -285,17 +289,14 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isHouseholdDuplicate(Owner owner) throws DataAccessException {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return false;
-        }
-        // Household members always share a last name (the household id is derived from last name and
-        // postcode), so narrow by last name, then confirm the household id matches. Soft-deleted
-        // owners are ignored so a household freed up by a deletion no longer blocks a create.
-        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+    public boolean isIdentityDuplicate(Owner owner) throws DataAccessException {
+        String identityKey = owner.getIdentityKey();
+        // The telephone is part of the identity key, so any owner sharing it is found by telephone
+        // first and then confirmed to share the whole key. Soft-deleted owners are ignored so an
+        // identity freed up by a deletion no longer blocks a create.
+        return ownerRepository.findByTelephone(owner.getTelephone()).stream()
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     @Override
