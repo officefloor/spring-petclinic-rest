@@ -1,0 +1,150 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8ac25a7bf..89fe6d961 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Optional;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -50,6 +51,7 @@ import org.springframework.samples.petclinic.rest.validation.PostcodeValidator;
+ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.IdempotencyKeyStore;
+ import org.springframework.samples.petclinic.service.OwnerAuditor;
+ import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+ import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
+@@ -99,16 +101,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerAuditor ownerAuditor;
+ 
++    private final IdempotencyKeyStore idempotencyKeyStore;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+-                                 OwnerAuditor ownerAuditor) {
++                                 OwnerAuditor ownerAuditor,
++                                 IdempotencyKeyStore idempotencyKeyStore) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.ownerAuditor = ownerAuditor;
++        this.idempotencyKeyStore = idempotencyKeyStore;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -138,7 +144,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
++        if (idempotencyKey != null) {
++            Optional<OwnerDto> existing = idempotencyKeyStore.findOwnerId(idempotencyKey)
++                .map(this.clinicService::findOwnerById)
++                .map(this::toOwnerDtoWithBulkSignupWarning);
++            if (existing.isPresent()) {
++                return new ResponseEntity<>(existing.get(), HttpStatus.OK);
++            }
++        }
+         resolveAddress(ownerFieldsDto);
+         List<String> missingFields = OwnerFieldsValidator.findMissingFields(ownerFieldsDto);
+         if (!missingFields.isEmpty()) {
+@@ -176,6 +190,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditor.ownerCreated(owner);
++        if (idempotencyKey != null) {
++            this.idempotencyKeyStore.remember(idempotencyKey, owner.getId());
++        }
+         OwnerDto ownerDto = toOwnerDtoWithBulkSignupWarning(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/IdempotencyKeyStore.java b/src/main/java/org/springframework/samples/petclinic/service/IdempotencyKeyStore.java
+new file mode 100644
+index 000000000..79328512a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/IdempotencyKeyStore.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.util.Optional;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers which owner a given client-supplied {@code Idempotency-Key} first created,
++ * so a repeated create carrying an already-seen key can return the originally created
++ * owner instead of persisting a duplicate.
++ */
++@Component
++public class IdempotencyKeyStore {
++
++    private final ConcurrentMap<String, Integer> ownerIdByKey = new ConcurrentHashMap<>();
++
++    /**
++     * Return the id of the owner previously created under {@code key}, if any.
++     *
++     * @param key the client-supplied idempotency key
++     * @return the originally created owner id, or empty if the key has not been seen
++     */
++    public Optional<Integer> findOwnerId(String key) {
++        return Optional.ofNullable(ownerIdByKey.get(key));
++    }
++
++    /**
++     * Associate {@code key} with the owner that was created for it. The first association
++     * wins, so concurrent repeats never overwrite the original owner.
++     *
++     * @param key     the client-supplied idempotency key
++     * @param ownerId the id of the owner created under that key
++     */
++    public void remember(String key, Integer ownerId) {
++        ownerIdByKey.putIfAbsent(key, ownerId);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e0ec1597c..1aac7d211 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -69,6 +69,16 @@ paths:
+       operationId: addOwner
+       summary: Adds a pet owner
+       description: Records the details of a new pet owner.
++      parameters:
++        - name: Idempotency-Key
++          in: header
++          description: >-
++            Optional client-supplied key that makes the create idempotent. A repeated
++            request carrying a key already seen returns the originally created owner
++            with 200 instead of creating a duplicate.
++          required: false
++          schema:
++            type: string
+       requestBody:
+         description: The pet owner
+         content:
