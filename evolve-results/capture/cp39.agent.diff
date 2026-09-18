@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+new file mode 100644
+index 000000000..4c031b1ed
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Membership-level rules for an owner. The level starts at 1 and gains a point for each loyalty
++ * factor the owner meets: having an email address, having had no namesakes at creation
++ * ({@code namesakeCount} of 0), and a tenure of more than {@link #TENURE_DAYS_FOR_TOP_LEVEL} days.
++ *
++ * <p>The first two factors are established at creation and so saturate at level 3; the tenure
++ * factor is the only route to level 4. A newly created owner has zero tenure, so it can never
++ * exceed level 3 &mdash; e.g. an owner with an email and no namesake is level 3, not 4.
++ */
++public final class MembershipLevel {
++
++    /** Days of tenure an owner must exceed to qualify for the top membership level (4). */
++    public static final int TENURE_DAYS_FOR_TOP_LEVEL = 365;
++
++    private MembershipLevel() {
++    }
++
++    /**
++     * The membership level for an owner with the given loyalty factors. Level 4 requires
++     * {@code tenureDays} greater than {@link #TENURE_DAYS_FOR_TOP_LEVEL}; the email and namesake
++     * factors alone cannot exceed level 3.
++     *
++     * @param hasEmail      whether the owner has an email address
++     * @param namesakeCount how many existing owners shared the owner's name at creation (0 earns a
++     *                      point); {@code null} earns no point
++     * @param tenureDays    the owner's tenure in days
++     */
++    public static int forOwner(boolean hasEmail, Integer namesakeCount, long tenureDays) {
++        int level = 1;
++        if (hasEmail) {
++            level++;
++        }
++        if (Integer.valueOf(0).equals(namesakeCount)) {
++            level++;
++        }
++        if (tenureDays > TENURE_DAYS_FOR_TOP_LEVEL) {
++            level++;
++        }
++        return level;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index 22f86d062..e82d4c84a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -1,28 +1,23 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.util.StringUtils;
+ 
+ /**
+- * Assigns a newly built owner its numeric {@code membershipLevel}. Starting from 1, the level
+- * gains a point when the owner has an email address and another when it had no namesakes at
+- * creation ({@link Owner#getNamesakeCount()} is 0), capped at 3. Level 4 is reserved for tenure
+- * and so is never assigned here. Runs after {@link CountNamesakes} so the namesake count is set.
++ * Assigns a newly built owner its numeric {@code membershipLevel} from the loyalty rules in
++ * {@link MembershipLevel}. A newly created owner has no tenure yet, so the tenure factor never
++ * applies here and the owner never exceeds level 3. Runs after {@link CountNamesakes} so the
++ * namesake count is set.
+  */
+ public class AssignMembershipLevel {
+ 
+-    /** The highest membership level assignable on creation; level 4 is reserved for tenure. */
+-    private static final int MAX_LEVEL_ON_CREATION = 3;
++    /** A newly created owner has not yet accrued any tenure. */
++    private static final long TENURE_AT_CREATION = 0;
+ 
+     public void service(@Val Owner owner) {
+-        int level = 1;
+-        if (StringUtils.hasText(owner.getEmail())) {
+-            level++;
+-        }
+-        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+-            level++;
+-        }
+-        owner.setMembershipLevel(Math.min(level, MAX_LEVEL_ON_CREATION));
++        owner.setMembershipLevel(MembershipLevel.forOwner(
++            StringUtils.hasText(owner.getEmail()), owner.getNamesakeCount(), TENURE_AT_CREATION));
+     }
+ }
