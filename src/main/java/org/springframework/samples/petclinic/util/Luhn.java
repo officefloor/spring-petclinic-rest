@@ -19,7 +19,7 @@ package org.springframework.samples.petclinic.util;
  * Computes the Luhn check digit over the digits contained in a string.
  *
  * <p>Non-digit characters are ignored, so the algorithm can be applied directly to
- * formatted identifiers (such as a hyphenated customer code). Standard Luhn: working
+ * formatted identifiers (such as a member id with letters). Standard Luhn: working
  * from the rightmost digit, every second digit is doubled (subtracting 9 when the
  * result exceeds 9), the digits are summed, and the check digit is the amount that
  * rounds the sum up to the next multiple of ten.

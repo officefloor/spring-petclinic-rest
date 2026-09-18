@@ -21,11 +21,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured audit event recording that an {@link Owner} was created.
  *
  * <p>The event carries the owner's {@linkplain Owner#getPrimaryIdentifier() current primary
- * identifier} (the customer code today, whatever replaces it later) so downstream consumers
- * always see the identifier the owner is currently keyed on. The {@code seq} orders creates
- * monotonically. Being a record, the event is immutable once emitted.
+ * identifier} (the member id) so downstream consumers always see the identifier the owner is
+ * currently keyed on. The {@code seq} orders creates monotonically. Being a record, the event is
+ * immutable once emitted.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
                                 String event) {
 
     /** The single event type emitted by this record. */

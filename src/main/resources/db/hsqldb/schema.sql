@@ -49,7 +49,7 @@ CREATE TABLE owners (
   email      VARCHAR(255),
   birth_date DATE,
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(32),
   household_id VARCHAR(64),
   namesake_count INTEGER,
   household_size INTEGER,

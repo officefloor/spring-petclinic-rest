@@ -69,5 +69,5 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByEmailIgnoreCase(@Param("email") String email);
 
     @Override
-    boolean existsByCustomerCode(String customerCode);
+    boolean existsByMemberId(String memberId);
 }

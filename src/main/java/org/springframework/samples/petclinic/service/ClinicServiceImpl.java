@@ -47,7 +47,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final CustomerCodeGenerator customerCodeGenerator;
+    private final MemberIdGenerator memberIdGenerator;
     private final NamesakeCounter namesakeCounter;
     private final HouseholdMemberCounter householdMemberCounter;
     private final HouseholdMembershipLevelCeiling householdMembershipLevelCeiling;
@@ -60,7 +60,7 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator,
+        MemberIdGenerator memberIdGenerator,
         NamesakeCounter namesakeCounter,
         HouseholdMemberCounter householdMemberCounter,
         HouseholdMembershipLevelCeiling householdMembershipLevelCeiling,
@@ -71,7 +71,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.customerCodeGenerator = customerCodeGenerator;
+        this.memberIdGenerator = memberIdGenerator;
         this.namesakeCounter = namesakeCounter;
         this.householdMemberCounter = householdMemberCounter;
         this.householdMembershipLevelCeiling = householdMembershipLevelCeiling;
@@ -252,8 +252,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
-            if (owner.getCustomerCode() == null) {
-                owner.setCustomerCode(customerCodeGenerator.generate(owner));
+            if (owner.getMemberId() == null) {
+                owner.setMemberId(memberIdGenerator.generate(owner));
             }
             owner.setNamesakeCount(namesakeCounter.count(owner));
             owner.setHouseholdSize(householdMemberCounter.count(owner));

@@ -21,7 +21,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Renders SHA-256 digests as hexadecimal. Shared by the stable identifiers the application derives
- * from owner fields — the household id and customer code (an upper-case prefix) and the identity key
+ * from owner fields — the household id and member id (an upper-case prefix) and the identity key
  * (the full lower-case digest) — so the digest and hex-encoding logic lives in one place.
  */
 public final class Sha256 {

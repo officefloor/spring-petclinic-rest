@@ -17,7 +17,6 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.FiscalYear;
-import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
@@ -74,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -112,8 +111,8 @@ public class Owner extends Person {
     /**
      * Resolve the registration date at creation time: default it to the server's
      * current date when none was supplied, and roll a weekend date forward to the
-     * next business day so every value derived from it (such as the membership
-     * number's year segment) uses the adjusted date.
+     * next business day so every value derived from it (such as the member id's
+     * fiscal-year segment) uses the adjusted date.
      */
     @PrePersist
     private void resolveRegistrationDate() {
@@ -181,14 +180,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the region component of its {@link #customerCode}
-     * identity (see {@link CustomerCode}), or {@code null} when no customer code
-     * is assigned. The region was derived from the owner's postcode and city when
-     * the identity was minted, so the locality now follows the identity rather than
-     * being recomputed from the current city and postcode.
+     * The owner's locality: the region component of its {@link #memberId} identity
+     * (see {@link MemberId}), or {@code null} when no member id is assigned. The
+     * region was derived from the owner's postcode and city when the identity was
+     * minted, so the locality now follows the identity rather than being recomputed
+     * from the current city and postcode.
      */
     public String getLocality() {
-        return CustomerCode.regionOf(this.customerCode);
+        return MemberId.regionOf(this.memberId);
     }
 
     /**
@@ -241,58 +240,34 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier: the {@link #getCustomerCode() customer code}.
+     * The owner's current primary identifier: the {@link #getMemberId() member id}.
      *
      * <p>Consumers such as audit events depend on "the primary identifier" through this single
-     * accessor rather than on whichever field currently holds it, so when the customer code is
-     * later unified into the member id only this method changes and the identifier the events
-     * carry follows automatically.
+     * accessor rather than on whichever field currently holds it, so the identifier the events
+     * carry follows the member id automatically.
      */
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'}
-     * where {@code YY} is the two-digit segment of the {@linkplain #getFiscalYear()
-     * fiscal year} of the {@link #registrationDate} (e.g. {@code "NSW-3F2A9C1D-M27"}
-     * for a registration in fiscal year 2027). Derived from the owner's own fields.
-     */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, FiscalYear.yearSegment(this.registrationDate));
-    }
-
-    /**
-     * The owner's fiscal year: the {@code 'FY<YY>'} label (e.g. {@code "FY27"}) of the
-     * fiscal year the {@link #registrationDate} falls in, where a fiscal year starts on
-     * 1 July and is numbered by the calendar year in which it ends (see
-     * {@link FiscalYear}). {@code null} when no registration date is on file.
+     * The owner's fiscal year: the {@code 'FY<YY>'} label (e.g. {@code "FY27"}) read from the
+     * two-digit fiscal-year segment of its {@link #memberId} (see {@link MemberId} and
+     * {@link FiscalYear}), which was set to the fiscal year the {@link #registrationDate} falls
+     * in when the identity was minted. {@code null} when no member id is assigned.
      */
     public String getFiscalYear() {
-        return FiscalYear.label(this.registrationDate);
-    }
-
-    /**
-     * The Luhn check digit (0-9) computed over the digits of the
-     * {@link #customerCode}, or {@code null} when no customer code is assigned.
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        return Luhn.checkDigit(this.customerCode);
+        Integer yearSegment = MemberId.fiscalYearSegmentOf(this.memberId);
+        return yearSegment == null ? null : FiscalYear.label(yearSegment);
     }
 
     public String getHouseholdId() {

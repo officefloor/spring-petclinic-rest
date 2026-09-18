@@ -67,7 +67,18 @@ public final class FiscalYear {
         if (date == null) {
             return null;
         }
-        return String.format("FY%02d", yearSegment(date));
+        return label(yearSegment(date));
+    }
+
+    /**
+     * The fiscal-year label {@code 'FY<YY>'} for the given two-digit year segment
+     * (e.g. {@code "FY27"} for {@code 27}).
+     *
+     * @param yearSegment the two-digit fiscal-year segment
+     * @return the label
+     */
+    public static String label(int yearSegment) {
+        return String.format("FY%02d", yearSegment);
     }
 
     /**

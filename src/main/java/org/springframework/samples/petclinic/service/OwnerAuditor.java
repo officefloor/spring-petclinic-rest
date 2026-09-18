@@ -41,18 +41,17 @@ public class OwnerAuditor {
     private final AtomicLong sequence = new AtomicLong();
 
     /**
-     * Record that an owner was successfully created, capturing its id, customer
-     * code, (resolved) registration date, membership level and membership
-     * number. Alongside the human-readable audit line, an immutable structured
-     * {@link OwnerCreatedEvent} is emitted as JSON.
+     * Record that an owner was successfully created, capturing its id, member id,
+     * (resolved) registration date and membership level. Alongside the
+     * human-readable audit line, an immutable structured {@link OwnerCreatedEvent}
+     * is emitted as JSON.
      *
      * @param owner the newly persisted owner
      */
     public void ownerCreated(Owner owner) {
         AUDIT.info(
-            "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+            "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(this.sequence.incrementAndGet(), owner);
         AUDIT.info(MAPPER.writeValueAsString(event));
     }

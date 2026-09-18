@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       email      TEXT,
                                       birth_date DATE,
                                       registration_date DATE,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       household_id TEXT,
                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
