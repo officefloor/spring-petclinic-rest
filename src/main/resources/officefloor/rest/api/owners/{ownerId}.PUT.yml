@@ -1,8 +1,11 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
-validate:
-  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
+# Normalize the telephone to E.164 first: it is the sole @RequestBody binding and must run
+# before the DTO's E.164 pattern check would reject the raw input. It publishes the
+# normalized body for the validate step, so the owner is stored with an E.164 telephone.
+normalize:
+  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
   govern: [ transaction ]
   next: normalizeEmail
 
@@ -10,6 +13,13 @@ validate:
 # address is a 400 before the owner is loaded or updated.
 normalizeEmail:
   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
+  govern: [ transaction ]
+  next: validate
+
+# Validate so a missing/blank required field is a 400 listing those fields, before the owner
+# is loaded or updated. Reads the already-normalized body as a variable.
+validate:
+  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   govern: [ transaction ]
   next: load
 
