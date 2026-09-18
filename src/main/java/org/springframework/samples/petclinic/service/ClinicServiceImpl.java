@@ -265,6 +265,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public long countOwnersByCity(String city) throws DataAccessException {
+        return ownerRepository.countByCity(city);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException {
         String targetLastName = TextNormalizer.normalizeForComparison(lastName);
         String targetAddress = TextNormalizer.normalizeForComparison(address);

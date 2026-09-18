@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
@@ -59,6 +60,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone number already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has already reached its maximum number of owners";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -241,6 +243,23 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
         detail.setProperty("errors", List.of("lastName", "address"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityCapacityExceededException} raised when a new owner is submitted for a city
+     * that already holds the maximum number of owners, returning a 409 Conflict.
+     *
+     * @param e The {@link CityCapacityExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityCapacityExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
+        detail.setProperty("errors", List.of("city"));
         return ResponseEntity.status(status).body(detail);
     }
 

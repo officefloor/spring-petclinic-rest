@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -59,6 +60,12 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Maximum number of owners a single city may hold. A create request whose city already contains
+     * this many owners is rejected as a conflict.
+     */
+    static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -113,6 +120,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (this.clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new CityCapacityExceededException(owner.getCity());
+        }
         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);

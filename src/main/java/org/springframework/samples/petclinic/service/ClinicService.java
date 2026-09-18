@@ -62,6 +62,14 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
+	 * Count the number of owners located in the given city.
+	 *
+	 * @param city the city to match
+	 * @return the number of persisted owners in that city
+	 */
+	long countOwnersByCity(String city) throws DataAccessException;
+
+	/**
 	 * Retrieve the owners that belong to the same household as the given last name and address, i.e.
 	 * whose last name and address both match when compared case-insensitively with collapsed
 	 * whitespace.
