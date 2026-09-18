@@ -27,9 +27,9 @@ import org.springframework.stereotype.Component;
  * <p>
  * The effective date is the one supplied in the request, or the server's current date when
  * none was supplied so every stored owner carries the day it was registered. The effective
- * date must fall on a business day: a Saturday or Sunday is rolled forward to the following
- * Monday. Everything derived from the registration date (such as the membership number's year
- * segment) therefore uses this adjusted business-day value.
+ * date must fall on a business day: a weekend or public holiday is rolled forward to the next
+ * non-holiday weekday. Everything derived from the registration date (such as the membership
+ * number's year segment) therefore uses this adjusted business-day value.
  */
 @Component
 public class RegistrationDateAssigner {
@@ -45,8 +45,8 @@ public class RegistrationDateAssigner {
 
     /**
      * Sets {@code owner}'s registration date to its effective value, defaulting to the server's
-     * current date when none was supplied and rolling any weekend date forward to the next
-     * business day.
+     * current date when none was supplied and rolling any weekend or public-holiday date forward
+     * to the next business day.
      *
      * @param owner the owner being created
      */

@@ -18,32 +18,45 @@ package org.springframework.samples.petclinic.rest.controller;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.springframework.stereotype.Component;
 
 /**
  * Rolls a date forward onto a business day.
  * <p>
- * Saturdays and Sundays are not business days; either rolls forward to the following Monday.
- * A date that already falls on a weekday is returned unchanged.
+ * Saturdays, Sundays and listed public holidays are not business days. Any such date is rolled
+ * forward one day at a time until it lands on a non-holiday weekday. A date that already falls on
+ * a business day is returned unchanged.
  */
 @Component
 public class BusinessDayAdjuster {
 
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
     /**
-     * Returns {@code date} if it falls on a weekday, otherwise the next Monday.
+     * Returns {@code date} if it is a business day, otherwise the next non-holiday weekday.
      *
      * @param date the date to adjust
-     * @return the same date when it is a business day, else the following Monday
+     * @return the same date when it is a business day, else the next business day
      */
     public LocalDate toBusinessDay(LocalDate date) {
+        LocalDate adjusted = date;
+        while (!isBusinessDay(adjusted)) {
+            adjusted = adjusted.plusDays(1);
+        }
+        return adjusted;
+    }
+
+    private boolean isBusinessDay(LocalDate date) {
         DayOfWeek dayOfWeek = date.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (dayOfWeek == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
-        }
-        return date;
+        return dayOfWeek != DayOfWeek.SATURDAY
+            && dayOfWeek != DayOfWeek.SUNDAY
+            && !PUBLIC_HOLIDAYS.contains(date);
     }
 }
