@@ -24,9 +24,10 @@ import org.springframework.validation.Validator;
 
 /**
  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
- * request body: required text fields must be present and non-blank, and the telephone is
+ * request body: required text fields must be present and non-blank, the telephone is
  * normalized to its bare digits and required to be exactly {@link TelephoneNormalizer#REQUIRED_DIGITS}
- * digits long.
+ * digits long, and an optional email is required to be syntactically valid and normalized to
+ * lower case.
  * <p>
  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
  * recorded as a field error on the shared {@link Errors}, surfacing through the usual
@@ -42,8 +43,11 @@ public class OwnerFieldsValidator implements Validator {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
-    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer) {
+    private final EmailNormalizer emailNormalizer;
+
+    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer, EmailNormalizer emailNormalizer) {
         this.telephoneNormalizer = telephoneNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @Override
@@ -53,12 +57,14 @@ public class OwnerFieldsValidator implements Validator {
 
     @Override
     public void validate(Object target, Errors errors) {
+        OwnerFieldsDto owner = (OwnerFieldsDto) target;
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }
         if (!errors.hasFieldErrors("telephone")) {
-            normalizeTelephone((OwnerFieldsDto) target, errors);
+            normalizeTelephone(owner, errors);
         }
+        normalizeEmail(owner, errors);
     }
 
     private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
@@ -68,6 +74,18 @@ public class OwnerFieldsValidator implements Validator {
         } else {
             errors.rejectValue("telephone", "telephone.invalid",
                 "must contain exactly " + TelephoneNormalizer.REQUIRED_DIGITS + " digits");
+        }
+    }
+
+    private void normalizeEmail(OwnerFieldsDto owner, Errors errors) {
+        String email = owner.getEmail();
+        if (email == null) {
+            return;
+        }
+        if (emailNormalizer.isValid(email)) {
+            owner.setEmail(emailNormalizer.normalize(email));
+        } else {
+            errors.rejectValue("email", "email.invalid", "must be a valid email address");
         }
     }
 }
