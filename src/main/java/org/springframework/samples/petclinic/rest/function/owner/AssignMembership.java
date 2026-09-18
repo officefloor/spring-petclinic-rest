@@ -10,7 +10,8 @@ import org.springframework.util.StringUtils;
  * {@link Membership} and the {@code membershipLevel} those points map to. A newly created owner has
  * no tenure yet, so the tenure points never apply here and the level never exceeds 3. Runs after
  * {@link CountNamesakes} and {@link CountHouseholdMembers} so the namesake count and household size
- * are set.
+ * are set, and before {@link CapMembershipLevel}, which then bounds the assigned level by the owner's
+ * household.
  */
 public class AssignMembership {
 

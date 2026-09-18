@@ -14,14 +14,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class CountHouseholdMembers {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank()) {
-            owner.setHouseholdSize(1);
-            return;
-        }
-        long existing = ownerRepository.findByLastName(owner.getLastName()).stream()
-            .filter(member -> householdId.equals(member.getHouseholdId()))
-            .count();
-        owner.setHouseholdSize((int) (existing + 1));
+        int existing = Household.existingMembers(owner, ownerRepository).size();
+        owner.setHouseholdSize(existing + 1);
     }
 }

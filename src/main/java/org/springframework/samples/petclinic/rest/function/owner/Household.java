@@ -1,8 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.List;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.util.StringUtils;
 
 /**
@@ -10,8 +13,9 @@ import org.springframework.util.StringUtils;
  * last name (normalized case-insensitively with collapsed whitespace) and the same postcode. Its
  * {@code householdId} is derived deterministically from those two values, so any two owners with the
  * same last name and postcode share it automatically without an explicit link. Used by
- * {@link AssignHouseholdId} to stamp each owner, by {@link EnsureUniqueHousehold} to reject a second
- * owner in an occupied household, and by {@link CountHouseholdMembers} to size the household.
+ * {@link AssignHouseholdId} to stamp each owner and by the steps that key off the household —
+ * {@link MarkDeclaredHouseholdMember}, {@link CountHouseholdMembers} and {@link CapMembershipLevel} —
+ * via {@link #existingMembers}.
  */
 final class Household {
 
@@ -37,5 +41,20 @@ final class Household {
             return null;
         }
         return Sha256.hex(normalizeLastName(lastName) + '|' + postcode).substring(0, ID_LENGTH);
+    }
+
+    /**
+     * The existing owners sharing the given owner's household, i.e. those already persisted with the
+     * same {@link Owner#getHouseholdId() householdId}. The owner itself is not yet saved, so it never
+     * appears. An owner belonging to no household (no id) has no existing members.
+     */
+    static List<Owner> existingMembers(Owner owner, OwnerRepository ownerRepository) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return List.of();
+        }
+        return ownerRepository.findByLastName(owner.getLastName()).stream()
+            .filter(member -> householdId.equals(member.getHouseholdId()))
+            .toList();
     }
 }

@@ -13,8 +13,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>A {@link DeclaredHouseholdMember declared household member} — one admitted into an occupied
  * household via {@code sharesHousehold} — is deliberate, not suspected, so it is never flagged. Every
- * other same-household owner has already been rejected as a household duplicate by
- * {@link EnsureUniqueHousehold}. Owners without a postcode belong to no household and never soft-match.
+ * other same-household owner reachable on a different telephone is admitted as an ordinary member and
+ * flagged here. Owners without a postcode belong to no household and never soft-match.
  *
  * <p>Runs after {@link EnsureUniqueIdentity} and before {@link SaveOwner}, so the flag is persisted
  * with the owner.
