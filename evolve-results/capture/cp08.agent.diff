@@ -1,0 +1,223 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 307860bb4..0d1033c1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java
+index 022863fa1..b43f7c3f9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerTelephone.java
+@@ -9,7 +9,7 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelep
+ /**
+  * Runs after {@link ValidateOwnerFields} in {@code POST /api/owners}, reading the
+  * already-normalized body as a variable. Rejects the request when its telephone is already
+- * used by another owner (comparing normalized telephones), throwing
++ * used by another owner (comparing canonical E.164 telephones), throwing
+  * {@link DuplicateOwnerTelephoneException} for a 409 before any entity is built or persisted.
+  */
+ public class EnsureUniqueOwnerTelephone {
+@@ -17,9 +17,9 @@ public class EnsureUniqueOwnerTelephone {
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateOwnerTelephoneException {
+ 
+-        String telephone = OwnerTelephone.digits(request.getTelephone());
++        String telephone = request.getTelephone(); // already normalized to E.164 upstream
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (telephone.equals(OwnerTelephone.digits(existing.getTelephone()))) {
++            if (OwnerTelephone.toE164(existing.getTelephone()).map(telephone::equals).orElse(false)) {
+                 throw new DuplicateOwnerTelephoneException(telephone);
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 3aa81d614..c4ca8ba78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -8,27 +8,22 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerFieldsE
+ import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /**
+- * First step of {@code POST /api/owners}. Normalizes the telephone by stripping every
+- * non-digit character, then requires exactly ten digits; the normalized value is written
+- * back onto the body so the persisted and returned {@code telephone} is those ten digits.
+- * A telephone that is not exactly ten digits after stripping throws
+- * {@link InvalidOwnerFieldsException} for a 400. Because it must run before the DTO's
+- * digits-only pattern check would reject the raw input, this is the pipeline's sole
+- * {@code @RequestBody} binding; the normalized body is published for {@link ValidateOwnerFields}.
++ * First step of the create/update owner pipelines. Normalizes the telephone to canonical
++ * E.164 form and writes it back onto the body, so the persisted and returned
++ * {@code telephone} is that E.164 string. A telephone that cannot form a valid E.164 number
++ * throws {@link InvalidOwnerFieldsException} for a 400. Because it must run before the DTO's
++ * pattern check would reject the raw input, this is the pipeline's sole {@code @RequestBody}
++ * binding; the normalized body is published for {@link ValidateOwnerFields}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+-    private static final int REQUIRED_DIGITS = 10;
+-
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> normalized)
+             throws InvalidOwnerFieldsException {
+ 
+-        String digits = OwnerTelephone.digits(request.getTelephone());
+-        if (digits.length() != REQUIRED_DIGITS) {
+-            throw new InvalidOwnerFieldsException(List.of("telephone"));
+-        }
++        String e164 = OwnerTelephone.toE164(request.getTelephone())
++                .orElseThrow(() -> new InvalidOwnerFieldsException(List.of("telephone")));
+ 
+-        request.setTelephone(digits);
++        request.setTelephone(e164);
+         normalized.set(request);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+index fedf36fa3..35447cae6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+@@ -1,16 +1,47 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Optional;
++
+ /**
+- * Telephone normalization shared by the create-owner pipeline: keeps only the digit
+- * characters of a telephone, so values are compared and stored in one canonical form.
++ * Telephone normalization shared by the owner pipelines: converts a supplied telephone to
++ * canonical E.164 form (a leading {@code +}, country code, then national digits), so an
++ * owner's telephone is stored, returned and compared in one representation.
+  */
+ public final class OwnerTelephone {
+ 
++    /** Country code assumed when the input carries no explicit {@code +} prefix. */
++    private static final String DEFAULT_COUNTRY_CODE = "61";
++
++    /** E.164 allows between 8 and 15 digits after the {@code +}. */
++    private static final int MIN_DIGITS = 8;
++    private static final int MAX_DIGITS = 15;
++
+     private OwnerTelephone() {
+     }
+ 
+-    /** The digits of {@code telephone} with every other character stripped ("" when null). */
+-    public static String digits(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    /**
++     * The E.164 form of {@code telephone}, or {@link Optional#empty()} when it cannot form a
++     * valid E.164 number. Spaces, dashes and brackets are stripped. A leading {@code +} keeps
++     * the given country code; otherwise country code {@code +61} is assumed and a single
++     * leading {@code 0} is dropped from the national digits. The result must carry 8 to 15
++     * digits after the {@code +}.
++     */
++    public static Optional<String> toE164(String telephone) {
++        if (telephone == null) {
++            return Optional.empty();
++        }
++        String cleaned = telephone.replaceAll("[\\s()\\-]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = DEFAULT_COUNTRY_CODE + national;
++        }
++        if (!digits.matches("[0-9]{" + MIN_DIGITS + "," + MAX_DIGITS + "}")) {
++            return Optional.empty();
++        }
++        return Optional.of("+" + digits);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+deleted file mode 100644
+index 536a86bc5..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ /dev/null
+@@ -1,18 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import jakarta.validation.Valid;
+-import net.officefloor.plugin.variable.Out;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.validation.annotation.Validated;
+-import org.springframework.web.bind.annotation.RequestBody;
+-
+-/**
+- * Validates before {@link LoadOwner} runs, so an invalid body is a 400 even when the owner does not exist.
+- */
+-@Validated
+-public class ValidateOwner {
+-
+-    public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated) {
+-        validated.set(request);
+-    }
+-}
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+index 8c0f2764b..01bbdefc2 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+@@ -1,8 +1,11 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
+-validate:
+-  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
++# Normalize the telephone to E.164 first: it is the sole @RequestBody binding and must run
++# before the DTO's E.164 pattern check would reject the raw input. It publishes the
++# normalized body for the validate step, so the owner is stored with an E.164 telephone.
++normalize:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
+   govern: [ transaction ]
+   next: normalizeEmail
+ 
+@@ -11,6 +14,13 @@ validate:
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
+   govern: [ transaction ]
++  next: validate
++
++# Validate so a missing/blank required field is a 400 listing those fields, before the owner
++# is loaded or updated. Reads the already-normalized body as a variable.
++validate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
++  govern: [ transaction ]
+   next: load
+ 
+ load:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e0c8c19f9..246b5c825 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,12 +2025,12 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: The telephone number of the pet owner, stored in E.164 form.
+           type: string
+-          minLength: 1
+-          maxLength: 20
+-          pattern: '^[0-9]*$'
+-          example: '6085551023'
++          minLength: 9
++          maxLength: 16
++          pattern: '^\+[0-9]{8,15}$'
++          example: '+61412345678'
+         email:
+           title: Email
+           description: The email address of the pet owner. Optional; when present it is stored and returned lower-cased.
