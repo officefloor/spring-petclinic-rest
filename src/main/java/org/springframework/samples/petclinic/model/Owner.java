@@ -250,6 +250,18 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's current primary identifier: the single value that identifies the owner
+     * to the outside world. Today this is the {@link #getCustomerCode() customer code};
+     * once the customer code is unified into the member id this method will return the
+     * member id instead, so callers that must carry "the identifier" (such as the owner
+     * creation audit event) follow the migration automatically.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
+    /**
      * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
      * digits of the {@link FiscalYear fiscal year} the {@code registrationDate} falls in
      * (the fiscal year starts on 1 July), e.g. {@code "FY26"}. Derived on read from the
