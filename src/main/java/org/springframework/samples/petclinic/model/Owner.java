@@ -64,6 +64,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -157,10 +160,14 @@ public class Owner extends Person {
 
     /**
      * The owner's membership tier, derived from the owner's own fields. Returns
-     * {@code "SILVER"} when the owner has no namesakes and a contact email on
-     * file, and {@code "BRONZE"} otherwise.
+     * {@code "GOLD"} when the owner belongs to a household of three or more
+     * members, {@code "SILVER"} when the owner has no namesakes and a contact
+     * email on file, and {@code "BRONZE"} otherwise.
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean hasEmail = this.email != null && !this.email.isEmpty();
         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
@@ -172,6 +179,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     protected Set<Pet> getPetsInternal() {

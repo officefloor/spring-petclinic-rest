@@ -52,6 +52,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
     private final NamesakeCounter namesakeCounter;
+    private final HouseholdMemberCounter householdMemberCounter;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -61,7 +62,8 @@ public class ClinicServiceImpl implements ClinicService {
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
-        NamesakeCounter namesakeCounter) {
+        NamesakeCounter namesakeCounter,
+        HouseholdMemberCounter householdMemberCounter) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -70,6 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
         this.namesakeCounter = namesakeCounter;
+        this.householdMemberCounter = householdMemberCounter;
     }
 
     @Override
@@ -247,6 +250,7 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setCustomerCode(customerCodeGenerator.generate(owner));
             }
             owner.setNamesakeCount(namesakeCounter.count(owner));
+            owner.setHouseholdSize(householdMemberCounter.count(owner));
         }
         ownerRepository.save(owner);
 
