@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 584dee65c..fb0b43c17 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,9 @@ public class Owner extends Person {
+     @Column(name = "membership_level")
+     private Integer membershipLevel;
+ 
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -185,6 +188,28 @@ public class Owner extends Person {
+         this.membershipLevel = membershipLevel;
+     }
+ 
++    /**
++     * The id of the existing owner this one is a soft duplicate of: an owner sharing this one's last
++     * name and postcode but reachable on a different telephone, recorded at creation. {@code null}
++     * when no such owner existed.
++     */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
++    /**
++     * Whether this owner was flagged as a possible duplicate of an existing one at creation, i.e.
++     * whether {@link #getPossibleDuplicateOf()} identifies a matching owner.
++     */
++    @Transient
++    public boolean getPossibleDuplicate() {
++        return this.possibleDuplicateOf != null;
++    }
++
+     /**
+      * The owner's locality: the REGION portion of its {@code customerCode} (see
+      * {@link CustomerCode}), which is the region derived from the postcode or city at creation. This
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+new file mode 100644
+index 000000000..9c653ce37
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DetectPossibleDuplicate.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags the newly built owner as a possible (soft) duplicate of an existing one. A soft match is an
++ * existing owner sharing this owner's last name (case-insensitively) and postcode but reachable on a
++ * different telephone — not a hard duplicate (those share the whole {@link Owner#getIdentityKey()
++ * identity key} and are rejected by {@link EnsureUniqueIdentity} before this step), so the owner is
++ * still created. When one is found the earliest such owner's id is recorded via
++ * {@link Owner#setPossibleDuplicateOf(Integer)}, which drives the {@code possibleDuplicate} /
++ * {@code possibleDuplicateOf} response fields.
++ *
++ * <p>Runs after {@link EnsureUniqueIdentity} and before {@link SaveOwner}, so the flag is persisted
++ * with the owner. Owners without a postcode never soft-match.
++ */
++public class DetectPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return;
++        }
++        ownerRepository.findByLastName(owner.getLastName()).stream()
++            .filter(existing -> existing.getLastName().equalsIgnoreCase(owner.getLastName())
++                && postcode.equals(existing.getPostcode())
++                && existing.getTelephone() != null
++                && !existing.getTelephone().equals(owner.getTelephone()))
++            .map(Owner::getId)
++            .filter(id -> id != null)
++            .min(Integer::compareTo)
++            .ifPresent(owner::setPossibleDuplicateOf);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 4830a0195..4c10bfbd0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  membership_level INTEGER
++  membership_level INTEGER,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 1ecde43af..e6ac727d2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,8 @@ CREATE TABLE owners (
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  membership_level INTEGER
++  membership_level INTEGER,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 424be26d7..323a0de32 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   household_size INT,
+   membership_level INT,
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index b6e3ada08..8427865b6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+-                                      membership_level INTEGER
++                                      membership_level INTEGER,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 8b16178ac..a280618a6 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -80,6 +80,11 @@ countNamesakes:
+ assignMembershipLevel:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
+   govern: [ transaction ]
++  next: detectPossibleDuplicate
++
++detectPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.DetectPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5e00efe45..fd3e9a770 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2207,6 +2207,25 @@ components:
+               type: string
+               example: '+61412345678||H-1A2B3C4D5E6F'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when, at creation, an existing owner shared this owner's last name and postcode
++                but was reachable on a different telephone (a soft match that is still created);
++                false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this one was flagged a possible duplicate of at creation
++                (see 'possibleDuplicate'). Absent when not flagged.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
