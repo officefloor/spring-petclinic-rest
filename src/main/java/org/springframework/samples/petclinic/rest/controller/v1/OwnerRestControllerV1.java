@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLi
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.HouseholdSizeAssigner;
+import org.springframework.samples.petclinic.rest.controller.IdempotentOwnerStore;
 import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.MembershipLevelAssigner;
 import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
@@ -52,6 +53,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.InitBinder;
@@ -108,6 +110,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final PossibleDuplicateAssigner possibleDuplicateAssigner;
 
+    private final IdempotentOwnerStore idempotentOwnerStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -126,7 +130,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  DailyRegistrationLimiter dailyRegistrationLimiter,
                                  BulkSignupWarningAssigner bulkSignupWarningAssigner,
                                  OwnerCreationAuditLogger ownerCreationAuditLogger,
-                                 PossibleDuplicateAssigner possibleDuplicateAssigner) {
+                                 PossibleDuplicateAssigner possibleDuplicateAssigner,
+                                 IdempotentOwnerStore idempotentOwnerStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -146,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.bulkSignupWarningAssigner = bulkSignupWarningAssigner;
         this.ownerCreationAuditLogger = ownerCreationAuditLogger;
         this.possibleDuplicateAssigner = possibleDuplicateAssigner;
+        this.idempotentOwnerStore = idempotentOwnerStore;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -180,7 +186,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        if (StringUtils.hasText(idempotencyKey)) {
+            Owner original = this.idempotentOwnerStore.find(idempotencyKey)
+                .map(this.clinicService::findOwnerById)
+                .orElse(null);
+            if (original != null) {
+                return new ResponseEntity<>(ownerMapper.toOwnerDto(original), HttpStatus.OK);
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.registrationDateAssigner.assign(owner);
@@ -207,6 +221,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.bulkSignupWarningAssigner.assign(owner);
         this.possibleDuplicateAssigner.assign(owner, declaredHouseholdMember);
         this.clinicService.saveOwner(owner);
+        if (StringUtils.hasText(idempotencyKey)) {
+            this.idempotentOwnerStore.remember(idempotencyKey, owner);
+        }
         this.ownerCreationAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
