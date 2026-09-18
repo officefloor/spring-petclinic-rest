@@ -51,7 +51,7 @@ public class HouseholdMatcher {
     /**
      * Returns the already-stored owners that share {@code candidate}'s household under the
      * lenient comparison described above. The candidate itself is not yet stored, so it is
-     * never included.
+     * never included; owners flagged deleted are excluded.
      *
      * @param candidate the owner being created
      * @return existing household members, possibly empty
@@ -59,6 +59,7 @@ public class HouseholdMatcher {
     public List<Owner> findMembers(Owner candidate) {
         String key = householdKey(candidate);
         return clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdKey(existing).equals(key))
             .toList();
     }

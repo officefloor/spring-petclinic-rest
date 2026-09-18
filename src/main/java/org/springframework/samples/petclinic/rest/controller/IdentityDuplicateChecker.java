@@ -46,6 +46,7 @@ public class IdentityDuplicateChecker {
     public boolean isDuplicate(Owner candidate) {
         String identityKey = candidate.getIdentityKey();
         return clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> existing.getIdentityKey().equals(identityKey));
     }
 }
