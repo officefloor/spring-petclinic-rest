@@ -21,9 +21,7 @@ public class EnsureDailyOwnerCapacity {
     public void service(@Val LocalDate registrationDate, OwnerRepository ownerRepository)
             throws DailyOwnerLimitException {
 
-        long dayCount = ownerRepository.findAll().stream()
-                .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
-                .count();
+        long dayCount = ownerRepository.countRegisteredOn(registrationDate);
         if (dayCount >= DAILY_LIMIT) {
             throw new DailyOwnerLimitException(registrationDate);
         }

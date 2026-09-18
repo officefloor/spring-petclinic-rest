@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 import org.springframework.dao.DataAccessException;
@@ -83,5 +84,18 @@ public interface OwnerRepository {
      */
 	void delete(Owner owner) throws DataAccessException;
 
+    /**
+     * Count the owners already registered on the given business day. Used by the per-day
+     * creation rules (the daily cap and the bulk-signup warning) so they share one definition
+     * of "owners created on a day".
+     *
+     * @param date the registration date to count against
+     * @return the number of existing owners whose registrationDate equals {@code date}
+     */
+    default long countRegisteredOn(LocalDate date) throws DataAccessException {
+        return findAll().stream()
+                .filter(owner -> date.equals(owner.getRegistrationDate()))
+                .count();
+    }
 
 }
