@@ -20,9 +20,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Renders SHA-256 digests as upper-case hexadecimal. Shared by the stable identifiers the
- * application derives from owner fields — the household id and the customer code — so the digest
- * and hex-encoding logic lives in one place.
+ * Renders SHA-256 digests as hexadecimal. Shared by the stable identifiers the application derives
+ * from owner fields — the household id and customer code (an upper-case prefix) and the identity key
+ * (the full lower-case digest) — so the digest and hex-encoding logic lives in one place.
  */
 public final class Sha256 {
 
@@ -38,13 +38,33 @@ public final class Sha256 {
      * @return the upper-case hex prefix of the digest
      */
     public static String hexPrefix(String input, int length) {
+        StringBuilder hex = new StringBuilder(length);
+        byte[] digest = digest(input);
+        for (int i = 0; hex.length() < length; i++) {
+            hex.append(String.format("%02X", digest[i]));
+        }
+        return hex.substring(0, length);
+    }
+
+    /**
+     * Produce the full SHA-256 digest of the UTF-8 bytes of {@code input} as 64 lower-case hex
+     * characters.
+     *
+     * @param input the value to hash
+     * @return the lower-case hex encoding of the whole digest
+     */
+    public static String hex(String input) {
+        byte[] digest = digest(input);
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    private static byte[] digest(String input) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(length);
-            for (int i = 0; hex.length() < length; i++) {
-                hex.append(String.format("%02X", digest[i]));
-            }
-            return hex.substring(0, length);
+            return MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException ex) {
             // SHA-256 is required to be available on every JVM, so this cannot happen.
             throw new IllegalStateException("SHA-256 algorithm not available", ex);

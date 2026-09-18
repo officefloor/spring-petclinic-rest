@@ -64,9 +64,9 @@ public interface ClinicService {
 
 	/**
 	 * Determine whether a persisted owner is the same person as the given owner, i.e. shares its
-	 * {@link Owner#getIdentityKey() identity key} (normalized telephone, email and household id).
-	 * Household members with different telephones have different identity keys and so are not
-	 * duplicates of one another; soft-deleted owners are ignored.
+	 * {@link Owner#getIdentityKey() identity key} (the digest of normalized telephone, email and the
+	 * Soundex code of the last name). Household members with different telephones have different
+	 * identity keys and so are not duplicates of one another; soft-deleted owners are ignored.
 	 *
 	 * @param owner the candidate owner whose identity is checked
 	 * @return {@code true} if an existing owner has the same identity key, {@code false} otherwise

@@ -19,6 +19,8 @@ import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -291,17 +293,19 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used to detect duplicate owners. It is the
-     * normalized telephone, the (lower-cased) email or an empty string when absent, and the
-     * household id or an empty string when absent, joined with {@code '|'} (e.g.
-     * {@code "+61412345678|jo@example.com|3F2A9C1D4B6E8071"}). Two owners are the same person only
-     * when their whole identity keys are equal; because the telephone is part of the key, household
-     * members with different telephones have different keys.
+     * 64-character lower-case SHA-256 hex digest (see {@link org.springframework.samples.petclinic.util.Sha256})
+     * of the normalized telephone, the lower-cased email (or an empty string when absent) and the
+     * {@linkplain org.springframework.samples.petclinic.util.Soundex Soundex} code of the last name,
+     * joined with {@code '|'}. Two owners are the same person only when their identity keys are
+     * equal; because the telephone is part of the key, household members with different telephones
+     * have different keys.
      */
     public String getIdentityKey() {
-        return String.join("|",
+        String key = String.join("|",
             this.telephone == null ? "" : this.telephone,
-            this.email == null ? "" : this.email,
-            this.householdId == null ? "" : this.householdId);
+            this.email == null ? "" : this.email.toLowerCase(Locale.ROOT),
+            Soundex.encode(getLastName()));
+        return Sha256.hex(key);
     }
 
     /** Tenure, in elapsed fiscal years, at or beyond which an owner earns the tenure membership points. */

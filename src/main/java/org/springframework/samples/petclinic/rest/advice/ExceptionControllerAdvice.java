@@ -234,9 +234,9 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateIdentityException} raised when a new owner's identity key (normalized
-     * telephone, email and household id) exactly matches that of an existing owner, returning a 409
-     * Conflict.
+     * Handles {@link DuplicateIdentityException} raised when a new owner's identity key (the digest
+     * of normalized telephone, email and the Soundex code of the last name) exactly matches that of
+     * an existing owner, returning a 409 Conflict.
      *
      * @param e The {@link DuplicateIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.

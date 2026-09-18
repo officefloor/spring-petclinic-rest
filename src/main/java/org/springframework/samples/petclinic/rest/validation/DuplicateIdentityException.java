@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Raised when a new owner's identity key (normalized telephone, email and household id, see
- * {@code Owner#getIdentityKey()}) exactly matches that of an existing owner, so the client can be
- * told the record duplicates another one.
+ * Raised when a new owner's identity key (the digest of normalized telephone, email and the Soundex
+ * code of the last name, see {@code Owner#getIdentityKey()}) exactly matches that of an existing
+ * owner, so the client can be told the record duplicates another one.
  */
 public class DuplicateIdentityException extends RuntimeException {
 

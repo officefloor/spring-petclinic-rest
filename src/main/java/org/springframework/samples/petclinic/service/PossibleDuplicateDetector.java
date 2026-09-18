@@ -20,17 +20,18 @@ import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.util.TextNormalizer;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Component;
 
 /**
  * Detects a soft (non-hard) duplicate for an owner being registered.
  *
- * <p>An owner is a possible duplicate of an existing owner when they share a last
- * name (compared case-insensitively, consistent with the rest of the application's
- * name handling) and a postcode but carry a different telephone. A matching
- * telephone is excluded because that is the territory of hard-duplicate detection
- * (see {@link Owner#getIdentityKey()}), not this softer signal.
+ * <p>An owner is a possible duplicate of an existing owner when they share a postcode and a
+ * like-sounding last name (compared by {@linkplain Soundex Soundex} code) yet carry a different
+ * {@linkplain Owner#getIdentityKey() identity key}. A matching identity key is excluded because that
+ * is the territory of hard-duplicate detection (a 409), not this softer signal; the identity key
+ * already folds in the telephone, so two owners with the same postcode and last name but different
+ * telephones surface here rather than being rejected.
  */
 @Component
 public class PossibleDuplicateDetector {
@@ -53,12 +54,13 @@ public class PossibleDuplicateDetector {
         if (owner.getPostcode() == null) {
             return null;
         }
-        String lastName = TextNormalizer.normalizeForComparison(owner.getLastName());
-        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+        String lastNameCode = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
+        return ownerRepository.findAll().stream()
             .filter(other -> !other.isDeleted())
-            .filter(other -> TextNormalizer.normalizeForComparison(other.getLastName()).equals(lastName))
             .filter(other -> owner.getPostcode().equals(other.getPostcode()))
-            .filter(other -> !Objects.equals(owner.getTelephone(), other.getTelephone()))
+            .filter(other -> Soundex.encode(other.getLastName()).equals(lastNameCode))
+            .filter(other -> !Objects.equals(identityKey, other.getIdentityKey()))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
     }
