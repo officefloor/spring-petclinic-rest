@@ -91,6 +91,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * Number of owners a city may hold before a create/read response flags {@code capacityWarning}.
+     * Once a city holds at least this many owners (but has not yet reached {@link
+     * #MAX_OWNERS_PER_CITY}), the warning is raised to signal it is approaching the hard limit.
+     */
+    static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -139,7 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(toOwnerDtoWithBulkSignupWarning(owner), HttpStatus.OK);
+        return new ResponseEntity<>(toOwnerDtoWithWarnings(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -148,7 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (idempotencyKey != null) {
             Optional<OwnerDto> existing = idempotencyKeyStore.findOwnerId(idempotencyKey)
                 .map(this.clinicService::findOwnerById)
-                .map(this::toOwnerDtoWithBulkSignupWarning);
+                .map(this::toOwnerDtoWithWarnings);
             if (existing.isPresent()) {
                 return new ResponseEntity<>(existing.get(), HttpStatus.OK);
             }
@@ -195,7 +202,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (idempotencyKey != null) {
             this.idempotencyKeyStore.remember(idempotencyKey, owner.getId());
         }
-        OwnerDto ownerDto = toOwnerDtoWithBulkSignupWarning(owner);
+        OwnerDto ownerDto = toOwnerDtoWithWarnings(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -224,16 +231,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Map an owner to its DTO and stamp {@code bulkSignupWarning}, which reflects whether more than
-     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been registered on the current
-     * business day.
+     * Map an owner to its DTO and stamp the advisory warning flags derived from the current state of
+     * the clinic ({@code bulkSignupWarning} and {@code capacityWarning}).
      */
-    private OwnerDto toOwnerDtoWithBulkSignupWarning(Owner owner) {
+    private OwnerDto toOwnerDtoWithWarnings(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        stampBulkSignupWarning(ownerDto);
+        stampCapacityWarning(ownerDto, owner);
+        return ownerDto;
+    }
+
+    /**
+     * Stamp {@code bulkSignupWarning}, which reflects whether more than {@link
+     * #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been registered on the current business day.
+     */
+    private void stampBulkSignupWarning(OwnerDto ownerDto) {
         LocalDate today = RegistrationDatePolicy.effectiveDate(null);
         ownerDto.setBulkSignupWarning(
             this.clinicService.countOwnersRegisteredOn(today) > BULK_SIGNUP_WARNING_THRESHOLD);
-        return ownerDto;
+    }
+
+    /**
+     * Stamp {@code capacityWarning}, which reflects whether the owner's city already holds between
+     * {@link #CITY_CAPACITY_WARNING_THRESHOLD} and {@link #MAX_OWNERS_PER_CITY} minus one owners,
+     * signalling that it is approaching the per-city capacity limit.
+     */
+    private void stampCapacityWarning(OwnerDto ownerDto, Owner owner) {
+        long cityOwners = this.clinicService.countOwnersByCity(owner.getCity());
+        ownerDto.setCapacityWarning(
+            cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
