@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidato
 import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateAssigner;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateAssigner;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
+import org.springframework.samples.petclinic.rest.controller.WelcomeNotifier;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -109,6 +110,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final IdempotentOwnerStore idempotentOwnerStore;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -127,7 +130,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  BulkSignupWarningAssigner bulkSignupWarningAssigner,
                                  OwnerCreationAuditLogger ownerCreationAuditLogger,
                                  PossibleDuplicateAssigner possibleDuplicateAssigner,
-                                 IdempotentOwnerStore idempotentOwnerStore) {
+                                 IdempotentOwnerStore idempotentOwnerStore,
+                                 WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -147,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerCreationAuditLogger = ownerCreationAuditLogger;
         this.possibleDuplicateAssigner = possibleDuplicateAssigner;
         this.idempotentOwnerStore = idempotentOwnerStore;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -216,6 +221,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.idempotentOwnerStore.remember(idempotencyKey, owner);
         }
         this.ownerCreationAuditLogger.logCreated(owner);
+        this.welcomeNotifier.enqueueWelcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
