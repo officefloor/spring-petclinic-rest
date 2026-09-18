@@ -1,6 +1,14 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Read the optional Idempotency-Key header first. If it matches a create that already
+# completed, short-circuit with a 200 returning the original owner (via IdempotentReplayException)
+# instead of creating a duplicate; otherwise publish the key for recordIdempotency to pin after
+# the create succeeds. Runs before the body is bound, so a replay does no work.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  next: normalize
+
 # Normalize the telephone (strip non-digits, require exactly 10) first: it is the sole
 # @RequestBody binding and must run before the DTO's digits-only pattern check would reject
 # the raw input. It publishes the normalized body for the validate step.
@@ -164,6 +172,14 @@ assignCustomerCode:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Pin the request's Idempotency-Key (when supplied) to the just-persisted owner's id, so a
+# later create with the same key replays this owner rather than creating a duplicate. Runs
+# after save so the generated id is available. A request without a key is a no-op.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: audit
 
