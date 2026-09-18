@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index cf181c8ad..03cd4a319 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -83,7 +83,16 @@ public interface OwnerRepository {
+     long count() throws DataAccessException;
+ 
+     /**
+-     * Retrieve <code>Owner</code>s from the data store, returning all owners 
++     * Count the number of <code>Owner</code>s in the data store located in the given city.
++     * Used to build the per-city sequence embedded in an owner's {@code customerCode}.
++     *
++     * @param city the city to match exactly
++     * @return the number of persisted owners in that city
++     */
++    long countByCity(String city) throws DataAccessException;
++
++    /**
++     * Retrieve <code>Owner</code>s from the data store, returning all owners
+      *
+      * @return a <code>Collection</code> of <code>Owner</code>s (or an empty <code>Collection</code> if none
+      * found)
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index bf04dfcd5..50fb31bdc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -230,6 +230,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 		return total == null ? 0 : total;
+ 	}
+ 
++	@Override
++	public long countByCity(String city) throws DataAccessException {
++		Map<String, Object> params = new HashMap<>();
++		params.put("city", city);
++		Long total = this.namedParameterJdbcTemplate.queryForObject(
++			"SELECT COUNT(*) FROM owners WHERE city = :city",
++			params,
++			Long.class);
++		return total == null ? 0 : total;
++	}
++
+ 	@Override
+ 	@Transactional
+ 	public void delete(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 34a3e0c6e..cbca5e217 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -133,6 +133,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+ 		return (long) countQuery.getSingleResult();
+ 	}
+ 
++	@Override
++	public long countByCity(String city) throws DataAccessException {
++		Query countQuery = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.city = :city");
++		countQuery.setParameter("city", city);
++		return (long) countQuery.getSingleResult();
++	}
++
+ 	@Override
+ 	public void delete(Owner owner) throws DataAccessException {
+ 		this.em.remove(this.em.contains(owner) ? owner : this.em.merge(owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index c850a8303..f90b290b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -63,4 +63,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
++
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.city = :city")
++    long countByCity(@Param("city") String city);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 457830a94..d40a271b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -8,16 +8,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns a newly built owner its {@code customerCode}, formatted
+- * {@code <LAST3>-<NNNN>}: LAST3 is the upper-cased first three letters of the last
+- * name and NNNN is a global 4-digit zero-padded sequence equal to one more than the
+- * current number of owners (e.g. {@code SMI-0007}).
++ * {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three letters of the
++ * city, LAST3 the upper-cased first three letters of the last name, and NNNN a per-city
++ * 4-digit zero-padded sequence equal to one more than the number of owners already in
++ * that city (e.g. {@code LON-SMI-0007}).
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length()))
+-            .toUpperCase(Locale.ROOT);
+-        long sequence = ownerRepository.count() + 1;
+-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
++        String city3 = prefix(owner.getCity());
++        String last3 = prefix(owner.getLastName());
++        long sequence = ownerRepository.countByCity(owner.getCity()) + 1;
++        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    }
++
++    /** Upper-cased first three letters of {@code value} (fewer if it is shorter). */
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 560f5f76b..8846e472a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2090,10 +2090,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code formatted '<LAST3>-<NNNN>', where LAST3 is the upper-cased first three
+-                letters of the last name and NNNN is a global 4-digit zero-padded sequence number.
++                The owner's customer code formatted '<CITY3>-<LAST3>-<NNNN>', where CITY3 is the upper-cased
++                first three letters of the city, LAST3 the upper-cased first three letters of the last name,
++                and NNNN a per-city 4-digit zero-padded sequence number (one more than the owners already in
++                that city).
+               type: string
+-              example: 'SMI-0007'
++              example: 'LON-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+@@ -2101,7 +2103,7 @@ components:
+                 The owner's membership number formatted '<customerCode>-M<YY>', where YY is the last two
+                 digits of the registration date year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'LON-SMI-0007-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
