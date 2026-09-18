@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -135,24 +138,6 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier, derived on read:
-     * {@link MembershipTier#GOLD} when the owner's household (owners sharing the same
-     * {@code householdId}) has three or more members as recorded at create time
-     * ({@code householdSize} is 3 or more); otherwise {@link MembershipTier#SILVER} when
-     * the owner has no namesakes ({@code namesakeCount} is 0) and an email address is
-     * present, and {@link MembershipTier#BRONZE} in every other case.
-     */
-    @Transient
-    public MembershipTier getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= 3) {
-            return MembershipTier.GOLD;
-        }
-        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        return noNamesakes && hasEmail ? MembershipTier.SILVER : MembershipTier.BRONZE;
-    }
-
-    /**
      * The owner's locality: the canonical region derived on read from the owner's
      * {@link #city} via the fixed {@link CityRegionTable}, or {@code "UNKNOWN"} when
      * the city has no known region.
@@ -184,6 +169,19 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * The owner's membership level, a number assigned on create and never below 1.
+     * Levels 1 to 3 are earned from the owner's own fields at creation time (see
+     * {@code MembershipLevelAssigner}); level 4 is reserved for tenure.
+     */
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {
