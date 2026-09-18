@@ -1,13 +1,16 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
+
 /**
- * The derived duplicate-detection identity of an owner: a single key that consolidates the
- * telephone, email and household the create pipeline rejects duplicates by. The key is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}.
+ * The derived duplicate-detection identity of an owner: a single SHA-256 key that consolidates the
+ * telephone, email and phonetic last name the create pipeline rejects duplicates by. The key is the
+ * SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
  *
- * <p>Two owners are duplicates only when their <em>whole</em> keys are equal, so members of
- * one household (same household id) with different telephones have different keys and are both
- * allowed — only an exact full-key match is a duplicate.
+ * <p>Two owners are duplicates only when their <em>whole</em> keys are equal. Because the telephone
+ * is part of the key, two owners with the same last name and postcode but different telephones have
+ * different keys and are both allowed — only an exact full-key match is a duplicate.
  */
 public final class OwnerIdentity {
 
@@ -15,13 +18,15 @@ public final class OwnerIdentity {
     }
 
     /**
-     * The identity key for the given canonical components. The telephone is compared in its
-     * {@link OwnerTelephone#toE164(String) E.164} form and the email in its
-     * {@link OwnerEmail#normalize(String) lower-cased} form; an absent email or household id
-     * contributes the empty string.
+     * The identity key for the given canonical components. The telephone is folded to its
+     * {@link OwnerTelephone#toE164(String) E.164} form, the email to its
+     * {@link OwnerEmail#normalize(String) lower-cased} form and the last name to its
+     * {@link Soundex#encode(String) Soundex} code; an absent email or last name contributes the
+     * empty string. The three are joined by {@code '|'} and SHA-256 hex digested.
      */
-    public static String key(String telephone, String email, String householdId) {
-        return normalizedTelephone(telephone) + "|" + normalizedEmail(email) + "|" + orEmpty(householdId);
+    public static String key(String telephone, String email, String lastName) {
+        String raw = normalizedTelephone(telephone) + "|" + normalizedEmail(email) + "|" + Soundex.encode(lastName);
+        return Sha256.hex(raw);
     }
 
     private static String normalizedTelephone(String telephone) {

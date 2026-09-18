@@ -7,8 +7,8 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 Conflict when a create request would add a second owner to an existing household
- * (same lastName and postcode) without declaring itself a member via {@code sharesHousehold}.
+ * Responds 409 Conflict when a create request's identity key (normalized telephone, lower-cased
+ * email and {@code soundex(lastName)}) already belongs to an existing owner.
  */
 public class DuplicateOwnerIdentityExceptionHandler {
 

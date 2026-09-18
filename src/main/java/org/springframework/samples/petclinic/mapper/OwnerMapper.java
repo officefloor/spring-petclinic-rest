@@ -118,10 +118,10 @@ public interface OwnerMapper {
         return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
     }
 
-    /** The owner's derived duplicate-detection identity key: normalized telephone, email and
-     *  household id joined by '|'. See {@link OwnerIdentity#key}. */
+    /** The owner's derived duplicate-detection identity key: the SHA-256 hex of the normalized
+     *  telephone, lower-cased email and soundex(lastName) joined by '|'. See {@link OwnerIdentity#key}. */
     default String identityKey(Owner owner) {
-        return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+        return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /** The owner's age band derived from its birthDate against its registrationDate, or null when
