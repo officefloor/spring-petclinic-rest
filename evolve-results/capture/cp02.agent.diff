@@ -1,0 +1,102 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+new file mode 100644
+index 000000000..584d9b0aa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.List;
++
++import net.officefloor.plugin.variable.Out;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerFieldsException;
++import org.springframework.web.bind.annotation.RequestBody;
++
++/**
++ * First step of {@code POST /api/owners}. Normalizes the telephone by stripping every
++ * non-digit character, then requires exactly ten digits; the normalized value is written
++ * back onto the body so the persisted and returned {@code telephone} is those ten digits.
++ * A telephone that is not exactly ten digits after stripping throws
++ * {@link InvalidOwnerFieldsException} for a 400. Because it must run before the DTO's
++ * digits-only pattern check would reject the raw input, this is the pipeline's sole
++ * {@code @RequestBody} binding; the normalized body is published for {@link ValidateOwnerFields}.
++ */
++public class NormalizeOwnerTelephone {
++
++    private static final int REQUIRED_DIGITS = 10;
++
++    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> normalized)
++            throws InvalidOwnerFieldsException {
++
++        String telephone = request.getTelephone();
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != REQUIRED_DIGITS) {
++            throw new InvalidOwnerFieldsException(List.of("telephone"));
++        }
++
++        request.setTelephone(digits);
++        normalized.set(request);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index be471ad6e..e2dde70f6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -10,17 +10,18 @@ import java.util.function.Supplier;
+ import jakarta.validation.ConstraintViolation;
+ import jakarta.validation.Validator;
+ import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerFieldsException;
+-import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /**
+- * First step of {@code POST /api/owners}. Rejects a body that is missing or blank in any
+- * required field ({@code firstName}, {@code lastName}, {@code address}, {@code city},
+- * {@code telephone}), and also applies the DTO's declared format constraints. When any
+- * field is invalid it throws {@link InvalidOwnerFieldsException} naming those fields, so
+- * the response is a 400 listing them; otherwise it publishes the validated body for the
+- * downstream build step. This is the pipeline's sole {@code @RequestBody} binding.
++ * Runs after {@link NormalizeOwnerTelephone} in {@code POST /api/owners}. Rejects a body
++ * that is missing or blank in any required field ({@code firstName}, {@code lastName},
++ * {@code address}, {@code city}, {@code telephone}), and also applies the DTO's declared
++ * format constraints. When any field is invalid it throws
++ * {@link InvalidOwnerFieldsException} naming those fields, so the response is a 400
++ * listing them; otherwise it publishes the validated body for the downstream build step.
++ * It reads the already-normalized body as a variable rather than binding {@code @RequestBody}.
+  */
+ public class ValidateOwnerFields {
+ 
+@@ -35,7 +36,7 @@ public class ValidateOwnerFields {
+         return fields;
+     }
+ 
+-    public void service(@RequestBody OwnerFieldsDto request, Validator validator,
++    public void service(@Val OwnerFieldsDto request, Validator validator,
+             Out<OwnerFieldsDto> validated) throws InvalidOwnerFieldsException {
+ 
+         // Preserve field-declaration order and de-duplicate fields flagged more than once.
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e445c5914..1d7cb7d0b 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,8 +1,15 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
+-# Validate the body first so a missing/blank required field is a 400 listing those
+-# fields, before any entity is built or persisted. Sole @RequestBody binding.
++# Normalize the telephone (strip non-digits, require exactly 10) first: it is the sole
++# @RequestBody binding and must run before the DTO's digits-only pattern check would reject
++# the raw input. It publishes the normalized body for the validate step.
++normalize:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
++  next: validate
++
++# Validate so a missing/blank required field is a 400 listing those fields, before any
++# entity is built or persisted.
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
+   next: build
