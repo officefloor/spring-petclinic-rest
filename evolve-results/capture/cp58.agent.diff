@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d54b8f5d5..cc65609d1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -244,6 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         stampBulkSignupWarning(ownerDto);
+         stampCapacityWarning(ownerDto, owner);
++        stampRiskFlag(ownerDto, owner);
+         return ownerDto;
+     }
+ 
+@@ -268,6 +269,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY);
+     }
+ 
++    /**
++     * Stamp {@code riskFlag}, which flags an owner for manual risk review when any single risk signal
++     * holds: the owner is a possible duplicate, its email domain is disposable-adjacent, or its city
++     * is at or over its soft capacity of {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners.
++     */
++    private void stampRiskFlag(OwnerDto ownerDto, Owner owner) {
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean disposableAdjacent = DisposableEmailValidator.isDisposableAdjacent(owner.getEmail());
++        boolean cityOverSoftCapacity =
++            this.clinicService.countOwnersByCity(owner.getCity()) >= CITY_CAPACITY_WARNING_THRESHOLD;
++        ownerDto.setRiskFlag(possibleDuplicate || disposableAdjacent || cityOverSoftCapacity);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java
+index 1235bf6aa..967c1c2c0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DisposableEmailValidator.java
+@@ -40,14 +40,40 @@ public final class DisposableEmailValidator {
+      * @return {@code true} when the email's domain is blocklisted, {@code false} otherwise
+      */
+     public static boolean isDisposable(String email) {
+-        if (email == null) {
++        String domain = domainOf(email);
++        return domain != null && BLOCKED_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Returns whether the supplied email's domain is <em>disposable-adjacent</em>: a subdomain of a
++     * blocklisted disposable provider (for example {@code inbox.mailinator.com}) rather than the
++     * blocked domain itself. Such an address is not refused outright at creation yet still belongs to
++     * a throwaway provider, so it is worth surfacing as a soft risk signal. The comparison is
++     * case-insensitive; a {@code null}, blank or address-less value is not adjacent.
++     *
++     * @param email the email as submitted, possibly {@code null} or blank
++     * @return {@code true} when the email's domain is a subdomain of a blocklisted domain
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null) {
+             return false;
+         }
++        return BLOCKED_DOMAINS.stream().anyMatch(blocked -> domain.endsWith("." + blocked));
++    }
++
++    /**
++     * Extracts the lower-cased domain part of an email, or {@code null} when the value is
++     * {@code null} or carries no {@code '@'} separator.
++     */
++    private static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
+         int at = email.lastIndexOf('@');
+         if (at < 0) {
+-            return false;
++            return null;
+         }
+-        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+-        return BLOCKED_DOMAINS.contains(domain);
++        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0be90579f..498ae15bc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2308,6 +2308,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review because any of
++                these hold: the owner is a possible duplicate, the email domain is
++                disposable-adjacent (a subdomain of a known disposable-email
++                provider), or the owner's city is at or over its soft capacity of
++                40 owners; false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
