@@ -16,36 +16,24 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Locale;
-import java.util.Set;
-
+import org.springframework.samples.petclinic.model.DisposableEmailDomains;
 import org.springframework.stereotype.Component;
 
 /**
  * Recognises email addresses whose domain belongs to a known disposable-email provider.
  * <p>
  * Disposable domains are throwaway mailboxes unsuitable for owner contact, so an address on
- * one of these domains is rejected rather than stored.
+ * one of these domains is rejected rather than stored. The provider knowledge itself lives in
+ * {@link DisposableEmailDomains}.
  */
 @Component
 public class DisposableEmailDomainChecker {
-
-    private static final Set<String> DISPOSABLE_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * @param email an email address as supplied by the client
      * @return {@code true} when the address's domain is on the disposable-domain blocklist
      */
     public boolean isDisposable(String email) {
-        if (email == null) {
-            return false;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        return DISPOSABLE_DOMAINS.contains(domain);
+        return DisposableEmailDomains.isDisposable(email);
     }
 }

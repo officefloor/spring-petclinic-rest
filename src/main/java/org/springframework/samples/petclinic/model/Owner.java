@@ -452,6 +452,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Whether this owner should be flagged for review, derived on read from the owner's own
+     * fields: {@code true} when any risk signal holds — the owner is a
+     * {@link #getPossibleDuplicate() possible duplicate}, its email domain is
+     * {@link DisposableEmailDomains#isAdjacent(String) disposable-adjacent}, or its city was
+     * over soft capacity when created (its {@link #getCapacityWarning() capacity warning} is
+     * set) — otherwise {@code false}.
+     */
+    @Transient
+    public boolean getRiskFlag() {
+        return Boolean.TRUE.equals(this.possibleDuplicate)
+            || Boolean.TRUE.equals(this.capacityWarning)
+            || DisposableEmailDomains.isAdjacent(this.email);
+    }
+
+    /**
      * Whether this owner has been soft-deleted. A newly created owner is {@code false};
      * {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record. Owners
      * flagged deleted are ignored by the create endpoint's duplicate and identity checks.
