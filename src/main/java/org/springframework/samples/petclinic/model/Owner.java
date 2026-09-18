@@ -141,6 +141,16 @@ public class Owner extends Person {
         return noNamesakes && hasEmail ? MembershipTier.SILVER : MembershipTier.BRONZE;
     }
 
+    /**
+     * The owner's locality: the canonical region derived on read from the owner's
+     * {@link #city} via the fixed {@link CityRegionTable}, or {@code "UNKNOWN"} when
+     * the city has no known region.
+     */
+    @Transient
+    public String getLocality() {
+        return CityRegionTable.regionOf(this.city);
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
