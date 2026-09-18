@@ -18,14 +18,37 @@ public final class DisposableEmailDomains {
 
     /** Whether {@code email}'s domain is on the disposable-domain blocklist. */
     public static boolean isBlocked(String email) {
-        if (email == null) {
+        String domain = domainOf(email);
+        return domain != null && BLOCKED.contains(domain);
+    }
+
+    /**
+     * Whether {@code email}'s domain is disposable-adjacent: not itself blocked, but a subdomain
+     * of a blocked domain (e.g. {@code inbox.mailinator.com}). Such a near-miss slips past
+     * {@link #isBlocked} yet still looks like a throwaway provider.
+     */
+    public static boolean isAdjacent(String email) {
+        String domain = domainOf(email);
+        if (domain == null || BLOCKED.contains(domain)) {
             return false;
+        }
+        for (String blocked : BLOCKED) {
+            if (domain.endsWith("." + blocked)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The lower-cased domain of {@code email}, or {@code null} when it has none. */
+    private static String domainOf(String email) {
+        if (email == null) {
+            return null;
         }
         int at = email.lastIndexOf('@');
         if (at < 0) {
-            return false;
+            return null;
         }
-        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
-        return BLOCKED.contains(domain);
+        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
     }
 }
