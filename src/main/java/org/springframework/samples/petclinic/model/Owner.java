@@ -147,6 +147,16 @@ public class Owner extends Person {
         return CityRegionTable.regionOf(this.city);
     }
 
+    /**
+     * The owner's preferred contact channel, derived on read from the owner's own
+     * fields: {@code "EMAIL"} when the owner has an email address, otherwise
+     * {@code "PHONE"}.
+     */
+    @Transient
+    public String getContactPreference() {
+        return (this.email == null || this.email.isBlank()) ? "PHONE" : "EMAIL";
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
