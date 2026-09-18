@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -37,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -66,6 +68,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * this many owners is rejected as a conflict.
      */
     static final int MAX_OWNERS_PER_CITY = 50;
+
+    /**
+     * Maximum number of owners that may be registered on a single day. A create request whose
+     * registration date already holds this many owners is rejected with 429 Too Many Requests.
+     */
+    static final int MAX_OWNERS_PER_DAY = 100;
 
     private final ClinicService clinicService;
 
@@ -122,6 +130,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity());
+        }
+        LocalDate registrationDate =
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        if (this.clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(registrationDate);
         }
         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {

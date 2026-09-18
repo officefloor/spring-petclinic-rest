@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 import org.springframework.dao.DataAccessException;
@@ -108,7 +109,15 @@ public interface OwnerRepository {
      * @return the number of persisted owners in that city
      */
     long countByCity(String city) throws DataAccessException;
-	
+
+    /**
+     * Count the number of <code>Owner</code>s in the data store registered on the given date.
+     *
+     * @param registrationDate the registration date to match
+     * @return the number of persisted owners whose registration date equals the given date
+     */
+    long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+
     /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
      *

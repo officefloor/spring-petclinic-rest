@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -68,6 +69,14 @@ public interface ClinicService {
 	 * @return the number of persisted owners in that city
 	 */
 	long countOwnersByCity(String city) throws DataAccessException;
+
+	/**
+	 * Count the number of owners registered on the given date.
+	 *
+	 * @param registrationDate the registration date to match
+	 * @return the number of persisted owners whose registration date equals the given date
+	 */
+	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 
 	/**
 	 * Retrieve the owners that belong to the same household as the given last name and address, i.e.

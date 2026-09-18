@@ -36,6 +36,7 @@ import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
 import jakarta.transaction.Transactional;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -251,6 +252,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
 		params.put("city", city);
 		Long total = this.namedParameterJdbcTemplate.queryForObject(
 			"SELECT COUNT(*) FROM owners WHERE city = :city",
+			params,
+			Long.class);
+		return total == null ? 0 : total;
+	}
+
+	@Override
+	public long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
+		Map<String, Object> params = new HashMap<>();
+		params.put("registrationDate", registrationDate);
+		Long total = this.namedParameterJdbcTemplate.queryForObject(
+			"SELECT COUNT(*) FROM owners WHERE registration_date = :registrationDate",
 			params,
 			Long.class);
 		return total == null ? 0 : total;
