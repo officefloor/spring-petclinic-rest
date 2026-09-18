@@ -340,6 +340,16 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's fiscal year: the {@code FY<YY>} label of the fiscal year (starting 1 July)
+     * containing its business-day-adjusted registration date (see {@link FiscalYear}), or
+     * {@code null} when no registration date is set.
+     */
+    @Transient
+    public String getFiscalYear() {
+        return (this.registrationDate != null) ? FiscalYear.label(this.registrationDate) : null;
+    }
+
+    /**
      * The owner's identity key: the single derived value all duplicate detection is expressed
      * through, formed as {@code <normalizedTelephone>|<email or empty>|<householdId or empty>}.
      * Two owners are duplicates only when their whole identity keys are equal, so members of one

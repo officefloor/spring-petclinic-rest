@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
  */
 public class AssignMembership {
 
-    /** A newly created owner has not yet accrued any tenure. */
+    /** A newly created owner has not yet accrued any tenure (zero elapsed fiscal years). */
     private static final long TENURE_AT_CREATION = 0;
 
     public void service(@Val Owner owner) {
