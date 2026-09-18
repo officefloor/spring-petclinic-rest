@@ -62,6 +62,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByTelephone(@Param("telephone") String telephone);
 
     @Override
+    @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = :email")
+    Collection<Owner> findByEmail(@Param("email") String email);
+
+    @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")
     long count();
 

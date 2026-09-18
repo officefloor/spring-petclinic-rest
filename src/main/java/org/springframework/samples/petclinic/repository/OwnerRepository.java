@@ -67,6 +67,16 @@ public interface OwnerRepository {
      */
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
+    /**
+     * Retrieve every <code>Owner</code> whose stored email matches the given value case-insensitively.
+     * Used to enforce email uniqueness on create; the value passed is already lower-cased, matching how
+     * owner emails are normalized before being persisted through the REST API.
+     *
+     * @param email the lower-cased email to match
+     * @return the matching <code>Owner</code>s (empty if none)
+     */
+    Collection<Owner> findByEmail(String email) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
