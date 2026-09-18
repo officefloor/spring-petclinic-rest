@@ -191,8 +191,8 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link InvalidTelephoneException} raised when a submitted telephone number does not hold
-     * exactly ten digits once every non-digit character is stripped, returning a 400 Bad Request.
+     * Handles {@link InvalidTelephoneException} raised when a submitted telephone number cannot be
+     * converted to a valid E.164 value, returning a 400 Bad Request.
      *
      * @param e The {@link InvalidTelephoneException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.

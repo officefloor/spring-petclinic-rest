@@ -17,15 +17,15 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Raised when a submitted telephone number does not contain exactly ten digits once every
- * non-digit character has been stripped, so the client can be told the value is invalid.
+ * Raised when a submitted telephone number cannot be converted to a valid E.164 value (it does not
+ * hold 8 to 15 digits after the country-code prefix), so the client can be told the value is invalid.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     private final String telephone;
 
     public InvalidTelephoneException(String telephone) {
-        super("Telephone must contain exactly 10 digits: " + telephone);
+        super("Telephone must form a valid E.164 number with 8 to 15 digits: " + telephone);
         this.telephone = telephone;
     }
 
