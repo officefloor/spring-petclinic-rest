@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 15bb013dd..213ce9b43 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -96,6 +96,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "deleted", nullable = false)
+     private boolean deleted;
+ 
+@@ -458,6 +461,19 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this owner's city was approaching its owner capacity when the owner was
++     * created: {@code true} when the city already held between 40 and 49 owners (the hard
++     * limit is 50), otherwise {@code false}. Assigned on create.
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * Whether this owner has been soft-deleted. A newly created owner is {@code false};
+      * {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record. Owners
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/CityCapacityChecker.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/CityCapacityChecker.java
+index 3cfaafd55..19ac69e7d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/CityCapacityChecker.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/CityCapacityChecker.java
+@@ -21,11 +21,14 @@ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Enforces, on create, the limit of owners allowed per city.
++ * Enforces, on create, the limit of owners allowed per city and flags owners created while
++ * their city is approaching that limit.
+  * <p>
+  * A city is at capacity once it already contains {@link #MAX_OWNERS_PER_CITY} owners, at
+- * which point no further owner may be created there. The count reflects the owners stored
+- * before this create, so it must be checked before the owner is saved.
++ * which point no further owner may be created there. It is approaching capacity once it holds
++ * at least {@link #CAPACITY_WARNING_THRESHOLD} (but fewer than {@link #MAX_OWNERS_PER_CITY})
++ * owners. Both counts reflect the owners stored before this create, so they must be evaluated
++ * before the owner is saved.
+  */
+ @Component
+ public class CityCapacityChecker {
+@@ -33,6 +36,9 @@ public class CityCapacityChecker {
+     /** Maximum number of owners a single city may contain. */
+     static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /** Number of owners at which a city is considered to be approaching capacity. */
++    static final int CAPACITY_WARNING_THRESHOLD = 40;
++
+     private final ClinicService clinicService;
+ 
+     public CityCapacityChecker(ClinicService clinicService) {
+@@ -48,6 +54,24 @@ public class CityCapacityChecker {
+      * @return {@code true} if the city already contains the maximum number of owners
+      */
+     public boolean isCityAtCapacity(Owner owner) {
+-        return clinicService.countOwnersByCity(owner.getCity()) >= MAX_OWNERS_PER_CITY;
++        return countOwnersInCity(owner) >= MAX_OWNERS_PER_CITY;
++    }
++
++    /**
++     * Assigns {@code owner}'s capacity warning: {@code true} when its city already holds
++     * between {@link #CAPACITY_WARNING_THRESHOLD} and {@link #MAX_OWNERS_PER_CITY} (exclusive)
++     * owners, otherwise {@code false}. Call this before the owner is saved so it does not
++     * count itself.
++     *
++     * @param owner the owner being created
++     */
++    public void assignCapacityWarning(Owner owner) {
++        long ownersInCity = countOwnersInCity(owner);
++        owner.setCapacityWarning(
++            ownersInCity >= CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY);
++    }
++
++    private long countOwnersInCity(Owner owner) {
++        return clinicService.countOwnersByCity(owner.getCity());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 15b1be19c..1e14e5c78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -196,6 +196,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        this.cityCapacityChecker.assignCapacityWarning(owner);
+         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d8f153bcc..09ffd5231 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6b0ec8bec..f62180490 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -58,6 +58,7 @@ CREATE TABLE owners (
+   membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 51cf77193..2a3b235af 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9b5f971ee..82685512a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_level INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      capacity_warning BOOLEAN,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0aeab9990..4bf5c3d13 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2336,6 +2336,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether the owner's city was approaching its owner capacity when this owner
++                was created: true when the city already held between 40 and 49 owners
++                (approaching the hard limit of 50), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
