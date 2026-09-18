@@ -159,18 +159,22 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier, derived from the owner's own fields. Returns
-     * {@code "GOLD"} when the owner belongs to a household of three or more
-     * members, {@code "SILVER"} when the owner has no namesakes and a contact
-     * email on file, and {@code "BRONZE"} otherwise.
+     * The owner's membership level, a number from 1 to 3 derived from the
+     * owner's own fields. Starts at {@code 1}, gains {@code 1} when a contact
+     * email is on file, gains {@code 1} when the owner has no namesakes, and is
+     * capped at {@code 3}. (Level {@code 4} is reserved for tenure.)
      */
-    public String getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= 3) {
-            return "GOLD";
-        }
+    public Integer getMembershipLevel() {
+        int level = 1;
         boolean hasEmail = this.email != null && !this.email.isEmpty();
+        if (hasEmail) {
+            level += 1;
+        }
         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+        if (noNamesakes) {
+            level += 1;
+        }
+        return Math.min(level, 3);
     }
 
     public Integer getNamesakeCount() {

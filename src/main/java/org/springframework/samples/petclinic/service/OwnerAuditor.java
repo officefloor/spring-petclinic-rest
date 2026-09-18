@@ -32,12 +32,12 @@ public class OwnerAuditor {
 
     /**
      * Record that an owner was successfully created, capturing its id, customer
-     * code and (resolved) registration date.
+     * code, (resolved) registration date and membership level.
      *
      * @param owner the newly persisted owner
      */
     public void ownerCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
     }
 }
