@@ -54,6 +54,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -95,6 +98,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
     }
 
     protected Set<Pet> getPetsInternal() {
@@ -170,6 +181,7 @@ public class Owner extends Person {
             .append("telephone", this.telephone)
             .append("email", this.email)
             .append("registrationDate", this.registrationDate)
+            .append("customerCode", this.customerCode)
             .toString();
     }
 }

@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -69,18 +70,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final RegistrationDateDefaulter registrationDateDefaulter;
 
+    private final CustomerCodeAssigner customerCodeAssigner;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
-                                 RegistrationDateDefaulter registrationDateDefaulter) {
+                                 RegistrationDateDefaulter registrationDateDefaulter,
+                                 CustomerCodeAssigner customerCodeAssigner) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.registrationDateDefaulter = registrationDateDefaulter;
+        this.customerCodeAssigner = customerCodeAssigner;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -122,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.registrationDateDefaulter.applyDefault(owner);
+        this.customerCodeAssigner.assign(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
