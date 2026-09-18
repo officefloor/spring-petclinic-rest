@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -24,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName' from the stored names. */
@@ -57,6 +59,12 @@ public interface OwnerMapper {
      *  otherwise 'PHONE'. */
     default String contactPreference(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
+    }
+
+    /** The owner's derived duplicate-detection identity key: normalized telephone, email and
+     *  household id joined by '|'. See {@link OwnerIdentity#key}. */
+    default String identityKey(Owner owner) {
+        return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
     }
 
     Owner toOwner(OwnerDto ownerDto);
