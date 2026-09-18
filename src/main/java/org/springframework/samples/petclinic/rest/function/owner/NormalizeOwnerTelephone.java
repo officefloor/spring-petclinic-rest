@@ -23,8 +23,7 @@ public class NormalizeOwnerTelephone {
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> normalized)
             throws InvalidOwnerFieldsException {
 
-        String telephone = request.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String digits = OwnerTelephone.digits(request.getTelephone());
         if (digits.length() != REQUIRED_DIGITS) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
