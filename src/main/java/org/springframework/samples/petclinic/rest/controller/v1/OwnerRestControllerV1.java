@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
+import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimiter;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.NamesakeCounter;
@@ -84,6 +85,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CityCapacityChecker cityCapacityChecker;
 
+    private final DailyRegistrationLimiter dailyRegistrationLimiter;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -94,7 +97,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdDuplicateChecker householdDuplicateChecker,
                                  HouseholdAssigner householdAssigner,
                                  NamesakeCounter namesakeCounter,
-                                 CityCapacityChecker cityCapacityChecker) {
+                                 CityCapacityChecker cityCapacityChecker,
+                                 DailyRegistrationLimiter dailyRegistrationLimiter) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -106,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdAssigner = householdAssigner;
         this.namesakeCounter = namesakeCounter;
         this.cityCapacityChecker = cityCapacityChecker;
+        this.dailyRegistrationLimiter = dailyRegistrationLimiter;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -148,6 +153,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (this.dailyRegistrationLimiter.isDailyLimitReached()) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean duplicate = this.householdDuplicateChecker.isDuplicate(owner);
