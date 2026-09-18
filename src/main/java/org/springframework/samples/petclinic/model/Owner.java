@@ -237,8 +237,23 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
+     * digits of the {@link FiscalYear fiscal year} the {@code registrationDate} falls in
+     * (the fiscal year starts on 1 July), e.g. {@code "FY26"}. Derived on read from the
+     * owner's registration date; {@code null} until it has been assigned.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return FiscalYear.labelOf(this.registrationDate);
+    }
+
+    /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where
-     * {@code YY} is the last two digits of the {@code registrationDate} year, e.g.
+     * {@code YY} is the last two digits of the {@link FiscalYear fiscal year} the
+     * {@code registrationDate} falls in (the fiscal year starts on 1 July), e.g.
      * {@code "NSW-1A2B3C4D-M26"}. Derived from the owner's own fields; {@code null} until
      * both the customer code and registration date have been assigned.
      */
@@ -247,7 +262,7 @@ public class Owner extends Person {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, FiscalYear.startYearOf(this.registrationDate) % 100);
     }
 
     /**

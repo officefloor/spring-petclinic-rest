@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * owner has an email address, {@link #NO_NAMESAKE_POINTS} when the owner has no namesakes
  * ({@code namesakeCount} is 0), {@link #LARGE_HOUSEHOLD_POINTS} for a household of
  * {@link #LARGE_HOUSEHOLD_MIN_SIZE} or more, and {@link #TENURE_POINTS} for tenure of more
- * than {@link #QUALIFYING_TENURE_DAYS} days. The total bands into a level of 1 (0-1 points),
+ * than {@link #QUALIFYING_TENURE_FISCAL_YEARS} fiscal years. The total bands into a level of 1 (0-1 points),
  * 2 (2-3), 3 (4-5) or 4 (6 or more). A newly created owner has not yet accrued any tenure, so
  * on create the tenure points are never earned. As it reads the owner's namesake count and
  * household size, this must be assigned after {@link NamesakeCounter} and
@@ -45,14 +45,14 @@ public class MembershipLevelAssigner {
     /** Points awarded for a household of {@link #LARGE_HOUSEHOLD_MIN_SIZE} or more. */
     static final int LARGE_HOUSEHOLD_POINTS = 2;
 
-    /** Points awarded for tenure of more than {@link #QUALIFYING_TENURE_DAYS} days. */
+    /** Points awarded for tenure of more than {@link #QUALIFYING_TENURE_FISCAL_YEARS} fiscal years. */
     static final int TENURE_POINTS = 3;
 
     /** Household size, in members, at or above which {@link #LARGE_HOUSEHOLD_POINTS} apply. */
     static final int LARGE_HOUSEHOLD_MIN_SIZE = 3;
 
-    /** Tenure, in days, an owner must exceed to earn the {@link #TENURE_POINTS}. */
-    static final int QUALIFYING_TENURE_DAYS = 365;
+    /** Tenure, in elapsed fiscal years, an owner must exceed to earn the {@link #TENURE_POINTS}. */
+    static final int QUALIFYING_TENURE_FISCAL_YEARS = 1;
 
     /**
      * Assigns {@code owner}'s membership points and the level they band into. Call this after
@@ -111,16 +111,16 @@ public class MembershipLevelAssigner {
     }
 
     /**
-     * Whether the owner's tenure exceeds the {@link #QUALIFYING_TENURE_DAYS} the tenure points
-     * require. A newly created owner has not yet accrued any tenure, so on create this is
+     * Whether the owner's tenure exceeds the {@link #QUALIFYING_TENURE_FISCAL_YEARS} the tenure
+     * points require. A newly created owner has not yet accrued any tenure, so on create this is
      * always {@code false} and a new owner never earns the tenure points.
      */
     private boolean hasQualifyingTenure(Owner owner) {
-        return tenureDays(owner) > QUALIFYING_TENURE_DAYS;
+        return tenureFiscalYears(owner) > QUALIFYING_TENURE_FISCAL_YEARS;
     }
 
-    /** The whole days the owner has been a member; zero for an owner being created. */
-    private long tenureDays(Owner owner) {
+    /** The whole fiscal years the owner has been a member; zero for an owner being created. */
+    private long tenureFiscalYears(Owner owner) {
         return 0L;
     }
 }
