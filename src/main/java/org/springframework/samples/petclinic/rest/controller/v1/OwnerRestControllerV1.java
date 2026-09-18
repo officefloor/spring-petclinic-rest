@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
@@ -105,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(AddressNormalizer.normalize(ownerFieldsDto.getAddress()));
         List<String> missingFields = OwnerFieldsValidator.findMissingFields(ownerFieldsDto);
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
