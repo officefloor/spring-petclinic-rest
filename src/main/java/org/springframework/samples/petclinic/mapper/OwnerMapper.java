@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.OwnerRegion;
@@ -29,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName' from the stored names. */
@@ -77,6 +79,15 @@ public interface OwnerMapper {
      *  household id joined by '|'. See {@link OwnerIdentity#key}. */
     default String identityKey(Owner owner) {
         return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+    }
+
+    /** The owner's age band derived from its birthDate against its registrationDate, or null when
+     *  either date is absent. See {@link AgeBand}. */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        if (owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return OwnerDto.AgeBandEnum.fromValue(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()));
     }
 
     Owner toOwner(OwnerDto ownerDto);
