@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3e1929802..15bb013dd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -249,6 +249,18 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * The owner's current primary identifier: the single value that identifies the owner
++     * to the outside world. Today this is the {@link #getCustomerCode() customer code};
++     * once the customer code is unified into the member id this method will return the
++     * member id instead, so callers that must carry "the identifier" (such as the owner
++     * creation audit event) follow the migration automatically.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return this.customerCode;
++    }
++
+     /**
+      * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
+      * digits of the {@link FiscalYear fiscal year} the {@code registrationDate} falls in
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..bc8dff33f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured record of a successful owner creation, serialized to the
++ * {@code AUDIT} logger alongside the human-readable audit line.
++ * <p>
++ * The event carries the owner's id together with its
++ * {@link Owner#getPrimaryIdentifier() current primary identifier} (the customer
++ * code today, whatever replaces it later), so downstream consumers can follow the
++ * identifier as it evolves. {@code seq} is a monotonically increasing counter that
++ * orders creates.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++        String event) {
++
++    private static final String OWNER_CREATED = "OWNER_CREATED";
++
++    /**
++     * Captures {@code owner}'s state at creation under the given sequence number. Call
++     * this only after the owner has been saved so its id and derived fields are set.
++     */
++    public static OwnerCreatedEvent of(long seq, Owner owner) {
++        return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(), owner.getMembershipLevel(),
++            OWNER_CREATED);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreationAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreationAuditLogger.java
+index 1410bd789..5782cf8c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreationAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreationAuditLogger.java
+@@ -16,26 +16,38 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.stereotype.Component;
+ 
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
++
+ /**
+  * Emits the audit trail for owner creation.
+  * <p>
+  * On a successful create a single line is written to the dedicated {@code AUDIT}
+  * logger carrying the newly assigned owner id, its customer code, its
+  * registration date, its membership level and its membership number, so the
+- * side-effect can be observed independently of the REST response.
++ * side-effect can be observed independently of the REST response. The same create
++ * additionally emits an immutable {@link OwnerCreatedEvent} serialized as JSON, so
++ * the side-effect can also be consumed structurally.
+  */
+ @Component
+ public class OwnerCreationAuditLogger {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
++
++    private final AtomicLong sequence = new AtomicLong();
++
+     /**
+-     * Logs an audit line for the just-created {@code owner}. Call this only after the
++     * Logs the audit trail for the just-created {@code owner}: a human-readable line
++     * followed by the structured {@link OwnerCreatedEvent}. Call this only after the
+      * owner has been saved so its id and derived fields are populated.
+      *
+      * @param owner the owner that was created
+@@ -44,5 +56,7 @@ public class OwnerCreationAuditLogger {
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+             owner.getMembershipNumber());
++        OwnerCreatedEvent event = OwnerCreatedEvent.of(this.sequence.incrementAndGet(), owner);
++        AUDIT.info(MAPPER.writeValueAsString(event));
+     }
+ }
