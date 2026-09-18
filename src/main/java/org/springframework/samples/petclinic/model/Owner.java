@@ -67,6 +67,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -142,6 +145,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     /**
      * The owner's locality: the canonical region derived from the city via the fixed
      * {@link CityRegion} table, or {@code "UNKNOWN"} when the city is not in the table.
@@ -152,11 +163,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier, derived from its state: {@code SILVER} when the owner had no
-     * namesakes at creation ({@link #getNamesakeCount()} is 0) and has an email address, otherwise
-     * {@code BRONZE}.
+     * The owner's membership tier, derived from its state: {@code GOLD} when the owner's household
+     * had 3 or more members at creation ({@link #getHouseholdSize()} is 3 or more); otherwise
+     * {@code SILVER} when the owner had no namesakes at creation ({@link #getNamesakeCount()} is 0)
+     * and has an email address, otherwise {@code BRONZE}.
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
         return unique && StringUtils.hasText(this.email) ? "SILVER" : "BRONZE";
     }
