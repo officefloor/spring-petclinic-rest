@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.OwnerRegion;
 import org.springframework.samples.petclinic.util.RegionTimezone;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -67,12 +69,19 @@ public interface OwnerMapper {
     }
 
     /** The membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two digits of
-     *  the registrationDate year (e.g. 'NSW-1A2B3C4D-M26'). Null when either source field is absent. */
+     *  the registrationDate's fiscal year (see {@link FiscalYear}, e.g. 'NSW-1A2B3C4D-M27'). Null
+     *  when either source field is absent. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(), FiscalYear.of(owner.getRegistrationDate()) % 100);
+    }
+
+    /** The registrationDate's fiscal year as 'FY&lt;YY&gt;' (see {@link FiscalYear}, e.g. 'FY27').
+     *  Null when the registrationDate is absent. */
+    default String fiscalYear(Owner owner) {
+        return owner.getRegistrationDate() == null ? null : FiscalYear.label(owner.getRegistrationDate());
     }
 
     /** The Luhn check digit over the digits of the customerCode. Null when the customerCode
