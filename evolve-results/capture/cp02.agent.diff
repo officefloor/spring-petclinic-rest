@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
+index faef5bb06..4e54065e3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerFieldsValidator.java
+@@ -23,11 +23,15 @@ import org.springframework.validation.ValidationUtils;
+ import org.springframework.validation.Validator;
+ 
+ /**
+- * Rejects an {@link OwnerFieldsDto} whose required text fields are missing or blank.
++ * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
++ * request body: required text fields must be present and non-blank, and the telephone is
++ * normalized to its bare digits and required to be exactly {@link TelephoneNormalizer#REQUIRED_DIGITS}
++ * digits long.
+  * <p>
+- * Registered on the owner controller through {@code @InitBinder} so it runs as part of the
+- * standard {@code @Valid} pass on the request body: every rejected field is recorded as a
+- * field error on the shared {@link Errors}, surfacing through the usual bad-request handling.
++ * Registered on the owner controller through {@code @InitBinder} so every rejected field is
++ * recorded as a field error on the shared {@link Errors}, surfacing through the usual
++ * bad-request handling. A valid telephone is written back to the DTO in normalized form so it
++ * is stored and returned as its 10 digits.
+  *
+  * @author Vitaliy Fedoriv
+  */
+@@ -36,6 +40,12 @@ public class OwnerFieldsValidator implements Validator {
+ 
+     private static final String[] REQUIRED_FIELDS = {"firstName", "lastName", "address", "city", "telephone"};
+ 
++    private final TelephoneNormalizer telephoneNormalizer;
++
++    public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer) {
++        this.telephoneNormalizer = telephoneNormalizer;
++    }
++
+     @Override
+     public boolean supports(Class<?> clazz) {
+         return OwnerFieldsDto.class.isAssignableFrom(clazz);
+@@ -46,5 +56,18 @@ public class OwnerFieldsValidator implements Validator {
+         for (String field : REQUIRED_FIELDS) {
+             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
+         }
++        if (!errors.hasFieldErrors("telephone")) {
++            normalizeTelephone((OwnerFieldsDto) target, errors);
++        }
++    }
++
++    private void normalizeTelephone(OwnerFieldsDto owner, Errors errors) {
++        String digits = telephoneNormalizer.normalize(owner.getTelephone());
++        if (telephoneNormalizer.hasRequiredLength(digits)) {
++            owner.setTelephone(digits);
++        } else {
++            errors.rejectValue("telephone", "telephone.invalid",
++                "must contain exactly " + TelephoneNormalizer.REQUIRED_DIGITS + " digits");
++        }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+new file mode 100644
+index 000000000..b4550359c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Reduces an owner telephone number to its bare digits.
++ * <p>
++ * A canonical telephone is exactly {@link #REQUIRED_DIGITS} digits with every separator,
++ * prefix or other non-digit character removed, so numbers that differ only in formatting
++ * are stored and compared identically.
++ */
++@Component
++public class TelephoneNormalizer {
++
++    /** The exact number of digits a normalized telephone must contain. */
++    public static final int REQUIRED_DIGITS = 10;
++
++    /**
++     * Strips every non-digit character from {@code raw}, keeping only its digits.
++     *
++     * @param raw the telephone as supplied by the client, possibly {@code null}
++     * @return the digits contained in {@code raw}; empty when {@code raw} is {@code null}
++     *         or holds no digits
++     */
++    public String normalize(String raw) {
++        return raw == null ? "" : raw.replaceAll("\\D", "");
++    }
++
++    /**
++     * @param digits an already-normalized telephone
++     * @return {@code true} when it consists of exactly {@link #REQUIRED_DIGITS} digits
++     */
++    public boolean hasRequiredLength(String digits) {
++        return digits != null && digits.length() == REQUIRED_DIGITS;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76c..be3c41357 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create it is normalized by
++            stripping every non-digit character and must then contain exactly 10 digits;
++            the normalized 10-digit value is stored and returned.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
