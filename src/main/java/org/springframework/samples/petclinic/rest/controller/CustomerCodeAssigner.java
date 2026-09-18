@@ -16,8 +16,12 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256Hex;
+import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,6 +31,10 @@ import org.springframework.stereotype.Component;
  * {@link Owner#getRegion() region} (derived from its postcode, falling back to its city)
  * and {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
  * owner's normalized telephone concatenated with its last name (e.g. {@code "NSW-1A2B3C4D"}).
+ * <p>
+ * When the computed code collides with an already-stored owner's customer code, it is
+ * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that
+ * makes it unique.
  */
 @Component
 public class CustomerCodeAssigner {
@@ -34,15 +42,36 @@ public class CustomerCodeAssigner {
     /** Number of leading hex characters of the identity hash kept in the customer code. */
     private static final int HASH_LENGTH = 8;
 
+    private final ClinicService clinicService;
+
+    public CustomerCodeAssigner(ClinicService clinicService) {
+        this.clinicService = clinicService;
+    }
+
     /**
      * Assigns {@code owner}'s customer code from its region and the hash of its normalized
-     * telephone and last name. Call this after the telephone has been normalized and before
-     * the owner is saved.
+     * telephone and last name, de-duplicated against already-stored owners. Call this after
+     * the telephone has been normalized and before the owner is saved.
      *
      * @param owner the owner being created
      */
     public void assign(Owner owner) {
-        String hash = Sha256Hex.prefix(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
-        owner.setCustomerCode(owner.getRegion() + "-" + hash);
+        String base = owner.getRegion() + "-"
+            + Sha256Hex.prefix(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
+        owner.setCustomerCode(deduplicate(base));
+    }
+
+    private String deduplicate(String base) {
+        Set<String> existing = clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .collect(Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 }
