@@ -51,7 +51,9 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
   household_size INTEGER,
-  membership_level INTEGER
+  membership_level INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
