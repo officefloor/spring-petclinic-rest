@@ -181,6 +181,21 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's identity key: the single derived value all duplicate detection is expressed
+     * through, formed as {@code <normalizedTelephone>|<email or empty>|<householdId or empty>}.
+     * Two owners are duplicates only when their whole identity keys are equal, so members of one
+     * household (same {@code householdId}) with different telephones have different keys.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return blankToEmpty(this.telephone) + '|' + blankToEmpty(this.email) + '|' + blankToEmpty(this.householdId);
+    }
+
+    private static String blankToEmpty(String value) {
+        return (value == null) ? "" : value;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

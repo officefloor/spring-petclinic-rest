@@ -10,8 +10,8 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Household identity shared by the create-owner steps. A household is the set of owners with the same
  * last name (compared case-insensitively with collapsed whitespace) and the same normalized address
- * (see {@link AddressNormalizer}). Used by {@link EnsureUniqueHousehold} to reject an un-opted-in
- * duplicate and by {@link AssignHousehold} to give members a single shared {@code householdId}.
+ * (see {@link AddressNormalizer}). Used by {@link AssignHousehold} to give the members that opt into
+ * sharing a single shared {@code householdId}, which then forms part of each owner's identity key.
  */
 final class Household {
 
