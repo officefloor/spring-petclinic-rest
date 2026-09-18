@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
   email VARCHAR(255),
   registration_date DATE,
   customer_code VARCHAR(20),
+  membership_number VARCHAR(25),
   household_id VARCHAR(40),
   namesake_count INTEGER
 );
