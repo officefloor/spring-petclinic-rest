@@ -27,4 +27,12 @@ public final class CityRegion {
     public static String locality(String city) {
         return city == null ? UNKNOWN : TABLE.getOrDefault(city, UNKNOWN);
     }
+
+    /**
+     * Whether {@code region} is a known canonical region (one of the {@link #TABLE table}'s
+     * regions: NSW, VIC or QLD) rather than {@link #UNKNOWN} or absent.
+     */
+    public static boolean isKnown(String region) {
+        return TABLE.containsValue(region);
+    }
 }

@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.OwnerRegion;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 
 import java.util.Collection;
@@ -39,6 +40,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's canonical relative URL, '/api/owners/' followed by its id. */
@@ -131,6 +133,12 @@ public interface OwnerMapper {
             return null;
         }
         return OwnerDto.AgeBandEnum.fromValue(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()));
+    }
+
+    /** The owner's marketing segment '&lt;TIER&gt;_&lt;AREA&gt;', derived from its membershipLevel and
+     *  {@link #locality locality}. See {@link OwnerSegment}. */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        return OwnerDto.OwnerSegmentEnum.fromValue(OwnerSegment.of(owner.getMembershipLevel(), locality(owner)));
     }
 
     Owner toOwner(OwnerDto ownerDto);
