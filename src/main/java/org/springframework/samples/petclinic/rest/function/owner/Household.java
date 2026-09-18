@@ -5,43 +5,45 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
- * Identity of an owner's household. Two owners live in the same household when they share
- * the same last name and address. The address is compared in its {@link OwnerAddress
- * normalized} form and the last name case-insensitively with collapsed whitespace.
+ * Identity of an owner's household. Two owners live in the same household when they share the
+ * same last name and postcode. The last name is compared case-insensitively with collapsed
+ * whitespace and the postcode as supplied.
  *
  * <p>The {@link #id(String, String) household id} is derived deterministically from that
- * canonical key, so every member of a household computes the same stable identifier without
- * needing to coordinate.
+ * canonical key, so every owner with the same last name and postcode computes the same stable
+ * identifier automatically — no owner has to opt in for the link to form.
  */
 final class Household {
+
+    /** Number of leading hex characters of the digest that make up the household id. */
+    private static final int ID_LENGTH = 12;
 
     private Household() {
     }
 
     /**
      * Canonical household key: the last name trimmed, internal whitespace collapsed and
-     * lower-cased, and the address in its {@link OwnerAddress normalized} form, joined so
-     * distinct pairs never collide.
+     * lower-cased, joined to the postcode with {@code '|'} so distinct pairs never collide.
      */
-    static String key(String lastName, String address) {
-        return canonical(lastName) + "\n" + OwnerAddress.normalize(address);
-    }
-
-    /** Whether the two (last name, address) pairs belong to the same household. */
-    static boolean same(String lastNameA, String addressA, String lastNameB, String addressB) {
-        return key(lastNameA, addressA).equals(key(lastNameB, addressB));
+    static String key(String lastName, String postcode) {
+        return canonical(lastName) + "|" + orEmpty(postcode);
     }
 
     /**
-     * Stable identifier shared by every owner in the household — the SHA-256 hex digest of the
-     * canonical {@link #key(String, String) key}, so any member derives the same value.
+     * Stable identifier shared by every owner in the household: the first {@value #ID_LENGTH} hex
+     * characters of the SHA-256 digest of the canonical {@link #key(String, String) key}, so any
+     * two owners with the same last name and postcode derive the same value.
      */
-    static String id(String lastName, String address) {
-        return Sha256.hex(key(lastName, address));
+    static String id(String lastName, String postcode) {
+        return Sha256.hex(key(lastName, postcode)).substring(0, ID_LENGTH);
     }
 
     /** Case-insensitive form with leading/trailing and repeated internal whitespace collapsed. */
     private static String canonical(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

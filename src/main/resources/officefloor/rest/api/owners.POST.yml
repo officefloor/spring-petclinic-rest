@@ -43,11 +43,10 @@ validateRegistrationDate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerRegistrationDate
   next: unique
 
-# Reject a request whose derived identityKey (normalized telephone + email + household id)
-# exactly matches an existing owner's with a 409, before any entity is built or persisted.
-# This one key subsumes the former separate telephone, email and household checks: only a
-# whole-key match is a duplicate, so household members with different telephones are allowed.
-# Reads the same transaction as the writes.
+# Reject a request that would add a second owner to an existing household (same computed
+# household id, i.e. same lastName + postcode) with a 409, before any entity is built or
+# persisted. A request declaring 'sharesHousehold' bypasses this block and is created as a
+# household member. Reads the same transaction as the writes.
 unique:
   class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueOwnerIdentity
   govern: [ transaction ]
@@ -81,15 +80,18 @@ build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
   next: assignHousehold
+
+# Stamp the deterministic household id (first 12 hex of SHA-256 of lastName + postcode) onto the
+# built owner, so every owner sharing a lastName and postcode gets the same id automatically.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHousehold
   govern: [ transaction ]
   next: assignHouseholdSize
 
 # Record the size of this owner's household once the create completes (existing members
-# sharing its household id plus the owner itself). Runs after the household id is assigned and
-# backfilled, before the new owner is persisted, so the count reflects the state after the
-# create without counting the owner twice.
+# sharing its household id plus the owner itself). Runs after the household id is assigned,
+# before the new owner is persisted, so the count reflects the state after the create without
+# counting the owner twice.
 assignHouseholdSize:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
   govern: [ transaction ]
@@ -121,9 +123,10 @@ assignBulkSignupWarning:
   next: assignPossibleDuplicate
 
 # Flag the built owner as a soft duplicate when an existing owner shares its lastName and
-# postcode but has a different telephone (not a hard identity duplicate, which is rejected
-# upstream). Reads existing owners in the same transaction as the write, before the new owner
-# is persisted so it is not matched against itself.
+# postcode but has a different telephone (not a hard household duplicate, which is rejected
+# upstream). A declared household member ('sharesHousehold') is never flagged. Reads existing
+# owners in the same transaction as the write, before the new owner is persisted so it is not
+# matched against itself.
 assignPossibleDuplicate:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerPossibleDuplicate
   govern: [ transaction ]
