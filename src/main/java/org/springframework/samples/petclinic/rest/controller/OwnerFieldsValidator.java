@@ -24,8 +24,10 @@ import org.springframework.validation.Validator;
 
 /**
  * Validates an {@link OwnerFieldsDto} as part of the {@code @Valid} pass on the owner
- * request body: the address is canonicalised and then, like the other required text fields,
- * required to be present and non-blank; the telephone is canonicalised to E.164 form and
+ * request body: the address is canonicalised (preferring the structured {@code addressLine1}
+ * /{@code addressLine2} fields when present, composing them into the stored {@code address},
+ * and otherwise the flat {@code address}) and required to be present in either form; the
+ * other required text fields must be present and non-blank; the telephone is canonicalised to E.164 form and
  * required to be a valid such number; an optional email is required to be syntactically
  * valid, not on a disposable-email-domain blocklist, and normalized to lower case; and an
  * optional postcode, when present, is required to
@@ -42,7 +44,7 @@ import org.springframework.validation.Validator;
 @Component
 public class OwnerFieldsValidator implements Validator {
 
-    private static final String[] REQUIRED_FIELDS = {"firstName", "lastName", "address", "city", "telephone"};
+    private static final String[] REQUIRED_FIELDS = {"firstName", "lastName", "city", "telephone"};
 
     private final TelephoneNormalizer telephoneNormalizer;
 
@@ -72,7 +74,7 @@ public class OwnerFieldsValidator implements Validator {
     @Override
     public void validate(Object target, Errors errors) {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
-        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        normalizeAddress(owner, errors);
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }
@@ -81,6 +83,29 @@ public class OwnerFieldsValidator implements Validator {
         }
         normalizeEmail(owner, errors);
         validatePostcode(owner, errors);
+    }
+
+    /**
+     * Canonicalises the supplied address and composes the value that is stored and returned.
+     * The structured form is preferred: when a non-blank {@code addressLine1} is supplied, it
+     * and the optional {@code addressLine2} are normalized and written back, and {@code address}
+     * is composed as the normalized {@code addressLine1} with a single space and the normalized
+     * {@code addressLine2} appended when present. Otherwise the flat {@code address} is
+     * normalized as before. An owner is required to carry an address in either form.
+     */
+    private void normalizeAddress(OwnerFieldsDto owner, Errors errors) {
+        String line1 = addressNormalizer.normalize(owner.getAddressLine1());
+        if (!line1.isEmpty()) {
+            String line2 = addressNormalizer.normalize(owner.getAddressLine2());
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+            owner.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+        } else {
+            owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        }
+        if (owner.getAddress() == null || owner.getAddress().isBlank()) {
+            errors.rejectValue("address", "required", "must not be blank");
+        }
     }
 
     private void validatePostcode(OwnerFieldsDto owner, Errors errors) {

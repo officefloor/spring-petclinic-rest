@@ -222,6 +222,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
