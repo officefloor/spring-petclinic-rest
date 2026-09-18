@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.util.StringUtils;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -139,6 +140,16 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * The owner's membership tier, derived from its state: {@code SILVER} when the owner had no
+     * namesakes at creation ({@link #getNamesakeCount()} is 0) and has an email address, otherwise
+     * {@code BRONZE}.
+     */
+    public String getMembershipTier() {
+        boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
+        return unique && StringUtils.hasText(this.email) ? "SILVER" : "BRONZE";
     }
 
     protected Set<Pet> getPetsInternal() {
