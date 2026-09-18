@@ -38,6 +38,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -107,6 +110,26 @@ public class Owner extends Person {
     @PrePersist
     private void resolveRegistrationDate() {
         this.registrationDate = RegistrationDatePolicy.effectiveDate(this.registrationDate);
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation: the {@link #title} followed by a space and the
+     * {@linkplain #getLastName() last name} (e.g. {@code "DR Who"}), or just the
+     * last name when no title is on file.
+     */
+    public String getSalutation() {
+        if (this.title == null || this.title.isEmpty()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
     }
 
     public String getAddress() {
