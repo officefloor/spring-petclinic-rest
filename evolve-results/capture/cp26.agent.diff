@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index 450a9f927..e158cfa7c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ /**
+@@ -23,18 +24,25 @@ import java.util.regex.Pattern;
+  * country code are preserved when present; otherwise the default country code {@code +61} is
+  * assumed and a single leading {@code '0'} is dropped from the national digits. Separators such as
+  * spaces, dashes and brackets are stripped. The result must carry 8 to 15 digits after the
+- * {@code '+'}, and a number that cannot form a valid E.164 value is rejected.
++ * {@code '+'}, and for a recognised country code the national number must be exactly as long as
++ * that country requires ({@code +61} => 9 national digits, {@code +1} => 10). A number that cannot
++ * form a valid E.164 value is rejected.
+  */
+ public final class TelephoneNormalizer {
+ 
+     private static final Pattern NON_DIGIT = Pattern.compile("\\D");
+ 
+-    private static final String DEFAULT_COUNTRY_CODE = "+61";
++    private static final String DEFAULT_COUNTRY_CODE = "61";
+ 
+     private static final int MIN_DIGITS = 8;
+ 
+     private static final int MAX_DIGITS = 15;
+ 
++    /** Recognised country codes (the digits after {@code '+'}) mapped to their required national-number length. */
++    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY = Map.of(
++            "61", 9,
++            "1", 10);
++
+     private TelephoneNormalizer() {
+     }
+ 
+@@ -50,17 +58,41 @@ public final class TelephoneNormalizer {
+         boolean hasCountryCode = trimmed.startsWith("+");
+         String digits = NON_DIGIT.matcher(trimmed).replaceAll("");
+ 
+-        String national = digits;
+-        if (!hasCountryCode && national.startsWith("0")) {
+-            national = national.substring(1);
++        String countryCode;
++        String national;
++        if (hasCountryCode) {
++            countryCode = recognisedCountryCode(digits);
++            national = countryCode == null ? digits : digits.substring(countryCode.length());
++        } else {
++            countryCode = DEFAULT_COUNTRY_CODE;
++            national = digits.startsWith("0") ? digits.substring(1) : digits;
+         }
+-        String prefix = hasCountryCode ? "+" : DEFAULT_COUNTRY_CODE;
+-        String e164 = prefix + national;
++
++        String e164 = "+" + (countryCode == null ? digits : countryCode + national);
+ 
+         int digitCount = e164.length() - 1;
+         if (digitCount < MIN_DIGITS || digitCount > MAX_DIGITS) {
+             throw new InvalidTelephoneException(telephone);
+         }
++        Integer requiredNationalLength = countryCode == null ? null : NATIONAL_LENGTH_BY_COUNTRY.get(countryCode);
++        if (requiredNationalLength != null && national.length() != requiredNationalLength) {
++            throw new InvalidTelephoneException(telephone);
++        }
+         return e164;
+     }
++
++    /**
++     * Returns the recognised country code that the given digit string begins with, or {@code null}
++     * when no known country code matches. Longer codes are preferred so a specific match wins over
++     * a shorter prefix.
++     */
++    private static String recognisedCountryCode(String digits) {
++        String match = null;
++        for (String code : NATIONAL_LENGTH_BY_COUNTRY.keySet()) {
++            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
++                match = code;
++            }
++        }
++        return match;
++    }
+ }
