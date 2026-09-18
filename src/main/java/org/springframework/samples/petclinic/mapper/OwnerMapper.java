@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -23,6 +24,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
@@ -32,6 +34,13 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's stored E.164 telephone formatted for people to read (country code, space,
+     *  national digits grouped in threes), or null when it is not a recognised E.164 number.
+     *  See {@link OwnerTelephone#toDisplay}. */
+    default String telephoneDisplay(Owner owner) {
+        return OwnerTelephone.toDisplay(owner.getTelephone()).orElse(null);
+    }
 
     /** The owner's name formatted as 'LastName, FirstName' from the stored names. */
     default String displayName(Owner owner) {

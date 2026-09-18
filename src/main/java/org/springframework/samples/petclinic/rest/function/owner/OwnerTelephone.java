@@ -62,6 +62,42 @@ public final class OwnerTelephone {
     }
 
     /**
+     * The E.164 {@code telephone} formatted for people to read: the country code, a space, then
+     * the national digits in space-separated groups of three (e.g. {@code +61412345678} →
+     * {@code +61 412 345 678}), or {@link Optional#empty()} when {@code telephone} is not a
+     * recognised E.164 number ({@code +} then the digits of a known country code).
+     */
+    public static Optional<String> toDisplay(String telephone) {
+        if (telephone == null || !telephone.startsWith("+")) {
+            return Optional.empty();
+        }
+        String digits = telephone.substring(1);
+        if (!digits.matches("[0-9]+")) {
+            return Optional.empty();
+        }
+        return countryCodeOf(digits)
+                .map(code -> "+" + code + " " + groupInThrees(digits.substring(code.length())));
+    }
+
+    /** The recognised country code {@code digits} begins with, longest match first. */
+    private static Optional<String> countryCodeOf(String digits) {
+        return COUNTRY_CODES.stream().filter(digits::startsWith).findFirst();
+    }
+
+    /** {@code digits} split into space-separated groups of three from the left, e.g.
+     *  {@code 412345678} → {@code 412 345 678}. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Whether the country-code-plus-national {@code digits} has an acceptable length: a
      * recognised country code fixes the national-number length, otherwise the whole number
      * must sit within the generic E.164 range.
