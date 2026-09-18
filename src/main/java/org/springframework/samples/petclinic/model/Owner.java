@@ -149,6 +149,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's check digit: a single {@link Luhn} check digit computed over the digits
+     * of the owner's {@link #customerCode}. {@code null} until the customer code has been
+     * assigned.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        return Luhn.checkDigit(this.customerCode);
+    }
+
+    /**
      * The owner's locality: the canonical region derived on read from the owner's
      * {@link #postcode} via the fixed {@link RegionPostcodeTable}, falling back to the
      * owner's {@link #city} via the fixed {@link CityRegionTable} when the postcode is
