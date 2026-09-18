@@ -24,6 +24,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -231,11 +232,16 @@ public class Owner extends Person {
             this.householdId == null ? "" : this.householdId);
     }
 
+    /** Tenure, in days, beyond which an owner reaches membership level {@code 4}. */
+    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+
     /**
-     * The owner's membership level, a number from 1 to 3 derived from the
+     * The owner's membership level, a number from 1 to 4 derived from the
      * owner's own fields. Starts at {@code 1}, gains {@code 1} when a contact
-     * email is on file, gains {@code 1} when the owner has no namesakes, and is
-     * capped at {@code 3}. (Level {@code 4} is reserved for tenure.)
+     * email is on file, gains {@code 1} when the owner has no namesakes, gains
+     * {@code 1} when the owner's {@link #getTenureDays() tenure} exceeds
+     * {@value #TENURE_DAYS_FOR_LEVEL_4} days, and is capped at {@code 4}. Because
+     * a newly created owner has zero tenure, a new owner never exceeds level 3.
      */
     public Integer getMembershipLevel() {
         int level = 1;
@@ -247,7 +253,23 @@ public class Owner extends Person {
         if (noNamesakes) {
             level += 1;
         }
-        return Math.min(level, 3);
+        Long tenureDays = getTenureDays();
+        if (tenureDays != null && tenureDays > TENURE_DAYS_FOR_LEVEL_4) {
+            level += 1;
+        }
+        return Math.min(level, 4);
+    }
+
+    /**
+     * The owner's tenure: the number of whole days from the {@link #registrationDate}
+     * to the server's current date, or {@code null} when no registration date is on
+     * file. Never negative for a registration date that is today or earlier.
+     */
+    public Long getTenureDays() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
     }
 
     /**
