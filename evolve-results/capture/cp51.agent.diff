@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/MembershipLevelAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/MembershipLevelAssigner.java
+index e7b9d9f18..076a8fe9f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/MembershipLevelAssigner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/MembershipLevelAssigner.java
+@@ -16,6 +16,9 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import java.util.Objects;
++import java.util.OptionalInt;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.stereotype.Component;
+ 
+@@ -29,13 +32,26 @@ import org.springframework.stereotype.Component;
+  * {@link #LARGE_HOUSEHOLD_MIN_SIZE} or more, and {@link #TENURE_POINTS} for tenure of more
+  * than {@link #QUALIFYING_TENURE_FISCAL_YEARS} fiscal years. The total bands into a level of 1 (0-1 points),
+  * 2 (2-3), 3 (4-5) or 4 (6 or more). A newly created owner has not yet accrued any tenure, so
+- * on create the tenure points are never earned. As it reads the owner's namesake count and
+- * household size, this must be assigned after {@link NamesakeCounter} and
+- * {@link HouseholdSizeAssigner}, and before the owner is saved.
++ * on create the tenure points are never earned.
++ * <p>
++ * The banded level is finally capped so that it cannot exceed one above the highest
++ * membership level currently held among the owner's existing household members (as grouped by
++ * {@link HouseholdMatcher}). When the owner has no existing household member, no cap applies.
++ * As it reads the owner's namesake count and household size, this must be assigned after
++ * {@link NamesakeCounter} and {@link HouseholdSizeAssigner}, and before the owner is saved.
+  */
+ @Component
+ public class MembershipLevelAssigner {
+ 
++    /** The most any new owner's level may exceed the highest level held in their household. */
++    static final int HOUSEHOLD_LEVEL_HEADROOM = 1;
++
++    private final HouseholdMatcher householdMatcher;
++
++    public MembershipLevelAssigner(HouseholdMatcher householdMatcher) {
++        this.householdMatcher = householdMatcher;
++    }
++
+     /** Points awarded when the owner has an email address. */
+     static final int EMAIL_POINTS = 2;
+ 
+@@ -63,7 +79,29 @@ public class MembershipLevelAssigner {
+     public void assign(Owner owner) {
+         int points = points(owner);
+         owner.setMembershipPoints(points);
+-        owner.setMembershipLevel(levelForPoints(points));
++        owner.setMembershipLevel(cappedByHousehold(levelForPoints(points), owner));
++    }
++
++    /**
++     * Caps {@code level} at one above the highest level held among {@code owner}'s existing
++     * household members. When the owner has no existing household member the level is returned
++     * unchanged.
++     */
++    private int cappedByHousehold(int level, Owner owner) {
++        OptionalInt highest = highestHouseholdLevel(owner);
++        if (highest.isEmpty()) {
++            return level;
++        }
++        return Math.min(level, highest.getAsInt() + HOUSEHOLD_LEVEL_HEADROOM);
++    }
++
++    /** The highest membership level currently held among the owner's existing household members. */
++    private OptionalInt highestHouseholdLevel(Owner owner) {
++        return householdMatcher.findMembers(owner).stream()
++            .map(Owner::getMembershipLevel)
++            .filter(Objects::nonNull)
++            .mapToInt(Integer::intValue)
++            .max();
+     }
+ 
+     /** The owner's total membership points, tallied from its standing. */
