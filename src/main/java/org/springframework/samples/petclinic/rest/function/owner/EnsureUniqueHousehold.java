@@ -28,7 +28,7 @@ public class EnsureUniqueHousehold {
             return;
         }
         boolean occupied = ownerRepository.findByLastName(owner.getLastName()).stream()
-                .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+                .anyMatch(existing -> !existing.isDeleted() && householdId.equals(existing.getHouseholdId()));
         if (!occupied) {
             return;
         }

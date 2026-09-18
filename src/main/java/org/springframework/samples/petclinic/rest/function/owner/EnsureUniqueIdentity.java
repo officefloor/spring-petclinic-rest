@@ -22,7 +22,7 @@ public class EnsureUniqueIdentity {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateIdentityException {
         String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findByTelephone(owner.getTelephone())) {
-            if (identityKey.equals(existing.getIdentityKey())) {
+            if (!existing.isDeleted() && identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }
