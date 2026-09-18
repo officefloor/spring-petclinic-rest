@@ -21,6 +21,16 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     OwnerDto toOwnerDto(Owner owner);
 
+    /**
+     * Maps an {@link Owner} to its DTO and attaches the response-only bulk-signup warning, which is
+     * computed per request rather than stored on the owner.
+     */
+    default OwnerDto toOwnerDto(Owner owner, boolean bulkSignupWarning) {
+        OwnerDto ownerDto = toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning);
+        return ownerDto;
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
