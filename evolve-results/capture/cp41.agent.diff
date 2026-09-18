@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+index 5b2ca35f4..6c8908ffb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
++import java.util.function.Predicate;
++
+ /**
+  * The owner customer code identity, formatted {@code <REGION>-<HASH8>}: REGION is the region code
+  * derived from the owner's postcode (falling back to its city, else {@link CityRegion#UNKNOWN}) and
+@@ -26,6 +28,23 @@ public final class CustomerCode {
+         return region + "-" + Sha256.hex(telephone + lastName).substring(0, HASH_LENGTH);
+     }
+ 
++    /**
++     * A unique variant of {@code base}: {@code base} itself when {@code taken} reports it free,
++     * otherwise {@code base-<n>} with the smallest {@code n >= 2} that {@code taken} reports free.
++     * Used to de-duplicate a derived code against the codes already in use.
++     */
++    public static String deduplicate(String base, Predicate<String> taken) {
++        if (!taken.test(base)) {
++            return base;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = base + "-" + n;
++            if (!taken.test(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * The REGION portion of {@code customerCode} — everything before the first {@code '-'} — or
+      * {@link CityRegion#UNKNOWN} when the code is absent or carries no region.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 6b9bcc2f6..c849e1f10 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -77,6 +77,15 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByEmail(String email) throws DataAccessException;
+ 
++    /**
++     * Retrieve every <code>Owner</code> whose stored customer code exactly matches the given value.
++     * Used to de-duplicate a newly derived customer code before an owner is persisted.
++     *
++     * @param customerCode the customer code to match exactly
++     * @return the matching <code>Owner</code>s (empty if none)
++     */
++    Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException;
++
+ 
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 98ad65c8a..7d5f191c5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -156,6 +156,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         );
+     }
+ 
++    @Override
++    public Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("customerCode", customerCode);
++        return this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, customer_code FROM owners WHERE customer_code = :customerCode",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++    }
++
+     public void loadPetsAndVisits(final Owner owner) {
+         Map<String, Object> params = new HashMap<>();
+         params.put("id", owner.getId());
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index b13541dc8..25775de87 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -106,6 +106,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.customerCode = :customerCode");
++        query.setParameter("customerCode", customerCode);
++        return query.getResultList();
++    }
++
+ 
+     @Override
+     public void save(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 987e1faff..6dbb226a0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -65,6 +65,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Query("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = :email")
+     Collection<Owner> findByEmail(@Param("email") String email);
+ 
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE owner.customerCode = :customerCode")
++    Collection<Owner> findByCustomerCode(@Param("customerCode") String customerCode);
++
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+new file mode 100644
+index 000000000..f0668bf6f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.CustomerCode;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Ensures a newly built owner's {@code customerCode} does not collide with an existing owner's.
++ * When it does, {@link CustomerCode#deduplicate} appends {@code -<n>} with the smallest {@code n >= 2}
++ * that is free, and the de-duplicated code is stored back on the owner.
++ *
++ * <p>Runs after {@link AssignCustomerCode} has derived the code and before
++ * {@link AssignMembershipNumber}, so every value built from the whole code sees the unique variant.
++ */
++public class DeduplicateCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String unique = CustomerCode.deduplicate(owner.getCustomerCode(),
++                code -> !ownerRepository.findByCustomerCode(code).isEmpty());
++        owner.setCustomerCode(unique);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 9e98d2fc0..3f3fb3a21 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -74,6 +74,11 @@ applyRegistrationDate:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
++  next: deduplicateCustomerCode
++
++deduplicateCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateCustomerCode
++  govern: [ transaction ]
+   next: assignMembershipNumber
+ 
+ assignMembershipNumber:
