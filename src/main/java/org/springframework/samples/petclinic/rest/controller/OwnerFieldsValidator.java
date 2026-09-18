@@ -27,7 +27,8 @@ import org.springframework.validation.Validator;
  * request body: the address is canonicalised and then, like the other required text fields,
  * required to be present and non-blank; the telephone is canonicalised to E.164 form and
  * required to be a valid such number; an optional email is required to be syntactically
- * valid and normalized to lower case; and an optional postcode, when present, is required to
+ * valid, not on a disposable-email-domain blocklist, and normalized to lower case; and an
+ * optional postcode, when present, is required to
  * be a 4-digit code valid for the owner's city.
  * <p>
  * Registered on the owner controller through {@code @InitBinder} so every rejected field is
@@ -51,12 +52,16 @@ public class OwnerFieldsValidator implements Validator {
 
     private final PostcodeValidator postcodeValidator;
 
+    private final DisposableEmailDomainChecker disposableEmailDomainChecker;
+
     public OwnerFieldsValidator(TelephoneNormalizer telephoneNormalizer, EmailNormalizer emailNormalizer,
-                                AddressNormalizer addressNormalizer, PostcodeValidator postcodeValidator) {
+                                AddressNormalizer addressNormalizer, PostcodeValidator postcodeValidator,
+                                DisposableEmailDomainChecker disposableEmailDomainChecker) {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.postcodeValidator = postcodeValidator;
+        this.disposableEmailDomainChecker = disposableEmailDomainChecker;
     }
 
     @Override
@@ -101,10 +106,13 @@ public class OwnerFieldsValidator implements Validator {
         if (email == null) {
             return;
         }
-        if (emailNormalizer.isValid(email)) {
-            owner.setEmail(emailNormalizer.normalize(email));
-        } else {
+        if (!emailNormalizer.isValid(email)) {
             errors.rejectValue("email", "email.invalid", "must be a valid email address");
+        } else if (disposableEmailDomainChecker.isDisposable(email)) {
+            errors.rejectValue("email", "email.disposable",
+                "must not use a disposable email domain");
+        } else {
+            owner.setEmail(emailNormalizer.normalize(email));
         }
     }
 }
