@@ -21,8 +21,8 @@ public class AssignMembershipLevel {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         // The new owner is not yet persisted, so it is counted here rather than by the repository.
         long householdSize = Household.size(owner.getHouseholdId(), ownerRepository.findAll()) + 1;
-        long tenureDays = Tenure.days(owner.getRegistrationDate(), LocalDate.now());
-        int points = MembershipPoints.score(owner.getEmail(), owner.getNamesakeCount(), householdSize, tenureDays);
+        long tenureFiscalYears = Tenure.fiscalYears(owner.getRegistrationDate(), LocalDate.now());
+        int points = MembershipPoints.score(owner.getEmail(), owner.getNamesakeCount(), householdSize, tenureFiscalYears);
         owner.setMembershipPoints(points);
         owner.setMembershipLevel(MembershipPoints.level(points));
     }

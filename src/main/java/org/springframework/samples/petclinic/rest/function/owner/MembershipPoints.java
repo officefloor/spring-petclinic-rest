@@ -9,7 +9,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
  *   <li>+2 when an email is on file,</li>
  *   <li>+1 when the owner has no namesakes ({@code namesakeCount} is 0),</li>
  *   <li>+2 for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more,</li>
- *   <li>+3 for tenure over {@value #LONG_TENURE_DAYS} days.</li>
+ *   <li>+3 for tenure over {@value #LONG_TENURE_FISCAL_YEARS} fiscal year.</li>
  * </ul>
  *
  * The resulting points map to a level: 1 for 0-1, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
@@ -23,14 +23,14 @@ final class MembershipPoints {
 
     /** Smallest household size that earns the household points. */
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
-    /** Tenure, in days, that must be exceeded to earn the tenure points. */
-    private static final long LONG_TENURE_DAYS = 365;
+    /** Tenure, in whole fiscal years, that must be exceeded to earn the tenure points. */
+    private static final long LONG_TENURE_FISCAL_YEARS = 1;
 
     private MembershipPoints() {
     }
 
     /** The owner's membership score from its factors. */
-    static int score(String email, Integer namesakeCount, long householdSize, long tenureDays) {
+    static int score(String email, Integer namesakeCount, long householdSize, long tenureFiscalYears) {
         int points = 0;
         if (email != null && !email.isBlank()) {
             points += EMAIL_POINTS;
@@ -41,7 +41,7 @@ final class MembershipPoints {
         if (householdSize >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
-        if (tenureDays > LONG_TENURE_DAYS) {
+        if (tenureFiscalYears > LONG_TENURE_FISCAL_YEARS) {
             points += LONG_TENURE_POINTS;
         }
         return points;

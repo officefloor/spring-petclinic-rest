@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCode;
+import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.Locality;
 import org.springframework.samples.petclinic.rest.function.owner.Luhn;
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -78,15 +80,21 @@ public interface OwnerMapper {
     }
 
     /** The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is the
-     *  last two digits of the registration date's year (e.g. 'SPR-SMI-0007-M26'). Absent until both the
-     *  customer code and registration date have been assigned. */
+     *  fiscal year of the registration date (see {@link FiscalYear}, e.g. 'SPR-SMI-0007-M26').
+     *  Absent until both the customer code and registration date have been assigned. */
     default String membershipNumber(Owner owner) {
         String customerCode = owner.getCustomerCode();
         LocalDate registrationDate = owner.getRegistrationDate();
         if (customerCode == null || registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.shortYear(registrationDate));
+    }
+
+    /** The owner's fiscal year, formatted 'FY&lt;YY&gt;' from the fiscal year of the
+     *  registration date (see {@link FiscalYear}); absent until the registration date is set. */
+    default String fiscalYear(Owner owner) {
+        return FiscalYear.label(owner.getRegistrationDate());
     }
 
     /** The Luhn check digit (0-9) over the digits of the owner's customerCode; absent until the
