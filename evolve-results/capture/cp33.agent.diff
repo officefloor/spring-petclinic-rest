@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerRegistrationDate.java
+new file mode 100644
+index 000000000..bf8b81ad1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerRegistrationDate.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++import java.util.List;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerFieldsException;
++
++/**
++ * Runs after {@link ValidateOwnerPostcode} in {@code POST /api/owners}, reading the
++ * already-validated body as a variable. When a {@code registrationDate} is supplied it may
++ * not be later than the server's current date; a future date throws
++ * {@link InvalidOwnerFieldsException} naming {@code registrationDate} for a 400. An absent
++ * date is left untouched (it defaults to the server date downstream). Runs before
++ * {@link ResolveOwnerRegistrationDate}, which then rolls the accepted date off weekends.
++ */
++public class ValidateOwnerRegistrationDate {
++
++    public void service(@Val OwnerFieldsDto request) throws InvalidOwnerFieldsException {
++        LocalDate supplied = request.getRegistrationDate();
++        if (supplied != null && supplied.isAfter(LocalDate.now())) {
++            throw new InvalidOwnerFieldsException(List.of("registrationDate"));
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 836021425..be97d2cb1 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -34,6 +34,13 @@ validate:
+ # before any entity is built or persisted.
+ validatePostcode:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerPostcode
++  next: validateRegistrationDate
++
++# Reject a supplied registrationDate later than the server's current date with a 400, before
++# any entity is built or persisted. An absent date is left to default downstream. Runs after
++# the other field validations and before the date is resolved (weekend-adjusted).
++validateRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerRegistrationDate
+   next: unique
+ 
+ # Reject a request whose derived identityKey (normalized telephone + email + household id)
