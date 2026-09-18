@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 49271893b..21e57f1f8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.CityRegion;
++import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.PostcodeRange;
+ 
+ import java.util.Collection;
+@@ -24,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+@@ -50,6 +52,12 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /** The Luhn check digit over the digits of the customerCode. Null when the customerCode
++     *  is absent. */
++    default Integer checkDigit(Owner owner) {
++        return owner.getCustomerCode() == null ? null : Luhn.checkDigit(owner.getCustomerCode());
++    }
++
+     /** The owner's locality: the canonical region derived from its postcode range first,
+      *  falling back to the fixed city-to-region table when the postcode is absent or in no
+      *  known range, or 'UNKNOWN' when neither resolves a region. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Luhn.java b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+new file mode 100644
+index 000000000..de1050fec
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Luhn.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Luhn check-digit computation over the digits contained in a string. Non-digit
++ * characters are ignored, so it works directly on formatted codes such as a
++ * customer code ('PAR-FRA-0007').
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /**
++     * The Luhn check digit (0-9) computed over the digit characters of {@code s},
++     * scanning right-to-left and doubling every other digit starting with the last.
++     */
++    public static int checkDigit(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f513e259d..9e87f7653 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2122,6 +2122,14 @@ components:
+               type: string
+               example: 'PAR-FRA-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                The Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
