@@ -1,0 +1,253 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c7dcb8a44..290fb6985 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.validation.TelephoneFormatter;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -19,6 +20,7 @@ import java.util.List;
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -31,6 +33,16 @@ public interface OwnerMapper {
+         return owner.getLastName() + ", " + owner.getFirstName();
+     }
+ 
++    /**
++     * Formats an owner's stored E.164 telephone for human display (see {@link TelephoneFormatter}).
++     */
++    default String telephoneDisplay(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return TelephoneFormatter.format(owner.getTelephone());
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/CountryDialingCodes.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/CountryDialingCodes.java
+new file mode 100644
+index 000000000..7f767802e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/CountryDialingCodes.java
+@@ -0,0 +1,58 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++/**
++ * The country dialing codes the clinic recognises, mapped to the national-number length each one
++ * requires. This is the single source of truth shared by the telephone {@link TelephoneNormalizer
++ * normalizer} and {@link TelephoneFormatter formatter}.
++ */
++final class CountryDialingCodes {
++
++    /** Recognised country codes (the digits after {@code '+'}) mapped to their required national-number length. */
++    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY = Map.of(
++            "61", 9,
++            "1", 10);
++
++    private CountryDialingCodes() {
++    }
++
++    /**
++     * Returns the recognised country code that the given digit string begins with, or {@code null}
++     * when no known country code matches. Longer codes are preferred so a specific match wins over
++     * a shorter prefix.
++     */
++    static String matching(String digits) {
++        String match = null;
++        for (String code : NATIONAL_LENGTH_BY_COUNTRY.keySet()) {
++            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
++                match = code;
++            }
++        }
++        return match;
++    }
++
++    /**
++     * Returns the national-number length required for the given recognised country code, or
++     * {@code null} when the code is unrecognised.
++     */
++    static Integer nationalLength(String countryCode) {
++        return countryCode == null ? null : NATIONAL_LENGTH_BY_COUNTRY.get(countryCode);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneFormatter.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneFormatter.java
+new file mode 100644
+index 000000000..ea3607507
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneFormatter.java
+@@ -0,0 +1,66 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Formats a stored E.164 telephone number for humans. The recognised country code is separated from
++ * the national number by a single space, and the national digits are grouped in threes, e.g.
++ * {@code +61412345678} becomes {@code +61 412 345 678}. When the country code is not recognised the
++ * digits after the {@code '+'} are grouped in threes without a separate country-code segment.
++ */
++public final class TelephoneFormatter {
++
++    private static final int GROUP_SIZE = 3;
++
++    private TelephoneFormatter() {
++    }
++
++    /**
++     * Formats the given E.164 telephone for display.
++     *
++     * @param e164 the stored telephone in E.164 form, e.g. {@code +61412345678}
++     * @return the human-readable telephone, e.g. {@code +61 412 345 678}, or {@code null} when
++     *         {@code e164} is {@code null}
++     */
++    public static String format(String e164) {
++        if (e164 == null) {
++            return null;
++        }
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        String countryCode = CountryDialingCodes.matching(digits);
++        if (countryCode == null) {
++            return "+" + groupInThrees(digits);
++        }
++        String national = digits.substring(countryCode.length());
++        return "+" + countryCode + " " + groupInThrees(national);
++    }
++
++    /**
++     * Groups the given digits in blocks of three, separated by a single space; a trailing block may
++     * be shorter.
++     */
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder(digits.length() + digits.length() / GROUP_SIZE);
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % GROUP_SIZE == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index e158cfa7c..9ab589ec2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -16,7 +16,6 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+-import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ /**
+@@ -38,11 +37,6 @@ public final class TelephoneNormalizer {
+ 
+     private static final int MAX_DIGITS = 15;
+ 
+-    /** Recognised country codes (the digits after {@code '+'}) mapped to their required national-number length. */
+-    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY = Map.of(
+-            "61", 9,
+-            "1", 10);
+-
+     private TelephoneNormalizer() {
+     }
+ 
+@@ -61,7 +55,7 @@ public final class TelephoneNormalizer {
+         String countryCode;
+         String national;
+         if (hasCountryCode) {
+-            countryCode = recognisedCountryCode(digits);
++            countryCode = CountryDialingCodes.matching(digits);
+             national = countryCode == null ? digits : digits.substring(countryCode.length());
+         } else {
+             countryCode = DEFAULT_COUNTRY_CODE;
+@@ -74,25 +68,10 @@ public final class TelephoneNormalizer {
+         if (digitCount < MIN_DIGITS || digitCount > MAX_DIGITS) {
+             throw new InvalidTelephoneException(telephone);
+         }
+-        Integer requiredNationalLength = countryCode == null ? null : NATIONAL_LENGTH_BY_COUNTRY.get(countryCode);
++        Integer requiredNationalLength = CountryDialingCodes.nationalLength(countryCode);
+         if (requiredNationalLength != null && national.length() != requiredNationalLength) {
+             throw new InvalidTelephoneException(telephone);
+         }
+         return e164;
+     }
+-
+-    /**
+-     * Returns the recognised country code that the given digit string begins with, or {@code null}
+-     * when no known country code matches. Longer codes are preferred so a specific match wins over
+-     * a shorter prefix.
+-     */
+-    private static String recognisedCountryCode(String digits) {
+-        String match = null;
+-        for (String code : NATIONAL_LENGTH_BY_COUNTRY.keySet()) {
+-            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
+-                match = code;
+-            }
+-        }
+-        return match;
+-    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0f6cd9cc3..6b4d9e1b5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2097,6 +2097,15 @@ components:
+               type: string
+               example: Franklin, George
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone (display)
++              description: >-
++                The stored E.164 telephone formatted for humans: the country
++                code, a space, then the national digits grouped in threes. The
++                raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
