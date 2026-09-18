@@ -8,16 +8,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a newly built owner its {@code customerCode}, formatted
- * {@code <LAST3>-<NNNN>}: LAST3 is the upper-cased first three letters of the last
- * name and NNNN is a global 4-digit zero-padded sequence equal to one more than the
- * current number of owners (e.g. {@code SMI-0007}).
+ * {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three letters of the
+ * city, LAST3 the upper-cased first three letters of the last name, and NNNN a per-city
+ * 4-digit zero-padded sequence equal to one more than the number of owners already in
+ * that city (e.g. {@code LON-SMI-0007}).
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length()))
-            .toUpperCase(Locale.ROOT);
-        long sequence = ownerRepository.count() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
+        String city3 = prefix(owner.getCity());
+        String last3 = prefix(owner.getLastName());
+        long sequence = ownerRepository.countByCity(owner.getCity()) + 1;
+        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    }
+
+    /** Upper-cased first three letters of {@code value} (fewer if it is shorter). */
+    private static String prefix(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
     }
 }

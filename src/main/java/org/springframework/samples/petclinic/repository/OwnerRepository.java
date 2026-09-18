@@ -83,7 +83,16 @@ public interface OwnerRepository {
     long count() throws DataAccessException;
 
     /**
-     * Retrieve <code>Owner</code>s from the data store, returning all owners 
+     * Count the number of <code>Owner</code>s in the data store located in the given city.
+     * Used to build the per-city sequence embedded in an owner's {@code customerCode}.
+     *
+     * @param city the city to match exactly
+     * @return the number of persisted owners in that city
+     */
+    long countByCity(String city) throws DataAccessException;
+
+    /**
+     * Retrieve <code>Owner</code>s from the data store, returning all owners
      *
      * @return a <code>Collection</code> of <code>Owner</code>s (or an empty <code>Collection</code> if none
      * found)
