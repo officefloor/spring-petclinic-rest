@@ -16,12 +16,10 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+import org.springframework.samples.petclinic.model.CountryDialingCode;
 import org.springframework.stereotype.Component;
 
 /**
@@ -50,18 +48,6 @@ public class TelephoneNormalizer {
 
     /** The most digits a valid E.164 number carries after the {@code '+'}. */
     public static final int MAX_DIGITS = 15;
-
-    /**
-     * Country code (without {@code '+'}) to the exact national-number length it requires.
-     * Numbers whose country code is not listed here are checked only against the generic
-     * {@link #MIN_DIGITS}-{@link #MAX_DIGITS} bounds.
-     */
-    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
-
-    /** Known country codes, longest first, so the country code is matched greedily. */
-    private static final List<String> COUNTRY_CODES = NATIONAL_LENGTHS.keySet().stream()
-        .sorted(Comparator.comparingInt(String::length).reversed())
-        .toList();
 
     /** Separators removed before interpreting the number: spaces, dashes and brackets. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
@@ -99,10 +85,9 @@ public class TelephoneNormalizer {
      * digits match no known country code pass this check, relying on the generic bounds.
      */
     private boolean hasValidNationalLength(String digits) {
-        return COUNTRY_CODES.stream()
-            .filter(digits::startsWith)
-            .findFirst()
-            .map(code -> digits.length() - code.length() == NATIONAL_LENGTHS.get(code))
+        return CountryDialingCode.matching(digits)
+            .flatMap(code -> CountryDialingCode.nationalLength(code)
+                .map(length -> digits.length() - code.length() == length))
             .orElse(true);
     }
 }
