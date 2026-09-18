@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.Owner;
@@ -28,9 +29,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>The id is the owner's {@link MemberId} identity {@code '<REGION><FY><HASH8><CHK>'}: the region
  * derived from the owner's postcode (via {@link Locality}, so it disambiguates cities that share a
- * name and falls back to the city table), the two-digit fiscal year of the owner's (effective)
- * registration date, a hash of the owner's normalized telephone and last name, and a Luhn check
- * digit (e.g. {@code 'NSW273F2A9C1D5'}).
+ * name and falls back to the city table) and then tagged with the {@link IdentityVersion} version
+ * tag, the two-digit fiscal year of the owner's (effective) registration date, a hash of the owner's
+ * normalized telephone and last name, and a Luhn check digit (e.g. {@code 'V2NSW273F2A9C1D5'}).
  *
  * <p>Two owners that share the same region, fiscal year, normalized telephone and last name would
  * otherwise be assigned the same identity, so when the computed id collides with an existing
@@ -57,7 +58,7 @@ public class MemberIdGenerator {
      * suffix when it would collide with an existing owner's id
      */
     public String generate(Owner owner) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        String region = IdentityVersion.regionCode(Locality.of(owner.getCity(), owner.getPostcode()));
         int fiscalYearSegment = FiscalYear.yearSegment(RegistrationDatePolicy.effectiveDate(owner.getRegistrationDate()));
         String memberId = MemberId.of(region, fiscalYearSegment, owner.getTelephone(), owner.getLastName());
         return deduplicate(memberId);

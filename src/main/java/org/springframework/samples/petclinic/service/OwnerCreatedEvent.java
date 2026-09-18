@@ -15,18 +15,21 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured audit event recording that an {@link Owner} was created.
  *
- * <p>The event carries the owner's {@linkplain Owner#getPrimaryIdentifier() current primary
- * identifier} (the member id) so downstream consumers always see the identifier the owner is
- * currently keyed on. The {@code seq} orders creates monotonically. Being a record, the event is
- * immutable once emitted.
+ * <p>This is schema version {@value IdentityVersion#NUMBER} of the event: it stamps its own
+ * {@code schemaVersion} and carries the owner's marketing {@code ownerSegment}, recomputed from the
+ * owner's current (version-2) identity. The event also carries the owner's
+ * {@linkplain Owner#getPrimaryIdentifier() current primary identifier} (the member id) so downstream
+ * consumers always see the identifier the owner is currently keyed on. The {@code seq} orders creates
+ * monotonically. Being a record, the event is immutable once emitted.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-                                String event) {
+public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+                                Integer membershipLevel, String ownerSegment, String event) {
 
     /** The single event type emitted by this record. */
     public static final String OWNER_CREATED = "OWNER_CREATED";
@@ -38,6 +41,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Inte
      * @param owner the newly persisted owner
      */
     public OwnerCreatedEvent(long seq, Owner owner) {
-        this(seq, owner.getId(), owner.getPrimaryIdentifier(), owner.getMembershipLevel(), OWNER_CREATED);
+        this(IdentityVersion.NUMBER, seq, owner.getId(), owner.getPrimaryIdentifier(),
+            owner.getMembershipLevel(), owner.getOwnerSegment(), OWNER_CREATED);
     }
 }

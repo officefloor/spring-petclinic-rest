@@ -15,13 +15,15 @@
  */
 package org.springframework.samples.petclinic.util;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
+
 /**
  * Derives the stable identifier shared by owners who belong to the same household, i.e. who share a
  * last name and postcode. The last name is normalized (case-insensitively, with collapsed
- * whitespace) and joined to the postcode with {@code '|'}; the identifier is the leading hex
- * characters of the SHA-256 digest of that pair. Because it is a deterministic digest, every owner
- * with the same last name and postcode computes the same value automatically, and it never changes
- * as members join or leave.
+ * whitespace) and joined to the postcode with {@code '|'}, then mixed with the {@link IdentityVersion}
+ * version tag; the identifier is the leading hex characters of the SHA-256 digest of that key. Because
+ * it is a deterministic digest, every owner with the same last name and postcode computes the same
+ * value automatically, and it never changes as members join or leave.
  */
 public final class HouseholdIdGenerator {
 
@@ -44,7 +46,7 @@ public final class HouseholdIdGenerator {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String key = TextNormalizer.normalizeForComparison(lastName) + '|' + postcode;
+        String key = IdentityVersion.mix(TextNormalizer.normalizeForComparison(lastName) + '|' + postcode);
         return Sha256.hexPrefix(key, LENGTH);
     }
 }

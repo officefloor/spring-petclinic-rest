@@ -180,14 +180,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the region component of its {@link #memberId} identity
-     * (see {@link MemberId}), or {@code null} when no member id is assigned. The
-     * region was derived from the owner's postcode and city when the identity was
-     * minted, so the locality now follows the identity rather than being recomputed
-     * from the current city and postcode.
+     * The owner's locality: the plain region carried by its {@link #memberId} identity (see
+     * {@link MemberId}), with the {@link IdentityVersion} version tag stripped back off so the
+     * locality stays the plain region code (e.g. {@code "NSW"}), or {@code null} when no member id is
+     * assigned. The region was derived from the owner's postcode and city when the identity was
+     * minted, so the locality follows the identity rather than being recomputed from the current city
+     * and postcode.
      */
     public String getLocality() {
-        return MemberId.regionOf(this.memberId);
+        return IdentityVersion.plainRegion(MemberId.regionOf(this.memberId));
     }
 
     /**
@@ -283,16 +284,16 @@ public class Owner extends Person {
      * 64-character lower-case SHA-256 hex digest (see {@link org.springframework.samples.petclinic.util.Sha256})
      * of the normalized telephone, the lower-cased email (or an empty string when absent) and the
      * {@linkplain org.springframework.samples.petclinic.util.Soundex Soundex} code of the last name,
-     * joined with {@code '|'}. Two owners are the same person only when their identity keys are
-     * equal; because the telephone is part of the key, household members with different telephones
-     * have different keys.
+     * joined with {@code '|'} and mixed with the {@link IdentityVersion} version tag. Two owners are
+     * the same person only when their identity keys are equal; because the telephone is part of the
+     * key, household members with different telephones have different keys.
      */
     public String getIdentityKey() {
         String key = String.join("|",
             this.telephone == null ? "" : this.telephone,
             this.email == null ? "" : this.email.toLowerCase(Locale.ROOT),
             Soundex.encode(getLastName()));
-        return Sha256.hex(key);
+        return Sha256.hex(IdentityVersion.mix(key));
     }
 
     /** Tenure, in elapsed fiscal years, at or beyond which an owner earns the tenure membership points. */
