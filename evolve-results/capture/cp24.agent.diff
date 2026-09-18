@@ -1,0 +1,224 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7c09405c6..a41117b42 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,6 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -47,17 +46,6 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
+-    /** The membership tier: 'GOLD' when the owner's household holds 3 or more members;
+-     *  otherwise 'SILVER' when namesakeCount is 0 and an email is present, else 'BRONZE'. */
+-    default String membershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return "GOLD";
+-        }
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
+-    }
+-
+     /** The owner's locality: the canonical region derived from its city via the fixed
+      *  city-to-region table, or 'UNKNOWN' when the city is not in the table. */
+     default String locality(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2c100248d..ac84072ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -69,6 +69,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -152,6 +155,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+new file mode 100644
+index 000000000..3ccd24c05
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipLevel.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Runs in {@code POST /api/owners} after the owner's namesake count has been recorded and before
++ * it is saved, within the create transaction. Records on the built owner its numeric membership
++ * level assigned at creation: it starts at 1, gains 1 when an email is present and 1 more when
++ * {@link Owner#getNamesakeCount() namesakeCount} is 0, capped at 3 (level 4 is reserved for
++ * tenure). Runs after {@link AssignOwnerNamesakeCount} so the count it reads is final.
++ */
++public class AssignOwnerMembershipLevel {
++
++    /** The highest level assignable at creation; level 4 is reserved for tenure. */
++    private static final int MAX_LEVEL = 3;
++
++    public void service(@Val Owner owner) {
++        int level = 1;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
++        if (hasEmail) {
++            level++;
++        }
++        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        if (unique) {
++            level++;
++        }
++        owner.setMembershipLevel(Math.min(level, MAX_LEVEL));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 5c645306f..2582fbd6c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -8,16 +8,17 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Emits an audit trail entry for a successful owner create in {@code POST /api/owners}.
+  * Publishes a single line to the dedicated {@code AUDIT} logger carrying the persisted
+- * owner's id, its assigned {@code customerCode} and its {@code registrationDate}. Runs
+- * after {@link SaveOwner} so the generated id is available, and before the response is
+- * sent.
++ * owner's id, its assigned {@code customerCode}, its {@code registrationDate} and its assigned
++ * {@code membershipLevel}. Runs after {@link SaveOwner} so the generated id is available, and
++ * before the response is sent.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 69e26c36b..dcd15f233 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  membership_level INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0ad1fcef1..fc44845a4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  membership_level INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 31984d972..df3b57afd 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   bulk_signup_warning BIT(1),
+   household_size INT,
++  membership_level INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e8ac04a01..9b0593c26 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INT,
+                                       bulk_signup_warning BOOLEAN,
+-                                      household_size INT
++                                      household_size INT,
++                                      membership_level INT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 0ef10dac8..bc18f305f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -91,6 +91,15 @@ assignHouseholdSize:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerNamesakeCount
+   govern: [ transaction ]
++  next: assignMembershipLevel
++
++# Assign the numeric membership level from the built owner's email and namesake count: start at
++# 1, +1 for an email, +1 when namesakeCount is 0, capped at 3. Runs after the namesake count is
++# recorded and before the owner is persisted, so the level and the audit line reflect the final
++# values.
++assignMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipLevel
++  govern: [ transaction ]
+   next: assignBulkSignupWarning
+ 
+ # Flag the built owner when more than 80 owners were already created for its resolved
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b5859131c..b3ae4f5b8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2130,13 +2130,17 @@ components:
+               type: string
+               example: 'PAR-FRA-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                Membership tier derived from the owner: 'SILVER' when namesakeCount is 0 and an
+-                email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                Numeric membership level assigned at creation, from 1 to 3: it starts at 1, gains
++                1 when an email is present and 1 more when namesakeCount is 0, capped at 3 (level 4
++                is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 4
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
