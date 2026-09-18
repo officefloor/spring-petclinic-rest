@@ -95,7 +95,7 @@ public interface OwnerRepository {
 
     /**
      * Count the number of <code>Owner</code>s in the data store located in the given city.
-     * Used to build the per-city sequence embedded in an owner's {@code customerCode}.
+     * Used to enforce the per-city owner capacity limit.
      *
      * @param city the city to match exactly
      * @return the number of persisted owners in that city

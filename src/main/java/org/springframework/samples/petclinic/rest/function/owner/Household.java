@@ -1,11 +1,9 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Sha256;
 
 /**
  * Household identity shared by the create-owner steps. A household is the set of owners with the same
@@ -31,19 +29,7 @@ final class Household {
 
     /** A stable identifier for the household at the given last name and address, of the form {@code H-<hex>}. */
     static String idFor(String lastName, String address) {
-        byte[] digest = sha256(canonical(lastName) + '|' + AddressNormalizer.normalize(address));
-        StringBuilder id = new StringBuilder("H-");
-        for (int i = 0; i < 6; i++) {
-            id.append(String.format("%02X", digest[i]));
-        }
-        return id.toString();
-    }
-
-    private static byte[] sha256(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        String hex = Sha256.hex(canonical(lastName) + '|' + AddressNormalizer.normalize(address));
+        return "H-" + hex.substring(0, 12);
     }
 }
