@@ -1,0 +1,244 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+index e218be11b..6741ca037 100644
+--- a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
++++ b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+@@ -1,8 +1,11 @@
+ package org.springframework.samples.petclinic;
+ 
++import java.time.Clock;
++
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
+ import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
++import org.springframework.context.annotation.Bean;
+ 
+ @SpringBootApplication
+ public class PetClinicApplication extends SpringBootServletInitializer {
+@@ -10,4 +13,9 @@ public class PetClinicApplication extends SpringBootServletInitializer {
+ 	public static void main(String[] args) {
+ 		SpringApplication.run(PetClinicApplication.class, args);
+ 	}
++
++	@Bean
++	Clock clock() {
++		return Clock.systemDefaultZone();
++	}
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7403f9cd1..d3853733e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.time.LocalDate;
+ import java.util.*;
+ 
+ /**
+@@ -52,6 +53,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "registration_date")
++    private LocalDate registrationDate;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -87,6 +91,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++
++    public void setRegistrationDate(LocalDate registrationDate) {
++        this.registrationDate = registrationDate;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+@@ -159,6 +171,7 @@ public class Owner extends Person {
+             .append("city", this.city)
+             .append("telephone", this.telephone)
+             .append("email", this.email)
++            .append("registrationDate", this.registrationDate)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java
+new file mode 100644
+index 000000000..92476df78
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/RegistrationDateDefaulter.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.Clock;
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Supplies an owner's registration date when the client did not provide one.
++ * <p>
++ * A registration date is optional on create; when absent it defaults to the server's
++ * current date so every stored owner carries the day it was registered. An explicitly
++ * supplied date is left untouched.
++ */
++@Component
++public class RegistrationDateDefaulter {
++
++    private final Clock clock;
++
++    public RegistrationDateDefaulter(Clock clock) {
++        this.clock = clock;
++    }
++
++    /**
++     * Sets {@code owner}'s registration date to the server's current date unless one was
++     * already supplied.
++     *
++     * @param owner the owner being created
++     */
++    public void applyDefault(Owner owner) {
++        if (owner.getRegistrationDate() == null) {
++            owner.setRegistrationDate(LocalDate.now(clock));
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7e307a63e..c08a56887 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
++import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.PetDto;
+@@ -66,16 +67,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerFieldsValidator ownerFieldsValidator;
+ 
++    private final RegistrationDateDefaulter registrationDateDefaulter;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+-                                 OwnerFieldsValidator ownerFieldsValidator) {
++                                 OwnerFieldsValidator ownerFieldsValidator,
++                                 RegistrationDateDefaulter registrationDateDefaulter) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.ownerFieldsValidator = ownerFieldsValidator;
++        this.registrationDateDefaulter = registrationDateDefaulter;
+     }
+ 
+     @InitBinder("ownerFieldsDto")
+@@ -116,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        this.registrationDateDefaulter.applyDefault(owner);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 33bc0c808..77bb1228b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+-  email VARCHAR(255)
++  email VARCHAR(255),
++  registration_date DATE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 005b04d18..4a767727f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+-  email      VARCHAR(255)
++  email      VARCHAR(255),
++  registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e2082e0b0..4e5bc62e3 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  registration_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c1e01cc48..a363d7467 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       address    TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+-                                      email      TEXT
++                                      email      TEXT,
++                                      registration_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bdd5396e1..4aa3e6938 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2041,6 +2041,14 @@ components:
+           type: string
+           maxLength: 255
+           example: george.franklin@example.com
++        registrationDate:
++          title: Registration date
++          description: >-
++            The date the pet owner was registered. Optional on create; when omitted it
++            defaults to the server's current date. Formatted as an ISO 'YYYY-MM-DD' date.
++          type: string
++          format: date
++          example: '2020-06-15'
+       required:
+         - firstName
+         - lastName
