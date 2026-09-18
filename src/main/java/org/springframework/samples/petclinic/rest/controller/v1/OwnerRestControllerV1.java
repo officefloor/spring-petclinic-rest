@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.CityCapacityChecker;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final NamesakeCounter namesakeCounter;
 
+    private final CityCapacityChecker cityCapacityChecker;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -90,7 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CustomerCodeAssigner customerCodeAssigner,
                                  HouseholdDuplicateChecker householdDuplicateChecker,
                                  HouseholdAssigner householdAssigner,
-                                 NamesakeCounter namesakeCounter) {
+                                 NamesakeCounter namesakeCounter,
+                                 CityCapacityChecker cityCapacityChecker) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -101,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdDuplicateChecker = householdDuplicateChecker;
         this.householdAssigner = householdAssigner;
         this.namesakeCounter = namesakeCounter;
+        this.cityCapacityChecker = cityCapacityChecker;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -139,6 +144,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (this.cityCapacityChecker.isCityAtCapacity(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
