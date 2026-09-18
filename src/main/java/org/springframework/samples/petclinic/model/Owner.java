@@ -78,6 +78,9 @@ public class Owner extends Person {
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -183,6 +186,28 @@ public class Owner extends Person {
 
     public void setMembershipLevel(Integer membershipLevel) {
         this.membershipLevel = membershipLevel;
+    }
+
+    /**
+     * The id of the existing owner this one is a soft duplicate of: an owner sharing this one's last
+     * name and postcode but reachable on a different telephone, recorded at creation. {@code null}
+     * when no such owner existed.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner was flagged as a possible duplicate of an existing one at creation, i.e.
+     * whether {@link #getPossibleDuplicateOf()} identifies a matching owner.
+     */
+    @Transient
+    public boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     /**
