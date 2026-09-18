@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -24,18 +22,11 @@ public class EnsureUniqueOwnerHousehold {
             return; // caller acknowledges the shared household
         }
 
-        String lastName = canonical(request.getLastName());
-        String address = canonical(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(canonical(existing.getLastName()))
-                    && address.equals(canonical(existing.getAddress()))) {
+            if (Household.same(request.getLastName(), request.getAddress(),
+                    existing.getLastName(), existing.getAddress())) {
                 throw new DuplicateOwnerHouseholdException(request.getLastName());
             }
         }
-    }
-
-    /** Case-insensitive form with leading/trailing and repeated internal whitespace collapsed. */
-    private static String canonical(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
