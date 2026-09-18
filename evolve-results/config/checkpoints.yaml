@@ -1,0 +1,263 @@
+# The ordered, cumulative checkpoint stream. Each is applied on top of the
+# committed result of the previous one.
+#
+# DESIGN — ONE ENDPOINT, EVOLVING. Every checkpoint adds (or, for a MUTATIVE
+# checkpoint, revises) a business rule on the SAME endpoint: create owner
+# (POST /api/owners). No NEW endpoints are added; the one rule that touches another
+# route is cp46, which converts the pre-existing owner DELETE from a hard delete to a
+# soft delete so create can ignore deleted owners. Each rule requires real CODE — a
+# cross-entity query, an aggregate/count, a date or string computation, a derived
+# field, a conditional, or a logged side-effect — so none can be satisfied by a
+# field constraint in openapi.yml alone.
+#
+# Because everything funnels into the one create-owner handler, the logic either
+# concentrates into a single god-method (Spring) or fans out into many wired
+# functions on the one pipeline (OfficeFloor) — which is exactly what the
+# erosion / hotspot / blast-radius metrics compare.
+#
+# CONTEXT-FREE AGENT. Each checkpoint runs a fresh agent with NO memory of prior
+# checkpoints; it works only from the current code, the current tests, and its
+# spec. So a spec must be self-contained: it never references a checkpoint number,
+# and a mutative spec describes the EXISTING behaviour to change in terms the agent
+# can find in the code, not by pointing at an earlier step.
+#
+# ADDITIVE vs MUTATIVE (experimenter metadata; not shown to the agent). Most
+# checkpoints are additive and install only their own CpNNTests.java. Every 4th
+# checkpoint from cp08 is MUTATIVE: it declares `type: mutative`, the prior
+# checkpoint numbers it changes in `mutates`, and a `tests` manifest that ships its
+# own new test PLUS updated copies of each changed prior test (kept under a cpNN/
+# subdir of the acceptance src_dir; installed by basename, so cp08/Cp02Tests.java
+# overwrites the running Cp02Tests.java). Reach escalates (2 -> 6 prior rules) with
+# deep spikes at cp32 and cp60. A regression on a rule listed in `mutates` is
+# INTENDED; breakage on any rule NOT listed is a true regression — the safety signal.
+#
+# NAMED FIELDS: every value a test reads back is given an exact JSON field name and
+# format in its spec. Rejection rules assert only the HTTP status; audit rules
+# assert against the logger named AUDIT (and NOTIFY for notifications).
+#
+# For checkpoint N the acceptance test class is CpNNTests, tagged @Tag("cpNN"),
+# methods prefixed core.../error.../functionality... A ready-made suite lives in
+# acceptance/. See README.
+
+checkpoints:
+  # --- cp01-07: bootstrap the rule web (additive) ---
+  - id: required-fields
+    spec: "Reject creating an owner that is missing or blank in any of firstName, lastName, address, city or telephone. Respond with 400 and a JSON body whose 'errors' array lists the name of each missing field."
+  - id: telephone-normalize
+    spec: "On create, normalize the telephone by removing every non-digit character, then require exactly 10 digits. Store and return the 10-digit value as 'telephone'. Reject with 400 when it is not exactly 10 digits after stripping."
+  - id: telephone-unique
+    spec: "Reject creating an owner whose normalized telephone is already used by any other owner. Respond with 409."
+  - id: email-format
+    spec: "An owner may include 'email'. When present it must be a syntactically valid address; store and return it lower-cased as 'email'. Reject with 400 when present but invalid."
+  - id: display-name
+    spec: "When an owner is created, return 'displayName' formatted exactly as 'LastName, FirstName' from the stored names."
+  - id: initials
+    spec: "Return 'initials' as the upper-cased first letters of firstName and lastName, dot-separated with a trailing dot, e.g. 'J.S.'."
+  - id: registration-date
+    spec: "When no registration date is supplied, set it to the server's current date and return 'registrationDate' in ISO format 'YYYY-MM-DD'."
+
+  # --- cp08 MUTATIVE (reach 2, targeted): telephone becomes E.164 ---
+  - id: telephone-e164
+    type: mutative
+    mutates: [2, 3]
+    tests: [Cp08Tests.java, cp08/Cp02Tests.java, cp08/Cp03Tests.java]
+    spec: "Change how the telephone is handled. Telephone numbers must now be stored in E.164 form: keep a leading '+' and country code when present, otherwise assume country code '+61' and drop a single leading '0' from the national digits; strip spaces, dashes and brackets; require 8 to 15 digits after the '+'. So '0412 345 678' is stored as '+61412345678'. Store and return the E.164 string as 'telephone', and detect duplicate telephones by comparing these E.164 values. This replaces the current behaviour that stored a 10-digit number and compared those. Reject with 400 when a number cannot form valid E.164."
+
+  # --- cp09-11: customer code and household (additive) ---
+  - id: customer-code
+    spec: "Assign 'customerCode' formatted '<LAST3>-<NNNN>' where LAST3 is the upper-cased first three letters of lastName and NNNN is a global 4-digit zero-padded sequence equal to one more than the current number of owners (e.g. 'SMI-0007')."
+  - id: household-duplicate
+    spec: "Reject creating an owner when another owner has the same lastName and the same address (compared case-insensitively with collapsed whitespace). Respond with 409, unless the request sets 'sharesHousehold' true."
+  - id: shares-household
+    spec: "The request may set boolean 'sharesHousehold'. When true, allow an owner at an address already used by a same-lastName owner, and assign both the same 'householdId' (a stable shared identifier). Return 'householdId'."
+
+  # --- cp12 MUTATIVE (reach 3, targeted): address normalization ---
+  - id: address-normalize
+    type: mutative
+    mutates: [1, 10, 11]
+    tests: [Cp12Tests.java, cp12/Cp01Tests.java, cp12/Cp10Tests.java, cp12/Cp11Tests.java]
+    spec: "Introduce address normalization applied whenever an owner is created: trim and collapse whitespace, upper-case, and expand common abbreviations (ST->STREET, RD->ROAD, AVE->AVENUE). Store and return the normalized 'address'. This changes existing behaviour: the required-field check must reject an address that is blank after normalization, and every comparison of addresses (household duplicate detection and the shared household id) must use the normalized form."
+
+  # --- cp13-15: derived membership (additive) ---
+  - id: namesake-count
+    spec: "Return 'namesakeCount' = the number of existing owners (before this create) sharing the same firstName and lastName, case-insensitively."
+  - id: membership-number
+    spec: "Assign 'membershipNumber' formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year (e.g. 'SMI-0007-M26')."
+  - id: membership-tier
+    spec: "Return 'membershipTier': 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'."
+
+  # --- cp16 MUTATIVE (reach 2, targeted): customerCode gains city code ---
+  - id: customer-code-city
+    type: mutative
+    mutates: [9, 14]
+    tests: [Cp16Tests.java, cp16/Cp09Tests.java, cp16/Cp14Tests.java]
+    spec: "Change the customerCode format to '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first three letters of the city, LAST3 the first three of the lastName, and NNNN a per-city 4-digit sequence (one more than the owners already in that city). Every value derived from the customerCode, such as the membership number, must be rebuilt on the new format. This changes the current customerCode and everything built from it."
+
+  # --- cp17-19: locality and limits (additive) ---
+  - id: locality
+    spec: "Derive 'locality' from the city using this fixed city-to-region table: Sydney->NSW, Melbourne->VIC, Brisbane->QLD. Return the canonical region string, or 'UNKNOWN' when the city is not in the table."
+  - id: city-capacity
+    spec: "Reject creating an owner when the owner's city already contains 50 or more owners. Respond with 409."
+  - id: daily-limit
+    spec: "Reject creating an owner when 100 or more owners have already been created today (by registrationDate). Respond with 429."
+
+  # --- cp20 MUTATIVE (reach 3, scattered): business-day registration date ---
+  - id: business-day
+    type: mutative
+    mutates: [7, 14, 19]
+    tests: [Cp20Tests.java, cp20/Cp07Tests.java, cp20/Cp14Tests.java, cp20/Cp19Tests.java]
+    spec: "The registration date must fall on a business day. This applies to the EFFECTIVE registration date, whether it was supplied in the request or defaulted to the server date: when that date is a Saturday or Sunday, roll it forward to the next Monday and use that as 'registrationDate'. This changes existing behaviour: a supplied weekend date is now rolled forward too, any value derived from the registration date (such as the membership number's year segment) must use the adjusted date, and the daily create-limit must count owners per adjusted business day."
+
+  # --- cp21-23: audit, warning, gold tier (additive) ---
+  - id: audit-create
+    spec: "On successful create, emit an audit line via the logger named AUDIT containing the owner id, the customerCode and the registrationDate."
+  - id: bulk-warning
+    spec: "When more than 80 owners have already been created today, include 'bulkSignupWarning' true in the response; otherwise false."
+  - id: tier-gold
+    spec: "membershipTier becomes 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members after this create; otherwise the existing BRONZE and SILVER rules apply."
+
+  # --- cp24 MUTATIVE (reach 3, targeted): numeric membership levels ---
+  - id: membership-levels
+    type: mutative
+    mutates: [15, 23, 21]
+    tests: [Cp24Tests.java, cp24/Cp15Tests.java, cp24/Cp23Tests.java, cp24/Cp21Tests.java]
+    spec: "Replace the string membership tier with a numeric 'membershipLevel' from 1 to 3 on creation: start at 1; add 1 when an email is present; add 1 when namesakeCount is 0; cap at 3 (level 4 is reserved for tenure). Remove the 'membershipTier' field from the response in favour of 'membershipLevel'. This changes the existing tier behaviour, and anything that recorded the tier (such as the create audit line) must record the level instead."
+
+  # --- cp25-27: more identity + preference (additive) ---
+  - id: email-unique
+    spec: "Reject creating an owner whose lower-cased email is already used by any other owner. Respond with 409."
+  - id: telephone-country-length
+    spec: "Validate the E.164 telephone's national-number length against its country code ('+61' requires 9 national digits, '+1' requires 10). Reject with 400 when the length is wrong for the country."
+  - id: contact-preference
+    spec: "Return 'contactPreference' = 'EMAIL' when an email is present, otherwise 'PHONE'."
+
+  # --- cp28 MUTATIVE (reach 4, scattered): unified identity key ---
+  - id: identity-key
+    type: mutative
+    mutates: [3, 10, 25, 11]
+    tests: [Cp28Tests.java, cp28/Cp03Tests.java, cp28/Cp10Tests.java, cp28/Cp25Tests.java, cp28/Cp11Tests.java]
+    spec: "Consolidate all duplicate detection into a single derived 'identityKey' = normalizedTelephone + '|' + (email or empty) + '|' + householdId, and reject with 409 only when a new owner's WHOLE identityKey equals an existing owner's. This changes existing behaviour: the separate telephone, email and household duplicate checks must now be expressed through this one key. Because the telephone is part of the key, two members of the same household (same householdId) with different telephones have different identityKeys and must both be allowed; only an exact full-key match is a duplicate. Return 'identityKey'."
+
+  # --- cp29-31: postcode, precise locality, check digit (additive) ---
+  - id: postcode
+    spec: "An owner may include 'postcode' (4 digits). When present it must be valid for the owner's city per this fixed table, keyed by the city's region (Sydney=NSW, Melbourne=VIC, Brisbane=QLD): NSW 2000-2099, VIC 3000-3099, QLD 4000-4099. Reject with 400 when a supplied postcode is out of range for the city's region. A city with no known region accepts any 4-digit postcode. Store and return 'postcode' when given. Postcode is validated only WHEN PRESENT and is optional when absent, so an owner created without a postcode is still accepted (the request contract stays backward-compatible)."
+  - id: locality-postcode
+    spec: "The locality derivation must now prefer the postcode: look up the region by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only fall back to the city-to-region table when the postcode is absent or in no known range. This returns the same region for known cities but disambiguates cities that share a name."
+  - id: check-digit
+    spec: "Return 'checkDigit' = a single Luhn check digit computed over the digits of the customerCode."
+
+  # --- cp32 MUTATIVE (reach 6, DEEP scattered): global identity redesign ---
+  - id: global-id
+    type: mutative
+    mutates: [9, 14, 16, 31, 21, 17]
+    tests: [Cp32Tests.java, cp32/Cp09Tests.java, cp32/Cp14Tests.java, cp32/Cp16Tests.java, cp32/Cp31Tests.java, cp32/Cp21Tests.java, cp32/Cp17Tests.java]
+    spec: "Redesign owner identity. The customerCode must become '<REGION>-<HASH8>' where REGION is the region code derived from the postcode and HASH8 is the first 8 upper-case hex characters of SHA-256 over (normalizedTelephone + lastName); drop the sequence numbers entirely. This changes existing behaviour: every value built from the customerCode (the membership number and its check digit), the create audit record, and the locality derivation must all move to the new region-and-hash identity."
+
+  # --- cp33-35: date guard, age band, soft match (additive) ---
+  - id: no-future-date
+    spec: "Reject a supplied registrationDate later than the server date. Respond with 400."
+  - id: age-band
+    spec: "The request may include 'birthDate' (ISO). When present, return 'ageBand' as 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+), computed against registrationDate."
+  - id: soft-match
+    spec: "When a new owner is not a hard duplicate but shares an existing owner's lastName and postcode with a different telephone, still create it and return 'possibleDuplicate' true with 'possibleDuplicateOf' set to the matching owner id; otherwise 'possibleDuplicate' false."
+
+  # --- cp36 MUTATIVE (reach 4, targeted): deterministic household id ---
+  - id: household-hash
+    type: mutative
+    mutates: [10, 11, 23, 28, 35]
+    tests: [Cp36Tests.java, cp36/Cp10Tests.java, cp36/Cp11Tests.java, cp36/Cp23Tests.java, cp36/Cp28Tests.java, cp36/Cp35Tests.java]
+    spec: "The householdId must become deterministic: the first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode), so owners with the same lastName and postcode share it automatically. This changes existing behaviour: 'sharesHousehold' now only bypasses the duplicate block rather than creating the link, and everything that keys off the household (duplicate detection and the household-size input to the membership level) must use this computed householdId. Because the household is now keyed on (lastName, postcode), owners sharing lastName and postcode are the same household: a second such owner is rejected as a household duplicate (409) unless it sets 'sharesHousehold', in which case it is created as a declared household member and is NOT flagged as a possible duplicate (a declared member is not a suspected duplicate)."
+
+  # --- cp37-39: display phone, blocklist, tenure cap (additive) ---
+  - id: telephone-display
+    spec: "Return 'telephoneDisplay' = the stored E.164 telephone formatted for humans (country code, space, grouped national digits, e.g. '+61 412 345 678'); keep 'telephone' as raw E.164."
+  - id: email-blocklist
+    spec: "Reject with 400 when the owner's email domain is on a disposable-domain blocklist (mailinator.com, tempmail.com, guerrillamail.com)."
+  - id: tenure-cap
+    spec: "Define that membership level 4 requires tenure of more than 365 days. Because a newly created owner has zero tenure, a new owner never exceeds level 3 (a new owner with an email, a namesakeCount of 0 and a 3-member household is level 3, not 4)."
+
+  # --- cp40 MUTATIVE (reach 3, scattered): points-based membership ---
+  - id: membership-points
+    type: mutative
+    mutates: [24, 23, 39, 15]
+    tests: [Cp40Tests.java, cp40/Cp24Tests.java, cp40/Cp23Tests.java, cp40/Cp39Tests.java, cp40/Cp15Tests.java]
+    spec: "Replace the level rules with a points system: start at 0; add 2 when an email is present; add 1 when namesakeCount is 0; add 2 for a household of 3 or more; add 3 for tenure over 365 days. Map 'membershipPoints' to 'membershipLevel' as 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more). Return both fields. This changes the existing rule that computed the membership level directly from those factors."
+
+  # --- cp41-43: collision, timezone, richer audit (additive) ---
+  - id: code-collision
+    spec: "When the computed customerCode collides with an existing owner's customerCode, append '-<n>' with the smallest n of 2 or more that makes it unique; return the de-duplicated 'customerCode'."
+  - id: locality-timezone
+    spec: "Return 'timezone' derived from the locality/region via this fixed region-to-timezone table, as an IANA name: NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane."
+  - id: audit-enriched
+    spec: "The create audit line (via AUDIT) must now also include membershipLevel and membershipNumber; the fields it already logs remain present."
+
+  # --- cp44 MUTATIVE (reach 5, scattered): structured address ---
+  - id: address-structured
+    type: mutative
+    mutates: [1, 12, 29, 30, 36]
+    tests: [Cp44Tests.java, cp44/Cp01Tests.java, cp44/Cp12Tests.java, cp44/Cp29Tests.java, cp44/Cp30Tests.java, cp44/Cp36Tests.java]
+    spec: "Add a structured address form: the request may provide 'addressLine1', an optional 'addressLine2', 'city' and 'postcode'. Prefer the structured fields when present; the flat 'address' input remains accepted for backward compatibility. An owner is valid when it supplies an address in EITHER form (a non-blank 'addressLine1', or the flat 'address'), plus city; the request contract stays backward-compatible so earlier minimal owners are still accepted. This changes existing behaviour: normalization applies to whichever address fields are supplied, and everything that reads the address (the household hash, postcode validation and locality) uses the structured fields when present, falling back to the flat address. Also return a composed 'address' string equal to the normalized addressLine1, with a single space and the normalized addressLine2 appended when addressLine2 is present."
+
+  # --- cp45-47: salutation, deleted owners, holidays (additive) ---
+  - id: salutation
+    spec: "The request may include 'title' (MR/MRS/MS/DR). Return 'salutation' = title + ' ' + lastName, or just lastName when no title is given."
+  - id: exclude-deleted
+    spec: "Change owner deletion to a soft-delete. DELETE /api/owners/{id} must now mark the owner deleted rather than removing the record: it sets 'deleted' true, retains the row, and returns 2xx; GET /api/owners/{id} still returns the owner afterwards with 'deleted' true. A newly created owner has 'deleted' false. The create endpoint's duplicate and identity checks must then ignore owners flagged deleted, so a normally-blocking duplicate is allowed when the only matching owner has been deleted."
+  - id: holiday-business-day
+    spec: "The business-day rule for the registration date must extend to public holidays: when the adjusted date lands on a listed public holiday, roll forward to the next non-holiday business day. The fixed public-holiday list is 2026-01-01, 2026-01-26, 2026-04-25, 2026-12-25, 2026-12-28."
+
+  # --- cp48 MUTATIVE (reach 4, targeted): fiscal-year basis ---
+  - id: fiscal-year
+    type: mutative
+    mutates: [14]
+    tests: [Cp48Tests.java, cp48/Cp14Tests.java]
+    spec: "Move date-derived values to a fiscal-year basis, where the fiscal year starts on 1 July. Return 'fiscalYear' as 'FY<YY>' derived from the business-day-adjusted registration date. This changes existing behaviour: the membership identifier's year segment must use the fiscal year, and tenure must be counted in elapsed fiscal years rather than 365-day windows."
+
+  # --- cp49-51: self link, idempotency, household ceiling (additive) ---
+  - id: self-link
+    spec: "Return 'selfLink' = '/api/owners/' followed by the new owner id."
+  - id: idempotency
+    spec: "The request may carry an 'Idempotency-Key' header. When a create repeats with a key already seen, return the originally created owner with 200 instead of creating a duplicate."
+  - id: level-ceiling
+    spec: "A new owner's membershipLevel cannot exceed one above the current maximum membershipLevel among their household members; return the capped 'membershipLevel'. With no existing household member no cap applies."
+
+  # --- cp52 MUTATIVE (reach 4, scattered): identity key v2 ---
+  - id: identity-key-v2
+    type: mutative
+    mutates: [28, 35, 46, 38, 10]
+    tests: [Cp52Tests.java, cp52/Cp28Tests.java, cp52/Cp35Tests.java, cp52/Cp46Tests.java, cp52/Cp38Tests.java, cp52/Cp10Tests.java]
+    spec: "Redesign the identity key: identityKey = SHA-256 hex over (normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)); duplicate detection (409) uses this key, still ignoring owners flagged deleted and still applying the email-domain blocklist first. This changes existing behaviour: the soft-match must now trigger when the identityKey differs but soundex(lastName) and postcode match. Because the telephone is part of the key, two owners with the same lastName and postcode but DIFFERENT telephones are no longer a hard household duplicate: they are created as a soft match (not rejected with 409). Duplicate detection is now the single identity key, so the separate household-duplicate 409 block from the computed householdId no longer applies."
+
+  # --- cp53-55: event log, capacity warning, segment (additive) ---
+  - id: audit-event
+    spec: "In addition to the audit line, emit an immutable structured event via AUDIT: a JSON object {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'} where seq is a monotonically increasing integer across creates. The event must carry the owner's current primary identifier: the customerCode here, and whatever replaces it later (so when the customerCode is unified into the memberId, the event carries the memberId instead)."
+  - id: capacity-warning
+    spec: "Return 'capacityWarning' true when the owner's city already has between 40 and 49 owners (approaching the capacity limit of 50); the hard rejection at 50 is unchanged."
+  - id: owner-segment
+    spec: "Return 'ownerSegment' formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'."
+
+  # --- cp56 MUTATIVE (reach 5, scattered): unified memberId ---
+  - id: member-id
+    type: mutative
+    mutates: [32, 41, 48, 43, 55, 9, 14, 16, 21, 31, 53]
+    tests: [Cp56Tests.java, cp56/Cp32Tests.java, cp56/Cp41Tests.java, cp56/Cp48Tests.java, cp56/Cp43Tests.java, cp56/Cp55Tests.java, cp56/Cp09Tests.java, cp56/Cp14Tests.java, cp56/Cp16Tests.java, cp56/Cp21Tests.java, cp56/Cp31Tests.java, cp56/Cp53Tests.java]
+    spec: "Unify the customerCode and membershipNumber into a single 'memberId' formatted '<REGION><FY><HASH8><CHK>': the region code, the 2-digit fiscal year, the 8 upper-hex HASH8 (the same SHA-256-over-(normalizedTelephone+lastName) first-8-hex used by the region-and-hash identity), and a single Luhn check digit CHK computed over the digits of <REGION><FY><HASH8>. Remove the separate customerCode and membershipNumber fields, and also remove the standalone 'checkDigit' field (it was derived from the now-removed customerCode; its Luhn digit is now the CHK segment inside memberId). This changes existing behaviour: collision handling applies to the memberId, and the fiscal-year value, the audit record and the owner segment must all reference the memberId."
+
+  # --- cp57-59: notify, risk, problem+json (additive) ---
+  - id: welcome-notify
+    spec: "On successful create, enqueue a welcome notification: emit via the logger named NOTIFY a line containing the owner id and the memberId."
+  - id: risk-flag
+    spec: "Return 'riskFlag' true when any of these hold: the owner is a possible duplicate, the email domain is disposable-adjacent, or the city is over its soft capacity; otherwise false."
+  - id: problem-json
+    spec: "All rejection responses (400, 409, 429) must now return an RFC7807 application/problem+json body with 'type', 'title', 'status' and 'detail'; the HTTP status codes are unchanged."
+
+  # --- cp60 MUTATIVE (reach 6, DEEP finale): identity + response v2 ---
+  # NOTE: the finale deliberately does NOT rename request fields. A request-contract
+  # rename would break the shared ownerNode() test helper at every checkpoint, which
+  # cannot be versioned, and would spray false regressions. Instead v2 is an
+  # identity/response/audit change whose affected rules are all bounded and listed.
+  - id: identity-v2
+    type: mutative
+    mutates: [32, 36, 52, 56, 55, 53, 11, 28, 41, 57]
+    tests: [Cp60Tests.java, cp60/Cp32Tests.java, cp60/Cp36Tests.java, cp60/Cp52Tests.java, cp60/Cp56Tests.java, cp60/Cp55Tests.java, cp60/Cp53Tests.java, cp60/Cp11Tests.java, cp60/Cp28Tests.java, cp60/Cp41Tests.java, cp60/Cp57Tests.java]
+    spec: "Release version 2 of the owner identity. Rederive the region code used INSIDE the identifiers, the householdId, the identityKey and the memberId with a version-2 algorithm that mixes in a fixed 'V2' version tag, so every identifier changes and no value produced under version 1 is produced again. The user-facing 'locality' field is NOT an identifier: it must remain the plain region code (for example 'NSW'), so the V2 tag only appears inside the identifiers, never in 'locality', 'timezone' or the owner segment's derived region. Group the memberId, identityKey and householdId under a nested 'identity' object in the owner response, and add a top-level integer 'apiVersion' of 2. Move the audit event to schema version 2 with an added 'schemaVersion' of 2, and recompute the owner segment from the version-2 identity. The request fields are unchanged. Several existing behaviours across the identity derivation, the response shape, the audit schema and the owner segment change at once."
