@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CustomerCodeAssigner;
+import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateChecker;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateDefaulter;
@@ -75,6 +76,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdDuplicateChecker householdDuplicateChecker;
 
+    private final HouseholdAssigner householdAssigner;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -82,7 +85,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  RegistrationDateDefaulter registrationDateDefaulter,
                                  CustomerCodeAssigner customerCodeAssigner,
-                                 HouseholdDuplicateChecker householdDuplicateChecker) {
+                                 HouseholdDuplicateChecker householdDuplicateChecker,
+                                 HouseholdAssigner householdAssigner) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -91,6 +95,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.registrationDateDefaulter = registrationDateDefaulter;
         this.customerCodeAssigner = customerCodeAssigner;
         this.householdDuplicateChecker = householdDuplicateChecker;
+        this.householdAssigner = householdAssigner;
     }
 
     @InitBinder("ownerFieldsDto")
@@ -131,9 +136,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.ownerExistsWithTelephone(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && this.householdDuplicateChecker.isDuplicate(owner)) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        boolean duplicate = this.householdDuplicateChecker.isDuplicate(owner);
+        if (duplicate && !sharesHousehold) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (duplicate) {
+            this.householdAssigner.assign(owner);
         }
         this.registrationDateDefaulter.applyDefault(owner);
         this.customerCodeAssigner.assign(owner);

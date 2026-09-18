@@ -16,52 +16,30 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Locale;
-import java.util.regex.Pattern;
-
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Detects, on create, whether an owner would duplicate an existing household.
- * <p>
- * Two owners share a household when they carry the same last name and the same address.
- * Both fields are compared leniently: surrounding whitespace is trimmed, internal runs of
- * whitespace are collapsed to a single space and letters are compared without regard to
- * case, so values that differ only in spacing or capitalisation are treated as equal.
+ * Detects, on create, whether an owner would duplicate an existing household, i.e. another
+ * owner already shares its last name and address (see {@link HouseholdMatcher} for how
+ * household membership is determined).
  */
 @Component
 public class HouseholdDuplicateChecker {
 
-    /** Runs of whitespace collapsed to a single space before comparison. */
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private final HouseholdMatcher householdMatcher;
 
-    private final ClinicService clinicService;
-
-    public HouseholdDuplicateChecker(ClinicService clinicService) {
-        this.clinicService = clinicService;
+    public HouseholdDuplicateChecker(HouseholdMatcher householdMatcher) {
+        this.householdMatcher = householdMatcher;
     }
 
     /**
-     * Reports whether an already-stored owner shares {@code candidate}'s household, i.e.
-     * has the same last name and address under the lenient comparison described above.
+     * Reports whether an already-stored owner shares {@code candidate}'s household.
      *
      * @param candidate the owner being created
      * @return {@code true} when another owner already occupies the same household
      */
     public boolean isDuplicate(Owner candidate) {
-        String lastName = normalize(candidate.getLastName());
-        String address = normalize(candidate.getAddress());
-        return clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalize(existing.getLastName()).equals(lastName)
-                && normalize(existing.getAddress()).equals(address));
-    }
-
-    private String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
+        return !householdMatcher.findMembers(candidate).isEmpty();
     }
 }
