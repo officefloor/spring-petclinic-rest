@@ -29,11 +29,12 @@ import org.springframework.stereotype.Component;
  * Groups owners into households and derives a household's stable shared identifier.
  * <p>
  * Two owners belong to the same household when they carry the same last name and the same
- * address. The last name is compared leniently: surrounding whitespace is trimmed, internal
+ * postcode. The last name is compared leniently: surrounding whitespace is trimmed, internal
  * runs of whitespace are collapsed to a single space and letters are compared without
  * regard to case, so values that differ only in spacing or capitalisation are treated as
- * equal. The address is compared in its canonical {@link AddressNormalizer normalized} form,
- * the same form under which it is stored and returned.
+ * equal. The postcode is compared verbatim. Because the identifier is derived
+ * deterministically from these two fields, owners sharing a last name and postcode resolve
+ * to the same household without any explicit linking step.
  */
 @Component
 public class HouseholdMatcher {
@@ -43,11 +44,8 @@ public class HouseholdMatcher {
 
     private final ClinicService clinicService;
 
-    private final AddressNormalizer addressNormalizer;
-
-    public HouseholdMatcher(ClinicService clinicService, AddressNormalizer addressNormalizer) {
+    public HouseholdMatcher(ClinicService clinicService) {
         this.clinicService = clinicService;
-        this.addressNormalizer = addressNormalizer;
     }
 
     /**
@@ -66,9 +64,9 @@ public class HouseholdMatcher {
     }
 
     /**
-     * The stable identifier for {@code candidate}'s household, derived deterministically
-     * from its (normalised) last name and address so that every member resolves to the
-     * same value.
+     * The stable identifier for {@code candidate}'s household: the first 12 hex characters of
+     * the SHA-256 digest of its (normalised) last name and postcode, joined by {@code '|'}, so
+     * that every owner sharing a last name and postcode resolves to the same value.
      *
      * @param candidate an owner in the household
      * @return a non-blank household identifier
@@ -78,7 +76,7 @@ public class HouseholdMatcher {
     }
 
     private String householdKey(Owner owner) {
-        return normalizeName(owner.getLastName()) + "\n" + addressNormalizer.normalize(owner.getAddress());
+        return normalizeName(owner.getLastName()) + "|" + orEmpty(owner.getPostcode());
     }
 
     private String normalizeName(String value) {
@@ -86,5 +84,9 @@ public class HouseholdMatcher {
             return "";
         }
         return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
+    }
+
+    private String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

@@ -25,6 +25,10 @@ import org.springframework.stereotype.Component;
  * Records, on create, whether a new owner softly matches an already-stored one (see
  * {@link PossibleDuplicateMatcher}). Call this before the owner is saved so the match is
  * computed against the owners stored before this create and not the owner itself.
+ * <p>
+ * An owner that deliberately joins an existing household (a declared household member) is
+ * never a suspected duplicate: it is expected to share a last name and postcode with the
+ * rest of the household, so it is left unflagged rather than run through the soft match.
  */
 @Component
 public class PossibleDuplicateAssigner {
@@ -37,12 +41,16 @@ public class PossibleDuplicateAssigner {
 
     /**
      * Assigns {@code owner}'s possible-duplicate flag and, when it softly matches an
-     * existing owner, the matched owner's id.
+     * existing owner, the matched owner's id. A declared household member is never flagged.
      *
-     * @param owner the owner being created
+     * @param owner                   the owner being created
+     * @param declaredHouseholdMember whether the owner deliberately joined an existing
+     *                                household (and so is not a suspected duplicate)
      */
-    public void assign(Owner owner) {
-        Optional<Owner> match = possibleDuplicateMatcher.findMatch(owner);
+    public void assign(Owner owner, boolean declaredHouseholdMember) {
+        Optional<Owner> match = declaredHouseholdMember
+            ? Optional.empty()
+            : possibleDuplicateMatcher.findMatch(owner);
         owner.setPossibleDuplicate(match.isPresent());
         owner.setPossibleDuplicateOf(match.map(Owner::getId).orElse(null));
     }

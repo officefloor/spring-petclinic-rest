@@ -190,19 +190,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.dailyRegistrationLimiter.isDailyLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        this.householdAssigner.assign(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold && this.householdDuplicateChecker.isDuplicate(owner)) {
-            this.householdAssigner.assign(owner);
+        boolean householdDuplicate = this.householdDuplicateChecker.isDuplicate(owner);
+        if (householdDuplicate && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (this.identityDuplicateChecker.isDuplicate(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        boolean declaredHouseholdMember = householdDuplicate && sharesHousehold;
         this.householdSizeAssigner.assign(owner);
         this.customerCodeAssigner.assign(owner);
         this.namesakeCounter.assign(owner);
         this.membershipLevelAssigner.assign(owner);
         this.bulkSignupWarningAssigner.assign(owner);
-        this.possibleDuplicateAssigner.assign(owner);
+        this.possibleDuplicateAssigner.assign(owner, declaredHouseholdMember);
         this.clinicService.saveOwner(owner);
         this.ownerCreationAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

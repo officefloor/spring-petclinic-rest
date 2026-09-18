@@ -17,43 +17,33 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Assigns owners who deliberately share a household (via the {@code sharesHousehold} flag)
- * the household's stable shared identifier, back-filling any existing member that does not
- * yet carry it so the whole household ends up tagged with the same value.
+ * Tags an owner, on create, with its household's stable shared identifier. The identifier is
+ * derived deterministically from the owner's last name and postcode (see
+ * {@link HouseholdMatcher}), so every owner in the same household ends up carrying the same
+ * value without any explicit linking or back-filling step.
  */
 @Component
 public class HouseholdAssigner {
 
     private final HouseholdMatcher householdMatcher;
 
-    private final ClinicService clinicService;
-
-    public HouseholdAssigner(HouseholdMatcher householdMatcher, ClinicService clinicService) {
+    public HouseholdAssigner(HouseholdMatcher householdMatcher) {
         this.householdMatcher = householdMatcher;
-        this.clinicService = clinicService;
     }
 
     /**
-     * Tags {@code candidate} with its household's shared identifier and back-fills the same
-     * value onto existing members that lack one. The candidate is not saved here; the
-     * caller persists it as part of the create.
+     * Tags {@code candidate} with its household's shared identifier. The candidate is not
+     * saved here; the caller persists it as part of the create.
      *
-     * @param candidate the owner being created into an existing household
+     * @param candidate the owner being created
      * @return the shared household identifier applied to the candidate
      */
     public String assign(Owner candidate) {
         String householdId = householdMatcher.householdId(candidate);
         candidate.setHouseholdId(householdId);
-        for (Owner member : householdMatcher.findMembers(candidate)) {
-            if (member.getHouseholdId() == null) {
-                member.setHouseholdId(householdId);
-                clinicService.saveOwner(member);
-            }
-        }
         return householdId;
     }
 }

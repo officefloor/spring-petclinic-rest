@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Detects, on create, whether an owner would duplicate an existing household, i.e. another
- * owner already shares its last name and address (see {@link HouseholdMatcher} for how
+ * owner already shares its last name and postcode (see {@link HouseholdMatcher} for how
  * household membership is determined).
  */
 @Component
