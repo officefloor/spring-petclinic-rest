@@ -74,7 +74,14 @@ public interface OwnerRepository {
      * @see BaseEntity#isNew
      */
     void save(Owner owner) throws DataAccessException;
-    
+
+    /**
+     * Count the total number of <code>Owner</code>s in the data store.
+     *
+     * @return the number of persisted owners
+     */
+    long count() throws DataAccessException;
+
     /**
      * Retrieve <code>Owner</code>s from the data store, returning all owners 
      *
