@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 216775b9e..1f3caacfc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -77,6 +77,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     static final int MAX_OWNERS_PER_DAY = 100;
+ 
++    /**
++     * Number of owners that may be registered on the current business day before a create/read
++     * response flags {@code bulkSignupWarning}. Once more than this many owners exist for the day,
++     * the warning is raised.
++     */
++    static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -121,7 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
++        return new ResponseEntity<>(toOwnerDtoWithBulkSignupWarning(owner), HttpStatus.OK);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -158,12 +165,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditor.ownerCreated(owner);
+-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        OwnerDto ownerDto = toOwnerDtoWithBulkSignupWarning(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Map an owner to its DTO and stamp {@code bulkSignupWarning}, which reflects whether more than
++     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been registered on the current
++     * business day.
++     */
++    private OwnerDto toOwnerDtoWithBulkSignupWarning(Owner owner) {
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        LocalDate today = RegistrationDatePolicy.effectiveDate(null);
++        ownerDto.setBulkSignupWarning(
++            this.clinicService.countOwnersRegisteredOn(today) > BULK_SIGNUP_WARNING_THRESHOLD);
++        return ownerDto;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0f92e0c2d..378d25470 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2145,6 +2145,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners have already been registered on the
++                current business day, signalling an unusually high signup volume;
++                false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
