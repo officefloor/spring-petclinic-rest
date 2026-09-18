@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+index 0bcaa8dc0..1b727aa50 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Household.java
+@@ -7,7 +7,8 @@ import java.util.Locale;
+ 
+ /**
+  * Identity of an owner's household. Two owners live in the same household when they share
+- * the same last name and address, compared case-insensitively with collapsed whitespace.
++ * the same last name and address. The address is compared in its {@link OwnerAddress
++ * normalized} form and the last name case-insensitively with collapsed whitespace.
+  *
+  * <p>The {@link #id(String, String) household id} is derived deterministically from that
+  * canonical key, so every member of a household computes the same stable identifier without
+@@ -19,11 +20,12 @@ final class Household {
+     }
+ 
+     /**
+-     * Canonical household key: last name and address, each trimmed, with internal whitespace
+-     * collapsed and lower-cased, joined so distinct pairs never collide.
++     * Canonical household key: the last name trimmed, internal whitespace collapsed and
++     * lower-cased, and the address in its {@link OwnerAddress normalized} form, joined so
++     * distinct pairs never collide.
+      */
+     static String key(String lastName, String address) {
+-        return canonical(lastName) + "\n" + canonical(address);
++        return canonical(lastName) + "\n" + OwnerAddress.normalize(address);
+     }
+ 
+     /** Whether the two (last name, address) pairs belong to the same household. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+new file mode 100644
+index 000000000..0a74a300c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Normalizes an owner's {@code address} to its canonical form (trimmed, whitespace collapsed,
++ * upper-cased, abbreviations expanded) in place on the shared body, so the persisted and
++ * returned address is that canonical string and every later address comparison sees it. It
++ * runs before validation, so an address that is blank once normalized is rejected there as a
++ * missing required field. It mutates the already-published body variable rather than binding
++ * {@code @RequestBody}, so it composes after the sole binding step in the pipeline.
++ */
++public class NormalizeOwnerAddress {
++
++    public void service(@Val OwnerFieldsDto request) {
++        String address = request.getAddress();
++        if (address == null) {
++            return; // absence is reported by the required-field check
++        }
++        request.setAddress(OwnerAddress.normalize(address));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+new file mode 100644
+index 000000000..ee3141145
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerAddress.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Address normalization shared by the owner pipelines and the household identity: produces
++ * an address's canonical form so it is stored, returned and compared in one consistent
++ * representation. Normalizing means trimming and collapsing whitespace, upper-casing, and
++ * expanding common street-type abbreviations to their full word.
++ */
++public final class OwnerAddress {
++
++    /** Whole-token abbreviations expanded to their full word (compared upper-cased). */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private OwnerAddress() {
++    }
++
++    /**
++     * The canonical form of {@code address}: trimmed, internal whitespace collapsed to single
++     * spaces, upper-cased, with each abbreviation token expanded. A {@code null} address, or one
++     * that is blank once trimmed, yields the empty string.
++     */
++    public static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e6dfc4b37..72f1a3d9d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -12,6 +12,14 @@ normalize:
+ # already-bound body, before validation and any persistence.
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
++  next: normalizeAddress
++
++# Normalize the address (trim/collapse whitespace, upper-case, expand abbreviations) on the
++# already-bound body, before validation. Running before validate means an address blank once
++# normalized is rejected as a missing required field, and every later address comparison
++# (duplicate household, shared household id) sees the normalized form.
++normalizeAddress:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
+   next: validate
+ 
+ # Validate so a missing/blank required field is a 400 listing those fields, before any
