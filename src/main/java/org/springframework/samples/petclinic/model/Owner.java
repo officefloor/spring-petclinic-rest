@@ -157,6 +157,22 @@ public class Owner extends Person {
         return (this.email == null || this.email.isBlank()) ? "PHONE" : "EMAIL";
     }
 
+    /**
+     * The owner's identity key: the single value used to detect duplicate owners on
+     * create. It joins the owner's (already normalized) telephone, email and household id
+     * with {@code '|'} — {@code <telephone>|<email>|<householdId>} — a missing email or
+     * household id contributing an empty segment. Two owners are duplicates only when
+     * their whole identity keys are equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return orEmpty(this.telephone) + "|" + orEmpty(this.email) + "|" + orEmpty(this.householdId);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
