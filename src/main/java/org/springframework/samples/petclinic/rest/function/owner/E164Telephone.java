@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -10,6 +11,11 @@ import java.util.regex.Pattern;
  *
  * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and {@code "+64 21 123 456"}
  * becomes {@code "+6421123456"}.
+ *
+ * <p>Where the country code has a known fixed national-number length, that length is enforced:
+ * {@code +61} requires 9 national digits and {@code +1} requires 10. A number whose national
+ * part is the wrong length for its country code is rejected. Country codes with no known rule
+ * are constrained only by the general 8-to-15-digit bound.
  */
 final class E164Telephone {
 
@@ -21,6 +27,9 @@ final class E164Telephone {
 
     /** A valid E.164 body: 8 to 15 digits following the {@code '+'}. */
     private static final Pattern E164_DIGITS = Pattern.compile("\\d{8,15}");
+
+    /** Country code to the exact national-number length it requires. */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
 
     private E164Telephone() {
     }
@@ -43,6 +52,31 @@ final class E164Telephone {
             String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
             digits = DEFAULT_COUNTRY_CODE + national;
         }
-        return E164_DIGITS.matcher(digits).matches() ? "+" + digits : null;
+        if (!E164_DIGITS.matcher(digits).matches() || !hasValidNationalLength(digits)) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Checks the national-number length against the number's country code, taken as the longest
+     * known country-code prefix of {@code digits}.
+     *
+     * @param digits the E.164 body (country code plus national number, no {@code '+'}).
+     * @return {@code false} only when {@code digits} starts with a country code that has a known
+     *         national-number length and the national part does not match it; {@code true} for
+     *         country codes without a known rule.
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        String countryCode = null;
+        for (String code : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(code) && (countryCode == null || code.length() > countryCode.length())) {
+                countryCode = code;
+            }
+        }
+        if (countryCode == null) {
+            return true;
+        }
+        return digits.length() - countryCode.length() == NATIONAL_LENGTHS.get(countryCode);
     }
 }
