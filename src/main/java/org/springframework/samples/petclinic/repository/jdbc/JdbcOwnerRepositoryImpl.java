@@ -246,6 +246,17 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
 	}
 
 	@Override
+	public long countByCity(String city) throws DataAccessException {
+		Map<String, Object> params = new HashMap<>();
+		params.put("city", city);
+		Long total = this.namedParameterJdbcTemplate.queryForObject(
+			"SELECT COUNT(*) FROM owners WHERE city = :city",
+			params,
+			Long.class);
+		return total == null ? 0 : total;
+	}
+
+	@Override
 	@Transactional
 	public void delete(Owner owner) throws DataAccessException {
 		Map<String, Object> ownerParams = new HashMap<>();

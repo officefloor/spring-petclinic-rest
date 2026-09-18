@@ -22,10 +22,11 @@ import org.springframework.stereotype.Component;
 /**
  * Produces the customer code assigned to a new {@link Owner}.
  *
- * <p>The code is formatted {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the
- * upper-cased first three letters of the owner's last name and {@code NNNN} is a
- * 4-digit zero-padded global sequence equal to one more than the current number
- * of owners (e.g. {@code 'SMI-0007'}).
+ * <p>The code is formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
+ * and {@code LAST3} are the upper-cased first three letters of the owner's city
+ * and last name, and {@code NNNN} is a 4-digit zero-padded per-city sequence
+ * equal to one more than the number of owners already in that city (e.g.
+ * {@code 'LON-SMI-0007'}).
  */
 @Component
 public class CustomerCodeGenerator {
@@ -39,22 +40,22 @@ public class CustomerCodeGenerator {
     }
 
     /**
-     * Generate the customer code for the given owner based on its last name and
-     * the current owner count.
+     * Generate the customer code for the given owner based on its city, last
+     * name and the current number of owners in that city.
      *
      * @param owner the owner being registered
-     * @return the {@code '<LAST3>-<NNNN>'} customer code
+     * @return the {@code '<CITY3>-<LAST3>-<NNNN>'} customer code
      */
     public String generate(Owner owner) {
-        long sequence = ownerRepository.count() + 1;
-        return String.format("%s-%04d", prefix(owner.getLastName()), sequence);
+        long sequence = ownerRepository.countByCity(owner.getCity()) + 1;
+        return String.format("%s-%s-%04d", prefix(owner.getCity()), prefix(owner.getLastName()), sequence);
     }
 
-    /** The upper-cased first three letters of the given last name. */
-    private static String prefix(String lastName) {
+    /** The upper-cased first three letters of the given value. */
+    private static String prefix(String value) {
         StringBuilder prefix = new StringBuilder(PREFIX_LENGTH);
-        for (int i = 0; i < lastName.length() && prefix.length() < PREFIX_LENGTH; i++) {
-            char c = lastName.charAt(i);
+        for (int i = 0; i < value.length() && prefix.length() < PREFIX_LENGTH; i++) {
+            char c = value.charAt(i);
             if (Character.isLetter(c)) {
                 prefix.append(Character.toUpperCase(c));
             }

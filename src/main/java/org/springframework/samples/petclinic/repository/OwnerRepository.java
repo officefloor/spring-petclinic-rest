@@ -100,6 +100,14 @@ public interface OwnerRepository {
      * @return the number of persisted owners
      */
     long count() throws DataAccessException;
+
+    /**
+     * Count the number of <code>Owner</code>s in the data store located in the given city.
+     *
+     * @param city the city to match
+     * @return the number of persisted owners in that city
+     */
+    long countByCity(String city) throws DataAccessException;
 	
     /**
      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
