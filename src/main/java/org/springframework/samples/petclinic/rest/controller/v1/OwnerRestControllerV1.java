@@ -244,6 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         stampBulkSignupWarning(ownerDto);
         stampCapacityWarning(ownerDto, owner);
+        stampRiskFlag(ownerDto, owner);
         return ownerDto;
     }
 
@@ -266,6 +267,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         long cityOwners = this.clinicService.countOwnersByCity(owner.getCity());
         ownerDto.setCapacityWarning(
             cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY);
+    }
+
+    /**
+     * Stamp {@code riskFlag}, which flags an owner for manual risk review when any single risk signal
+     * holds: the owner is a possible duplicate, its email domain is disposable-adjacent, or its city
+     * is at or over its soft capacity of {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners.
+     */
+    private void stampRiskFlag(OwnerDto ownerDto, Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean disposableAdjacent = DisposableEmailValidator.isDisposableAdjacent(owner.getEmail());
+        boolean cityOverSoftCapacity =
+            this.clinicService.countOwnersByCity(owner.getCity()) >= CITY_CAPACITY_WARNING_THRESHOLD;
+        ownerDto.setRiskFlag(possibleDuplicate || disposableAdjacent || cityOverSoftCapacity);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
