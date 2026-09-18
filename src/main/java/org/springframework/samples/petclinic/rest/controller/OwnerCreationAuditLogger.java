@@ -26,8 +26,8 @@ import org.springframework.stereotype.Component;
  * <p>
  * On a successful create a single line is written to the dedicated {@code AUDIT}
  * logger carrying the newly assigned owner id, its customer code, its
- * registration date and its membership level, so the side-effect can be observed
- * independently of the REST response.
+ * registration date, its membership level and its membership number, so the
+ * side-effect can be observed independently of the REST response.
  */
 @Component
 public class OwnerCreationAuditLogger {
@@ -41,7 +41,8 @@ public class OwnerCreationAuditLogger {
      * @param owner the owner that was created
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
     }
 }
