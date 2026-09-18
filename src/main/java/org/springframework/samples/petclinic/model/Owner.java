@@ -413,6 +413,18 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's marketing segment, formatted {@code '<TIER>_<AREA>'} (see
+     * {@link OwnerSegment}). The {@code TIER} follows the {@linkplain
+     * #getMembershipLevel() membership level} and the {@code AREA} follows the
+     * {@linkplain #getLocality() locality}, so the segment is one of
+     * {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"}
+     * or {@code "STANDARD_REGIONAL"}.
+     */
+    public String getOwnerSegment() {
+        return OwnerSegment.of(getMembershipLevel(), getLocality());
+    }
+
+    /**
      * The owner's preferred contact channel, derived from the fields on file:
      * {@code "EMAIL"} when a contact email is present, otherwise {@code "PHONE"}.
      */
