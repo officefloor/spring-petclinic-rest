@@ -1,0 +1,168 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1e7671b64..476077a8f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -67,6 +67,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -142,6 +145,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * The owner's locality: the canonical region derived from the city via the fixed
+      * {@link CityRegion} table, or {@code "UNKNOWN"} when the city is not in the table.
+@@ -152,11 +163,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier, derived from its state: {@code SILVER} when the owner had no
+-     * namesakes at creation ({@link #getNamesakeCount()} is 0) and has an email address, otherwise
+-     * {@code BRONZE}.
++     * The owner's membership tier, derived from its state: {@code GOLD} when the owner's household
++     * had 3 or more members at creation ({@link #getHouseholdSize()} is 3 or more); otherwise
++     * {@code SILVER} when the owner had no namesakes at creation ({@link #getNamesakeCount()} is 0)
++     * and has an email address, otherwise {@code BRONZE}.
+      */
+     public String getMembershipTier() {
++        if (this.householdSize != null && this.householdSize >= 3) {
++            return "GOLD";
++        }
+         boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
+         return unique && StringUtils.hasText(this.email) ? "SILVER" : "BRONZE";
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+new file mode 100644
+index 000000000..d8158b989
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHouseholdMembers.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records on the newly built owner how many members its household will have once this create
++ * completes — the existing owners sharing its {@code householdId} plus this one. Runs after
++ * {@link AssignHousehold} has assigned the shared id and before the owner is saved, so the size
++ * reflects the household immediately after this create. An owner not sharing a household has a
++ * size of 1.
++ */
++public class CountHouseholdMembers {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            owner.setHouseholdSize(1);
++            return;
++        }
++        long existing = ownerRepository.findByLastName(owner.getLastName()).stream()
++            .filter(member -> householdId.equals(member.getHouseholdId()))
++            .count();
++        owner.setHouseholdSize((int) (existing + 1));
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2e4a83c10..f7c6ab83d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 30ac36aae..16d0470a8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4429c8cf1..ff5d9f834 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(25),
+   household_id VARCHAR(40),
+   namesake_count INT,
++  household_size INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 485b78e8a..e5c8ae278 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 118d3ea0c..2494d175a 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -45,6 +45,11 @@ build:
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
++  next: countHouseholdMembers
++
++countHouseholdMembers:
++  class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
++  govern: [ transaction ]
+   next: applyRegistrationDate
+ 
+ applyRegistrationDate:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 418e0556c..d2e15c847 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2135,8 +2135,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner had no namesakes at creation
+-                (namesakeCount is 0) and has an email address, otherwise 'BRONZE'.
++                The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
++                same householdId) had 3 or more members after this create; otherwise 'SILVER' when
++                the owner had no namesakes at creation (namesakeCount is 0) and has an email address,
++                otherwise 'BRONZE'.
+               type: string
+               example: 'SILVER'
+               readOnly: true
