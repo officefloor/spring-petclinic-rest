@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The owner's name formatted as 'LastName, FirstName' from the stored names. */
@@ -50,6 +51,12 @@ public interface OwnerMapper {
      *  city-to-region table, or 'UNKNOWN' when the city is not in the table. */
     default String locality(Owner owner) {
         return CityRegion.locality(owner.getCity());
+    }
+
+    /** The owner's preferred contact method: 'EMAIL' when an email address is present,
+     *  otherwise 'PHONE'. */
+    default String contactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isEmpty() ? "EMAIL" : "PHONE";
     }
 
     Owner toOwner(OwnerDto ownerDto);
