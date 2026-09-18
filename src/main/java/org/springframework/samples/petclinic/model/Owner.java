@@ -80,6 +80,14 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    /**
+     * Whether this owner was knowingly created into a shared household (the request declared shared
+     * membership). A declared member is not treated as a suspected duplicate. Set per request and
+     * never persisted.
+     */
+    @Transient
+    private boolean declaredHouseholdMember;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -268,9 +276,9 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner, while not a hard duplicate, shares an existing owner's
+     * Whether this owner, while not a declared household member, shares an existing owner's
      * last name and postcode but carries a different telephone. Determined once,
-     * when the owner is created.
+     * when the owner is created. A declared household member is never a suspected duplicate.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -278,6 +286,18 @@ public class Owner extends Person {
 
     public void setPossibleDuplicate(Boolean possibleDuplicate) {
         this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * Whether this owner was knowingly created into a shared household. Such a declared member
+     * bypasses the household-duplicate block and is not flagged as a suspected duplicate.
+     */
+    public boolean isDeclaredHouseholdMember() {
+        return this.declaredHouseholdMember;
+    }
+
+    public void setDeclaredHouseholdMember(boolean declaredHouseholdMember) {
+        this.declaredHouseholdMember = declaredHouseholdMember;
     }
 
     /**

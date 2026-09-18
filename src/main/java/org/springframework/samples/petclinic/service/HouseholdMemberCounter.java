@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * {@link Owner#getHouseholdId() household id}.
  *
  * <p>Household members always share a last name (the household id is derived
- * from the last name and address), so members are found via the same
+ * from the last name and postcode), so members are found via the same
  * case-insensitive last-name lookup used elsewhere and then narrowed to the
  * matching household id.
  */

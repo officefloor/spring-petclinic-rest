@@ -17,28 +17,34 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Derives the stable identifier shared by owners who belong to the same household, i.e. who share a
- * last name and address (compared case-insensitively with collapsed whitespace). Because the
- * identifier is a deterministic digest of that normalized pair, every member of a household computes
- * the same value, and it never changes as members join or leave.
+ * last name and postcode. The last name is normalized (case-insensitively, with collapsed
+ * whitespace) and joined to the postcode with {@code '|'}; the identifier is the leading hex
+ * characters of the SHA-256 digest of that pair. Because it is a deterministic digest, every owner
+ * with the same last name and postcode computes the same value automatically, and it never changes
+ * as members join or leave.
  */
 public final class HouseholdIdGenerator {
 
     /** Number of leading hex characters of the digest kept as the identifier. */
-    private static final int LENGTH = 16;
+    private static final int LENGTH = 12;
 
     private HouseholdIdGenerator() {
     }
 
     /**
-     * Produce the household identifier for the given last name and address.
+     * Produce the household identifier for the given last name and postcode, or {@code null} when
+     * no postcode is on file (an owner without a postcode belongs to no shared household).
      *
      * @param lastName the household's last name
-     * @param address the household's address
-     * @return a stable, non-blank identifier shared by every owner in the household
+     * @param postcode the household's postcode
+     * @return the identifier shared by every owner with this last name and postcode, or
+     *         {@code null} when the postcode is absent
      */
-    public static String generate(String lastName, String address) {
-        String key = TextNormalizer.normalizeForComparison(lastName) + '\n'
-            + TextNormalizer.normalizeForComparison(address);
+    public static String generate(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String key = TextNormalizer.normalizeForComparison(lastName) + '|' + postcode;
         return Sha256.hexPrefix(key, LENGTH);
     }
 }

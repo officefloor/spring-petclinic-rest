@@ -22,8 +22,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
-import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +30,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -254,7 +251,10 @@ public class ClinicServiceImpl implements ClinicService {
             }
             owner.setNamesakeCount(namesakeCounter.count(owner));
             owner.setHouseholdSize(householdMemberCounter.count(owner));
-            Owner possibleDuplicate = possibleDuplicateDetector.findPossibleDuplicate(owner);
+            // A declared household member is knowingly created into a shared household, so it is not
+            // a suspected duplicate; otherwise fall back to the soft-duplicate signal.
+            Owner possibleDuplicate = owner.isDeclaredHouseholdMember()
+                ? null : possibleDuplicateDetector.findPossibleDuplicate(owner);
             owner.setPossibleDuplicate(possibleDuplicate != null);
             owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
         }
@@ -282,12 +282,15 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isDuplicateIdentity(Owner owner) throws DataAccessException {
-        String identityKey = owner.getIdentityKey();
-        // The telephone is part of the identity key, so owners with a different telephone can never
-        // share it: narrow by telephone, then confirm the whole key matches.
-        return ownerRepository.findByTelephone(owner.getTelephone()).stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    public boolean isHouseholdDuplicate(Owner owner) throws DataAccessException {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return false;
+        }
+        // Household members always share a last name (the household id is derived from last name and
+        // postcode), so narrow by last name, then confirm the household id matches.
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
     @Override
@@ -300,31 +303,6 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException {
         return ownerRepository.countByRegistrationDate(registrationDate);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException {
-        String targetLastName = TextNormalizer.normalizeForComparison(lastName);
-        String targetAddress = TextNormalizer.normalizeForComparison(address);
-        return ownerRepository.findByLastNameIgnoreCase(lastName).stream()
-            .filter(owner -> TextNormalizer.normalizeForComparison(owner.getLastName()).equals(targetLastName))
-            .filter(owner -> TextNormalizer.normalizeForComparison(owner.getAddress()).equals(targetAddress))
-            .collect(Collectors.toList());
-    }
-
-    @Override
-    @Transactional
-    public String joinHousehold(Owner owner, Collection<Owner> existingMembers) throws DataAccessException {
-        String householdId = HouseholdIdGenerator.generate(owner.getLastName(), owner.getAddress());
-        owner.setHouseholdId(householdId);
-        for (Owner member : existingMembers) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
-        return householdId;
     }
 
     @Override

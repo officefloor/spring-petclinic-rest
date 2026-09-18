@@ -49,6 +49,7 @@ import org.springframework.samples.petclinic.rest.validation.OwnerFieldsValidato
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerAuditor;
+import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.RegistrationDatePolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -158,14 +159,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            Collection<Owner> household =
-                this.clinicService.findOwnersInHousehold(owner.getLastName(), owner.getAddress());
-            this.clinicService.joinHousehold(owner, household);
-        }
-        // A single identity key (telephone + email + household) drives duplicate detection: reject
-        // only when the whole key already belongs to another owner.
-        if (this.clinicService.isDuplicateIdentity(owner)) {
+        // The household is keyed on (last name, postcode): the id is deterministic, so owners with
+        // the same last name and postcode share it automatically.
+        owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
+        boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        owner.setDeclaredHouseholdMember(declaredHouseholdMember);
+        // A second owner in an existing household is a duplicate, unless it declares shared
+        // membership — in which case it is created as a known household member.
+        if (!declaredHouseholdMember && this.clinicService.isHouseholdDuplicate(owner)) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
         this.clinicService.saveOwner(owner);

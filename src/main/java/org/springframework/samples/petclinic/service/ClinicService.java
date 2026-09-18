@@ -63,14 +63,15 @@ public interface ClinicService {
 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
 
 	/**
-	 * Determine whether a persisted owner already shares the given owner's identity key
-	 * (see {@link Owner#getIdentityKey()}) — the single signal used to reject duplicate owners.
-	 * Only an exact match of the whole key counts as a duplicate.
+	 * Determine whether a persisted owner already belongs to the given owner's household, i.e.
+	 * shares its {@link Owner#getHouseholdId() household id} (derived from last name and postcode).
+	 * Because a household is keyed on last name and postcode, any existing member makes the given
+	 * owner a household duplicate. An owner with no household id (no postcode) is never a duplicate.
 	 *
-	 * @param owner the candidate owner whose identity key is checked
-	 * @return {@code true} if an existing owner has the same identity key, {@code false} otherwise
+	 * @param owner the candidate owner whose household is checked
+	 * @return {@code true} if an existing owner shares the household, {@code false} otherwise
 	 */
-	boolean isDuplicateIdentity(Owner owner) throws DataAccessException;
+	boolean isHouseholdDuplicate(Owner owner) throws DataAccessException;
 
 	/**
 	 * Retrieve the owners whose email matches the given value, compared case-insensitively.
@@ -95,28 +96,6 @@ public interface ClinicService {
 	 * @return the number of persisted owners whose registration date equals the given date
 	 */
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
-
-	/**
-	 * Retrieve the owners that belong to the same household as the given last name and address, i.e.
-	 * whose last name and address both match when compared case-insensitively with collapsed
-	 * whitespace.
-	 *
-	 * @param lastName the last name to match
-	 * @param address the address to match
-	 * @return a <code>Collection</code> of matching <code>Owner</code>s (empty if none)
-	 */
-	Collection<Owner> findOwnersInHousehold(String lastName, String address) throws DataAccessException;
-
-	/**
-	 * Assign the given owner and every existing member of its household the same stable
-	 * {@code householdId}, persisting the change for any member that does not yet carry it. Used when
-	 * an owner is knowingly created into a shared household.
-	 *
-	 * @param owner the new owner joining the household
-	 * @param existingMembers the owners already in the household (may be empty)
-	 * @return the shared household identifier assigned to the owner
-	 */
-	String joinHousehold(Owner owner, Collection<Owner> existingMembers) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
