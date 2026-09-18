@@ -1,0 +1,183 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 82b08ddea..b1096172c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "household_id")
+     private String householdId;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 0e74c0482..d3bc0bc01 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -50,6 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private final SpecialtyRepository specialtyRepository;
+     private final PetTypeRepository petTypeRepository;
+     private final CustomerCodeGenerator customerCodeGenerator;
++    private final NamesakeCounter namesakeCounter;
+ 
+     public ClinicServiceImpl(
+         PetRepository petRepository,
+@@ -58,7 +59,8 @@ public class ClinicServiceImpl implements ClinicService {
+         VisitRepository visitRepository,
+         SpecialtyRepository specialtyRepository,
+         PetTypeRepository petTypeRepository,
+-        CustomerCodeGenerator customerCodeGenerator) {
++        CustomerCodeGenerator customerCodeGenerator,
++        NamesakeCounter namesakeCounter) {
+         this.petRepository = petRepository;
+         this.vetRepository = vetRepository;
+         this.ownerRepository = ownerRepository;
+@@ -66,6 +68,7 @@ public class ClinicServiceImpl implements ClinicService {
+         this.specialtyRepository = specialtyRepository;
+         this.petTypeRepository = petTypeRepository;
+         this.customerCodeGenerator = customerCodeGenerator;
++        this.namesakeCounter = namesakeCounter;
+     }
+ 
+     @Override
+@@ -238,8 +241,11 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+-        if (owner.isNew() && owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(customerCodeGenerator.generate(owner));
++        if (owner.isNew()) {
++            if (owner.getCustomerCode() == null) {
++                owner.setCustomerCode(customerCodeGenerator.generate(owner));
++            }
++            owner.setNamesakeCount(namesakeCounter.count(owner));
+         }
+         ownerRepository.save(owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java b/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java
+new file mode 100644
+index 000000000..ab1c4ba3b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/NamesakeCounter.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.TextNormalizer;
++import org.springframework.stereotype.Component;
++
++/**
++ * Counts the owners already registered that share a given owner's name.
++ *
++ * <p>Two owners are namesakes when both their first and last names match,
++ * compared case-insensitively (surrounding and repeated whitespace is also
++ * ignored, consistent with the rest of the application's name handling).
++ */
++@Component
++public class NamesakeCounter {
++
++    private final OwnerRepository ownerRepository;
++
++    public NamesakeCounter(OwnerRepository ownerRepository) {
++        this.ownerRepository = ownerRepository;
++    }
++
++    /**
++     * Count the currently persisted owners that share the given owner's first
++     * and last name.
++     *
++     * @param owner the owner being registered
++     * @return the number of existing namesakes
++     */
++    public int count(Owner owner) {
++        String firstName = TextNormalizer.normalizeForComparison(owner.getFirstName());
++        String lastName = TextNormalizer.normalizeForComparison(owner.getLastName());
++        return (int) ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
++            .filter(other -> TextNormalizer.normalizeForComparison(other.getLastName()).equals(lastName))
++            .filter(other -> TextNormalizer.normalizeForComparison(other.getFirstName()).equals(firstName))
++            .count();
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a3ba7e5a4..f87b94b3d 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 82939cbc2..99297e64f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  household_id VARCHAR(64)
++  household_id VARCHAR(64),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 59c69d994..423469abb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2104,6 +2104,17 @@ components:
+               type: string
+               example: G.F.
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of owners that already existed when this owner was
++                created and share its first and last name (compared
++                case-insensitively).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
