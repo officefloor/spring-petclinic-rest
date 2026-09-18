@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * {@link PossibleDuplicate}). Such an owner is still created; the matching owner's id is
  * stored in {@code possibleDuplicateOf} so a later read can flag it.
  *
- * <p>Runs after {@link EnsureUniqueIdentity} has already rejected household duplicates, so a
- * match reaching here can only be a declared household member ({@code sharesHousehold}). A
- * declared member is not a suspected duplicate, so it is never flagged; otherwise the
- * earliest-created (lowest id) matching owner is recorded, and no match leaves the field unset.
+ * <p>Runs after {@link EnsureUniqueIdentity} has already rejected exact-identity duplicates, so
+ * a match reaching here is a distinct additional household member — either a declared one
+ * ({@code sharesHousehold}) or one admitted by its different telephone. A declared member is
+ * not a suspected duplicate, so it is never flagged; otherwise the earliest-created (lowest id)
+ * matching owner is recorded, and no match leaves the field unset.
  */
 public class FlagPossibleDuplicate {
 

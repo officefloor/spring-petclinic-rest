@@ -7,13 +7,15 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * Create-owner step: the duplicate block. Owners sharing a last name and postcode are the
- * same {@link Household}, so a request whose computed {@code householdId} already belongs to
- * an existing owner is rejected with a 409 — unless it opts in with {@code sharesHousehold},
- * declaring itself a genuine additional member of that household.
+ * Create-owner step: the duplicate block. Two owners are the same person when they share the
+ * same {@link IdentityKey} (normalized telephone, email and household), so a request whose key
+ * already belongs to an existing owner is rejected with a 409. Additional members of the same
+ * {@link Household} with a distinct identity (a different telephone or email) are <em>not</em>
+ * duplicates and are admitted; {@code sharesHousehold} still bypasses the block explicitly.
  *
  * <p>Runs after {@link AssignHousehold} (so the new owner already carries its final
- * {@code householdId}) and before {@link FlagPossibleDuplicate} and {@link SaveOwner}.
+ * {@code householdId}, part of its identity key) and before {@link FlagPossibleDuplicate} and
+ * {@link SaveOwner}.
  */
 public class EnsureUniqueIdentity {
 
@@ -22,16 +24,16 @@ public class EnsureUniqueIdentity {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member bypasses the duplicate block
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
+        if (owner.getHouseholdId() == null) {
             return; // no postcode -> no household -> nothing to collide with
         }
+        String identityKey = IdentityKey.of(owner);
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
-                continue; // a soft-deleted owner no longer occupies its household
+                continue; // a soft-deleted owner no longer occupies its identity
             }
-            if (householdId.equals(existing.getHouseholdId())) {
-                throw new DuplicateIdentityException(householdId);
+            if (identityKey.equals(IdentityKey.of(existing))) {
+                throw new DuplicateIdentityException(identityKey);
             }
         }
     }

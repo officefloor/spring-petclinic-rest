@@ -60,4 +60,13 @@ final class MembershipPoints {
         }
         return 4;
     }
+
+    /** How far a new owner's level may sit above the highest level already in its household. */
+    private static final int MAX_LEVELS_ABOVE_HOUSEHOLD = 1;
+
+    /** {@code level} held to at most {@value #MAX_LEVELS_ABOVE_HOUSEHOLD} above {@code householdMax},
+     *  the highest level already in the owner's household. */
+    static int capToHousehold(int level, int householdMax) {
+        return Math.min(level, householdMax + MAX_LEVELS_ABOVE_HOUSEHOLD);
+    }
 }

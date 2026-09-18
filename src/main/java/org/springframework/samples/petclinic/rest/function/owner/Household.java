@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -46,6 +47,24 @@ final class Household {
             }
         }
         return count;
+    }
+
+    /** The highest {@code membershipLevel} among owners in the household with {@code householdId},
+     *  or empty when it has no such member. Owners with a null or non-matching {@code householdId},
+     *  or with no level yet, are ignored; a null {@code householdId} yields empty. */
+    static OptionalInt maxMembershipLevel(String householdId, Iterable<Owner> owners) {
+        if (householdId == null) {
+            return OptionalInt.empty();
+        }
+        OptionalInt max = OptionalInt.empty();
+        for (Owner owner : owners) {
+            Integer level = owner.getMembershipLevel();
+            if (householdId.equals(owner.getHouseholdId()) && level != null
+                    && (max.isEmpty() || level > max.getAsInt())) {
+                max = OptionalInt.of(level);
+            }
+        }
+        return max;
     }
 
     /** A last name trimmed and lower-cased, with internal whitespace runs collapsed to a single space. */

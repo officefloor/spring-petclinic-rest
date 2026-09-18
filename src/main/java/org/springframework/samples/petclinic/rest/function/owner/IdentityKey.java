@@ -17,9 +17,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * owner's stored fields; email is lower-cased defensively so the comparison is
  * case-insensitive.
  *
- * <p>Exposed as a derived, read-only owner field. The create endpoint's duplicate block is
- * keyed on the {@code householdId} alone (see {@link EnsureUniqueIdentity}); this fuller key
- * is retained only for display.
+ * <p>Exposed as a derived, read-only owner field and used by the create endpoint's duplicate
+ * block (see {@link EnsureUniqueIdentity}): two owners collide only when their whole keys
+ * match, so additional household members with a different telephone or email are admitted.
  */
 public final class IdentityKey {
 
