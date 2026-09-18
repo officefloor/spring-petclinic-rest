@@ -50,6 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final NamesakeCounter namesakeCounter;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -58,7 +59,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator) {
+        CustomerCodeGenerator customerCodeGenerator,
+        NamesakeCounter namesakeCounter) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -66,6 +68,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.namesakeCounter = namesakeCounter;
     }
 
     @Override
@@ -238,8 +241,11 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(customerCodeGenerator.generate(owner));
+        if (owner.isNew()) {
+            if (owner.getCustomerCode() == null) {
+                owner.setCustomerCode(customerCodeGenerator.generate(owner));
+            }
+            owner.setNamesakeCount(namesakeCounter.count(owner));
         }
         ownerRepository.save(owner);
 
