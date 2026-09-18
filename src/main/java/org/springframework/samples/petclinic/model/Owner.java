@@ -240,6 +240,16 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's telephone formatted for humans: the stored E.164 number rendered as its country
+     * code, a space, then the national digits grouped in threes (e.g. {@code "+61 412 345 678"}). The
+     * raw {@link #getTelephone() telephone} stays in compact E.164. See {@link E164}.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return E164.display(this.telephone);
+    }
+
+    /**
      * The owner's age band: {@code "MINOR"}, {@code "ADULT"} or {@code "SENIOR"} derived from the
      * birth date against the registration date (see {@link AgeBand}), or {@code null} when no birth
      * date was supplied.

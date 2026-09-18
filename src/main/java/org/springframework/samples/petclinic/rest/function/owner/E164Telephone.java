@@ -1,7 +1,8 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
 import java.util.regex.Pattern;
+
+import org.springframework.samples.petclinic.model.E164;
 
 /**
  * Converts a raw telephone into E.164 form. A leading {@code '+'} and country code are kept
@@ -27,9 +28,6 @@ final class E164Telephone {
 
     /** A valid E.164 body: 8 to 15 digits following the {@code '+'}. */
     private static final Pattern E164_DIGITS = Pattern.compile("\\d{8,15}");
-
-    /** Country code to the exact national-number length it requires. */
-    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
 
     private E164Telephone() {
     }
@@ -68,15 +66,10 @@ final class E164Telephone {
      *         country codes without a known rule.
      */
     private static boolean hasValidNationalLength(String digits) {
-        String countryCode = null;
-        for (String code : NATIONAL_LENGTHS.keySet()) {
-            if (digits.startsWith(code) && (countryCode == null || code.length() > countryCode.length())) {
-                countryCode = code;
-            }
-        }
+        String countryCode = E164.countryCodeOf(digits);
         if (countryCode == null) {
             return true;
         }
-        return digits.length() - countryCode.length() == NATIONAL_LENGTHS.get(countryCode);
+        return digits.length() - countryCode.length() == E164.nationalLength(countryCode);
     }
 }
