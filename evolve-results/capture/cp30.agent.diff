@@ -1,0 +1,208 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Locality.java b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+new file mode 100644
+index 000000000..56b812f65
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Derives an owner's locality (canonical region) from its city and postcode.
++ *
++ * <p>The postcode takes precedence: when it falls in a known {@link PostcodeRegion}
++ * range that region is used, which disambiguates cities that share a name. Only
++ * when the postcode is absent or in no known range does the derivation fall back
++ * to the {@link CityRegion} city-to-region table (yielding {@link CityRegion#UNKNOWN}
++ * for an unlisted city).
++ */
++public final class Locality {
++
++    private Locality() {
++    }
++
++    /**
++     * Return the canonical region for the given city and postcode, preferring the
++     * postcode range and falling back to the city table.
++     *
++     * @param city the owner's city (may be {@code null})
++     * @param postcode the owner's postcode (may be {@code null} or blank)
++     * @return the canonical region string, or {@code "UNKNOWN"}
++     */
++    public static String of(String city, String postcode) {
++        String region = PostcodeRegion.regionFor(postcode);
++        return region != null ? region : CityRegion.regionFor(city);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 891e314e3..2e3c311ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -109,12 +109,12 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's locality: the canonical region derived from its {@link #city}
+-     * via the fixed {@link CityRegion} table, or {@code "UNKNOWN"} when the city
+-     * is not in the table.
++     * The owner's locality: the canonical region derived by {@link Locality} from
++     * its {@link #postcode} (preferred) and {@link #city}, or {@code "UNKNOWN"}
++     * when neither resolves to a known region.
+      */
+     public String getLocality() {
+-        return CityRegion.regionFor(this.city);
++        return Locality.of(this.city, this.postcode);
+     }
+ 
+     public String getTelephone() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/PostcodeRegion.java b/src/main/java/org/springframework/samples/petclinic/model/PostcodeRegion.java
+new file mode 100644
+index 000000000..bba55500f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/PostcodeRegion.java
+@@ -0,0 +1,76 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.util.Map;
++
++/**
++ * The fixed postcode-range-to-region lookup.
++ *
++ * <p>Maps each region to its inclusive 4-digit postcode range
++ * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}) and
++ * answers the two questions the application asks of that single table: which
++ * region a postcode falls in, and whether a region has a known range at all.
++ * The ranges are disjoint, so a postcode belongs to at most one region.
++ */
++public final class PostcodeRegion {
++
++    /** Region -> inclusive 4-digit postcode range {@code {low, high}}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    private PostcodeRegion() {
++    }
++
++    /**
++     * Return the region whose range contains the given postcode, or {@code null}
++     * when the postcode is absent, non-numeric, or in no known range.
++     *
++     * @param postcode the postcode to look up (may be {@code null} or blank)
++     * @return the region string, or {@code null}
++     */
++    public static String regionFor(String postcode) {
++        if (postcode == null || postcode.isBlank()) {
++            return null;
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return null;
++        }
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
++    /**
++     * Return whether the given region has a known postcode range.
++     *
++     * @param region the region to check (may be {@code null})
++     * @return {@code true} when the region has a range, {@code false} otherwise
++     */
++    public static boolean hasRange(String region) {
++        return REGION_POSTCODES.containsKey(region);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+index 9a9d1e9c5..d471570fa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+@@ -16,29 +16,22 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
+-import java.util.Map;
+-
+ import org.springframework.samples.petclinic.model.CityRegion;
++import org.springframework.samples.petclinic.model.PostcodeRegion;
+ 
+ /**
+  * Validates an owner's optional postcode against the fixed postcode range of its
+  * city's region.
+  *
+- * <p>The ranges are keyed by the region derived from the city via
+- * {@link CityRegion}: {@code NSW 2000-2099}, {@code VIC 3000-3099} and
+- * {@code QLD 4000-4099} (all inclusive). A city whose region has no known range
++ * <p>The ranges live in {@link PostcodeRegion} and are keyed by the region derived
++ * from the city via {@link CityRegion}: {@code NSW 2000-2099}, {@code VIC 3000-3099}
++ * and {@code QLD 4000-4099} (all inclusive). A city whose region has no known range
+  * (including {@link CityRegion#UNKNOWN}) accepts any postcode. Format (four
+  * digits) is enforced separately by Bean Validation on the request DTO, so this
+  * class only checks membership of the region's range.
+  */
+ public final class PostcodeValidator {
+ 
+-    /** Region -> inclusive 4-digit postcode range {@code {low, high}}. */
+-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+-        "NSW", new int[] {2000, 2099},
+-        "VIC", new int[] {3000, 3099},
+-        "QLD", new int[] {4000, 4099});
+-
+     private PostcodeValidator() {
+     }
+ 
+@@ -57,11 +50,12 @@ public final class PostcodeValidator {
+         if (postcode == null || postcode.isBlank()) {
+             return true;
+         }
+-        int[] range = REGION_POSTCODES.get(CityRegion.regionFor(city));
+-        if (range == null) {
++        String region = CityRegion.regionFor(city);
++        if (!PostcodeRegion.hasRange(region)) {
+             return true;
+         }
+-        int value = Integer.parseInt(postcode.trim());
+-        return value >= range[0] && value <= range[1];
++        // Ranges are disjoint, so the postcode is valid for the city's region
++        // exactly when its own region matches.
++        return region.equals(PostcodeRegion.regionFor(postcode));
+     }
+ }
