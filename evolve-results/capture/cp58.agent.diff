@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+index a2fc5efda..426c4dd14 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmailDomains.java
+@@ -18,14 +18,37 @@ public final class DisposableEmailDomains {
+ 
+     /** Whether {@code email}'s domain is on the disposable-domain blocklist. */
+     public static boolean isBlocked(String email) {
+-        if (email == null) {
++        String domain = domainOf(email);
++        return domain != null && BLOCKED.contains(domain);
++    }
++
++    /**
++     * Whether {@code email}'s domain is disposable-adjacent: not itself blocked, but a subdomain
++     * of a blocked domain (e.g. {@code inbox.mailinator.com}). Such a near-miss slips past
++     * {@link #isBlocked} yet still looks like a throwaway provider.
++     */
++    public static boolean isAdjacent(String email) {
++        String domain = domainOf(email);
++        if (domain == null || BLOCKED.contains(domain)) {
+             return false;
+         }
++        for (String blocked : BLOCKED) {
++            if (domain.endsWith("." + blocked)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /** The lower-cased domain of {@code email}, or {@code null} when it has none. */
++    private static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
+         int at = email.lastIndexOf('@');
+         if (at < 0) {
+-            return false;
++            return null;
+         }
+-        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+-        return BLOCKED.contains(domain);
++        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+index 9e9578ea9..6c144bcb2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerResponses.java
+@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ /**
+  * The single place that turns an {@link Owner} into its response {@link OwnerDto}: maps the
+- * entity and stamps the current bulk-signup and approaching-capacity warnings. Shared by every
+- * step that returns an owner — the create (201), the read (200) and the idempotent replay (200)
+- * — so all owner responses carry an identical representation.
++ * entity and stamps the current bulk-signup and approaching-capacity warnings and the risk flag.
++ * Shared by every step that returns an owner — the create (201), the read (200) and the
++ * idempotent replay (200) — so all owner responses carry an identical representation.
+  */
+ public final class OwnerResponses {
+ 
+@@ -20,6 +20,7 @@ public final class OwnerResponses {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isRaised(ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.isRaised(owner.getCity(), ownerRepository));
++        dto.setRiskFlag(RiskFlag.isRaised(owner, ownerRepository));
+         return dto;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 000000000..f31ea7f83
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * The single definition of the owner risk flag: raised when an owner warrants a closer look
++ * because any one of three softer signals holds — it is a possible duplicate (see
++ * {@link FlagPossibleDuplicate}), its email domain is disposable-adjacent (see
++ * {@link DisposableEmailDomains#isAdjacent}), or its city is over its soft capacity (see
++ * {@link CapacityWarning}). Surfaced on every owner response so callers can spot an owner that
++ * cleared the hard create-time rules but still looks suspicious.
++ */
++final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    /** Whether {@code owner} trips any of the risk signals against the current owners. */
++    static boolean isRaised(Owner owner, OwnerRepository ownerRepository) {
++        return owner.getPossibleDuplicateOf() != null
++                || DisposableEmailDomains.isAdjacent(owner.getEmail())
++                || CapacityWarning.isRaised(owner.getCity(), ownerRepository);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a3e6f5c3f..ad913c23d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2298,6 +2298,17 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a closer look because any one of these holds:
++                it is a possible duplicate ('possibleDuplicate' is true), its email domain is
++                disposable-adjacent (a subdomain of a known throwaway provider), or its city
++                is over its soft capacity (already holding 40 or more owners); false otherwise.
++                Evaluated against the current owners each time the owner is returned.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
