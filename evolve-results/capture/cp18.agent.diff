@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index cf3e87f91..5dd661ecc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -57,6 +58,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone number already exists";
+     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
++    private static final String ERROR_CITY_CAPACITY = "The owner's city has already reached its maximum number of owners";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -147,6 +149,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityCapacityExceededException} raised when creating an owner in a city that has already
++     * reached its maximum number of owners, returning a 409 Conflict status.
++     *
++     * @param e The {@link CityCapacityExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(CityCapacityExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
++        logger.warn("City capacity exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_CAPACITY);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CityCapacityExceededException.java b/src/main/java/org/springframework/samples/petclinic/service/CityCapacityExceededException.java
+new file mode 100644
+index 000000000..f0ef97026
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CityCapacityExceededException.java
+@@ -0,0 +1,27 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown when an owner is created in a city that already contains the maximum number of owners.
++ * Signals a conflict with existing data rather than a bad request.
++ */
++public class CityCapacityExceededException extends RuntimeException {
++
++    public CityCapacityExceededException(String city, int limit) {
++        super("City '" + city + "' already contains the maximum of " + limit + " owners");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 43f5a5ffd..4815d1e36 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -233,6 +233,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return vetRepository.findAll();
+     }
+ 
++    /**
++     * Maximum number of owners allowed in a single city. Creating an owner in a city that has
++     * already reached this many owners is rejected as a conflict.
++     */
++    static final int MAX_OWNERS_PER_CITY = 50;
++
+     @Override
+     @Transactional
+     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+@@ -243,12 +249,16 @@ public class ClinicServiceImpl implements ClinicService {
+         if (!householdMembers.isEmpty() && !sharesHousehold) {
+             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+         }
++        long ownersInCity = ownerRepository.countByCity(owner.getCity());
++        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
++            throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
++        }
+         owner.setNamesakeCount(countNamesakes(owner));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         owner.setCustomerCode(CustomerCodeGenerator.format(
+-            owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity()) + 1));
++            owner.getCity(), owner.getLastName(), ownersInCity + 1));
+         if (!householdMembers.isEmpty()) {
+             owner.setHouseholdId(joinHousehold(owner, householdMembers));
+         }
