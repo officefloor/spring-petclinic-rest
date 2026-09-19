@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 78c3d58e9..8e31af8fe 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
+ import org.springframework.samples.petclinic.util.Telephones;
++import org.springframework.samples.petclinic.util.Timezones;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
+@@ -31,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+@@ -82,6 +84,14 @@ public interface OwnerMapper {
+         return CustomerCode.regionOf(owner.getCustomerCode());
+     }
+ 
++    /**
++     * Derive the IANA timezone name for the owner's locality (canonical region) from the fixed
++     * region-to-timezone table, or null when the locality has no known timezone.
++     */
++    default String timezone(Owner owner) {
++        return Timezones.of(locality(owner));
++    }
++
+     /** Derive the owner's membership points as at the current date. */
+     default Integer membershipPoints(Owner owner) {
+         return MembershipLevels.pointsOf(owner, LocalDate.now());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Timezones.java b/src/main/java/org/springframework/samples/petclinic/util/Timezones.java
+new file mode 100644
+index 000000000..a91df5d1f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Timezones.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Resolves the IANA timezone name for a canonical region using a fixed region-to-timezone
++ * table. Regions absent from the table (including {@link CityRegions#UNKNOWN}) have no known
++ * timezone and resolve to {@code null}.
++ */
++public final class Timezones {
++
++    /** Fixed, canonical region-to-IANA-timezone mapping. */
++    private static final Map<String, String> REGION_TO_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
++    private Timezones() {
++    }
++
++    /**
++     * Return the IANA timezone name for {@code region}, or {@code null} when the region is
++     * absent from the table.
++     */
++    public static String of(String region) {
++        return REGION_TO_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cf3b236fd..569b07534 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2214,6 +2214,15 @@ components:
+               type: string
+               example: NSW
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: Derived IANA timezone name for the owner's locality (canonical
++                region), from the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the locality
++                has no known timezone.
++              type: string
++              example: Australia/Sydney
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: Derived preferred contact method; 'EMAIL' when the owner has
