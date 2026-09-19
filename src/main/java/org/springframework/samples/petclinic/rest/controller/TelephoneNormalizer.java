@@ -24,8 +24,10 @@ import org.springframework.stereotype.Component;
  * <p>Spaces, dashes and brackets are stripped. A leading {@code +} and its country code
  * are kept as-is; without one, the default country code {@code +61} is assumed and a
  * single leading {@code 0} is dropped from the national digits. The result must carry
- * between 8 and 15 digits after the {@code +}. This E.164 string is what gets stored,
- * returned, and compared when detecting duplicate telephones.
+ * between 8 and 15 digits after the {@code +}, and for a {@linkplain E164CountryCode
+ * recognized country code} the national number must have exactly the length that country
+ * requires (e.g. {@code +61} needs 9 national digits, {@code +1} needs 10). This E.164
+ * string is what gets stored, returned, and compared when detecting duplicate telephones.
  */
 @Component
 public class TelephoneNormalizer {
@@ -59,6 +61,12 @@ public class TelephoneNormalizer {
         if (!digits.matches("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}")) {
             throw new InvalidTelephoneException(raw);
         }
+        E164CountryCode.forE164Digits(digits).ifPresent(country -> {
+            String national = digits.substring(country.callingCode().length());
+            if (!country.acceptsNationalNumber(national)) {
+                throw new InvalidTelephoneException(raw);
+            }
+        });
         return "+" + digits;
     }
 }

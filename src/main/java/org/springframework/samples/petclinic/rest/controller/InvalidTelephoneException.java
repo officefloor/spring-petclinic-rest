@@ -17,14 +17,17 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Signals that an owner request supplied a telephone number that cannot be converted into
- * a valid E.164 form (8 to 15 digits after the {@code +}).
+ * Signals that an owner request supplied a telephone number that cannot be converted into a
+ * valid E.164 form: either it does not carry 8 to 15 digits after the {@code +}, or its
+ * national number has the wrong length for its country code (e.g. {@code +61} requires 9
+ * national digits, {@code +1} requires 10).
  *
  * <p>Handled as a 400 Bad Request, reporting {@code telephone} as the offending field.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     public InvalidTelephoneException(String rejectedValue) {
-        super("Telephone must form a valid E.164 number (8 to 15 digits after the '+'): " + rejectedValue);
+        super("Telephone must form a valid E.164 number with a national number of the length its "
+                + "country code requires: " + rejectedValue);
     }
 }

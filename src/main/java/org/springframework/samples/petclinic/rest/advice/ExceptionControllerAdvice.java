@@ -195,9 +195,9 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link InvalidTelephoneException} raised when an owner request supplies a
-     * telephone number that is not exactly ten digits after stripping non-digit
-     * characters. Returns a 400 Bad Request whose {@code errors} array names the
-     * {@code telephone} field.
+     * telephone number that cannot form a valid E.164 number — either the wrong total digit
+     * count or a national number whose length does not match its country code. Returns a 400
+     * Bad Request whose {@code errors} array names the {@code telephone} field.
      *
      * @param e The {@link InvalidTelephoneException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
