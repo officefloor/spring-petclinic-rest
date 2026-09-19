@@ -210,6 +210,17 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * Return this owner's current primary identifier: the single value that identifies the owner in
+     * external audit events. Currently the {@link #getCustomerCode() customer code}; when the customer
+     * code is unified into the membership number this will return that instead, so callers that only
+     * need "the owner's identifier" stay correct across that change.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
