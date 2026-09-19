@@ -1,0 +1,239 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index def7cffa0..bf6f5efb9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,7 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index d586f9a7b..487927db3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -88,7 +88,7 @@ public interface OwnerRepository {
+ 
+     /**
+      * Count the <code>Owner</code>s already registered in the given city, compared case-insensitively.
+-     * Used to derive the per-city sequence number embedded in an owner's customer code.
++     * Used to enforce the maximum number of owners allowed per city.
+      *
+      * @param city the city to count owners for
+      * @return the number of stored owners in that city
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 9971dec95..050061d0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
+ import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
+ import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
++import org.springframework.samples.petclinic.util.LocalityResolver;
+ import org.springframework.samples.petclinic.util.OwnerIdentityKey;
+ import org.springframework.samples.petclinic.util.TextNormalizer;
+ import org.springframework.stereotype.Service;
+@@ -277,7 +278,8 @@ public class ClinicServiceImpl implements ClinicService {
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         owner.setCustomerCode(CustomerCodeGenerator.format(
+-            owner.getCity(), owner.getLastName(), ownersInCity + 1));
++            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
++            owner.getTelephone(), owner.getLastName()));
+         if (sharesHousehold && !householdMembers.isEmpty()) {
+             owner.setHouseholdId(joinHousehold(owner, householdMembers));
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
+index 3c59bfd0c..2ed3650b2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
+@@ -17,29 +17,55 @@
+ package org.springframework.samples.petclinic.util;
+ 
+ /**
+- * Builds an owner's {@code customerCode} from a city, a last name and a per-city sequence number.
++ * Builds and parses an owner's {@code customerCode}, a stable {@code "<REGION>-<HASH8>"} identity
++ * where {@code REGION} is the owner's region and {@code HASH8} is the first eight upper-case hex
++ * characters of SHA-256 over the normalized telephone concatenated with the last name.
+  */
+ public final class CustomerCodeGenerator {
+ 
++    /** Separator between the region prefix and the hash suffix. */
++    private static final String SEPARATOR = "-";
++
++    /** Number of upper-case hex characters kept from the digest. */
++    private static final int HASH_LENGTH = 8;
++
+     private CustomerCodeGenerator() {
+     }
+ 
+     /**
+-     * Format a customer code as {@code "<CITY3>-<LAST3>-<NNNN>"}, where {@code CITY3} is the
+-     * upper-cased first three letters of the city, {@code LAST3} the upper-cased first three
+-     * letters of the last name and {@code NNNN} the per-city sequence number zero-padded to
+-     * four digits (for example {@code "LON-SMI-0007"}).
++     * Format a customer code as {@code "<REGION>-<HASH8>"} (for example {@code "NSW-1A2B3C4D"}),
++     * where {@code HASH8} is the first eight upper-case hex characters of
++     * {@code SHA-256(normalizedTelephone + lastName)}.
+      *
+-     * @param city     the owner's city
+-     * @param lastName the owner's last name
+-     * @param sequence the per-city sequence number to encode
++     * @param region              the owner's region
++     * @param normalizedTelephone the owner's normalized (E.164) telephone
++     * @param lastName            the owner's last name
+      * @return the formatted customer code
+      */
+-    public static String format(String city, String lastName, long sequence) {
+-        return String.format("%s-%s-%04d", firstThreeUpper(city), firstThreeUpper(lastName), sequence);
++    public static String format(String region, String normalizedTelephone, String lastName) {
++        return region + SEPARATOR + hash8(normalizedTelephone, lastName);
++    }
++
++    /**
++     * Extract the {@code REGION} prefix from a customer code produced by {@link #format}.
++     *
++     * @param customerCode the customer code, may be {@code null}
++     * @return the region prefix, or {@code null} when the customer code is {@code null}
++     */
++    public static String region(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int separator = customerCode.indexOf(SEPARATOR);
++        return separator < 0 ? customerCode : customerCode.substring(0, separator);
++    }
++
++    private static String hash8(String normalizedTelephone, String lastName) {
++        String key = orEmpty(normalizedTelephone) + orEmpty(lastName);
++        return Sha256.hex(key).substring(0, HASH_LENGTH).toUpperCase();
+     }
+ 
+-    private static String firstThreeUpper(String value) {
+-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
++    private static String orEmpty(String value) {
++        return value == null ? "" : value;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/HouseholdIdGenerator.java b/src/main/java/org/springframework/samples/petclinic/util/HouseholdIdGenerator.java
+index e0a14ee66..82e3a2a64 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/HouseholdIdGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/HouseholdIdGenerator.java
+@@ -16,10 +16,6 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+-
+ /**
+  * Derives the stable {@code householdId} shared by owners that live in the same household,
+  * i.e. that have the same last name and address. The identifier is a deterministic function
+@@ -45,19 +41,6 @@ public final class HouseholdIdGenerator {
+      */
+     public static String generate(String lastName, String address) {
+         String key = TextNormalizer.normalize(lastName) + "\n" + TextNormalizer.normalize(address);
+-        return shaHex(key).substring(0, LENGTH).toUpperCase();
+-    }
+-
+-    private static String shaHex(String value) {
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder(digest.length * 2);
+-            for (byte b : digest) {
+-                sb.append(String.format("%02x", b));
+-            }
+-            return sb.toString();
+-        } catch (NoSuchAlgorithmException e) {
+-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+-        }
++        return Sha256.hex(key).substring(0, LENGTH).toUpperCase();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index 453e5faad..fb5d3c404 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -47,6 +47,22 @@ public final class LocalityResolver {
+         return PostcodePolicy.regionForPostcode(postcode).orElseGet(() -> regionForCity(city));
+     }
+ 
++    /**
++     * Resolve an owner's locality from its {@code customerCode}, whose {@code REGION} prefix is the
++     * canonical region. Falls back to {@link #resolve(String, String)} for owners that predate the
++     * customer code (and so have none), keeping their locality unchanged.
++     *
++     * @param customerCode the owner's customer code, may be {@code null}
++     * @param city the owner's city, used only for the fallback, may be {@code null}
++     * @param postcode the owner's postcode, used only for the fallback, may be {@code null}
++     * @return the region carried by the customer code, or the city/postcode-derived region when the
++     * customer code is absent
++     */
++    public static String fromCustomerCode(String customerCode, String city, String postcode) {
++        String region = CustomerCodeGenerator.region(customerCode);
++        return region != null ? region : resolve(city, postcode);
++    }
++
+     /**
+      * Resolve the canonical region for the given city using the fixed city-to-region table.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Sha256.java b/src/main/java/org/springframework/samples/petclinic/util/Sha256.java
+new file mode 100644
+index 000000000..c2a2c97b4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Sha256.java
+@@ -0,0 +1,50 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Shared helper for SHA-256 hashing, returning the digest as a lower-case hex string. Callers
++ * that need a fixed-width, upper-case identifier take a prefix and upper-case it themselves.
++ */
++public final class Sha256 {
++
++    private Sha256() {
++    }
++
++    /**
++     * Compute the SHA-256 digest of the UTF-8 bytes of {@code value} as a lower-case hex string.
++     *
++     * @param value the value to hash
++     * @return the 64-character lower-case hex digest
++     */
++    public static String hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        } catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 is required but unavailable", e);
++        }
++    }
++}
