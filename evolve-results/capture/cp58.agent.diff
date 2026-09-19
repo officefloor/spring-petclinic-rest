@@ -1,0 +1,268 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0c20eaf37..bf3ce7130 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -41,6 +41,17 @@ public interface OwnerMapper {
+         return ownerDto;
+     }
+ 
++    /**
++     * Maps an {@link Owner} to its DTO and attaches all response-only flags, which are computed per
++     * request rather than stored on the owner.
++     */
++    default OwnerDto toOwnerDto(Owner owner, boolean bulkSignupWarning, boolean capacityWarning,
++            boolean riskFlag) {
++        OwnerDto ownerDto = toOwnerDto(owner, bulkSignupWarning, capacityWarning);
++        ownerDto.setRiskFlag(riskFlag);
++        return ownerDto;
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableDomains.java
+new file mode 100644
+index 000000000..eb2316b21
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableDomains.java
+@@ -0,0 +1,55 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import org.springframework.util.StringUtils;
++
++/**
++ * The clinic's shared knowledge of disposable (throwaway) email domains. Two related checks are
++ * expressed against the same blocklist so they cannot drift apart:
++ *
++ * <ul>
++ * <li>{@link #isBlocked(String) blocked} — the domain is itself a known disposable domain. Such a
++ * request is rejected outright (see {@link RejectDisposableEmail}).</li>
++ * <li>{@link #isAdjacent(String) disposable-adjacent} — the domain is a subdomain of a known
++ * disposable domain (e.g. {@code inbox.mailinator.com}). It is not blocked, so the owner is still
++ * created, but it neighbours a disposable domain and so counts towards the owner's risk flag.</li>
++ * </ul>
++ */
++final class DisposableDomains {
++
++    /** Domains that only ever host throwaway mailboxes. */
++    private static final Set<String> BLOCKED = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableDomains() {
++    }
++
++    /** The lower-cased domain of an email address, or {@code null} when there is no usable domain. */
++    static String domainOf(String email) {
++        if (!StringUtils.hasText(email)) {
++            return null;
++        }
++        int at = email.indexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return null;
++        }
++        return email.substring(at + 1).toLowerCase();
++    }
++
++    /** Whether the domain is itself a known disposable domain. */
++    static boolean isBlocked(String domain) {
++        return domain != null && BLOCKED.contains(domain);
++    }
++
++    /**
++     * Whether the domain is disposable-adjacent: a subdomain of a known disposable domain but not
++     * itself blocked.
++     */
++    static boolean isAdjacent(String domain) {
++        if (domain == null || isBlocked(domain)) {
++            return false;
++        }
++        return BLOCKED.stream().anyMatch(blocked -> domain.endsWith("." + blocked));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+index af4b46cc7..6c101e373 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+@@ -1,30 +1,21 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Set;
+-
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
+-import org.springframework.util.StringUtils;
+ 
+ /**
+  * Rejects an owner request whose email domain is on the disposable-domain blocklist with
+  * 400. Runs after {@link NormalizeOwnerEmail} has validated the syntax and lower-cased the
+- * address, so the domain is simply the text after the '@'. An absent email is allowed.
++ * address, so the domain is simply the text after the '@'. An absent email is allowed. A
++ * disposable-<em>adjacent</em> domain (a subdomain of a blocked one) is not rejected here but
++ * later raises the owner's risk flag (see {@link DisposableDomains} and {@link ResolveRiskFlag}).
+  */
+ public class RejectDisposableEmail {
+ 
+-    /** Domains that only ever host throwaway mailboxes. */
+-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+-            "mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     public void service(@Val OwnerFieldsDto request) throws DisposableEmailException {
+-        String email = request.getEmail();
+-        if (!StringUtils.hasText(email)) {
+-            return;
+-        }
+-        String domain = email.substring(email.indexOf('@') + 1).toLowerCase();
+-        if (DISPOSABLE_DOMAINS.contains(domain)) {
++        String domain = DisposableDomains.domainOf(request.getEmail());
++        if (DisposableDomains.isBlocked(domain)) {
+             throw new DisposableEmailException(domain);
+         }
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRiskFlag.java
+new file mode 100644
+index 000000000..eadd1a77f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRiskFlag.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Resolves whether the owner response should carry the composite risk flag and publishes it for the
++ * responder. The flag is raised when the owner needs a closer look for any of three reasons:
++ *
++ * <ul>
++ * <li>it is a possible (soft) duplicate of an existing owner (see {@link DetectPossibleDuplicate});</li>
++ * <li>its city is over its soft capacity, i.e. the per-city {@link ResolveCapacityWarning capacity
++ * warning} is raised;</li>
++ * <li>its email domain is {@link DisposableDomains#isAdjacent(String) disposable-adjacent}.</li>
++ * </ul>
++ *
++ * <p>Runs before the responder so both the create and read responses carry the flag. The two
++ * warning-style inputs it reuses are already resolved upstream, so this step only composes them with
++ * the stored duplicate flag and the derived email signal.
++ */
++public class ResolveRiskFlag {
++
++    public void service(@Val Owner owner, @CapacityWarning @Val Boolean capacityWarning,
++            @RiskFlag Out<Boolean> riskFlag) {
++        boolean disposableAdjacent = DisposableDomains.isAdjacent(DisposableDomains.domainOf(owner.getEmail()));
++        riskFlag.set(owner.getPossibleDuplicate() || Boolean.TRUE.equals(capacityWarning) || disposableAdjacent);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 521159e0f..492260221 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ public class RespondWithOwner {
+ 
+     public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
+-            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
+-            ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning));
++            @CapacityWarning @Val Boolean capacityWarning, @RiskFlag @Val Boolean riskFlag,
++            OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
++        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning, riskFlag));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 9e9406410..b729f5fe4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -12,9 +12,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ public class RespondWithOwnerCreated {
+ 
+     public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
+-            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
+-            ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning);
++            @CapacityWarning @Val Boolean capacityWarning, @RiskFlag @Val Boolean riskFlag,
++            OwnerMapper ownerMapper, ObjectResponse<ResponseEntity<OwnerDto>> response) {
++        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning, riskFlag);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 000000000..521888083
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++
++import net.officefloor.plugin.clazz.Qualifier;
++
++/**
++ * Qualifies the composite {@code riskFlag} boolean variable so it does not collide with the other
++ * boolean variables ({@code bulkSignupWarning}, {@code capacityWarning}) flowing through the same
++ * pipeline.
++ *
++ * @see ResolveRiskFlag
++ */
++@Retention(RetentionPolicy.RUNTIME)
++@Qualifier
++public @interface RiskFlag {
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f10bf06fc..689b6ed41 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -133,6 +133,11 @@ resolveBulkWarning:
+ resolveCapacityWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.ResolveCapacityWarning
+   govern: [ transaction ]
++  next: resolveRiskFlag
++
++resolveRiskFlag:
++  class: org.springframework.samples.petclinic.rest.function.owner.ResolveRiskFlag
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ recordIdempotency:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 0f1b21f34..93e77a25f 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -14,6 +14,11 @@ resolveBulkWarning:
+ resolveCapacityWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.ResolveCapacityWarning
+   govern: [ readonly-transaction ]
++  next: resolveRiskFlag
++
++resolveRiskFlag:
++  class: org.springframework.samples.petclinic.rest.function.owner.ResolveRiskFlag
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 84d22a33c..9ea935464 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2255,6 +2255,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner needs a closer look for any of three reasons: it is a possible
++                duplicate ('possibleDuplicate'), its city is over its soft capacity ('capacityWarning'),
++                or its email domain is disposable-adjacent (a subdomain of a known disposable-mail
++                domain, so not itself blocked but neighbouring one). False otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
