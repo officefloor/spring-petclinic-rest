@@ -256,36 +256,75 @@ public class Owner extends Person {
         return Character.toUpperCase(name.charAt(0)) + ".";
     }
 
-    /** The membership level every owner starts at on creation. */
-    private static final int BASE_MEMBERSHIP_LEVEL = 1;
+    /** Points awarded when an email address is present. */
+    private static final int EMAIL_POINTS = 2;
 
-    /** The highest membership level attainable; only reached with qualifying tenure. */
-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+    /** Points awarded when the owner has no namesakes ({@code namesakeCount} is 0). */
+    private static final int NO_NAMESAKE_POINTS = 1;
 
-    /** The tenure, in days, that must be exceeded to qualify for the top membership level. */
+    /** Points awarded for belonging to a household of {@value #LARGE_HOUSEHOLD_SIZE} or more. */
+    private static final int LARGE_HOUSEHOLD_POINTS = 2;
+
+    /** The household size at or above which {@link #LARGE_HOUSEHOLD_POINTS} are awarded. */
+    private static final int LARGE_HOUSEHOLD_SIZE = 3;
+
+    /** Points awarded for qualifying tenure. */
+    private static final int TENURE_POINTS = 3;
+
+    /** The tenure, in days, that must be exceeded to earn {@link #TENURE_POINTS}. */
     private static final long MEMBERSHIP_TENURE_THRESHOLD_DAYS = 365;
 
     /**
-     * Return this owner's membership level, a number from 1 to 4: every owner starts at
-     * {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when the owner
-     * has no namesakes ({@code namesakeCount} is 0); add 1 when the owner has qualifying tenure
-     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days since registration); capped at
-     * {@value #MAX_MEMBERSHIP_LEVEL}. Because a newly created owner has zero tenure, a new owner
-     * never exceeds level 3.
+     * Return this owner's membership points, starting at 0: add {@value #EMAIL_POINTS} when an email
+     * address is present; add {@value #NO_NAMESAKE_POINTS} when the owner has no namesakes
+     * ({@code namesakeCount} is 0); add {@value #LARGE_HOUSEHOLD_POINTS} for a household of
+     * {@value #LARGE_HOUSEHOLD_SIZE} or more; add {@value #TENURE_POINTS} for qualifying tenure
+     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days since registration).
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        int points = 0;
+        if (hasEmail()) {
+            points += EMAIL_POINTS;
+        }
+        if (Integer.valueOf(0).equals(this.namesakeCount)) {
+            points += NO_NAMESAKE_POINTS;
+        }
+        if (hasLargeHousehold()) {
+            points += LARGE_HOUSEHOLD_POINTS;
+        }
+        if (hasQualifyingTenure()) {
+            points += TENURE_POINTS;
+        }
+        return points;
+    }
+
+    /**
+     * Return this owner's membership level, derived from {@link #getMembershipPoints() membership
+     * points}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
      */
     @Transient
     public Integer getMembershipLevel() {
-        int level = BASE_MEMBERSHIP_LEVEL;
-        if (hasEmail()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
         }
-        if (Integer.valueOf(0).equals(this.namesakeCount)) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (hasQualifyingTenure()) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        return 4;
+    }
+
+    /**
+     * Whether this owner belongs to a household of {@value #LARGE_HOUSEHOLD_SIZE} or more, per the
+     * {@code householdSize} captured at creation. Owners without a recorded household size do not
+     * qualify.
+     */
+    private boolean hasLargeHousehold() {
+        return this.householdSize != null && this.householdSize >= LARGE_HOUSEHOLD_SIZE;
     }
 
     /**
