@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
+import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
@@ -48,6 +49,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.HouseholdIdGenerator;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -87,6 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final HouseholdIdGenerator householdIdGenerator;
+
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
 
@@ -106,7 +110,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  BusinessDayResolver businessDayResolver,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 HouseholdIdGenerator householdIdGenerator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -118,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.businessDayResolver = businessDayResolver;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.householdIdGenerator = householdIdGenerator;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -169,15 +175,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            this.clinicService.joinHousehold(owner);
+        if (owner.getPostcode() != null) {
+            owner.setHouseholdId(this.householdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         }
         if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
         }
-        Owner possibleDuplicate = this.clinicService.findPossibleDuplicateOf(owner);
-        if (possibleDuplicate != null) {
-            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
+        Owner householdDuplicate = this.clinicService.findHouseholdDuplicateOf(owner);
+        if (householdDuplicate != null && !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            throw new DuplicateHouseholdException(owner.getHouseholdId());
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);

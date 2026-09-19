@@ -202,9 +202,10 @@ public class Owner extends Person {
 
     /**
      * The id of an existing owner this owner was flagged as a possible (soft) duplicate of at
-     * creation, or {@code null} when none. A soft duplicate shares an existing owner's last name and
-     * postcode but has a different telephone (so it is not a hard {@link #getIdentityKey() identity}
-     * duplicate). Captured once at creation.
+     * creation, or {@code null} when none. Because owners sharing a last name and postcode now form
+     * the same household — rejected as a household duplicate unless declared via {@code sharesHousehold},
+     * and a declared member is not a suspected duplicate — this is not populated at creation.
+     * Captured once at creation.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;

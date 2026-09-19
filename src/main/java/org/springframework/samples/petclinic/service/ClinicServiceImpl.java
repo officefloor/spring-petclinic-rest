@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -49,8 +48,6 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
-    private final HouseholdNormalizer householdNormalizer;
-    private final HouseholdIdGenerator householdIdGenerator;
     private final MembershipNumberGenerator membershipNumberGenerator;
 
     public ClinicServiceImpl(
@@ -61,8 +58,6 @@ public class ClinicServiceImpl implements ClinicService {
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
-        HouseholdNormalizer householdNormalizer,
-        HouseholdIdGenerator householdIdGenerator,
         MembershipNumberGenerator membershipNumberGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
@@ -71,8 +66,6 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
-        this.householdNormalizer = householdNormalizer;
-        this.householdIdGenerator = householdIdGenerator;
         this.membershipNumberGenerator = membershipNumberGenerator;
     }
 
@@ -340,56 +333,23 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find an existing owner the given (not-yet-persisted) owner is a soft duplicate of: one sharing
-     * the same last name (case-insensitively) and postcode but with a different telephone, so it is
-     * not a hard {@link Owner#getIdentityKey() identity} duplicate. Returns the first such owner, or
-     * {@code null} when the owner has no postcode or no match exists.
+     * Find an existing owner belonging to the same household as the given (not-yet-persisted) owner,
+     * i.e. one sharing its computed {@link Owner#getHouseholdId() householdId} (derived from last name
+     * and postcode). Because the household is keyed on (last name, postcode), such an owner is a
+     * household duplicate of the new one. Returns the first such owner, or {@code null} when the owner
+     * has no household ({@code householdId} is null) or no match exists.
      */
     @Override
     @Transactional(readOnly = true)
-    public Owner findPossibleDuplicateOf(Owner owner) throws DataAccessException {
-        if (owner.getPostcode() == null) {
+    public Owner findHouseholdDuplicateOf(Owner owner) throws DataAccessException {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
             return null;
         }
         return ownerRepository.findAll().stream()
-            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
-                && owner.getPostcode().equals(existing.getPostcode())
-                && !Objects.equals(existing.getTelephone(), owner.getTelephone()))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .findFirst()
             .orElse(null);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException {
-        String targetLastName = householdNormalizer.normalize(lastName);
-        String targetAddress = householdNormalizer.normalize(address);
-        return ownerRepository.findAll().stream()
-            .filter(owner -> householdNormalizer.normalize(owner.getLastName()).equals(targetLastName)
-                && householdNormalizer.normalize(owner.getAddress()).equals(targetAddress))
-            .toList();
-    }
-
-    @Override
-    @Transactional
-    public String joinHousehold(Owner owner) throws DataAccessException {
-        Collection<Owner> members = findOwnersInSameHousehold(owner.getLastName(), owner.getAddress());
-        if (members.isEmpty()) {
-            return null;
-        }
-        String householdId = members.stream()
-            .map(Owner::getHouseholdId)
-            .filter(Objects::nonNull)
-            .findFirst()
-            .orElseGet(() -> householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
-        for (Owner member : members) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
-        owner.setHouseholdId(householdId);
-        return householdId;
     }
 
     @Override

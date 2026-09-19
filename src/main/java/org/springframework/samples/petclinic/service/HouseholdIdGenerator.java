@@ -22,13 +22,14 @@ import org.springframework.stereotype.Component;
  * household.
  *
  * <p>The identifier is derived deterministically from the household's identity
- * (last name and address, canonicalized by {@link HouseholdNormalizer}), so every
- * owner in a household resolves to the same value regardless of registration order.
+ * (last name, canonicalized by {@link HouseholdNormalizer}, and postcode), so every
+ * owner sharing a last name and postcode resolves to the same value automatically,
+ * regardless of registration order.
  */
 @Component
 public class HouseholdIdGenerator {
 
-    private static final int ID_LENGTH = 16;
+    private static final int ID_LENGTH = 12;
 
     private final HouseholdNormalizer householdNormalizer;
 
@@ -38,14 +39,15 @@ public class HouseholdIdGenerator {
 
     /**
      * Build the household identifier shared by owners with the given last name and
-     * address.
+     * postcode: the first {@value #ID_LENGTH} upper-case hex characters of SHA-256 over
+     * {@code normalize(lastName) + "|" + postcode}.
      *
      * @param lastName the household's last name
-     * @param address  the household's address
+     * @param postcode the household's postcode
      * @return a stable, upper-case hexadecimal identifier for the household
      */
-    public String generate(String lastName, String address) {
-        String key = householdNormalizer.normalize(lastName) + "\n" + householdNormalizer.normalize(address);
+    public String generate(String lastName, String postcode) {
+        String key = householdNormalizer.normalize(lastName) + "|" + postcode;
         return Sha256Hex.upperHexPrefix(key, ID_LENGTH);
     }
 }
