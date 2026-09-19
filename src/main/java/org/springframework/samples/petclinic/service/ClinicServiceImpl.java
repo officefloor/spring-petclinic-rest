@@ -20,6 +20,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
+import org.springframework.samples.petclinic.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
@@ -51,6 +52,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
+    private final OwnerAuditLogger ownerAuditLogger;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -58,13 +60,15 @@ public class ClinicServiceImpl implements ClinicService {
         OwnerRepository ownerRepository,
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
-        PetTypeRepository petTypeRepository) {
+        PetTypeRepository petTypeRepository,
+        OwnerAuditLogger ownerAuditLogger) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @Override
@@ -273,6 +277,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setHouseholdId(joinHousehold(owner, householdMembers));
         }
         ownerRepository.save(owner);
+        ownerAuditLogger.ownerCreated(owner);
         return owner.getHouseholdId();
     }
 
