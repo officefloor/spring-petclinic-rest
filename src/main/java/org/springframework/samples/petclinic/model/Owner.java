@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.CityLocality;
+import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -210,6 +211,14 @@ public class Owner extends Person {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits of
+     * the {@code customerCode}. Derived from stored state, never persisted.
+     */
+    public int getCheckDigit() {
+        return LuhnCheckDigit.of(this.customerCode);
     }
 
     /**
