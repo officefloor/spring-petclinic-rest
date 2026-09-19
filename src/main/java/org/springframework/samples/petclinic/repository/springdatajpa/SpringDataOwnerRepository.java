@@ -66,8 +66,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByEmail(@Param("email") String email);
 
     @Override
-    @Query("SELECT owner FROM Owner owner WHERE owner.customerCode = :customerCode")
-    Collection<Owner> findByCustomerCode(@Param("customerCode") String customerCode);
+    @Query("SELECT owner FROM Owner owner WHERE owner.memberId = :memberId")
+    Collection<Owner> findByMemberId(@Param("memberId") String memberId);
 
     @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")

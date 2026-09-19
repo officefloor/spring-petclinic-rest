@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Applies the effective registration date (resolved and rolled to a business day by
  * {@link ResolveRegistrationDate}) to a newly built owner, replacing any raw date the request
- * body supplied. Runs before {@link AssignMembershipNumber} so the number's year segment uses
+ * body supplied. Runs before {@link AssignMemberId} so the member id's FY segment uses
  * the adjusted date.
  */
 public class ApplyRegistrationDate {

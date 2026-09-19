@@ -69,11 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -179,20 +176,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -279,25 +268,23 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's primary identifier: the single business identifier that currently identifies this
-     * owner to the outside world. Today this is the {@link #getCustomerCode() customerCode}; when the
-     * customer code is later unified into a member id this is the one place that changes, and every
+     * The owner's primary identifier: the single business identifier that identifies this owner to the
+     * outside world, its {@link #getMemberId() memberId}. Sourcing it from this one accessor means every
      * consumer (e.g. the {@code OWNER_CREATED} audit event) follows automatically.
      */
     @Transient
     public String getPrimaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     /**
-     * The owner's locality: the REGION portion of its {@code customerCode} (see
-     * {@link CustomerCode}), which is the region derived from the postcode or city at creation. This
-     * disambiguates cities that share a name. Yields {@code "UNKNOWN"} when the owner has no customer
-     * code or it resolves to no region.
+     * The owner's locality: the REGION portion of its {@code memberId} (see {@link MemberId}), which is
+     * the region derived from the postcode or city at creation. This disambiguates cities that share a
+     * name. Yields {@code "UNKNOWN"} when the owner has no member id or it resolves to no region.
      */
     @Transient
     public String getLocality() {
-        return CustomerCode.regionOf(this.customerCode);
+        return MemberId.regionOf(this.memberId);
     }
 
     /**
@@ -308,15 +295,6 @@ public class Owner extends Person {
     @Transient
     public String getTimezone() {
         return RegionTimezone.of(this.getLocality());
-    }
-
-    /**
-     * The owner's check digit: the single Luhn check digit computed over the digits of the
-     * {@code customerCode}, guarding against transcription errors of the code.
-     */
-    @Transient
-    public int getCheckDigit() {
-        return Luhn.checkDigit(this.customerCode);
     }
 
     /**

@@ -78,13 +78,13 @@ public interface OwnerRepository {
     Collection<Owner> findByEmail(String email) throws DataAccessException;
 
     /**
-     * Retrieve every <code>Owner</code> whose stored customer code exactly matches the given value.
-     * Used to de-duplicate a newly derived customer code before an owner is persisted.
+     * Retrieve every <code>Owner</code> whose stored member id exactly matches the given value.
+     * Used to de-duplicate a newly derived member id before an owner is persisted.
      *
-     * @param customerCode the customer code to match exactly
+     * @param memberId the member id to match exactly
      * @return the matching <code>Owner</code>s (empty if none)
      */
-    Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException;
+    Collection<Owner> findByMemberId(String memberId) throws DataAccessException;
 
 
     /**

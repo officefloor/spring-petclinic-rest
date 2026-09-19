@@ -157,11 +157,11 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
-    public Collection<Owner> findByCustomerCode(String customerCode) throws DataAccessException {
+    public Collection<Owner> findByMemberId(String memberId) throws DataAccessException {
         Map<String, Object> params = new HashMap<>();
-        params.put("customerCode", customerCode);
+        params.put("memberId", memberId);
         return this.namedParameterJdbcTemplate.query(
-            "SELECT id, first_name, last_name, address, city, telephone, customer_code FROM owners WHERE customer_code = :customerCode",
+            "SELECT id, first_name, last_name, address, city, telephone, member_id FROM owners WHERE member_id = :memberId",
             params,
             BeanPropertyRowMapper.newInstance(Owner.class)
         );

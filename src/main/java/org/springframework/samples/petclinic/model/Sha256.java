@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Computes the SHA-256 digest of a string as hexadecimal. Shared by the derived identities that
- * hash owner attributes: the customer code and household id use the upper-case {@link #hex} form,
+ * hash owner attributes: the member id and household id use the upper-case {@link #hex} form,
  * the identity key the lower-case {@link #lowerHex} form.
  */
 public final class Sha256 {

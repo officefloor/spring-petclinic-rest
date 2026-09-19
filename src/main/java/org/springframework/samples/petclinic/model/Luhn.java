@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.model;
 
 /**
  * Computes the Luhn check digit over the decimal digits contained in a string,
- * ignoring any non-digit characters. Used to derive an owner's check digit from its
- * customer code.
+ * ignoring any non-digit characters. Used to derive the CHK segment of an owner's
+ * {@link MemberId member id}.
  */
 public final class Luhn {
 

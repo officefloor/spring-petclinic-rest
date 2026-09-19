@@ -6,12 +6,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured audit event emitted when an owner is created, serialised to JSON on the
  * {@code AUDIT} logger by {@link EmitOwnerCreatedEvent}.
  *
- * <p>The identifier field carries the owner's current
- * {@link Owner#getPrimaryIdentifier() primary identifier} &mdash; the {@code customerCode} today.
- * Sourcing it from that one accessor means that when the primary identifier is later unified into a
- * member id, the event carries the member id without any change here.
+ * <p>The {@code memberId} field carries the owner's
+ * {@link Owner#getPrimaryIdentifier() primary identifier}. Sourcing it from that one accessor keeps
+ * the event aligned with the owner's single business identifier.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     /** The event-type marker carried by every owner-created event. */
