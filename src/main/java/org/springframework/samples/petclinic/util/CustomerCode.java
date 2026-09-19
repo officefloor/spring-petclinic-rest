@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
+import java.util.Collection;
+
 /**
  * The owner customer-code format, {@code <REGION>-<HASH8>}: the canonical region (see
  * {@link CityLocality}) followed by the first eight upper-case hex characters of a
@@ -23,6 +25,24 @@ public final class CustomerCode {
      */
     public static String of(String region, String hash8) {
         return region + SEPARATOR + hash8;
+    }
+
+    /**
+     * De-duplicates a customer code against the codes already in use. If the code is
+     * unused it is returned unchanged; otherwise {@code -<n>} is appended with the
+     * smallest {@code n} of two or more that yields a code not already taken.
+     *
+     * @param customerCode the composed customer code
+     * @param existing     the customer codes already in use
+     * @return the {@code customerCode}, or a {@code <customerCode>-<n>} variant unique
+     *         among {@code existing}
+     */
+    public static String deduplicate(String customerCode, Collection<String> existing) {
+        String candidate = customerCode;
+        for (int n = 2; existing.contains(candidate); n++) {
+            candidate = customerCode + SEPARATOR + n;
+        }
+        return candidate;
     }
 
     /**
