@@ -243,6 +243,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (!householdMembers.isEmpty() && !sharesHousehold) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
+        owner.setNamesakeCount(countNamesakes(owner));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -274,6 +275,16 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Count the owners that already exist sharing this owner's first name and last name, compared
+     * case-insensitively. Invoked before the new owner is persisted, so it never counts itself.
+     */
+    private int countNamesakes(Owner owner) {
+        return (int) ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName()))
+            .count();
     }
 
     /**
