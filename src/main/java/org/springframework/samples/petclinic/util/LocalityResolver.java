@@ -19,8 +19,9 @@ package org.springframework.samples.petclinic.util;
 import java.util.Map;
 
 /**
- * Derives an owner's {@code locality} (canonical region) from their city using a
- * fixed city-to-region table.
+ * Derives an owner's {@code locality} (canonical region), preferring the postcode range
+ * (via {@link PostcodePolicy}) and falling back to a fixed city-to-region table when the
+ * postcode is absent or in no known range.
  */
 public final class LocalityResolver {
 
@@ -35,13 +36,25 @@ public final class LocalityResolver {
     }
 
     /**
-     * Resolve the canonical region for the given city.
+     * Resolve the canonical region for an owner, preferring the postcode.
+     *
+     * @param city the owner's city, may be {@code null}
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the region derived from the postcode range when it is known, otherwise the
+     * region from the city table, or {@code "UNKNOWN"} when neither is known
+     */
+    public static String resolve(String city, String postcode) {
+        return PostcodePolicy.regionForPostcode(postcode).orElseGet(() -> regionForCity(city));
+    }
+
+    /**
+     * Resolve the canonical region for the given city using the fixed city-to-region table.
      *
      * @param city the owner's city, may be {@code null}
      * @return the region string from the fixed table, or {@code "UNKNOWN"} when the
      * city is not in the table
      */
-    public static String resolve(String city) {
+    public static String regionForCity(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
 }
