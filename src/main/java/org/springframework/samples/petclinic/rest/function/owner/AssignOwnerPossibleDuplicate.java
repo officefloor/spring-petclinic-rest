@@ -9,12 +9,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Flags a soft duplicate. A new owner that reaches this step is not blocked by the
- * household duplicate check ({@link EnsureUniqueHousehold}) — either it has no existing
- * household member, or it opted in with {@code sharesHousehold}. A declared member is a
- * genuine household member, not a suspected duplicate, so it is never flagged here. Any
- * other owner that shares an existing owner's household (same last name and postcode, hence
- * the same {@code householdId}, see {@link Households}) but differs in telephone is created
- * anyway and marked as a possible duplicate of that owner. Runs before {@link SaveOwner}
+ * household duplicate check ({@link EnsureUniqueHousehold}) — it has no existing household
+ * member, it opted in with {@code sharesHousehold}, or it shares a household but differs in
+ * telephone. A declared member ({@code sharesHousehold}) is a genuine household member, not a
+ * suspected duplicate, so it is never flagged here. Any other owner that shares an existing
+ * owner's household (same last name and postcode, hence the same {@code householdId}, see
+ * {@link Households}) but differs in telephone is created anyway and marked as a possible
+ * duplicate of that owner. Runs before {@link SaveOwner}
  * persists the flags; when several match, the earliest (lowest id) is recorded. An owner
  * with no postcode has no household and can never be a possible duplicate.
  */

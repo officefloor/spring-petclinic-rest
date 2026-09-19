@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "bulk_signup_warning", nullable = false)
     private boolean bulkSignupWarning;
 
@@ -287,6 +290,20 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: at
+     * creation a new owner's level cannot exceed one above the highest level then held by an
+     * existing member of its household (same last name and postcode). Null when no cap
+     * applies, i.e. the household had no existing members. Captured at creation.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * Whether this owner was created as part of a bulk signup: {@code true} when more
      * than 80 owners had already been registered on this owner's registration date at
      * the moment it was created, {@code false} otherwise. Captured at creation.
@@ -404,10 +421,16 @@ public class Owner extends Person {
 
     /**
      * The owner's membership level, from 1 to 4: derived from {@link #getMembershipPoints()}
-     * as level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Derived from
+     * as level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more, then capped at
+     * the {@link #getMembershipLevelCap() membership level cap} when one applies. Derived from
      * stored state, never persisted.
      */
     public int getMembershipLevel() {
+        int level = uncappedMembershipLevel();
+        return this.membershipLevelCap == null ? level : Math.min(level, this.membershipLevelCap);
+    }
+
+    private int uncappedMembershipLevel() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;

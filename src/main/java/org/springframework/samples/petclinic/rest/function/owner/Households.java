@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -35,6 +36,17 @@ final class Households {
                 .filter(owner -> !owner.isDeleted())
                 .filter(owner -> householdId.equals(idFor(owner.getLastName(), owner.getPostcode())))
                 .toList();
+    }
+
+    /**
+     * The highest {@link Owner#getMembershipLevel() membership level} currently held by an
+     * existing member of the household (same last name and postcode), or empty when the
+     * household has no existing members.
+     */
+    static OptionalInt maxMembershipLevel(OwnerRepository ownerRepository, String lastName, String postcode) {
+        return membersOf(ownerRepository, lastName, postcode).stream()
+                .mapToInt(Owner::getMembershipLevel)
+                .max();
     }
 
     /**

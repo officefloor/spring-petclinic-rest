@@ -54,6 +54,7 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   household_size INTEGER,
   membership_number VARCHAR(30),
+  membership_level_cap INTEGER,
   bulk_signup_warning BOOLEAN DEFAULT FALSE NOT NULL,
   possible_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
   possible_duplicate_of INTEGER,

@@ -1,10 +1,11 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request would be a second owner in an existing household
- * (same last name and postcode, so the same derived {@code householdId}) without opting in
- * to sharing that household. Handled by {@link DuplicateHouseholdExceptionHandler}, which
- * responds 409.
+ * Thrown when a create-owner request would repeat an existing owner in a household (same
+ * last name and postcode, so the same derived {@code householdId}, and the same telephone)
+ * without opting in to sharing that household. A different person in the same household is a
+ * legitimate additional member and is not rejected here. Handled by
+ * {@link DuplicateHouseholdExceptionHandler}, which responds 409.
  */
 public class DuplicateHouseholdException extends Exception {
 
