@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/model/LocalityResolver.java
+index e8c3c6e6f..390d7999d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/LocalityResolver.java
+@@ -40,6 +40,12 @@ public final class LocalityResolver {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONES = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     private LocalityResolver() {
+     }
+ 
+@@ -66,6 +72,16 @@ public final class LocalityResolver {
+         return CITY_REGIONS.getOrDefault(city, UNKNOWN);
+     }
+ 
++    /**
++     * The IANA timezone name for the given region via the fixed region-to-timezone table.
++     *
++     * @param region the region to look up
++     * @return the IANA timezone name, or {@code null} when the region has no known timezone
++     */
++    public static String timezoneFor(String region) {
++        return REGION_TIMEZONES.get(region);
++    }
++
+     /**
+      * The inclusive four-digit postcode range for the given region.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5b3be1671..e8b71fa9e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -382,6 +382,16 @@ public class Owner extends Person {
+         return separator < 0 ? this.customerCode : this.customerCode.substring(0, separator);
+     }
+ 
++    /**
++     * Return this owner's timezone: the IANA timezone name for the owner's {@link #getLocality()
++     * locality} via the fixed region-to-timezone table, or {@code null} when the locality has no
++     * known timezone.
++     */
++    @Transient
++    public String getTimezone() {
++        return LocalityResolver.timezoneFor(getLocality());
++    }
++
+     /**
+      * Return this owner's check digit: the single Luhn check digit computed over the digits of the
+      * {@code customerCode}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index aa53b1c0a..79098132f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2158,6 +2158,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's timezone, being the IANA timezone name derived from the locality via the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or absent when the locality has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, being 'EMAIL' when an email address is present, otherwise 'PHONE'.
