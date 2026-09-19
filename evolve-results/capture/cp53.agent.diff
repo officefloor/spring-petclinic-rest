@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..a68a36f80
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerCreatedEvent.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.audit;
++
++import java.time.LocalDate;
++
++import tools.jackson.databind.json.JsonMapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.MembershipLevels;
++
++/**
++ * Immutable structured audit event for a newly created owner, rendered as a single-line JSON
++ * object {@code {seq, ownerId, customerCode, membershipLevel, event}}.
++ *
++ * <p>The event carries the owner's current primary identifier. Today that identifier is the
++ * customer code, so it is read in {@link #of} alone: when the primary identifier is later
++ * unified into a member id, only that one place changes and the event carries the member id
++ * instead.
++ */
++public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel,
++        String event) {
++
++    /** The {@code event} discriminator carried by every owner-creation event. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    private static final JsonMapper JSON = JsonMapper.builder().build();
++
++    /**
++     * Build the event for {@code owner} (already persisted, so its id is set) at sequence number
++     * {@code seq}, deriving the effective membership level as at {@code asOf}. The owner's primary
++     * identifier is read here, in one place.
++     */
++    public static OwnerCreatedEvent of(long seq, Owner owner, LocalDate asOf) {
++        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(),
++                MembershipLevels.levelOf(owner, asOf), OWNER_CREATED);
++    }
++
++    /** Render this event as a compact single-line JSON object. */
++    public String toJson() {
++        return JSON.writeValueAsString(this);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerEventSequence.java b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerEventSequence.java
+new file mode 100644
+index 000000000..4d55820af
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/audit/OwnerEventSequence.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.audit;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Source of the monotonically increasing sequence number carried by each
++ * {@link OwnerCreatedEvent}. A single shared counter across all owner creations for the life of
++ * the application, so successive creates receive strictly increasing sequence numbers.
++ */
++@Component
++public class OwnerEventSequence {
++
++    private final AtomicLong counter = new AtomicLong();
++
++    /** The next sequence number, starting at 1 and increasing by one on each call. */
++    public long next() {
++        return this.counter.incrementAndGet();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 6b55ecc7e..34d946d13 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -7,26 +7,30 @@ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.audit.OwnerCreatedEvent;
++import org.springframework.samples.petclinic.rest.audit.OwnerEventSequence;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
+ import org.springframework.samples.petclinic.util.MembershipNumbers;
+ 
+ /**
+- * Emits an audit trail line for a newly created owner. Runs after {@link SaveOwner} has
+- * persisted the entity, so the generated id is available, and records the owner id, the
+- * assigned customer code, the effective registration date, the derived membership points,
+- * level and number on the dedicated {@code AUDIT} logger. Purely a side-effect step; it leaves the
+- * owner unchanged for the responder.
++ * Emits the audit trail for a newly created owner. Runs after {@link SaveOwner} has persisted
++ * the entity, so the generated id is available. On the dedicated {@code AUDIT} logger it emits
++ * both a human-readable line (owner id, assigned customer code, effective registration date,
++ * derived membership points, level and number) and an immutable structured
++ * {@link OwnerCreatedEvent}, stamped with the next sequence number. Purely a side-effect step;
++ * it leaves the owner unchanged for the responder.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerEventSequence sequence) {
+         LocalDate asOf = LocalDate.now();
+         int points = MembershipLevels.pointsOf(owner, asOf);
+         AUDIT.info(
+                 "Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 points, MembershipLevels.levelOf(owner, asOf), MembershipNumbers.of(owner));
++        AUDIT.info(OwnerCreatedEvent.of(sequence.next(), owner, asOf).toJson());
+     }
+ }
