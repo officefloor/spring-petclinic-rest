@@ -17,27 +17,40 @@
 package org.springframework.samples.petclinic.util;
 
 /**
- * Derives an owner's {@code membershipTier} from their namesake count and email address.
+ * Derives an owner's {@code membershipTier} from their household size, namesake count and email
+ * address.
  */
 public final class MembershipTierFormatter {
+
+    private static final String GOLD = "GOLD";
 
     private static final String SILVER = "SILVER";
 
     private static final String BRONZE = "BRONZE";
 
+    /**
+     * Household size (members sharing the same household) at or above which an owner is {@code GOLD}.
+     */
+    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+
     private MembershipTierFormatter() {
     }
 
     /**
-     * Return the membership tier: {@code "SILVER"} when the owner has no namesakes
-     * ({@code namesakeCount} is {@code 0}) and an email address is present, otherwise
+     * Return the membership tier: {@code "GOLD"} when the owner's household has
+     * {@value #GOLD_HOUSEHOLD_SIZE} or more members; otherwise {@code "SILVER"} when the owner has
+     * no namesakes ({@code namesakeCount} is {@code 0}) and an email address is present, otherwise
      * {@code "BRONZE"}.
      *
+     * @param householdSize the number of owners sharing this owner's household, may be {@code null}
      * @param namesakeCount the number of owners sharing this owner's name, may be {@code null}
      * @param email         the owner's email address, may be {@code null}
-     * @return {@code "SILVER"} or {@code "BRONZE"}
+     * @return {@code "GOLD"}, {@code "SILVER"} or {@code "BRONZE"}
      */
-    public static String format(Integer namesakeCount, String email) {
+    public static String format(Integer householdSize, Integer namesakeCount, String email) {
+        if (householdSize != null && householdSize >= GOLD_HOUSEHOLD_SIZE) {
+            return GOLD;
+        }
         boolean unique = namesakeCount != null && namesakeCount == 0;
         boolean hasEmail = email != null && !email.isBlank();
         return unique && hasEmail ? SILVER : BRONZE;

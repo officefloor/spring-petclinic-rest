@@ -279,6 +279,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setNamesakeCount(countNamesakes(owner));
+        owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(CustomerCodeGenerator.format(
             owner.getCity(), owner.getLastName(), ownersInCity + 1));
         if (!householdMembers.isEmpty()) {

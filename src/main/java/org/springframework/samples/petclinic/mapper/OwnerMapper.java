@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(org.springframework.samples.petclinic.util.MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate()))")
     @Mapping(target = "membershipTier",
-        expression = "java(org.springframework.samples.petclinic.util.MembershipTierFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
+        expression = "java(org.springframework.samples.petclinic.util.MembershipTierFormatter.format(owner.getHouseholdSize(), owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
