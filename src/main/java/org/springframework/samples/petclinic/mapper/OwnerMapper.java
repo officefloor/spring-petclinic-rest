@@ -24,6 +24,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.initials(owner.getFirstName(), owner.getLastName()))")
     @Mapping(target = "membershipNumber",
         expression = "java(org.springframework.samples.petclinic.util.MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate()))")
+    @Mapping(target = "checkDigit",
+        expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality",
