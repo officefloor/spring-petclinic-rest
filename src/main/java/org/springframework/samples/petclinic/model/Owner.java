@@ -360,6 +360,16 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's market segment: {@code <TIER>_<AREA>} (see {@link OwnerSegment}) where TIER is
+     * {@code "PREMIUM"} at membership level 3 or more else {@code "STANDARD"}, and AREA is
+     * {@code "METRO"} for a known-region {@link #getLocality() locality} else {@code "REGIONAL"}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerSegment.classify(this.membershipLevel, this.getLocality());
+    }
+
+    /**
      * The owner's fiscal year: the {@code FY<YY>} label of the fiscal year (starting 1 July)
      * containing its business-day-adjusted registration date (see {@link FiscalYear}), or
      * {@code null} when no registration date is set.
