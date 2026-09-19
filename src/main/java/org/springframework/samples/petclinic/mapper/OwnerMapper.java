@@ -46,6 +46,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplayFormatter.format(owner.getTelephone()))")
     @Mapping(target = "salutation",
         expression = "java(org.springframework.samples.petclinic.util.SalutationFormatter.format(owner.getTitle(), owner.getLastName()))")
+    @Mapping(target = "selfLink",
+        expression = "java(org.springframework.samples.petclinic.util.OwnerSelfLink.of(owner.getId()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
