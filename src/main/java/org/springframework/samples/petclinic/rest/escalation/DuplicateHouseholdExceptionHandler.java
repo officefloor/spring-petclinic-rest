@@ -6,12 +6,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateIdentityKeyExceptionHandler {
+public class DuplicateHouseholdExceptionHandler {
 
-    public void handle(@Parameter DuplicateIdentityKeyException ex,
+    public void handle(@Parameter DuplicateHouseholdException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "An owner with this identity already exists");
+                "An owner already exists in this household; set 'sharesHousehold' to add another");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }

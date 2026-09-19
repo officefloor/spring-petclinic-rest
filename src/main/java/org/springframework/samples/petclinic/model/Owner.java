@@ -175,6 +175,12 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The stable identifier of the household this owner belongs to: the first twelve hex
+     * characters of the SHA-256 of the normalized last name and postcode, so every owner
+     * sharing a last name and postcode resolves to the same value. Null when the owner has
+     * no postcode. Assigned at creation.
+     */
     public String getHouseholdId() {
         return this.householdId;
     }
@@ -221,11 +227,12 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner resembles an existing one: {@code true} when, at creation, it was
-     * not a hard duplicate (its {@link #getIdentityKey() identity key} was unique) yet
-     * shared an existing owner's last name and postcode while having a different telephone,
-     * {@code false} otherwise. When true, {@link #getPossibleDuplicateOf()} holds that
-     * owner's id. Captured at creation.
+     * Whether this owner resembles an existing one: {@code true} when, at creation, it
+     * shared an existing owner's household (same last name and postcode, hence the same
+     * {@link #getHouseholdId() household id}) while having a different telephone and was not
+     * a declared household member, {@code false} otherwise. A declared member (created with
+     * {@code sharesHousehold}) is a genuine member, not a suspected duplicate. When true,
+     * {@link #getPossibleDuplicateOf()} holds that owner's id. Captured at creation.
      */
     public boolean isPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -236,9 +243,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the existing owner this owner possibly duplicates (same last name and
-     * postcode, different telephone), or null when it is not a possible duplicate. Captured
-     * at creation.
+     * The id of the existing owner this owner possibly duplicates (same household — last
+     * name and postcode — different telephone), or null when it is not a possible
+     * duplicate. Captured at creation.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
@@ -297,12 +304,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: the single value all duplicate detection is expressed
-     * through, formed as the normalized telephone, the email (or empty when absent) and
-     * the household id (or empty when none), joined by {@code '|'}. Two owners are
-     * duplicates only when their whole identity keys are equal, so members of the same
-     * household with different telephones have different keys and are all allowed. Derived
-     * from stored state, never persisted.
+     * The owner's identity key: a composite fingerprint formed as the normalized telephone,
+     * the email (or empty when absent) and the household id (or empty when none), joined by
+     * {@code '|'}. Derived from stored state, never persisted.
      */
     public String getIdentityKey() {
         String emailPart = hasEmail() ? this.email : "";

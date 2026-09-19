@@ -7,15 +7,14 @@ import java.util.List;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.util.AddressNormalizer;
 
 /**
  * Shared household logic. An owner belongs to a household identified by their last name
- * and postal address. The last name is compared case-insensitively with collapsed
- * whitespace; the address is compared in its normalized form (see {@link AddressNormalizer})
- * so the same household resolves regardless of casing, spacing or street-type abbreviation.
+ * and postcode. The last name is compared case-insensitively with collapsed whitespace;
+ * the postcode is taken verbatim (it is already validated to a canonical four-digit form).
  * The identifier is derived deterministically from those two fields, so every owner in the
- * same household resolves to the same stable value without any coordination.
+ * same household resolves to the same stable value without any coordination. An owner with
+ * no postcode has no household.
  */
 final class Households {
 
@@ -23,24 +22,30 @@ final class Households {
     }
 
     /**
-     * The existing owners that share a household (same last name and address) with the
-     * given fields.
+     * The existing owners that share a household (same last name and postcode) with the
+     * given fields. Empty when no postcode is supplied.
      */
-    static List<Owner> membersOf(OwnerRepository ownerRepository, String lastName, String address) {
-        String key = normalizeName(lastName);
-        String addr = AddressNormalizer.normalize(address);
+    static List<Owner> membersOf(OwnerRepository ownerRepository, String lastName, String postcode) {
+        String householdId = idFor(lastName, postcode);
+        if (householdId == null) {
+            return List.of();
+        }
         return ownerRepository.findByLastName(lastName).stream()
-                .filter(owner -> normalizeName(owner.getLastName()).equals(key)
-                        && AddressNormalizer.normalize(owner.getAddress()).equals(addr))
+                .filter(owner -> householdId.equals(idFor(owner.getLastName(), owner.getPostcode())))
                 .toList();
     }
 
     /**
-     * The stable identifier shared by every owner at the given last name and address.
+     * The stable identifier shared by every owner at the given last name and postcode: the
+     * first twelve hex characters of the SHA-256 of {@code normalizedLastName + '|' +
+     * postcode}. Returns {@code null} when no postcode is supplied, since an owner without a
+     * postcode has no household.
      */
-    static String idFor(String lastName, String address) {
-        return sha256Hex(normalizeName(lastName) + "|" + AddressNormalizer.normalize(address))
-                .substring(0, 12).toUpperCase();
+    static String idFor(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        return sha256Hex(normalizeName(lastName) + "|" + postcode).substring(0, 12).toUpperCase();
     }
 
     private static String normalizeName(String value) {
