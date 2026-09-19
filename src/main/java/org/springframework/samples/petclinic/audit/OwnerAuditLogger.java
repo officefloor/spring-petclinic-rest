@@ -16,12 +16,17 @@
 
 package org.springframework.samples.petclinic.audit;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
 import org.springframework.samples.petclinic.util.OwnerMembership;
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Emits audit records for owner lifecycle events to the dedicated {@code AUDIT} logger,
@@ -32,9 +37,15 @@ public class OwnerAuditLogger {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final ObjectMapper EVENT_MAPPER = JsonMapper.builder().build();
+
+    /** Source of the monotonically increasing sequence number carried by each event. */
+    private final AtomicLong sequence = new AtomicLong();
+
     /**
-     * Record that an owner was successfully created, capturing its id, customer code,
-     * registration date, membership level and membership number.
+     * Record that an owner was successfully created. Emits both the human-readable
+     * audit line and an immutable structured {@link OwnerCreatedEvent} as JSON, so
+     * downstream consumers can process the event without parsing the free-form line.
      *
      * @param owner the persisted owner (with its generated id) to audit
      */
@@ -43,6 +54,18 @@ public class OwnerAuditLogger {
             "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             membershipLevel(owner), membershipNumber(owner));
+        OwnerCreatedEvent event = new OwnerCreatedEvent(
+            sequence.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel(owner));
+        AUDIT.info(EVENT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * The owner's current primary identifier. This is the single place that changes
+     * when the customer code is unified into the member id: return {@code owner}'s
+     * member id instead and the emitted event carries it automatically.
+     */
+    private static String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     private static int membershipLevel(Owner owner) {
