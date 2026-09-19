@@ -34,4 +34,19 @@ public final class PersonNameFormatter {
     public static String displayName(String firstName, String lastName) {
         return lastName + ", " + firstName;
     }
+
+    /**
+     * Format the upper-cased first letters of the given names as {@code "F.L."}.
+     *
+     * @param firstName the first name
+     * @param lastName the last name
+     * @return the initials formatted as {@code "F.L."}
+     */
+    public static String initials(String firstName, String lastName) {
+        return initial(firstName) + initial(lastName);
+    }
+
+    private static String initial(String name) {
+        return Character.toUpperCase(name.charAt(0)) + ".";
+    }
 }

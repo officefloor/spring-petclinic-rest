@@ -20,6 +20,8 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.displayName(owner.getFirstName(), owner.getLastName()))")
+    @Mapping(target = "initials",
+        expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.initials(owner.getFirstName(), owner.getLastName()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
