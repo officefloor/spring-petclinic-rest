@@ -12,6 +12,6 @@ public class TelephoneDigitsValidator implements ConstraintValidator<TelephoneDi
         if (telephone == null) {
             return true;
         }
-        return TelephoneNormalizer.normalize(telephone).length() == 10;
+        return TelephoneNormalizer.toE164(telephone).isPresent();
     }
 }

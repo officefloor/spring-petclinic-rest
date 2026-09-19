@@ -16,25 +16,65 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.util.Optional;
+import java.util.regex.Pattern;
+
 /**
- * Normalizes telephone numbers to their bare digits. Shared by the create-time validation
- * constraint and the mapping that stores the value, so both agree on what "the digits" are.
+ * Converts telephone numbers to canonical E.164 form. Shared by the create-time validation
+ * constraint and the mapping that stores the value, so both agree on what a valid, stored
+ * telephone looks like.
+ *
+ * <p>A leading {@code '+'} with its country code is kept as given; otherwise the Australian
+ * country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the
+ * national digits. Spaces, dashes and brackets are ignored. The digits following the
+ * {@code '+'} must number between 8 and 15 inclusive.
  */
 public final class TelephoneNormalizer {
+
+    /** Country code assumed when the number carries no explicit {@code '+'} prefix. */
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** Separators that carry no meaning and are stripped before parsing. */
+    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-]");
+
+    private static final int MIN_DIGITS = 8;
+    private static final int MAX_DIGITS = 15;
 
     private TelephoneNormalizer() {
     }
 
     /**
-     * Strip every non-digit character from the given telephone value.
+     * Convert the given telephone value to E.164 form.
      *
      * @param telephone the raw telephone value (may be {@code null})
-     * @return the digits contained in {@code telephone}, or an empty string when it is {@code null}
+     * @return the E.164 string (a {@code '+'} followed by 8 to 15 digits), or
+     * {@link Optional#empty()} when {@code telephone} is {@code null} or cannot form valid E.164
      */
-    public static String normalize(String telephone) {
+    public static Optional<String> toE164(String telephone) {
         if (telephone == null) {
-            return "";
+            return Optional.empty();
         }
-        return telephone.replaceAll("\\D", "");
+        String cleaned = SEPARATORS.matcher(telephone).replaceAll("");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = DEFAULT_COUNTRY_CODE + national;
+        }
+        if (digits.length() < MIN_DIGITS || digits.length() > MAX_DIGITS || !isAllDigits(digits)) {
+            return Optional.empty();
+        }
+        return Optional.of("+" + digits);
+    }
+
+    private static boolean isAllDigits(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 }

@@ -5,8 +5,9 @@ import jakarta.validation.Payload;
 import java.lang.annotation.*;
 
 /**
- * Validates that a telephone value contains exactly ten digits once every non-digit
- * character has been stripped.
+ * Validates that a telephone value can be converted to canonical E.164 form (a leading
+ * {@code '+'} followed by 8 to 15 digits), assuming the {@code '+61'} country code when the
+ * value carries no explicit one.
  */
 @Target({ ElementType.FIELD })
 @Retention(RetentionPolicy.RUNTIME)
@@ -14,7 +15,7 @@ import java.lang.annotation.*;
 @Documented
 public @interface TelephoneDigits {
 
-    String message() default "Telephone must contain exactly 10 digits";
+    String message() default "Telephone must be a valid E.164 number (8 to 15 digits after the country code)";
 
     Class<?>[] groups() default {};
 
