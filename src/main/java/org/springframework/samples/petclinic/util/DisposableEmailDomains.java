@@ -39,14 +39,41 @@ public final class DisposableEmailDomains {
      * when it is {@code null}, has no domain part or the domain is not blocked
      */
     public static boolean isDisposable(String email) {
-        if (email == null) {
+        String domain = domainOf(email);
+        return domain != null && BLOCKED_DOMAINS.contains(domain);
+    }
+
+    /**
+     * Whether the given email's domain is <em>disposable-adjacent</em>: not itself on the blocklist
+     * (such addresses are rejected outright), but a subdomain of a blocked disposable domain, e.g.
+     * {@code inbox.mailinator.com}. These slip past {@link #isDisposable(String)} yet still resemble a
+     * throw-away provider closely enough to warrant a risk flag.
+     *
+     * @param email the email value (may be {@code null})
+     * @return {@code true} when {@code email}'s domain is a subdomain of a blocked disposable domain,
+     * {@code false} otherwise (including when it is {@code null}, has no domain part, or is itself
+     * exactly a blocked domain)
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        String domain = domainOf(email);
+        if (domain == null || BLOCKED_DOMAINS.contains(domain)) {
             return false;
+        }
+        return BLOCKED_DOMAINS.stream().anyMatch(blocked -> domain.endsWith("." + blocked));
+    }
+
+    /**
+     * The lower-cased domain part of {@code email}, or {@code null} when it is {@code null} or has no
+     * {@code '@'} separator.
+     */
+    private static String domainOf(String email) {
+        if (email == null) {
+            return null;
         }
         int at = email.lastIndexOf('@');
         if (at < 0) {
-            return false;
+            return null;
         }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        return BLOCKED_DOMAINS.contains(domain);
+        return email.substring(at + 1).toLowerCase(Locale.ROOT);
     }
 }
