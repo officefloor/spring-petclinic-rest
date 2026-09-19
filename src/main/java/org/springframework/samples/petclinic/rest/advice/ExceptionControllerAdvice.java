@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelep
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -262,6 +263,24 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("lastName", "address"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link OwnerCityCapacityExceededException} raised when an owner request would
+     * create an owner in a city that already holds the maximum permitted number of owners.
+     * Returns a 409 Conflict whose {@code errors} array names the {@code city} field.
+     *
+     * @param e The {@link OwnerCityCapacityExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(OwnerCityCapacityExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityCapacityExceededException(OwnerCityCapacityExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("city"));
         return ResponseEntity.status(status).body(detail);
     }
 

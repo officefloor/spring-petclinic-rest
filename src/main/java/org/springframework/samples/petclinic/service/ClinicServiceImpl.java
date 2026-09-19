@@ -261,19 +261,22 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Count the owners already stored that share the given first and last name, compared
-     * case-insensitively. Used to capture an owner's namesake count at creation time.
-     */
-    /**
      * Count the owners already stored in the given city, compared case-insensitively. Used to
-     * derive the per-city sequence embedded in a new owner's customer code.
+     * derive the per-city sequence embedded in a new owner's customer code and to enforce the
+     * per-city capacity limit at creation time.
      */
-    private long countOwnersInCity(String city) {
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersInCity(String city) throws DataAccessException {
         return ownerRepository.findAll().stream()
             .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
             .count();
     }
 
+    /**
+     * Count the owners already stored that share the given first and last name, compared
+     * case-insensitively. Used to capture an owner's namesake count at creation time.
+     */
     private int countNamesakes(String firstName, String lastName) {
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)

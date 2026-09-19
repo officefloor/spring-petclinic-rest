@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -75,6 +76,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private final EmailNormalizer emailNormalizer;
 
     private final AddressNormalizer addressNormalizer;
+
+    /** Maximum number of owners a single city may hold before further creations are rejected. */
+    static final long MAX_OWNERS_PER_CITY = 50;
 
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
@@ -133,6 +137,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
+        }
+        if (this.clinicService.countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new OwnerCityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.clinicService.joinHousehold(owner);
