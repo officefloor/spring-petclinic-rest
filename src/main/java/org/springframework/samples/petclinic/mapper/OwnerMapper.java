@@ -5,14 +5,17 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.DisposableEmailDomains;
-import org.springframework.samples.petclinic.util.MemberId;
+import org.springframework.samples.petclinic.util.FiscalYears;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.OwnerSegment;
+import org.springframework.samples.petclinic.util.Postcodes;
 import org.springframework.samples.petclinic.util.Telephones;
 import org.springframework.samples.petclinic.util.Timezones;
 
@@ -26,6 +29,8 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -71,20 +76,40 @@ public interface OwnerMapper {
         return Character.toUpperCase(name.charAt(0)) + ".";
     }
 
-    /**
-     * Derive the owner's fiscal year 'FY&lt;YY&gt;' from the two-digit fiscal-year segment of the
-     * member id (see {@link MemberId}). Returns null when no member id has been assigned.
-     */
-    default String fiscalYear(Owner owner) {
-        return MemberId.fiscalYearLabel(owner.getMemberId());
+    /** The owner-identity payload version (always {@link IdentityVersion#VERSION}). */
+    default Integer apiVersion() {
+        return IdentityVersion.VERSION;
     }
 
     /**
-     * Derive the owner's locality (canonical region) as the region component of the member id
-     * identity, or 'UNKNOWN' when the id carries no region.
+     * Group the owner's server-derived identifiers — member id, identity key and household id —
+     * under the nested identity object of the response.
+     */
+    default IdentityDto identity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
+
+    /**
+     * Derive the owner's fiscal year 'FY&lt;YY&gt;' from the registration date (see
+     * {@link FiscalYears}). Returns null when no registration date has been resolved.
+     */
+    default String fiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        return registrationDate == null ? null
+                : FiscalYears.labelFor(FiscalYears.yearOfCentury(registrationDate));
+    }
+
+    /**
+     * Derive the owner's locality (canonical region) as the plain region code of the postcode, or
+     * 'UNKNOWN' when the postcode is absent, malformed or in no known range. This is a user-facing
+     * field, not an identifier, so it never carries the identity version tag.
      */
     default String locality(Owner owner) {
-        return MemberId.regionOf(owner.getMemberId());
+        return Postcodes.regionCode(owner.getPostcode());
     }
 
     /**

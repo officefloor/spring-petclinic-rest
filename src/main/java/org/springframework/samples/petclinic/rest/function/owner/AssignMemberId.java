@@ -11,8 +11,9 @@ import org.springframework.samples.petclinic.util.Postcodes;
 
 /**
  * Assigns the owner's member id before it is saved. The id is the region-and-hash identity
- * {@code <REGION><FY><HASH8><CHK>} (see {@link MemberId}): {@code REGION} is the region derived
- * from the owner's postcode, {@code FY} the two-digit fiscal year of the registration date,
+ * {@code <REGION><FY><HASH8><CHK>} (see {@link MemberId}): {@code REGION} is the version-2
+ * {@link Postcodes#identityRegionCode identity region code} derived from the owner's postcode,
+ * {@code FY} the two-digit fiscal year of the registration date,
  * {@code HASH8} the first eight upper-case hex characters of the SHA-256 digest over the
  * normalized telephone and last name, and {@code CHK} a Luhn check digit over the preceding
  * segments. Should that id collide with an existing owner's, it is
@@ -25,7 +26,7 @@ import org.springframework.samples.petclinic.util.Postcodes;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Postcodes.regionCode(owner.getPostcode());
+        String region = Postcodes.identityRegionCode(owner.getPostcode());
         String memberId = MemberId.of(region, owner.getRegistrationDate(), owner.getTelephone(),
                 owner.getLastName());
         owner.setMemberId(MemberId.deduplicate(memberId, existingIds(ownerRepository)));

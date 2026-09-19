@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
@@ -24,12 +25,13 @@ final class HouseholdKey {
 
     /**
      * Stable identifier shared by every owner of a household: the first {@value #ID_LENGTH} hex
-     * characters of the SHA-256 digest of the canonical {@link #of(String, String) key}. Purely
-     * derived from last name and postcode, so two owners in the same household always get the same
-     * value regardless of creation order.
+     * characters of the SHA-256 digest of the canonical {@link #of(String, String) key}, mixed
+     * with the version-2 {@link IdentityVersion#TAG identity tag} so no version-1 value recurs.
+     * Purely derived from last name and postcode (and the fixed tag), so two owners in the same
+     * household always get the same value regardless of creation order.
      */
     static String id(String lastName, String postcode) {
-        return Sha256.hex(of(lastName, postcode)).substring(0, ID_LENGTH);
+        return Sha256.hex(IdentityVersion.TAG + '|' + of(lastName, postcode)).substring(0, ID_LENGTH);
     }
 
     private static String normalize(String value) {

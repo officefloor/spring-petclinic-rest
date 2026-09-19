@@ -4,13 +4,15 @@ import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.Sha256;
 
 /**
  * Canonical identity of an owner for duplicate detection. All duplicate detection is
  * consolidated into this single derived key: the lower-case hex SHA-256 digest of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are
- * duplicates only when their whole keys are equal.
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where
+ * {@code 'V2'} is the {@link IdentityVersion#TAG identity version tag} so a version-2 key never
+ * reproduces a version-1 value. Two owners are duplicates only when their whole keys are equal.
  *
  * <p>A person is individuated by their telephone, email and how their last name sounds: a
  * re-registration reusing all three is a duplicate regardless of address, while two members of
@@ -40,7 +42,7 @@ final class OwnerIdentity {
     private static String of(String telephone, String email, String lastName) {
         String normalizedTelephone = TelephoneNormalizer.toE164(telephone);
         String normalizedEmail = (email == null) ? "" : email.trim().toLowerCase(Locale.ROOT);
-        String raw = (normalizedTelephone == null ? "" : normalizedTelephone)
+        String raw = IdentityVersion.TAG + '|' + (normalizedTelephone == null ? "" : normalizedTelephone)
                 + '|' + normalizedEmail + '|' + Soundex.encode(lastName);
         return Sha256.hex(raw);
     }

@@ -56,6 +56,17 @@ public final class Postcodes {
     }
 
     /**
+     * The region code embedded <em>inside</em> the owner's identifiers: the plain
+     * {@link #regionCode(String) region code} suffixed with the {@link IdentityVersion#TAG
+     * identity version tag}, so a version-2 identifier can never reproduce a version-1 value.
+     * The user-facing locality keeps the plain {@link #regionCode(String)}; the tag lives only
+     * here, inside the identifiers.
+     */
+    public static String identityRegionCode(String postcode) {
+        return regionCode(postcode) + IdentityVersion.TAG;
+    }
+
+    /**
      * Whether {@code postcode} is valid for {@code city}: it must be four digits and, when the
      * city's region has a known range, fall within it. A city with no known region accepts any
      * four-digit postcode.
