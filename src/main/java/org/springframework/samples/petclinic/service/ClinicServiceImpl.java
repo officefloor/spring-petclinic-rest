@@ -263,6 +263,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
+        if (owner.getEmail() != null && ownerRepository.existsByEmailIgnoreCase(owner.getEmail())) {
+            throw new DuplicateEmailException(owner.getEmail());
+        }
         List<Owner> householdMembers = findHouseholdMembers(owner);
         if (!householdMembers.isEmpty() && !sharesHousehold) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
