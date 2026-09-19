@@ -9,8 +9,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * (same last name and address, see {@link Households}) once this owner is added — the
  * existing household members plus the new owner itself. Runs after {@link BuildOwner} (so
  * the entity, its name and normalized address exist) and before {@link SaveOwner} persists
- * the count, so the freshly created owner is counted exactly once. A three-or-more member
- * household makes the owner {@code GOLD} (see {@link Owner#getMembershipTier()}).
+ * the count, so the freshly created owner is counted exactly once.
  */
 public class AssignOwnerHouseholdSize {
 
