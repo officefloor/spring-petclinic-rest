@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 204f299e1..8155d21c2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -1,7 +1,12 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Objects;
++import java.util.Set;
++import java.util.stream.Collectors;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.util.CityLocality;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Sha256;
+@@ -11,14 +16,21 @@ import org.springframework.samples.petclinic.util.Sha256;
+  * canonical region derived from the postcode (falling back to the city, see
+  * {@link CityLocality}), a hyphen, and the first eight upper-case hex characters of the
+  * SHA-256 of the normalized telephone concatenated with the last name (e.g.
+- * {@code NSW-1A2B3C4D}). Runs after {@link BuildOwner} (so the entity, its postcode,
+- * telephone and last name exist) and before {@link SaveOwner} persists the code.
++ * {@code NSW-1A2B3C4D}). Should the composed code collide with an existing owner's, it is
++ * de-duplicated with a {@code -<n>} suffix (see {@link CustomerCode#deduplicate}). Runs
++ * after {@link BuildOwner} (so the entity, its postcode, telephone and last name exist)
++ * and before {@link SaveOwner} persists the code.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = CityLocality.forPostcodeOrCity(owner.getPostcode(), owner.getCity());
+         String hash8 = Sha256.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+-        owner.setCustomerCode(CustomerCode.of(region, hash8));
++        String code = CustomerCode.of(region, hash8);
++        Set<String> existing = ownerRepository.findAll().stream()
++                .map(Owner::getCustomerCode)
++                .filter(Objects::nonNull)
++                .collect(Collectors.toSet());
++        owner.setCustomerCode(CustomerCode.deduplicate(code, existing));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+index fb9fd497a..0bef5ae7e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.util;
+ 
++import java.util.Collection;
++
+ /**
+  * The owner customer-code format, {@code <REGION>-<HASH8>}: the canonical region (see
+  * {@link CityLocality}) followed by the first eight upper-case hex characters of a
+@@ -25,6 +27,24 @@ public final class CustomerCode {
+         return region + SEPARATOR + hash8;
+     }
+ 
++    /**
++     * De-duplicates a customer code against the codes already in use. If the code is
++     * unused it is returned unchanged; otherwise {@code -<n>} is appended with the
++     * smallest {@code n} of two or more that yields a code not already taken.
++     *
++     * @param customerCode the composed customer code
++     * @param existing     the customer codes already in use
++     * @return the {@code customerCode}, or a {@code <customerCode>-<n>} variant unique
++     *         among {@code existing}
++     */
++    public static String deduplicate(String customerCode, Collection<String> existing) {
++        String candidate = customerCode;
++        for (int n = 2; existing.contains(candidate); n++) {
++            candidate = customerCode + SEPARATOR + n;
++        }
++        return candidate;
++    }
++
+     /**
+      * The region component of a customer code, i.e. the part before the first separator.
+      *
