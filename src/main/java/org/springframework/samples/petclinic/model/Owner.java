@@ -42,6 +42,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -99,6 +102,29 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    /**
+     * The owner's personal title (one of MR, MRS, MS or DR), or null when none was
+     * supplied. Stored verbatim and used to compose the {@link #getSalutation() salutation}.
+     */
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation: the {@link #getTitle() title} and last name separated by a
+     * space (e.g. {@code "DR Who"}), or just the last name when no title is recorded.
+     * Derived from stored state, never persisted.
+     */
+    public String getSalutation() {
+        return (this.title == null || this.title.isEmpty())
+            ? getLastName()
+            : this.title + " " + getLastName();
+    }
 
     public String getAddress() {
         return this.address;
