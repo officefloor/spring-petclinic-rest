@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -233,19 +234,38 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional
-    public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew()) {
-            if (ownerRepository.existsByTelephone(owner.getTelephone())) {
-                throw new DuplicateTelephoneException(owner.getTelephone());
-            }
-            if (owner.getRegistrationDate() == null) {
-                owner.setRegistrationDate(LocalDate.now());
-            }
-            owner.setCustomerCode(
-                CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
+    public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        if (ownerRepository.existsByTelephone(owner.getTelephone())) {
+            throw new DuplicateTelephoneException(owner.getTelephone());
         }
+        if (!sharesHousehold && sharesHouseholdWithExistingOwner(owner)) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        owner.setCustomerCode(
+            CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
         ownerRepository.save(owner);
+    }
 
+    @Override
+    @Transactional
+    public void saveOwner(Owner owner) throws DataAccessException {
+        ownerRepository.save(owner);
+    }
+
+    /**
+     * Report whether another owner already shares this owner's household, i.e. has the same last name and
+     * address compared case-insensitively and with runs of whitespace collapsed.
+     */
+    private boolean sharesHouseholdWithExistingOwner(Owner owner) {
+        String address = TextNormalizer.normalize(owner.getAddress());
+        if (address == null) {
+            return false;
+        }
+        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .anyMatch(existing -> address.equals(TextNormalizer.normalize(existing.getAddress())));
     }
 
     @Override

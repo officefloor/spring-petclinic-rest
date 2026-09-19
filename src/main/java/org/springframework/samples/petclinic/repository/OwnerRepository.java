@@ -48,6 +48,17 @@ public interface OwnerRepository {
     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
 
     /**
+     * Retrieve every <code>Owner</code> whose last name matches the given value ignoring case. Unlike
+     * {@link #findByLastName(String)} this is an exact (not prefix) match and is used to gather the
+     * candidates for the household-duplicate check.
+     *
+     * @param lastName the last name to match, case-insensitively
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

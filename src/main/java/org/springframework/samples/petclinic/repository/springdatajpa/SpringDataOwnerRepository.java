@@ -60,6 +60,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     boolean existsByTelephone(String telephone);
 
     @Override
+    Collection<Owner> findByLastNameIgnoreCase(String lastName);
+
+    @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")
     long count();
 }
