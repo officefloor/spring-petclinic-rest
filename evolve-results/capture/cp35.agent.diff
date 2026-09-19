@@ -1,0 +1,173 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5024e2c3a..d82d862a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,12 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -174,6 +180,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 050061d0e..2310c824b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.function.Supplier;
+@@ -275,6 +276,7 @@ public class ClinicServiceImpl implements ClinicService {
+             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
+         }
+         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
++        flagPossibleDuplicate(owner);
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         owner.setCustomerCode(CustomerCodeGenerator.format(
+@@ -302,6 +304,24 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Flag the new owner as a possible (soft) duplicate when it is not a hard duplicate but shares an
++     * existing owner's last name and postcode while carrying a different telephone. The new owner is
++     * still created; {@code possibleDuplicate} is set to whether such a match exists and
++     * {@code possibleDuplicateOf} to the matching owner's id (the lowest when several match), or
++     * {@code null} when there is no match. An owner without a postcode can never soft-match.
++     */
++    private void flagPossibleDuplicate(Owner owner) {
++        Owner match = owner.getPostcode() == null ? null : ownerRepository
++            .findByLastNameIgnoreCase(owner.getLastName()).stream()
++            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
++            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
++            .min(Comparator.comparingInt(Owner::getId))
++            .orElse(null);
++        owner.setPossibleDuplicate(match != null);
++        owner.setPossibleDuplicateOf(match == null ? null : match.getId());
++    }
++
+     /**
+      * Assign the stable household identifier to the new owner and to every existing member of the
+      * household, persisting the members whose identifier changes, and return the shared identifier.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 53630427f..c79d87b19 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 290032243..13f6c786c 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,7 +50,9 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 0a76b095b..18e0b3633 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BIT(1),
++  possible_duplicate BIT(1),
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c24fcf77f..ff1f58ff3 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 340fa7a9a..13579d197 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2208,6 +2208,25 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Whether, when this owner was created, an existing owner shared the same last name and
++                postcode but with a different telephone (a soft match that is not a hard duplicate).
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner soft-matches, i.e. the owner that shares this
++                owner's last name and postcode with a different telephone. Present only when
++                'possibleDuplicate' is true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
