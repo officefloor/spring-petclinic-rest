@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 017edf0a8..53508054b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.FiscalYears;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
+ import org.springframework.samples.petclinic.util.MembershipNumbers;
++import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.Telephones;
+ import org.springframework.samples.petclinic.util.Timezones;
+ 
+@@ -39,6 +40,7 @@ public interface OwnerMapper {
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+@@ -143,6 +145,14 @@ public interface OwnerMapper {
+         return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
+     }
+ 
++    /**
++     * Derive the owner's market segment '&lt;TIER&gt;_&lt;AREA&gt;' from the derived membership
++     * level and locality.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        return OwnerDto.OwnerSegmentEnum.valueOf(OwnerSegment.of(membershipLevel(owner), locality(owner)).name());
++    }
++
+     /** Format the owner's stored E.164 telephone for humans (e.g. '+61 412 345 678'). */
+     default String telephoneDisplay(Owner owner) {
+         return Telephones.forDisplay(owner.getTelephone());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 000000000..af7cae347
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Derives an owner's market segment '&lt;TIER&gt;_&lt;AREA&gt;' from their membership level and
++ * locality. TIER is PREMIUM at membership level {@link #PREMIUM_LEVEL} or above, otherwise
++ * STANDARD. AREA is METRO for a known region (a resolved locality), otherwise REGIONAL.
++ */
++public enum OwnerSegment {
++
++    PREMIUM_METRO, PREMIUM_REGIONAL, STANDARD_METRO, STANDARD_REGIONAL;
++
++    /** Membership level (inclusive) at and above which an owner is PREMIUM. */
++    public static final int PREMIUM_LEVEL = 3;
++
++    /**
++     * Return the segment for an owner with the given {@code membershipLevel} and {@code locality}
++     * (a canonical region, or {@link CityRegions#UNKNOWN} when the region is not known).
++     */
++    public static OwnerSegment of(Integer membershipLevel, String locality) {
++        boolean premium = membershipLevel != null && membershipLevel >= PREMIUM_LEVEL;
++        boolean metro = !CityRegions.UNKNOWN.equals(locality);
++        if (premium) {
++            return metro ? PREMIUM_METRO : PREMIUM_REGIONAL;
++        }
++        return metro ? STANDARD_METRO : STANDARD_REGIONAL;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7cfbd7e25..11e209e33 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2302,6 +2302,19 @@ components:
+                 - SENIOR
+               example: ADULT
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: Derived market segment '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: STANDARD_METRO
++              readOnly: true
+             telephoneDisplay:
+               title: Telephone display
+               description: The stored E.164 telephone formatted for humans as the country
