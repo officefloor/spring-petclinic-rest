@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.Telephones;
+import org.springframework.samples.petclinic.util.Timezones;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -80,6 +82,14 @@ public interface OwnerMapper {
      */
     default String locality(Owner owner) {
         return CustomerCode.regionOf(owner.getCustomerCode());
+    }
+
+    /**
+     * Derive the IANA timezone name for the owner's locality (canonical region) from the fixed
+     * region-to-timezone table, or null when the locality has no known timezone.
+     */
+    default String timezone(Owner owner) {
+        return Timezones.of(locality(owner));
     }
 
     /** Derive the owner's membership points as at the current date. */
