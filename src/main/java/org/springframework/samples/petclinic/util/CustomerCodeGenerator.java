@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.util.function.Predicate;
+
 /**
  * Builds and parses an owner's {@code customerCode}, a stable {@code "<REGION>-<HASH8>"} identity
  * where {@code REGION} is the owner's region and {@code HASH8} is the first eight upper-case hex
@@ -44,6 +46,27 @@ public final class CustomerCodeGenerator {
      */
     public static String format(String region, String normalizedTelephone, String lastName) {
         return region + SEPARATOR + hash8(normalizedTelephone, lastName);
+    }
+
+    /**
+     * De-duplicate a formatted customer code against the codes already in use. When {@code baseCode}
+     * is free it is returned unchanged; otherwise {@code "-<n>"} is appended using the smallest
+     * {@code n >= 2} that yields a code {@code isTaken} reports as free.
+     *
+     * @param baseCode the freshly formatted customer code (see {@link #format})
+     * @param isTaken  tests whether a candidate code already belongs to another owner
+     * @return a customer code that {@code isTaken} reports as free
+     */
+    public static String deduplicate(String baseCode, Predicate<String> isTaken) {
+        if (!isTaken.test(baseCode)) {
+            return baseCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = baseCode + SEPARATOR + n;
+            if (!isTaken.test(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**

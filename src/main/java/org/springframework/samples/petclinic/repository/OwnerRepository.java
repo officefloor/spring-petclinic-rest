@@ -80,6 +80,17 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Retrieve every <code>Owner</code> whose <code>customerCode</code> starts with the given prefix.
+     * Used to gather the family of codes derived from one base code (the base itself plus any
+     * {@code "-<n>"} de-duplication suffixes) when assigning a unique code to a new owner.
+     *
+     * @param customerCode the customer-code prefix to match
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException;
+
+    /**
      * Count the total number of <code>Owner</code>s currently in the data store.
      *
      * @return the number of stored owners

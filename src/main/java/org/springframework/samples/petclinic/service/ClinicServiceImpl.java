@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -286,9 +287,7 @@ public class ClinicServiceImpl implements ClinicService {
         flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
-        owner.setCustomerCode(CustomerCodeGenerator.format(
-            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
-            owner.getTelephone(), owner.getLastName()));
+        owner.setCustomerCode(assignCustomerCode(owner));
         ownerRepository.save(owner);
         ownerAuditLogger.ownerCreated(owner);
         return owner.getHouseholdId();
@@ -306,6 +305,21 @@ public class ClinicServiceImpl implements ClinicService {
         if (collides) {
             throw new DuplicateOwnerException(identityKey);
         }
+    }
+
+    /**
+     * Build the new owner's {@code customerCode} and de-duplicate it against existing owners. The
+     * base code is derived from the owner's locality, telephone and last name; if it already belongs
+     * to another owner it is suffixed with the smallest {@code "-<n>"} (n &gt;= 2) that is still free.
+     */
+    private String assignCustomerCode(Owner owner) {
+        String baseCode = CustomerCodeGenerator.format(
+            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
+            owner.getTelephone(), owner.getLastName());
+        Set<String> takenCodes = ownerRepository.findByCustomerCodeStartingWith(baseCode).stream()
+            .map(Owner::getCustomerCode)
+            .collect(Collectors.toSet());
+        return CustomerCodeGenerator.deduplicate(baseCode, takenCodes::contains);
     }
 
     /**

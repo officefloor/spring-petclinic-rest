@@ -107,6 +107,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.customerCode LIKE :customerCode");
+        query.setParameter("customerCode", customerCode + "%");
+        return query.getResultList();
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner");
         return (long) query.getSingleResult();

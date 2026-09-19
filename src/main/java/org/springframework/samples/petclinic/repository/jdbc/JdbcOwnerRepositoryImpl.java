@@ -176,6 +176,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("customerCode", customerCode + "%");
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone, customer_code FROM owners WHERE customer_code like :customerCode",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+        loadOwnersPetsAndVisits(owners);
+        return owners;
+    }
+
+    @Override
     public long count() throws DataAccessException {
         Long count = this.namedParameterJdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM owners",
