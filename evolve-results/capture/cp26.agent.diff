@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CountryCallingCode.java b/src/main/java/org/springframework/samples/petclinic/util/CountryCallingCode.java
+new file mode 100644
+index 000000000..bdf38bd5c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CountryCallingCode.java
+@@ -0,0 +1,71 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Optional;
++
++/**
++ * The E.164 country calling codes this application recognises, each paired with the exact
++ * number of national (subscriber) digits a valid number for that country carries.
++ *
++ * <p>Used to check a normalized number's national-number length against its country code.
++ * A number whose calling code is not listed here has no per-country length rule.
++ */
++enum CountryCallingCode {
++
++    /** Australia: {@code '+61'} followed by 9 national digits. */
++    AUSTRALIA("61", 9),
++
++    /** North American Numbering Plan: {@code '+1'} followed by 10 national digits. */
++    NANP("1", 10);
++
++    private final String code;
++    private final int nationalDigits;
++
++    CountryCallingCode(String code, int nationalDigits) {
++        this.code = code;
++        this.nationalDigits = nationalDigits;
++    }
++
++    /**
++     * The recognised calling code that prefixes the given digit string, if any. When more than
++     * one would match, the longest (most specific) code wins.
++     *
++     * @param digits the digits of an E.164 number, without the leading {@code '+'}
++     * @return the matching calling code, or {@link Optional#empty()} if none is recognised
++     */
++    static Optional<CountryCallingCode> forDigits(String digits) {
++        CountryCallingCode match = null;
++        for (CountryCallingCode candidate : values()) {
++            if (digits.startsWith(candidate.code)
++                    && (match == null || candidate.code.length() > match.code.length())) {
++                match = candidate;
++            }
++        }
++        return Optional.ofNullable(match);
++    }
++
++    /**
++     * Whether {@code digits} carries exactly the national-digit count this country requires.
++     *
++     * @param digits the digits of an E.164 number, without the leading {@code '+'}, that this
++     * calling code prefixes
++     */
++    boolean hasValidNationalLength(String digits) {
++        return digits.length() - code.length() == nationalDigits;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+index 805ae8d43..5ef90b478 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -27,7 +27,9 @@ import java.util.regex.Pattern;
+  * <p>A leading {@code '+'} with its country code is kept as given; otherwise the Australian
+  * country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the
+  * national digits. Spaces, dashes and brackets are ignored. The digits following the
+- * {@code '+'} must number between 8 and 15 inclusive.
++ * {@code '+'} must number between 8 and 15 inclusive, and for a recognised country calling
++ * code the national-number length must match what that country requires (see
++ * {@link CountryCallingCode}).
+  */
+ public final class TelephoneNormalizer {
+ 
+@@ -65,6 +67,10 @@ public final class TelephoneNormalizer {
+         if (digits.length() < MIN_DIGITS || digits.length() > MAX_DIGITS || !isAllDigits(digits)) {
+             return Optional.empty();
+         }
++        Optional<CountryCallingCode> country = CountryCallingCode.forDigits(digits);
++        if (country.isPresent() && !country.get().hasValidNationalLength(digits)) {
++            return Optional.empty();
++        }
+         return Optional.of("+" + digits);
+     }
+ 
