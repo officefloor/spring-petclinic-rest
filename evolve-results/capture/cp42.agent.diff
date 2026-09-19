@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d362bc78c..f19125102 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -21,6 +21,7 @@ import org.springframework.samples.petclinic.util.CityLocality;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.E164PhoneNumber;
+ import org.springframework.samples.petclinic.util.LuhnCheckDigit;
++import org.springframework.samples.petclinic.util.RegionTimezone;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+@@ -282,6 +283,16 @@ public class Owner extends Person {
+         return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
+     }
+ 
++    /**
++     * The owner's timezone: the IANA name for this owner's {@link #getLocality() locality}
++     * via the fixed region-to-timezone table (NSW->Australia/Sydney,
++     * VIC->Australia/Melbourne, QLD->Australia/Brisbane), or {@code null} when the region
++     * has no known timezone. Derived from stored state, never persisted.
++     */
++    public String getTimezone() {
++        return RegionTimezone.forRegion(getLocality());
++    }
++
+     /**
+      * The owner's membership points, from 0 upwards: starts at 0, gains 2 when this owner
+      * has an email address, gains 1 when this owner had no namesakes at creation
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+new file mode 100644
+index 000000000..c1c682a07
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RegionTimezone.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Maps a canonical region (see {@link CityLocality}) to its IANA timezone via a fixed
++ * table: NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane. This
++ * class owns only that mapping, keeping the timezone concern separate from region
++ * resolution and reusable wherever a region is known.
++ *
++ * <p>A region with no known timezone (including {@link CityLocality#UNKNOWN} or a null
++ * region) resolves to {@code null}.
++ */
++public final class RegionTimezone {
++
++    /** Region -> IANA timezone name. Anything not listed has no known timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
++    private RegionTimezone() {
++    }
++
++    /**
++     * @param region the canonical region, as resolved by {@link CityLocality}
++     * @return the IANA timezone name for {@code region}, or {@code null} when it has no
++     *         known timezone
++     */
++    public static String forRegion(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9129d8b08..1b907bacd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2162,6 +2162,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: "The owner's timezone: the IANA name for the owner's locality via the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or absent when the region has no known timezone. Derived from stored state, never persisted."
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: "Whether this owner was part of a bulk signup: true when more than 80 owners had already been created on this owner's registration date at the moment it was created, false otherwise."
