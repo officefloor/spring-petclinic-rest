@@ -67,6 +67,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "bulk_signup_warning", nullable = false)
+    private boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -140,6 +143,19 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    /**
+     * Whether this owner was created as part of a bulk signup: {@code true} when more
+     * than 80 owners had already been registered on this owner's registration date at
+     * the moment it was created, {@code false} otherwise. Captured at creation.
+     */
+    public boolean isBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     /**
