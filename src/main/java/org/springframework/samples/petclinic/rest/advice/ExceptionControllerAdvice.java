@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
@@ -204,6 +205,24 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidEmailException} raised when an owner request supplies an email
+     * address that is not syntactically valid. Returns a 400 Bad Request whose
+     * {@code errors} array names the {@code email} field.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
         return ResponseEntity.status(status).body(detail);
     }
 

@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -68,18 +69,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -114,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
+        owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
@@ -136,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(this.emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
