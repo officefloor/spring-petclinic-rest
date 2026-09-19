@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.FiscalYears;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.MembershipNumbers;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.Telephones;
 import org.springframework.samples.petclinic.util.Timezones;
 
@@ -39,6 +40,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
@@ -141,6 +143,14 @@ public interface OwnerMapper {
     default OwnerDto.AgeBandEnum ageBand(Owner owner) {
         AgeBand band = AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
         return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
+    }
+
+    /**
+     * Derive the owner's market segment '&lt;TIER&gt;_&lt;AREA&gt;' from the derived membership
+     * level and locality.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        return OwnerDto.OwnerSegmentEnum.valueOf(OwnerSegment.of(membershipLevel(owner), locality(owner)).name());
     }
 
     /** Format the owner's stored E.164 telephone for humans (e.g. '+61 412 345 678'). */
