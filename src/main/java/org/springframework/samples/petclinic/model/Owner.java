@@ -186,13 +186,25 @@ public class Owner extends Person {
      */
     public int getMembershipLevel() {
         int level = 1;
-        if (this.email != null && !this.email.isEmpty()) {
+        if (hasEmail()) {
             level++;
         }
         if (Integer.valueOf(0).equals(this.namesakeCount)) {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * The owner's preferred contact channel: {@code "EMAIL"} when an email address is
+     * present, otherwise {@code "PHONE"}. Derived from stored state, never persisted.
+     */
+    public String getContactPreference() {
+        return hasEmail() ? "EMAIL" : "PHONE";
+    }
+
+    private boolean hasEmail() {
+        return this.email != null && !this.email.isEmpty();
     }
 
     protected Set<Pet> getPetsInternal() {
