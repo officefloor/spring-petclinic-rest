@@ -1,0 +1,215 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java
+index fad9a3a81..a298f2612 100644
+--- a/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java
+@@ -19,9 +19,8 @@ package org.springframework.samples.petclinic.audit;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.util.MembershipLevelFormatter;
+ import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
+-import org.springframework.samples.petclinic.util.MembershipPointsFormatter;
++import org.springframework.samples.petclinic.util.OwnerMembership;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+@@ -47,9 +46,7 @@ public class OwnerAuditLogger {
+     }
+ 
+     private static int membershipLevel(Owner owner) {
+-        int points = MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(),
+-            owner.getHouseholdSize(), owner.getRegistrationDate());
+-        return MembershipLevelFormatter.format(points);
++        return OwnerMembership.level(owner);
+     }
+ 
+     private static String membershipNumber(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2e2ee9eb4..c6adbd6a8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,7 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints",
+         expression = "java(org.springframework.samples.petclinic.util.MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(org.springframework.samples.petclinic.util.MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate())))")
++        expression = "java(org.springframework.samples.petclinic.util.OwnerMembership.level(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9a1963fd2..0968977b0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -208,6 +211,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index b2b905022..6754a40ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.util.DisposableEmailDomains;
+ import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+ import org.springframework.samples.petclinic.util.LocalityResolver;
+ import org.springframework.samples.petclinic.util.OwnerIdentityKey;
++import org.springframework.samples.petclinic.util.OwnerMembership;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -288,6 +289,7 @@ public class ClinicServiceImpl implements ClinicService {
+         flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
++        owner.setMembershipLevel(OwnerMembership.cappedLevel(owner, householdMembers));
+         owner.setCustomerCode(assignCustomerCode(owner));
+         ownerRepository.save(owner);
+         ownerAuditLogger.ownerCreated(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerMembership.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerMembership.java
+new file mode 100644
+index 000000000..d3517974d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerMembership.java
+@@ -0,0 +1,73 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++import java.util.Collection;
++import java.util.OptionalInt;
++
++/**
++ * Derives an owner's {@code membershipLevel} from their scoring fields and applies the
++ * household level ceiling.
++ */
++public final class OwnerMembership {
++
++    private OwnerMembership() {
++    }
++
++    /**
++     * Return the owner's natural (uncapped) membership level, derived purely from their own scoring
++     * fields via {@link MembershipPointsFormatter} and {@link MembershipLevelFormatter}.
++     *
++     * @param owner the owner to score
++     * @return the membership level, between 1 and 4
++     */
++    public static int naturalLevel(Owner owner) {
++        int points = MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(),
++            owner.getHouseholdSize(), owner.getRegistrationDate());
++        return MembershipLevelFormatter.format(points);
++    }
++
++    /**
++     * Return the owner's effective membership level as reported to clients: the capped value stored
++     * at creation time when present, otherwise the {@link #naturalLevel(Owner) natural level}.
++     *
++     * @param owner the owner to score
++     * @return the membership level, between 1 and 4
++     */
++    public static int level(Owner owner) {
++        return owner.getMembershipLevel() != null ? owner.getMembershipLevel() : naturalLevel(owner);
++    }
++
++    /**
++     * Return the owner's membership level capped by their household: it may not exceed one above the
++     * current maximum level among the given existing household members. With no existing member no
++     * cap applies and the {@link #naturalLevel(Owner) natural level} is returned.
++     *
++     * @param owner            the owner being created
++     * @param householdMembers the existing members of the owner's household (excluding the owner)
++     * @return the capped membership level, between 1 and 4
++     */
++    public static int cappedLevel(Owner owner, Collection<Owner> householdMembers) {
++        int natural = naturalLevel(owner);
++        OptionalInt maxMemberLevel = householdMembers.stream()
++            .mapToInt(OwnerMembership::level)
++            .max();
++        return maxMemberLevel.isPresent() ? Math.min(natural, maxMemberLevel.getAsInt() + 1) : natural;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 370a1cbce..c749ef818 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7a365aaa3..09a199303 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a3520891d..26365f08e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 23c02280a..023c186f4 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
