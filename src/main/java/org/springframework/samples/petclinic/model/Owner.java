@@ -203,6 +203,20 @@ public class Owner extends Person {
         return hasEmail() ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's identity key: the single value all duplicate detection is expressed
+     * through, formed as the normalized telephone, the email (or empty when absent) and
+     * the household id (or empty when none), joined by {@code '|'}. Two owners are
+     * duplicates only when their whole identity keys are equal, so members of the same
+     * household with different telephones have different keys and are all allowed. Derived
+     * from stored state, never persisted.
+     */
+    public String getIdentityKey() {
+        String emailPart = hasEmail() ? this.email : "";
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return this.telephone + "|" + emailPart + "|" + householdPart;
+    }
+
     private boolean hasEmail() {
         return this.email != null && !this.email.isEmpty();
     }
