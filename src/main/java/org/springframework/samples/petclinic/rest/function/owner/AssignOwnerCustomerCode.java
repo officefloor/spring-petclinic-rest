@@ -1,28 +1,24 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.util.CityLocality;
+import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.Sha256;
 
 /**
- * Assigns the new owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>}:
- * the upper-cased first three letters of the city, a hyphen, the upper-cased first three
- * letters of the last name, a hyphen, and a per-city 4-digit zero-padded sequence equal to
- * one more than the number of owners already in that city (e.g. {@code FRA-SMI-0007}). Runs
- * after {@link BuildOwner} (so the entity, its city and last name exist) and before
- * {@link SaveOwner} persists the code.
+ * Assigns the new owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}: the
+ * canonical region derived from the postcode (falling back to the city, see
+ * {@link CityLocality}), a hyphen, and the first eight upper-case hex characters of the
+ * SHA-256 of the normalized telephone concatenated with the last name (e.g.
+ * {@code NSW-1A2B3C4D}). Runs after {@link BuildOwner} (so the entity, its postcode,
+ * telephone and last name exist) and before {@link SaveOwner} persists the code.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        long sequence = Cities.countIn(ownerRepository, owner.getCity()) + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d",
-                prefix(owner.getCity()), prefix(owner.getLastName()), sequence));
-    }
-
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+    public void service(@Val Owner owner) {
+        String region = CityLocality.forPostcodeOrCity(owner.getPostcode(), owner.getCity());
+        String hash8 = Sha256.upperHexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+        owner.setCustomerCode(CustomerCode.of(region, hash8));
     }
 }

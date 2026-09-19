@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.CityLocality;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 
 import jakarta.persistence.*;
@@ -186,14 +187,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived by preferring the postcode
-     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the fixed
-     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the
-     * postcode is absent or in no known range, or {@code "UNKNOWN"} otherwise. Derived
-     * from stored state, never persisted.
+     * The owner's locality: the canonical region carried in the {@code <REGION>-<HASH8>}
+     * customer code, i.e. the same region-and-hash identity used everywhere else. That
+     * region was derived at creation by preferring the postcode range (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), falling back to the fixed city-to-region table
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no
+     * known range, or {@code "UNKNOWN"} otherwise. For an owner with no customer code the
+     * region is derived directly from the stored postcode and city. Derived from stored
+     * state, never persisted.
      */
     public String getLocality() {
-        return CityLocality.forPostcodeOrCity(this.postcode, this.city);
+        String region = CustomerCode.regionOf(this.customerCode);
+        return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
     }
 
     /**

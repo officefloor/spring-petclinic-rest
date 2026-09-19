@@ -4,8 +4,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Shared city-membership logic. An owner belongs to the city named by their {@code city}
- * field, matched exactly, so every rule that reasons about a city's population (capacity,
- * per-city sequence) counts the same set of owners.
+ * field, matched exactly, so every rule that reasons about a city's population (e.g.
+ * capacity) counts the same set of owners.
  */
 final class Cities {
 

@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.util;
 /**
  * Computes the Luhn check digit over the digits contained in a string. Non-digit
  * characters are ignored, so the algorithm applies unchanged to formatted values such as
- * an owner's customer code ({@code PAR-FRA-0007}).
+ * an owner's customer code ({@code NSW-1A2B3C4D}).
  *
  * <p>Walking right to left, every second digit (starting with the rightmost) is doubled,
  * casting out nines, and the check digit is the amount needed to bring the running total
