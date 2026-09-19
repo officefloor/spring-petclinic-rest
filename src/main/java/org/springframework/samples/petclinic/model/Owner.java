@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -258,14 +259,19 @@ public class Owner extends Person {
     /** The membership level every owner starts at on creation. */
     private static final int BASE_MEMBERSHIP_LEVEL = 1;
 
-    /** The highest membership level derivable at creation; level 4 is reserved for tenure. */
-    private static final int MAX_MEMBERSHIP_LEVEL = 3;
+    /** The highest membership level attainable; only reached with qualifying tenure. */
+    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+
+    /** The tenure, in days, that must be exceeded to qualify for the top membership level. */
+    private static final long MEMBERSHIP_TENURE_THRESHOLD_DAYS = 365;
 
     /**
-     * Return this owner's membership level, a number from 1 to 3 derived at creation: every owner
-     * starts at {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when
-     * the owner has no namesakes ({@code namesakeCount} is 0); capped at
-     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
+     * Return this owner's membership level, a number from 1 to 4: every owner starts at
+     * {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when the owner
+     * has no namesakes ({@code namesakeCount} is 0); add 1 when the owner has qualifying tenure
+     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days since registration); capped at
+     * {@value #MAX_MEMBERSHIP_LEVEL}. Because a newly created owner has zero tenure, a new owner
+     * never exceeds level 3.
      */
     @Transient
     public Integer getMembershipLevel() {
@@ -276,7 +282,23 @@ public class Owner extends Person {
         if (Integer.valueOf(0).equals(this.namesakeCount)) {
             level++;
         }
+        if (hasQualifyingTenure()) {
+            level++;
+        }
         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+    }
+
+    /**
+     * Whether this owner's tenure exceeds {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days, i.e.
+     * more than that many days have elapsed since the {@code registrationDate}. Owners without a
+     * registration date have no measurable tenure and do not qualify.
+     */
+    private boolean hasQualifyingTenure() {
+        if (this.registrationDate == null) {
+            return false;
+        }
+        long tenureDays = ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return tenureDays > MEMBERSHIP_TENURE_THRESHOLD_DAYS;
     }
 
     /** Whether this owner has a usable email address (present and not blank). */
