@@ -1,0 +1,187 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9c99e5a5d..dd4df5270 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     /**
+      * Return this owner's name formatted for display as {@code "LastName, FirstName"}.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 05c075311..37edbbe8b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -50,6 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private final CustomerCodeGenerator customerCodeGenerator;
+     private final HouseholdNormalizer householdNormalizer;
+     private final HouseholdIdGenerator householdIdGenerator;
++    private final MembershipNumberGenerator membershipNumberGenerator;
+ 
+     public ClinicServiceImpl(
+         PetRepository petRepository,
+@@ -60,7 +61,8 @@ public class ClinicServiceImpl implements ClinicService {
+         PetTypeRepository petTypeRepository,
+         CustomerCodeGenerator customerCodeGenerator,
+         HouseholdNormalizer householdNormalizer,
+-        HouseholdIdGenerator householdIdGenerator) {
++        HouseholdIdGenerator householdIdGenerator,
++        MembershipNumberGenerator membershipNumberGenerator) {
+         this.petRepository = petRepository;
+         this.vetRepository = vetRepository;
+         this.ownerRepository = ownerRepository;
+@@ -70,6 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
+         this.customerCodeGenerator = customerCodeGenerator;
+         this.householdNormalizer = householdNormalizer;
+         this.householdIdGenerator = householdIdGenerator;
++        this.membershipNumberGenerator = membershipNumberGenerator;
+     }
+ 
+     @Override
+@@ -249,6 +252,10 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getNamesakeCount() == null) {
+             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         }
++        if (owner.isNew() && owner.getMembershipNumber() == null) {
++            owner.setMembershipNumber(
++                membershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
++        }
+         ownerRepository.save(owner);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MembershipNumberGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/MembershipNumberGenerator.java
+new file mode 100644
+index 000000000..0f0e43af5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/MembershipNumberGenerator.java
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Builds an owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>}
++ * where {@code YY} is the last two digits of the registration date's year
++ * (e.g. {@code SMI-0007-M26}).
++ */
++@Component
++public class MembershipNumberGenerator {
++
++    /**
++     * Build the membership number for an owner.
++     *
++     * @param customerCode     the owner's customer code, used as the prefix
++     * @param registrationDate the owner's registration date; its year supplies the two-digit suffix
++     * @return the formatted membership number, e.g. {@code SMI-0007-M26}
++     */
++    public String generate(String customerCode, LocalDate registrationDate) {
++        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..e071cafe2 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..b7977f246 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..bb253e124 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  membership_number VARCHAR(30),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..2eac545a1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_number TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f2c113ac9..16675f508 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,6 +2103,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
