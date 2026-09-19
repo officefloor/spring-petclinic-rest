@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.CityLocality;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -139,6 +140,15 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    /**
+     * The owner's locality: the canonical region derived from the city via the fixed
+     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or
+     * {@code "UNKNOWN"} for any other city. Derived from stored state, never persisted.
+     */
+    public String getLocality() {
+        return CityLocality.forCity(this.city);
     }
 
     /**
