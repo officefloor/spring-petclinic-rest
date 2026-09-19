@@ -16,16 +16,21 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.time.LocalDate;
+
 /**
- * Derives an owner's {@code membershipLevel} from their namesake count and email address.
+ * Derives an owner's {@code membershipLevel} from their namesake count, email address and tenure.
  */
 public final class MembershipLevelFormatter {
 
     /** The level every owner starts at. */
     private static final int BASE_LEVEL = 1;
 
-    /** Highest level reachable from email and namesake status; level 4 is reserved for tenure. */
-    private static final int MAX_LEVEL = 3;
+    /** Highest level reachable from email and namesake status alone; the top level is tenure-gated. */
+    private static final int PRE_TENURE_MAX_LEVEL = 3;
+
+    /** Tenure, in days, an owner must exceed to reach the top membership level. */
+    private static final int TENURE_THRESHOLD_DAYS = 365;
 
     private MembershipLevelFormatter() {
     }
@@ -33,13 +38,17 @@ public final class MembershipLevelFormatter {
     /**
      * Return the membership level: starting at {@value #BASE_LEVEL}, add 1 when an email address is
      * present and add 1 when the owner has no namesakes ({@code namesakeCount} is {@code 0}), capped
-     * at {@value #MAX_LEVEL}.
+     * at {@value #PRE_TENURE_MAX_LEVEL}; then add 1 more (reaching level 4) once the owner's tenure
+     * exceeds {@value #TENURE_THRESHOLD_DAYS} days. A newly registered owner has zero tenure, so a
+     * new owner never exceeds level {@value #PRE_TENURE_MAX_LEVEL}.
      *
-     * @param namesakeCount the number of owners sharing this owner's name, may be {@code null}
-     * @param email         the owner's email address, may be {@code null}
-     * @return the membership level, between {@value #BASE_LEVEL} and {@value #MAX_LEVEL}
+     * @param namesakeCount    the number of owners sharing this owner's name, may be {@code null}
+     * @param email            the owner's email address, may be {@code null}
+     * @param registrationDate the date the owner was registered, may be {@code null}
+     * @return the membership level, between {@value #BASE_LEVEL} and {@value #PRE_TENURE_MAX_LEVEL}
+     *         plus 1 when the tenure threshold is exceeded
      */
-    public static int format(Integer namesakeCount, String email) {
+    public static int format(Integer namesakeCount, String email, LocalDate registrationDate) {
         int level = BASE_LEVEL;
         if (email != null && !email.isBlank()) {
             level++;
@@ -47,6 +56,10 @@ public final class MembershipLevelFormatter {
         if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, MAX_LEVEL);
+        level = Math.min(level, PRE_TENURE_MAX_LEVEL);
+        if (OwnerTenure.inDays(registrationDate) > TENURE_THRESHOLD_DAYS) {
+            level++;
+        }
+        return level;
     }
 }
