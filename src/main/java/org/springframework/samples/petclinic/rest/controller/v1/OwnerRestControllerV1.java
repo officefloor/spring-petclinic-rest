@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdE
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
+import org.springframework.samples.petclinic.rest.controller.IdempotencyKeyRegistry;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
@@ -91,6 +92,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdIdGenerator householdIdGenerator;
 
+    private final IdempotencyKeyRegistry idempotencyKeyRegistry;
+
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
 
@@ -111,7 +114,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  BusinessDayResolver businessDayResolver,
                                  OwnerAuditLogger ownerAuditLogger,
-                                 HouseholdIdGenerator householdIdGenerator) {
+                                 HouseholdIdGenerator householdIdGenerator,
+                                 IdempotencyKeyRegistry idempotencyKeyRegistry) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -124,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.businessDayResolver = businessDayResolver;
         this.ownerAuditLogger = ownerAuditLogger;
         this.householdIdGenerator = householdIdGenerator;
+        this.idempotencyKeyRegistry = idempotencyKeyRegistry;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -153,7 +158,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        Integer existingOwnerId = this.idempotencyKeyRegistry.findOwnerId(idempotencyKey);
+        if (existingOwnerId != null) {
+            Owner existingOwner = this.clinicService.findOwnerById(existingOwnerId);
+            if (existingOwner != null) {
+                return new ResponseEntity<>(ownerMapper.toOwnerDto(existingOwner), HttpStatus.OK);
+            }
+        }
         this.normalizeAddress(ownerFieldsDto);
         this.ownerFieldsValidator.validate(ownerFieldsDto);
         this.postcodeValidator.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
@@ -186,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateHouseholdException(owner.getHouseholdId());
         }
         this.clinicService.saveOwner(owner);
+        this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
         this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
