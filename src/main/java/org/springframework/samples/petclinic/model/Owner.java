@@ -305,6 +305,15 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's canonical API path, being {@code "/api/owners/"} followed by this owner's
+     * {@link #getId() id}.
+     */
+    @Transient
+    public String getSelfLink() {
+        return "/api/owners/" + this.getId();
+    }
+
+    /**
      * Return this owner's name formatted for display as {@code "LastName, FirstName"}.
      */
     @Transient
