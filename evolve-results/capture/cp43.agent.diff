@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8e31af8fe..4aebb1473 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.Luhn;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
++import org.springframework.samples.petclinic.util.MembershipNumbers;
+ import org.springframework.samples.petclinic.util.Telephones;
+ import org.springframework.samples.petclinic.util.Timezones;
+ 
+@@ -59,10 +60,7 @@ public interface OwnerMapper {
+      * either source field is absent.
+      */
+     default String membershipNumber(Owner owner) {
+-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+-            return null;
+-        }
+-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++        return MembershipNumbers.of(owner);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 3d8d81119..47ed8adfd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -8,12 +8,13 @@ import java.time.LocalDate;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
++import org.springframework.samples.petclinic.util.MembershipNumbers;
+ 
+ /**
+  * Emits an audit trail line for a newly created owner. Runs after {@link SaveOwner} has
+  * persisted the entity, so the generated id is available, and records the owner id, the
+- * assigned customer code, the effective registration date and the derived membership points
+- * and level on the dedicated {@code AUDIT} logger. Purely a side-effect step; it leaves the
++ * assigned customer code, the effective registration date, the derived membership points,
++ * level and number on the dedicated {@code AUDIT} logger. Purely a side-effect step; it leaves the
+  * owner unchanged for the responder.
+  */
+ public class AuditOwnerCreated {
+@@ -22,8 +23,9 @@ public class AuditOwnerCreated {
+ 
+     public void service(@Val Owner owner) {
+         int points = MembershipLevels.pointsOf(owner, LocalDate.now());
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
++        AUDIT.info(
++                "Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                points, MembershipLevels.levelFor(points));
++                points, MembershipLevels.levelFor(points), MembershipNumbers.of(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipNumbers.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipNumbers.java
+new file mode 100644
+index 000000000..ec744baef
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipNumbers.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last two
++ * digits of the registration date year (e.g. 'SYD-SMI-0007-M26'). The number combines the owner's
++ * assigned customer code with the registration year, so it is only available once both have been set.
++ */
++public final class MembershipNumbers {
++
++    private MembershipNumbers() {
++    }
++
++    /**
++     * Return the owner's membership number, or null when either the customer code or the
++     * registration date is absent.
++     */
++    public static String of(Owner owner) {
++        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++    }
++}
