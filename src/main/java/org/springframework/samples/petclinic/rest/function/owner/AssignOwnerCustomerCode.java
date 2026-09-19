@@ -17,15 +17,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignOwnerCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        long sequence = countOwnersInCity(ownerRepository, owner.getCity()) + 1;
+        long sequence = Cities.countIn(ownerRepository, owner.getCity()) + 1;
         owner.setCustomerCode(String.format("%s-%s-%04d",
                 prefix(owner.getCity()), prefix(owner.getLastName()), sequence));
-    }
-
-    private static long countOwnersInCity(OwnerRepository ownerRepository, String city) {
-        return ownerRepository.findAll().stream()
-                .filter(existing -> city.equals(existing.getCity()))
-                .count();
     }
 
     private static String prefix(String value) {
