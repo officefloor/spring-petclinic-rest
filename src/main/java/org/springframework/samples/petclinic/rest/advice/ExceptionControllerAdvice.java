@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
@@ -294,6 +295,24 @@ public class ExceptionControllerAdvice {
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
      */
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when an owner request supplies a
+     * {@code registrationDate} later than the current server date. Returns a 400 Bad Request
+     * whose {@code errors} array names the {@code registrationDate} field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
     @ExceptionHandler(OwnerDailyRegistrationLimitExceededException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleOwnerDailyRegistrationLimitExceededException(OwnerDailyRegistrationLimitExceededException e, HttpServletRequest request) {

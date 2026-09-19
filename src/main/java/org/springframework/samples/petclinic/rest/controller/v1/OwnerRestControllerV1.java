@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
@@ -154,7 +155,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
-        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        LocalDate serverDate = LocalDate.now();
+        if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(serverDate)) {
+            throw new FutureRegistrationDateException(owner.getRegistrationDate(), serverDate);
+        }
+        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : serverDate;
         owner.setRegistrationDate(this.businessDayResolver.toBusinessDay(effectiveDate));
         long ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate());
         if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
