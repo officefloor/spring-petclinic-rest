@@ -141,6 +141,17 @@ public class Owner extends Person {
         this.membershipNumber = membershipNumber;
     }
 
+    /**
+     * The owner's membership tier: {@code SILVER} when this owner had no namesakes at
+     * creation ({@code namesakeCount} is 0) and has an email address, {@code BRONZE}
+     * otherwise. Derived from stored state, never persisted.
+     */
+    public String getMembershipTier() {
+        boolean silver = Integer.valueOf(0).equals(this.namesakeCount)
+            && this.email != null && !this.email.isEmpty();
+        return silver ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
