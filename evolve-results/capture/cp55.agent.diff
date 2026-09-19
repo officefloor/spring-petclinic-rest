@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c6adbd6a8..ed06baff4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -38,6 +38,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.util.TimezoneResolver.forRegion(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "contactPreference",
+         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.OwnerMembership.level(owner), org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "ageBand",
+         expression = "java(org.springframework.samples.petclinic.util.AgeBandResolver.resolve(owner.getBirthDate(), owner.getRegistrationDate()))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index fb5d3c404..123651b7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -17,6 +17,7 @@
+ package org.springframework.samples.petclinic.util;
+ 
+ import java.util.Map;
++import java.util.Set;
+ 
+ /**
+  * Derives an owner's {@code locality} (canonical region), preferring the postcode range
+@@ -32,6 +33,8 @@ public final class LocalityResolver {
+         "Melbourne", "VIC",
+         "Brisbane", "QLD");
+ 
++    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
++
+     private LocalityResolver() {
+     }
+ 
+@@ -73,4 +76,15 @@ public final class LocalityResolver {
+     public static String regionForCity(String city) {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * Report whether the given region is one of the known canonical regions (NSW, VIC or QLD),
++     * as opposed to {@code "UNKNOWN"} or any unrecognised value.
++     *
++     * @param region the canonical region (locality), may be {@code null}
++     * @return {@code true} when the region is a known region, {@code false} otherwise
++     */
++    public static boolean isKnownRegion(String region) {
++        return KNOWN_REGIONS.contains(region);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 000000000..ae832d89a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,41 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Derives an owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}, by combining
++ * their membership tier with the area implied by their locality.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Compose the owner's segment from their membership level and locality.
++     *
++     * @param membershipLevel the owner's membership level
++     * @param locality the owner's canonical region (locality), may be {@code null}
++     * @return the segment, one of {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'},
++     * {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}
++     */
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = LocalityResolver.isKnownRegion(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 816c1befa..2f48b2c81 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2281,6 +2281,15 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when the
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
