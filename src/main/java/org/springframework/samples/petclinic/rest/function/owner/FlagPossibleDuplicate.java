@@ -7,17 +7,18 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Records whether the new owner is a suspected soft duplicate. A hard duplicate (same
- * {@link OwnerIdentity identity key}) is rejected by {@link EnsureUniqueIdentity}. A household
- * collision (an existing owner sharing this owner's {@link HouseholdKey household id} — same last
- * name and postcode) is not rejected: the owner joins the household (their membership level is
- * capped by {@link CapMembershipLevel}). This step marks such survivors: it sets
- * {@code possibleDuplicate} to whether an existing owner shares this owner's household id, with
- * {@code possibleDuplicateOf} set to that owner's id.
+ * {@link OwnerIdentity identity key}) is already rejected by {@link EnsureUniqueIdentity}, so any
+ * owner reaching this step has a key of its own. This step marks a softer, sound-alike collision:
+ * an existing owner whose last name has the same {@link Soundex} code and whose postcode matches,
+ * yet whose identity key differs (a different person who might be the same). It sets
+ * {@code possibleDuplicate} to whether such an owner exists, with {@code possibleDuplicateOf} set
+ * to that owner's id.
  *
  * <p>A declared household member ({@code sharesHousehold}) knowingly joins the household, so it is
- * not a suspected duplicate and stays {@code possibleDuplicate = false}.
+ * not a suspected duplicate and stays {@code possibleDuplicate = false}. A blank postcode has
+ * nothing to match on and is likewise left unflagged.
  *
- * <p>Runs after {@link AssignHouseholdId} has set the household id and before {@link SaveOwner}
+ * <p>Runs after {@link AssignIdentityKey} has set the identity key and before {@link SaveOwner}
  * persists the entity, so {@code findAll()} sees only the owners that existed before this create.
  * The flags are stored on the owner and returned on every later read.
  */
@@ -34,9 +35,15 @@ public class FlagPossibleDuplicate {
         if (postcode == null || postcode.isBlank()) {
             return;
         }
-        String householdId = owner.getHouseholdId();
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(existing.getHouseholdId())) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer collides
+            }
+            if (postcode.equals(existing.getPostcode())
+                    && soundex.equals(Soundex.encode(existing.getLastName()))
+                    && !identityKey.equals(existing.getIdentityKey())) {
                 owner.setPossibleDuplicate(true);
                 owner.setPossibleDuplicateOf(existing.getId());
                 return;
