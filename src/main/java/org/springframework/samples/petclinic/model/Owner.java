@@ -537,6 +537,17 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's segment, formatted {@code <TIER>_<AREA>}: the tier is {@code PREMIUM} when
+     * the {@link #getMembershipLevel() membership level} is 3 or more, otherwise {@code STANDARD};
+     * the area is {@code METRO} when the {@link #getLocality() locality} is a known region (NSW, VIC
+     * or QLD), otherwise {@code REGIONAL}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        return OwnerSegment.of(getMembershipLevel(), getLocality());
+    }
+
+    /**
      * Return this owner's check digit: the single Luhn check digit computed over the digits of the
      * {@code customerCode}.
      */

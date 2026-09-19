@@ -73,6 +73,17 @@ public final class LocalityResolver {
     }
 
     /**
+     * Whether the given region is one of the known canonical regions (i.e. has a defined postcode
+     * range), as opposed to {@link #UNKNOWN} or any other unrecognised value.
+     *
+     * @param region the region to test, or {@code null}
+     * @return {@code true} when the region is a known region
+     */
+    public static boolean isKnownRegion(String region) {
+        return region != null && REGION_RANGES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for the given region via the fixed region-to-timezone table.
      *
      * @param region the region to look up
