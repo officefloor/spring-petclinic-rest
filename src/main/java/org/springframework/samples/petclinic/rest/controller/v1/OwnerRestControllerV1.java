@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -64,16 +65,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
+    private final TelephoneNormalizer telephoneNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 OwnerFieldsValidator ownerFieldsValidator) {
+                                 OwnerFieldsValidator ownerFieldsValidator,
+                                 TelephoneNormalizer telephoneNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
+        this.telephoneNormalizer = telephoneNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -107,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerFieldsValidator.validate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
