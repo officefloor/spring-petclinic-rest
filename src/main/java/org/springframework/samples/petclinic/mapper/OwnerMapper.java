@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
-import org.springframework.samples.petclinic.util.Postcodes;
 
 import java.util.Collection;
 import java.util.List;
@@ -68,11 +68,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's locality (canonical region), preferring the postcode range over the
-     * city-to-region table, or 'UNKNOWN' when neither resolves a region.
+     * Derive the owner's locality (canonical region) as the region component of the customer
+     * code identity, or 'UNKNOWN' when the code carries no region.
      */
     default String locality(Owner owner) {
-        return Postcodes.localityOf(owner.getCity(), owner.getPostcode());
+        return CustomerCode.regionOf(owner.getCustomerCode());
     }
 
     /** Derive the owner's numeric membership level (1 to 3). */

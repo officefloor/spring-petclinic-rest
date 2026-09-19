@@ -47,13 +47,12 @@ public final class Postcodes {
     }
 
     /**
-     * Derive an owner's locality (canonical region), preferring the postcode: use the region whose
-     * range contains {@code postcode}, falling back to the {@code city}-to-region table (see
-     * {@link CityRegions}) when the postcode is absent or in no known range.
+     * The region code derived solely from {@code postcode}: the region whose range contains it,
+     * or {@link CityRegions#UNKNOWN} when the postcode is absent, malformed or in no known range.
      */
-    public static String localityOf(String city, String postcode) {
+    public static String regionCode(String postcode) {
         String region = regionOf(postcode);
-        return region != null ? region : CityRegions.localityOf(city);
+        return region != null ? region : CityRegions.UNKNOWN;
     }
 
     /**
