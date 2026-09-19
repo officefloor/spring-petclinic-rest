@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 487927db3..bad2cf748 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -79,6 +79,17 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Retrieve every <code>Owner</code> whose <code>customerCode</code> starts with the given prefix.
++     * Used to gather the family of codes derived from one base code (the base itself plus any
++     * {@code "-<n>"} de-duplication suffixes) when assigning a unique code to a new owner.
++     *
++     * @param customerCode the customer-code prefix to match
++     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
++     * found)
++     */
++    Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException;
++
+     /**
+      * Count the total number of <code>Owner</code>s currently in the data store.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index f129a55a7..db55e3044 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -175,6 +175,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return owners;
+     }
+ 
++    @Override
++    public Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("customerCode", customerCode + "%");
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, customer_code FROM owners WHERE customer_code like :customerCode",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Long count = this.namedParameterJdbcTemplate.queryForObject(
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 729fdb9d7..3e758c414 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -106,6 +106,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByCustomerCodeStartingWith(String customerCode) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.customerCode LIKE :customerCode");
++        query.setParameter("customerCode", customerCode + "%");
++        return query.getResultList();
++    }
++
+     @Override
+     public long count() throws DataAccessException {
+         Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner");
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 79b8bda4b..18e71bad8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -63,6 +63,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     Collection<Owner> findByLastNameIgnoreCase(String lastName);
+ 
++    @Override
++    Collection<Owner> findByCustomerCodeStartingWith(String customerCode);
++
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 5692f2ea1..2207c5bf5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -38,6 +38,7 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.function.Supplier;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Mostly used as a facade for all Petclinic controllers
+@@ -286,9 +287,7 @@ public class ClinicServiceImpl implements ClinicService {
+         flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+-        owner.setCustomerCode(CustomerCodeGenerator.format(
+-            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
+-            owner.getTelephone(), owner.getLastName()));
++        owner.setCustomerCode(assignCustomerCode(owner));
+         ownerRepository.save(owner);
+         ownerAuditLogger.ownerCreated(owner);
+         return owner.getHouseholdId();
+@@ -308,6 +307,21 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Build the new owner's {@code customerCode} and de-duplicate it against existing owners. The
++     * base code is derived from the owner's locality, telephone and last name; if it already belongs
++     * to another owner it is suffixed with the smallest {@code "-<n>"} (n &gt;= 2) that is still free.
++     */
++    private String assignCustomerCode(Owner owner) {
++        String baseCode = CustomerCodeGenerator.format(
++            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
++            owner.getTelephone(), owner.getLastName());
++        Set<String> takenCodes = ownerRepository.findByCustomerCodeStartingWith(baseCode).stream()
++            .map(Owner::getCustomerCode)
++            .collect(Collectors.toSet());
++        return CustomerCodeGenerator.deduplicate(baseCode, takenCodes::contains);
++    }
++
+     /**
+      * Flag the new owner as a possible (soft) duplicate of an existing household member carrying a
+      * different telephone. The new owner is still created; {@code possibleDuplicate} is set to
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
+index 2ed3650b2..45881e229 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodeGenerator.java
+@@ -16,6 +16,8 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
++import java.util.function.Predicate;
++
+ /**
+  * Builds and parses an owner's {@code customerCode}, a stable {@code "<REGION>-<HASH8>"} identity
+  * where {@code REGION} is the owner's region and {@code HASH8} is the first eight upper-case hex
+@@ -46,6 +48,27 @@ public final class CustomerCodeGenerator {
+         return region + SEPARATOR + hash8(normalizedTelephone, lastName);
+     }
+ 
++    /**
++     * De-duplicate a formatted customer code against the codes already in use. When {@code baseCode}
++     * is free it is returned unchanged; otherwise {@code "-<n>"} is appended using the smallest
++     * {@code n >= 2} that yields a code {@code isTaken} reports as free.
++     *
++     * @param baseCode the freshly formatted customer code (see {@link #format})
++     * @param isTaken  tests whether a candidate code already belongs to another owner
++     * @return a customer code that {@code isTaken} reports as free
++     */
++    public static String deduplicate(String baseCode, Predicate<String> isTaken) {
++        if (!isTaken.test(baseCode)) {
++            return baseCode;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = baseCode + SEPARATOR + n;
++            if (!isTaken.test(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * Extract the {@code REGION} prefix from a customer code produced by {@link #format}.
+      *
