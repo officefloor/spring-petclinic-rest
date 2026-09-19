@@ -252,6 +252,14 @@ public class ClinicServiceImpl implements ClinicService {
     static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * Number of owners that must already exist in a city before a new owner registered there is
+     * flagged with a capacity warning. Once the count already recorded for the city reaches this
+     * value (but is still below {@link #MAX_OWNERS_PER_CITY}), the new owner carries
+     * {@code capacityWarning == true} to signal that the city is approaching its capacity limit.
+     */
+    static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Maximum number of owners allowed to register on a single day. Creating an owner once a day has
      * already reached this many registrations is rejected as a rate-limit violation.
      */
@@ -277,6 +285,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
+        owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
         long ownersOnDate = ownerRepository.countByRegistrationDate(owner.getRegistrationDate());
