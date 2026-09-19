@@ -16,24 +16,18 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Locale;
-import java.util.Set;
-
+import org.springframework.samples.petclinic.model.DisposableEmailDomains;
 import org.springframework.stereotype.Component;
 
 /**
  * Rejects owner emails whose domain belongs to a known disposable-email provider.
  *
- * <p>Its single responsibility is to hold the blocklist and decide whether a given
- * address is disposable; email syntax and normalization are handled separately by
- * {@link EmailNormalizer}.
+ * <p>Its single responsibility is to decide whether a given address is disposable and reject it;
+ * the blocklist itself lives in {@link DisposableEmailDomains}, and email syntax and normalization
+ * are handled separately by {@link EmailNormalizer}.
  */
 @Component
 public class DisposableEmailDomainValidator {
-
-    /** Domains that provide throwaway, disposable mailboxes. */
-    private static final Set<String> BLOCKED_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Validates that the address does not use a disposable-email domain.
@@ -42,15 +36,8 @@ public class DisposableEmailDomainValidator {
      * @throws DisposableEmailDomainException if the domain is on the blocklist
      */
     public void validate(String email) {
-        if (email == null) {
-            return;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return;
-        }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        if (BLOCKED_DOMAINS.contains(domain)) {
+        String domain = DisposableEmailDomains.domainOf(email);
+        if (DisposableEmailDomains.isDisposable(domain)) {
             throw new DisposableEmailDomainException(domain);
         }
     }

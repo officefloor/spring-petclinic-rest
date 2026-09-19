@@ -306,6 +306,25 @@ public class Owner extends Person {
     }
 
     /**
+     * Whether this owner warrants review, being {@code true} when any risk signal holds: the owner is
+     * a {@link #getPossibleDuplicate() possible duplicate}, its email domain is
+     * {@link DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or its city was
+     * over its soft capacity (the {@link #getCapacityWarning() capacity-warning} band) when the owner
+     * was created; otherwise {@code false}.
+     */
+    @Transient
+    public Boolean getRiskFlag() {
+        return getPossibleDuplicate()
+            || Boolean.TRUE.equals(this.capacityWarning)
+            || hasDisposableAdjacentEmail();
+    }
+
+    /** Whether this owner's email domain is disposable-adjacent (see {@link DisposableEmailDomains}). */
+    private boolean hasDisposableAdjacentEmail() {
+        return DisposableEmailDomains.isDisposableAdjacent(DisposableEmailDomains.domainOf(this.email));
+    }
+
+    /**
      * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: one above
      * the highest membership level among the household members that already existed when this owner
      * was created, or {@code null} when the owner joined no existing household and is therefore
