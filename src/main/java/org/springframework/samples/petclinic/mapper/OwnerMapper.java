@@ -26,6 +26,8 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone",
         expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.normalize(ownerDto.getTelephone()))")
+    @Mapping(target = "email",
+        expression = "java(org.springframework.samples.petclinic.util.EmailNormalizer.normalize(ownerDto.getEmail()))")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
