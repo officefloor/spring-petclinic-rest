@@ -11,7 +11,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Rejects a create request that is missing or blank in any required owner field, before
  * {@link BuildOwner} maps the body to an entity. Runs first so the body is read once here
- * and republished for later steps.
+ * and republished for later steps. The address is judged blank after normalization (see
+ * {@link AddressNormalizer}), so an address that collapses to nothing is rejected here.
  */
 public class ValidateNewOwner {
 
@@ -20,7 +21,7 @@ public class ValidateNewOwner {
         List<String> missing = new ArrayList<>();
         checkPresent("firstName", request.getFirstName(), missing);
         checkPresent("lastName", request.getLastName(), missing);
-        checkPresent("address", request.getAddress(), missing);
+        checkPresent("address", AddressNormalizer.normalize(request.getAddress()), missing);
         checkPresent("city", request.getCity(), missing);
         checkPresent("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
