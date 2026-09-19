@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayResolver.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayResolver.java
+new file mode 100644
+index 000000000..1f5a52c2e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayResolver.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.temporal.TemporalAdjusters;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Resolves a date to the business day on which it takes effect.
++ *
++ * <p>A Saturday or Sunday is rolled forward to the following Monday; any weekday is
++ * returned unchanged. This is applied to an owner's effective registration date so that
++ * everything derived from it (the stored {@code registrationDate}, the membership
++ * number's year segment, and the per-day create limit) uses a business day.
++ */
++@Component
++public class BusinessDayResolver {
++
++    /**
++     * Roll {@code date} forward to a business day.
++     *
++     * @param date the date to resolve
++     * @return {@code date} itself when it is a weekday, otherwise the next Monday
++     */
++    public LocalDate toBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6c8d40ff4..afffad189 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+@@ -78,6 +79,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final AddressNormalizer addressNormalizer;
+ 
++    private final BusinessDayResolver businessDayResolver;
++
+     /** Maximum number of owners a single city may hold before further creations are rejected. */
+     static final long MAX_OWNERS_PER_CITY = 50;
+ 
+@@ -91,7 +94,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  OwnerFieldsValidator ownerFieldsValidator,
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+-                                 AddressNormalizer addressNormalizer) {
++                                 AddressNormalizer addressNormalizer,
++                                 BusinessDayResolver businessDayResolver) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.addressNormalizer = addressNormalizer;
++        this.businessDayResolver = businessDayResolver;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -136,9 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
+         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        owner.setRegistrationDate(this.businessDayResolver.toBusinessDay(effectiveDate));
+         if (this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+             throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
+         }
