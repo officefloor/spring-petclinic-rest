@@ -41,6 +41,17 @@ public interface OwnerMapper {
         return ownerDto;
     }
 
+    /**
+     * Maps an {@link Owner} to its DTO and attaches all response-only flags, which are computed per
+     * request rather than stored on the owner.
+     */
+    default OwnerDto toOwnerDto(Owner owner, boolean bulkSignupWarning, boolean capacityWarning,
+            boolean riskFlag) {
+        OwnerDto ownerDto = toOwnerDto(owner, bulkSignupWarning, capacityWarning);
+        ownerDto.setRiskFlag(riskFlag);
+        return ownerDto;
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
