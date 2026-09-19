@@ -28,7 +28,6 @@ import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
-import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -263,8 +262,12 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         rejectIdentityCollision(owner);
         List<Owner> householdMembers = findHouseholdMembers(owner);
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
+            throw new HouseholdDuplicateException(owner.getHouseholdId());
+        }
         long ownersInCity = ownerRepository.countByCity(owner.getCity());
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
@@ -276,15 +279,12 @@ public class ClinicServiceImpl implements ClinicService {
             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
-        flagPossibleDuplicate(owner);
+        flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(CustomerCodeGenerator.format(
             LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
             owner.getTelephone(), owner.getLastName()));
-        if (sharesHousehold && !householdMembers.isEmpty()) {
-            owner.setHouseholdId(joinHousehold(owner, householdMembers));
-        }
         ownerRepository.save(owner);
         ownerAuditLogger.ownerCreated(owner);
         return owner.getHouseholdId();
@@ -305,36 +305,21 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Flag the new owner as a possible (soft) duplicate when it is not a hard duplicate but shares an
-     * existing owner's last name and postcode while carrying a different telephone. The new owner is
-     * still created; {@code possibleDuplicate} is set to whether such a match exists and
-     * {@code possibleDuplicateOf} to the matching owner's id (the lowest when several match), or
-     * {@code null} when there is no match. An owner without a postcode can never soft-match.
+     * Flag the new owner as a possible (soft) duplicate of an existing household member carrying a
+     * different telephone. The new owner is still created; {@code possibleDuplicate} is set to
+     * whether such a match exists and {@code possibleDuplicateOf} to the matching owner's id (the
+     * lowest when several match), or {@code null} when there is no match.
+     *
+     * <p>An owner that explicitly declares {@code sharesHousehold} is a <em>declared</em> household
+     * member rather than a suspected duplicate, so it is never flagged.
      */
-    private void flagPossibleDuplicate(Owner owner) {
-        Owner match = owner.getPostcode() == null ? null : ownerRepository
-            .findByLastNameIgnoreCase(owner.getLastName()).stream()
-            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+    private void flagPossibleDuplicate(Owner owner, List<Owner> householdMembers, boolean sharesHousehold) {
+        Owner match = sharesHousehold ? null : householdMembers.stream()
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
             .min(Comparator.comparingInt(Owner::getId))
             .orElse(null);
         owner.setPossibleDuplicate(match != null);
         owner.setPossibleDuplicateOf(match == null ? null : match.getId());
-    }
-
-    /**
-     * Assign the stable household identifier to the new owner and to every existing member of the
-     * household, persisting the members whose identifier changes, and return the shared identifier.
-     */
-    private String joinHousehold(Owner owner, List<Owner> householdMembers) {
-        String householdId = HouseholdIdGenerator.generate(owner.getLastName(), owner.getAddress());
-        for (Owner member : householdMembers) {
-            if (!householdId.equals(member.getHouseholdId())) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
-        return householdId;
     }
 
     @Override
@@ -354,16 +339,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find the existing owners that already share this owner's household, i.e. that have the same last name and
-     * address compared case-insensitively and with runs of whitespace collapsed.
+     * Find the existing owners that already share this owner's household, i.e. that derive the same
+     * computed {@code householdId} (the same last name and postcode). An owner without a postcode
+     * has no household peers.
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
-        String address = TextNormalizer.normalize(owner.getAddress());
-        if (address == null) {
+        if (owner.getPostcode() == null) {
             return List.of();
         }
+        String householdId = owner.getHouseholdId();
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
-            .filter(existing -> address.equals(TextNormalizer.normalize(existing.getAddress())))
+            .filter(existing -> householdId.equals(
+                HouseholdIdGenerator.generate(existing.getLastName(), existing.getPostcode())))
             .toList();
     }
 

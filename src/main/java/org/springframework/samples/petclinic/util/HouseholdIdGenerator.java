@@ -18,29 +18,33 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Derives the stable {@code householdId} shared by owners that live in the same household,
- * i.e. that have the same last name and address. The identifier is a deterministic function
- * of those two values (compared case- and whitespace-insensitively via {@link TextNormalizer}),
- * so every member of a household independently derives the same identifier regardless of the
- * order in which they are created.
+ * i.e. that have the same last name and postcode. The identifier is a deterministic function
+ * of those two values (the last name compared case- and whitespace-insensitively via
+ * {@link TextNormalizer}), so every member of a household independently derives the same
+ * identifier regardless of the order in which they are created.
  */
 public final class HouseholdIdGenerator {
 
     /** Number of hex characters kept from the digest; ample to avoid realistic collisions. */
     private static final int LENGTH = 12;
 
+    /** Separates the two key components so distinct pairs cannot collide by concatenation. */
+    private static final String SEPARATOR = "|";
+
     private HouseholdIdGenerator() {
     }
 
     /**
-     * Compute the stable household identifier for the given last name and address.
+     * Compute the stable household identifier for the given last name and postcode: the first
+     * {@value #LENGTH} hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}.
      *
      * @param lastName the household's last name
-     * @param address  the household's address
+     * @param postcode the household's postcode (a {@code null} postcode contributes an empty component)
      * @return an upper-case hex identifier that is identical for any two owners whose last name
-     * and address normalize to the same values
+     * normalizes to the same value and whose postcode is equal
      */
-    public static String generate(String lastName, String address) {
-        String key = TextNormalizer.normalize(lastName) + "\n" + TextNormalizer.normalize(address);
+    public static String generate(String lastName, String postcode) {
+        String key = TextNormalizer.normalize(lastName) + SEPARATOR + (postcode == null ? "" : postcode);
         return Sha256.hex(key).substring(0, LENGTH).toUpperCase();
     }
 }
