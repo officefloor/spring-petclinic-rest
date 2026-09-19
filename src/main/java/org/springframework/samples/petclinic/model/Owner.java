@@ -82,6 +82,12 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning", nullable = false)
     private boolean bulkSignupWarning;
 
+    @Column(name = "possible_duplicate", nullable = false)
+    private boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -212,6 +218,34 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner resembles an existing one: {@code true} when, at creation, it was
+     * not a hard duplicate (its {@link #getIdentityKey() identity key} was unique) yet
+     * shared an existing owner's last name and postcode while having a different telephone,
+     * {@code false} otherwise. When true, {@link #getPossibleDuplicateOf()} holds that
+     * owner's id. Captured at creation.
+     */
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this owner possibly duplicates (same last name and
+     * postcode, different telephone), or null when it is not a possible duplicate. Captured
+     * at creation.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**

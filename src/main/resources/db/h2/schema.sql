@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   household_size INTEGER,
   membership_number VARCHAR(30),
-  bulk_signup_warning BOOLEAN NOT NULL DEFAULT FALSE
+  bulk_signup_warning BOOLEAN NOT NULL DEFAULT FALSE,
+  possible_duplicate BOOLEAN NOT NULL DEFAULT FALSE,
+  possible_duplicate_of INTEGER
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);
