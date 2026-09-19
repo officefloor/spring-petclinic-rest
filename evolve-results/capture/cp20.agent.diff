@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+new file mode 100644
+index 000000000..5ccc391fd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Shared business-day logic. A business day is Monday–Friday; a Saturday or Sunday
++ * rolls forward to the following Monday. Every rule that must land on a business day
++ * (the registration date, and therefore the daily limit and membership number derived
++ * from it) uses this single definition.
++ */
++final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /**
++     * The given date if it is a business day, otherwise the following Monday.
++     */
++    static LocalDate rollForward(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUnderDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUnderDailyLimit.java
+index e422faa49..1f8bba8eb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUnderDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUnderDailyLimit.java
+@@ -9,17 +9,20 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Rejects a create-owner request once the maximum number of owners ({@value #DAILY_LIMIT})
+- * have already been registered today, responding 429, before {@link BuildOwner} persists
+- * one over the limit. Registrations are counted via {@link Registrations}.
++ * have already been registered on this request's business-day registration date, responding
++ * 429, before {@link BuildOwner} persists one over the limit. Runs after
++ * {@link RollRegistrationDateToBusinessDay} so the count is per adjusted business day.
++ * Registrations are counted via {@link Registrations}.
+  */
+ public class EnsureUnderDailyLimit {
+ 
+     static final int DAILY_LIMIT = 100;
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyLimitExceededException {
+-        LocalDate today = LocalDate.now();
+-        if (Registrations.countOn(ownerRepository, today) >= DAILY_LIMIT) {
+-            throw new DailyLimitExceededException(today, DAILY_LIMIT);
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DailyLimitExceededException {
++        LocalDate date = request.getRegistrationDate();
++        if (Registrations.countOn(ownerRepository, date) >= DAILY_LIMIT) {
++            throw new DailyLimitExceededException(date, DAILY_LIMIT);
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java
+new file mode 100644
+index 000000000..156934d52
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Rolls the effective registration date onto a business day: a Saturday or Sunday
++ * &mdash; whether supplied in the request or defaulted by
++ * {@link DefaultOwnerRegistrationDate} &mdash; moves forward to the following Monday.
++ * Mutates the shared request in place so the adjusted date is the one the daily limit
++ * counts against, the membership number's year segment is taken from, and
++ * {@link BuildOwner} persists. Runs after {@link DefaultOwnerRegistrationDate}, so the
++ * date is always present.
++ */
++public class RollRegistrationDateToBusinessDay {
++
++    public void service(@Val OwnerFieldsDto request) {
++        request.setRegistrationDate(BusinessDays.rollForward(request.getRegistrationDate()));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e2c0f3948..26c2f55b8 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -29,11 +29,6 @@ ensureUniqueHousehold:
+ ensureCityUnderCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureCityUnderCapacity
+   govern: [ transaction ]
+-  next: ensureUnderDailyLimit
+-
+-ensureUnderDailyLimit:
+-  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUnderDailyLimit
+-  govern: [ transaction ]
+   next: normalizeEmail
+ 
+ normalizeEmail:
+@@ -44,6 +39,16 @@ normalizeEmail:
+ defaultRegistrationDate:
+   class: org.springframework.samples.petclinic.rest.function.owner.DefaultOwnerRegistrationDate
+   govern: [ transaction ]
++  next: rollRegistrationDate
++
++rollRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.RollRegistrationDateToBusinessDay
++  govern: [ transaction ]
++  next: ensureUnderDailyLimit
++
++ensureUnderDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUnderDailyLimit
++  govern: [ transaction ]
+   next: build
+ 
+ build:
