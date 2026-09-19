@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   bulk_signup_warning BIT(1),
   possible_duplicate BIT(1),
   possible_duplicate_of INTEGER,
+  deleted BOOLEAN DEFAULT FALSE NOT NULL,
   INDEX(last_name)
 ) engine=InnoDB;
 

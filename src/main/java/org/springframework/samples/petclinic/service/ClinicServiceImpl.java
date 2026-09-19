@@ -153,7 +153,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -301,10 +302,19 @@ public class ClinicServiceImpl implements ClinicService {
     private void rejectIdentityCollision(Owner owner) {
         String identityKey = OwnerIdentityKey.of(owner);
         boolean collides = ownerRepository.findByTelephone(owner.getTelephone()).stream()
+            .filter(ClinicServiceImpl::isActive)
             .anyMatch(existing -> identityKey.equals(OwnerIdentityKey.of(existing)));
         if (collides) {
             throw new DuplicateOwnerException(identityKey);
         }
+    }
+
+    /**
+     * Whether an existing owner is still active, i.e. has not been soft-deleted. Soft-deleted owners
+     * are retained for history but ignored by the create-time duplicate and identity checks.
+     */
+    private static boolean isActive(Owner owner) {
+        return !Boolean.TRUE.equals(owner.getDeleted());
     }
 
     /**
@@ -367,6 +377,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         String householdId = owner.getHouseholdId();
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(ClinicServiceImpl::isActive)
             .filter(existing -> householdId.equals(
                 HouseholdIdGenerator.generate(existing.getLastName(), existing.getPostcode())))
             .toList();
