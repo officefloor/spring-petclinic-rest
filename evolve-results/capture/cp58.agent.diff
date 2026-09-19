@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..622970d60
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/DisposableEmailDomains.java
+@@ -0,0 +1,91 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * The single source of truth about disposable (throwaway) email providers, classifying a domain as
++ * either {@link #isDisposable(String) disposable} (exactly a known throwaway provider) or
++ * {@link #isDisposableAdjacent(String) disposable-adjacent} (closely related to one without being
++ * one itself). Owner creation rejects disposable domains outright, while the softer adjacent band
++ * is only a risk signal, so both decisions read the same blocklist from here rather than each
++ * holding its own copy.
++ */
++public final class DisposableEmailDomains {
++
++    /** Domains that provide throwaway, disposable mailboxes. */
++    private static final Set<String> BLOCKED_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableEmailDomains() {
++    }
++
++    /**
++     * The lower-cased domain portion of an email address.
++     *
++     * @param email the address to inspect, or {@code null} when none was supplied
++     * @return the part after the last {@code '@'} lower-cased, or {@code null} when the email is
++     *         absent or has no {@code '@'}
++     */
++    public static String domainOf(String email) {
++        if (email == null) {
++            return null;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return null;
++        }
++        return email.substring(at + 1).toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * Whether the domain is exactly a known disposable-email provider.
++     *
++     * @param domain the domain to test, or {@code null}
++     * @return {@code true} when the domain is on the disposable blocklist
++     */
++    public static boolean isDisposable(String domain) {
++        return domain != null && BLOCKED_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Whether the domain is disposable-adjacent: closely related to a blocked disposable provider
++     * without being one itself. A domain qualifies when it is a subdomain of a blocked domain (e.g.
++     * {@code inbox.mailinator.com}) or shares a blocked domain's registrable label under a different
++     * suffix (e.g. {@code mailinator.net} or bare {@code mailinator}). Domains that are themselves
++     * disposable are not adjacent.
++     *
++     * @param domain the domain to test, or {@code null}
++     * @return {@code true} when the domain is disposable-adjacent
++     */
++    public static boolean isDisposableAdjacent(String domain) {
++        if (domain == null || isDisposable(domain)) {
++            return false;
++        }
++        for (String blocked : BLOCKED_DOMAINS) {
++            if (domain.endsWith("." + blocked)) {
++                return true;
++            }
++            String label = blocked.substring(0, blocked.indexOf('.'));
++            if (domain.equals(label) || domain.startsWith(label + ".")) {
++                return true;
++            }
++        }
++        return false;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e98b4cdb9..0cfe55cc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -305,6 +305,25 @@ public class Owner extends Person {
+         return this.possibleDuplicateOf != null;
+     }
+ 
++    /**
++     * Whether this owner warrants review, being {@code true} when any risk signal holds: the owner is
++     * a {@link #getPossibleDuplicate() possible duplicate}, its email domain is
++     * {@link DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or its city was
++     * over its soft capacity (the {@link #getCapacityWarning() capacity-warning} band) when the owner
++     * was created; otherwise {@code false}.
++     */
++    @Transient
++    public Boolean getRiskFlag() {
++        return getPossibleDuplicate()
++            || Boolean.TRUE.equals(this.capacityWarning)
++            || hasDisposableAdjacentEmail();
++    }
++
++    /** Whether this owner's email domain is disposable-adjacent (see {@link DisposableEmailDomains}). */
++    private boolean hasDisposableAdjacentEmail() {
++        return DisposableEmailDomains.isDisposableAdjacent(DisposableEmailDomains.domainOf(this.email));
++    }
++
+     /**
+      * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: one above
+      * the highest membership level among the household members that already existed when this owner
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
+index 3ae6e0165..422bb09ba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
+@@ -16,25 +16,19 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+-import java.util.Locale;
+-import java.util.Set;
+-
++import org.springframework.samples.petclinic.model.DisposableEmailDomains;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Rejects owner emails whose domain belongs to a known disposable-email provider.
+  *
+- * <p>Its single responsibility is to hold the blocklist and decide whether a given
+- * address is disposable; email syntax and normalization are handled separately by
+- * {@link EmailNormalizer}.
++ * <p>Its single responsibility is to decide whether a given address is disposable and reject it;
++ * the blocklist itself lives in {@link DisposableEmailDomains}, and email syntax and normalization
++ * are handled separately by {@link EmailNormalizer}.
+  */
+ @Component
+ public class DisposableEmailDomainValidator {
+ 
+-    /** Domains that provide throwaway, disposable mailboxes. */
+-    private static final Set<String> BLOCKED_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     /**
+      * Validates that the address does not use a disposable-email domain.
+      *
+@@ -42,15 +36,8 @@ public class DisposableEmailDomainValidator {
+      * @throws DisposableEmailDomainException if the domain is on the blocklist
+      */
+     public void validate(String email) {
+-        if (email == null) {
+-            return;
+-        }
+-        int at = email.lastIndexOf('@');
+-        if (at < 0) {
+-            return;
+-        }
+-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+-        if (BLOCKED_DOMAINS.contains(domain)) {
++        String domain = DisposableEmailDomains.domainOf(email);
++        if (DisposableEmailDomains.isDisposable(domain)) {
+             throw new DisposableEmailDomainException(domain);
+         }
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dcb9adaa0..fb6ab6e1a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2272,6 +2272,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when this owner warrants review because any risk signal holds - the owner is a possible duplicate, its email domain is disposable-adjacent (closely related to a known disposable-email provider without being one, such as a subdomain of it or the same label under a different suffix), or its city was over its soft capacity (the capacity-warning band of 40 to 49 owners) when the owner was created; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: Whether this owner has been soft-deleted. False for a newly created owner; set true when the owner is deleted, which retains the record rather than removing it.
