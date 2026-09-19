@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 1b4602983..0737b2c85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
++import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerEmailException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
+@@ -247,6 +248,24 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateOwnerEmailException} raised when an owner request supplies an
++     * email address whose lower-cased value is already used by an existing owner. Returns a
++     * 409 Conflict whose {@code errors} array names the {@code email} field.
++     *
++     * @param e The {@link DuplicateOwnerEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateOwnerEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateOwnerEmailException(DuplicateOwnerEmailException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
++        detail.setProperty("errors", List.of("email"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateOwnerHouseholdException} raised when an owner request would
+      * create an owner whose last name and address (compared case-insensitively with
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateOwnerEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateOwnerEmailException.java
+new file mode 100644
+index 000000000..d279dc719
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateOwnerEmailException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++/**
++ * Signals that a new owner could not be created because its lower-cased email address is
++ * already used by an existing owner.
++ *
++ * <p>Handled as a 409 Conflict, reporting {@code email} as the offending field.
++ */
++public class DuplicateOwnerEmailException extends RuntimeException {
++
++    public DuplicateOwnerEmailException(String email) {
++        super("Email already in use by another owner: " + email);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cb74f1be7..72ee3bc38 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
++import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerEmailException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+@@ -159,6 +160,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
+             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
+         }
++        if (owner.getEmail() != null && !this.clinicService.findOwnersByEmail(owner.getEmail()).isEmpty()) {
++            throw new DuplicateOwnerEmailException(owner.getEmail());
++        }
+         if (this.clinicService.countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+             throw new OwnerCityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 6f367b3e6..72e9fa2d9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -61,6 +61,7 @@ public interface ClinicService {
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
++	Collection<Owner> findOwnersByEmail(String email) throws DataAccessException;
+ 	Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException;
+ 	long countOwnersInCity(String city) throws DataAccessException;
+ 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 161a43607..a90c141a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
+@@ -333,6 +334,19 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByTelephone(telephone);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public Collection<Owner> findOwnersByEmail(String email) throws DataAccessException {
++        if (email == null) {
++            return List.of();
++        }
++        String target = email.toLowerCase(Locale.ROOT);
++        return ownerRepository.findAll().stream()
++            .filter(owner -> owner.getEmail() != null
++                && owner.getEmail().toLowerCase(Locale.ROOT).equals(target))
++            .toList();
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException {
