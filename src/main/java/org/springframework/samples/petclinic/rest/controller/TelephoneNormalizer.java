@@ -19,29 +19,46 @@ package org.springframework.samples.petclinic.rest.controller;
 import org.springframework.stereotype.Component;
 
 /**
- * Normalizes an owner's telephone number on create.
+ * Normalizes an owner's telephone number into E.164 form on create.
  *
- * <p>Every non-digit character (spaces, parentheses, hyphens, a leading {@code +},
- * and so on) is stripped, after which the value must consist of exactly ten digits.
- * The resulting ten-digit string is what gets stored and returned.
+ * <p>Spaces, dashes and brackets are stripped. A leading {@code +} and its country code
+ * are kept as-is; without one, the default country code {@code +61} is assumed and a
+ * single leading {@code 0} is dropped from the national digits. The result must carry
+ * between 8 and 15 digits after the {@code +}. This E.164 string is what gets stored,
+ * returned, and compared when detecting duplicate telephones.
  */
 @Component
 public class TelephoneNormalizer {
 
-    private static final int REQUIRED_DIGITS = 10;
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    private static final int MIN_DIGITS = 8;
+
+    private static final int MAX_DIGITS = 15;
 
     /**
-     * Strips every non-digit character from {@code raw} and requires exactly ten digits.
+     * Converts {@code raw} into its E.164 representation.
      *
      * @param raw the submitted telephone value
-     * @return the normalized ten-digit telephone number
-     * @throws InvalidTelephoneException if the stripped value is not exactly ten digits
+     * @return the normalized E.164 telephone number (a leading {@code +} followed by digits)
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public String normalize(String raw) {
-        String digits = raw == null ? "" : raw.replaceAll("\\D", "");
-        if (digits.length() != REQUIRED_DIGITS) {
+        String trimmed = raw == null ? "" : raw.strip();
+        boolean explicitCountryCode = trimmed.startsWith("+");
+        String stripped = trimmed.replaceAll("[\\s()\\-]", "");
+
+        String digits;
+        if (explicitCountryCode) {
+            digits = stripped.substring(1);
+        } else {
+            String national = stripped.startsWith("0") ? stripped.substring(1) : stripped;
+            digits = DEFAULT_COUNTRY_CODE + national;
+        }
+
+        if (!digits.matches("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}")) {
             throw new InvalidTelephoneException(raw);
         }
-        return digits;
+        return "+" + digits;
     }
 }
