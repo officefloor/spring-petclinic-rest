@@ -185,12 +185,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region derived from the city via the fixed
-     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or
-     * {@code "UNKNOWN"} for any other city. Derived from stored state, never persisted.
+     * The owner's locality: the canonical region derived by preferring the postcode
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the fixed
+     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the
+     * postcode is absent or in no known range, or {@code "UNKNOWN"} otherwise. Derived
+     * from stored state, never persisted.
      */
     public String getLocality() {
-        return CityLocality.forCity(this.city);
+        return CityLocality.forPostcodeOrCity(this.postcode, this.city);
     }
 
     /**

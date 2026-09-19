@@ -50,4 +50,26 @@ public final class Postcodes {
         int value = Integer.parseInt(postcode);
         return value >= range[0] && value <= range[1];
     }
+
+    /**
+     * The canonical region whose range contains a postcode, the reverse of the
+     * per-region ranges used by {@link #isAllowedForRegion(String, String)}.
+     *
+     * @param postcode the candidate postcode
+     * @return the region containing {@code postcode}, or {@code null} when it is not
+     *         well-formed or falls in no known range
+     */
+    public static String regionForPostcode(String postcode) {
+        if (!hasValidFormat(postcode)) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
 }
