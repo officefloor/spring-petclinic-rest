@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.TextNormalizer;
@@ -259,9 +260,8 @@ public class ClinicServiceImpl implements ClinicService {
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+        owner.setRegistrationDate(BusinessDayAdjuster.toBusinessDay(effectiveDate));
         long ownersOnDate = ownerRepository.countByRegistrationDate(owner.getRegistrationDate());
         if (ownersOnDate >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
