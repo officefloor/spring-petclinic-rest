@@ -21,6 +21,7 @@ import org.springframework.samples.petclinic.util.CityLocality;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
+import org.springframework.samples.petclinic.util.RegionTimezone;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -280,6 +281,16 @@ public class Owner extends Person {
     public String getLocality() {
         String region = CustomerCode.regionOf(this.customerCode);
         return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
+    }
+
+    /**
+     * The owner's timezone: the IANA name for this owner's {@link #getLocality() locality}
+     * via the fixed region-to-timezone table (NSW->Australia/Sydney,
+     * VIC->Australia/Melbourne, QLD->Australia/Brisbane), or {@code null} when the region
+     * has no known timezone. Derived from stored state, never persisted.
+     */
+    public String getTimezone() {
+        return RegionTimezone.forRegion(getLocality());
     }
 
     /**
