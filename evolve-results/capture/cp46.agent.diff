@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 515cb95b4..bfb91d5fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -93,6 +93,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -245,6 +248,16 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /** Whether this owner has been soft-deleted: its row is retained but excluded from
++     *  create-time duplicate and identity checks. */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..653c8e2ba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -4,9 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
++/**
++ * Soft-deletes an owner: flags it {@code deleted} and saves it, retaining the row so later reads
++ * still return the owner (with {@code deleted} true). A soft-deleted owner is ignored by the
++ * create endpoint's duplicate and identity checks.
++ */
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+index a81368a60..aaeb5ab18 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueHousehold.java
+@@ -32,6 +32,9 @@ public class EnsureUniqueHousehold {
+         }
+         String householdId = HouseholdKey.id(request.getLastName(), postcode);
+         for (Owner existing : ownerRepository.findAll()) {
++            if (existing.isDeleted()) {
++                continue; // a soft-deleted owner no longer blocks a matching household
++            }
+             if (householdId.equals(HouseholdKey.id(existing.getLastName(), existing.getPostcode()))) {
+                 throw new HouseholdDuplicateException(householdId, existing.getId());
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+index 4e27a449a..4c9e05867 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+@@ -23,6 +23,9 @@ public class EnsureUniqueIdentity {
+             throws DuplicateIdentityException {
+         String identityKey = OwnerIdentity.of(request);
+         for (Owner existing : ownerRepository.findAll()) {
++            if (existing.isDeleted()) {
++                continue; // a soft-deleted owner no longer blocks a matching identity
++            }
+             if (identityKey.equals(OwnerIdentity.of(existing))) {
+                 throw new DuplicateIdentityException(identityKey);
+             }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ed18da84d..b60c54b8c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   identity_key VARCHAR(512),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted    BOOLEAN DEFAULT FALSE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index c15d8c1f0..c1c0bfc49 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,7 +56,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   identity_key VARCHAR(512),
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted    BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 7bf591296..f9de1ff39 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   identity_key VARCHAR(512),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted    BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 85620819a..46a44953f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       identity_key TEXT,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted    BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c3f86b89b..14d403923 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2291,6 +2291,15 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: Whether the owner has been soft-deleted. A newly created owner is
++                false; DELETE /api/owners/{id} flags it true while retaining the record, so the
++                owner is still returned on later reads and is ignored by the create endpoint's
++                duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
