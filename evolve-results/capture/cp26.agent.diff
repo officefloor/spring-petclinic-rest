@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 0737b2c85..da8e99c7e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -195,9 +195,9 @@ public class ExceptionControllerAdvice {
+ 
+     /**
+      * Handles {@link InvalidTelephoneException} raised when an owner request supplies a
+-     * telephone number that is not exactly ten digits after stripping non-digit
+-     * characters. Returns a 400 Bad Request whose {@code errors} array names the
+-     * {@code telephone} field.
++     * telephone number that cannot form a valid E.164 number — either the wrong total digit
++     * count or a national number whose length does not match its country code. Returns a 400
++     * Bad Request whose {@code errors} array names the {@code telephone} field.
+      *
+      * @param e The {@link InvalidTelephoneException} to be handled
+      * @param request {@link HttpServletRequest} object referring to the current request.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java
+new file mode 100644
+index 000000000..9476222c7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java
+@@ -0,0 +1,69 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.util.Optional;
++
++/**
++ * The E.164 country calling codes this application recognizes, each paired with the exact
++ * number of national (subscriber) digits a valid number for that country must carry.
++ *
++ * <p>For example {@code +61} (Australia) requires 9 national digits while {@code +1} (the
++ * North American Numbering Plan) requires 10.
++ */
++enum E164CountryCode {
++
++    AUSTRALIA("61", 9),
++    NORTH_AMERICA("1", 10);
++
++    private final String callingCode;
++
++    private final int nationalNumberLength;
++
++    E164CountryCode(String callingCode, int nationalNumberLength) {
++        this.callingCode = callingCode;
++        this.nationalNumberLength = nationalNumberLength;
++    }
++
++    String callingCode() {
++        return this.callingCode;
++    }
++
++    /** Whether {@code nationalDigits} carries exactly the number of digits this country requires. */
++    boolean acceptsNationalNumber(String nationalDigits) {
++        return nationalDigits.length() == this.nationalNumberLength;
++    }
++
++    /**
++     * Finds the recognized country whose calling code prefixes {@code e164Digits} (the digits of
++     * an E.164 number, without the leading {@code +}). When several codes match, the longest wins,
++     * so the most specific country is chosen.
++     *
++     * @param e164Digits the E.164 digits without the leading {@code +}
++     * @return the matching country, or empty if none is recognized
++     */
++    static Optional<E164CountryCode> forE164Digits(String e164Digits) {
++        E164CountryCode match = null;
++        for (E164CountryCode candidate : values()) {
++            if (e164Digits.startsWith(candidate.callingCode)
++                    && (match == null || candidate.callingCode.length() > match.callingCode.length())) {
++                match = candidate;
++            }
++        }
++        return Optional.ofNullable(match);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/InvalidTelephoneException.java
+index 37a66d021..66c02850c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/InvalidTelephoneException.java
+@@ -17,14 +17,17 @@
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+ /**
+- * Signals that an owner request supplied a telephone number that cannot be converted into
+- * a valid E.164 form (8 to 15 digits after the {@code +}).
++ * Signals that an owner request supplied a telephone number that cannot be converted into a
++ * valid E.164 form: either it does not carry 8 to 15 digits after the {@code +}, or its
++ * national number has the wrong length for its country code (e.g. {@code +61} requires 9
++ * national digits, {@code +1} requires 10).
+  *
+  * <p>Handled as a 400 Bad Request, reporting {@code telephone} as the offending field.
+  */
+ public class InvalidTelephoneException extends RuntimeException {
+ 
+     public InvalidTelephoneException(String rejectedValue) {
+-        super("Telephone must form a valid E.164 number (8 to 15 digits after the '+'): " + rejectedValue);
++        super("Telephone must form a valid E.164 number with a national number of the length its "
++                + "country code requires: " + rejectedValue);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+index 2724585ec..12593bd4a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+@@ -24,8 +24,10 @@ import org.springframework.stereotype.Component;
+  * <p>Spaces, dashes and brackets are stripped. A leading {@code +} and its country code
+  * are kept as-is; without one, the default country code {@code +61} is assumed and a
+  * single leading {@code 0} is dropped from the national digits. The result must carry
+- * between 8 and 15 digits after the {@code +}. This E.164 string is what gets stored,
+- * returned, and compared when detecting duplicate telephones.
++ * between 8 and 15 digits after the {@code +}, and for a {@linkplain E164CountryCode
++ * recognized country code} the national number must have exactly the length that country
++ * requires (e.g. {@code +61} needs 9 national digits, {@code +1} needs 10). This E.164
++ * string is what gets stored, returned, and compared when detecting duplicate telephones.
+  */
+ @Component
+ public class TelephoneNormalizer {
+@@ -59,6 +61,12 @@ public class TelephoneNormalizer {
+         if (!digits.matches("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}")) {
+             throw new InvalidTelephoneException(raw);
+         }
++        E164CountryCode.forE164Digits(digits).ifPresent(country -> {
++            String national = digits.substring(country.callingCode().length());
++            if (!country.acceptsNationalNumber(national)) {
++                throw new InvalidTelephoneException(raw);
++            }
++        });
+         return "+" + digits;
+     }
+ }
