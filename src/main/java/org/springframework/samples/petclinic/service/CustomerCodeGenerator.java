@@ -15,35 +15,28 @@
  */
 package org.springframework.samples.petclinic.service;
 
-import java.util.Locale;
-
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where
- * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} the
- * upper-cased first three letters of the last name and {@code NNNN} is a per-city,
- * four-digit zero-padded sequence number (e.g. {@code SYD-SMI-0007}).
+ * Builds an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where
+ * {@code REGION} is the region code derived from the owner's postcode and {@code HASH8}
+ * is the first eight upper-case hexadecimal characters of the SHA-256 digest over the
+ * owner's normalized telephone followed by their last name (e.g. {@code NSW-1A2B3C4D}).
  */
 @Component
 public class CustomerCodeGenerator {
 
-    private static final int PREFIX_LENGTH = 3;
+    private static final int HASH_LENGTH = 8;
 
     /**
      * Build the customer code for an owner.
      *
-     * @param city     the owner's city; its first three letters form the leading prefix
-     * @param lastName the owner's last name; its first three letters form the second prefix
-     * @param sequence the per-city sequence number placed in the code (zero-padded to four digits)
-     * @return the formatted customer code, e.g. {@code SYD-SMI-0007}
+     * @param region    the owner's region code, forming the leading segment
+     * @param telephone the owner's normalized telephone; hashed together with the last name
+     * @param lastName  the owner's last name; hashed together with the telephone
+     * @return the formatted customer code, e.g. {@code NSW-1A2B3C4D}
      */
-    public String generate(String city, String lastName, long sequence) {
-        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
-    }
-
-    private String prefix(String value) {
-        String upper = value.toUpperCase(Locale.ROOT);
-        return upper.substring(0, Math.min(PREFIX_LENGTH, upper.length()));
+    public String generate(String region, String telephone, String lastName) {
+        return region + "-" + Sha256Hex.upperHexPrefix(telephone + lastName, HASH_LENGTH);
     }
 }

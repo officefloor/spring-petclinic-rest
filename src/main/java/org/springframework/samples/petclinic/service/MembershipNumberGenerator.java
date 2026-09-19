@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
 /**
  * Builds an owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>}
  * where {@code YY} is the last two digits of the registration date's year
- * (e.g. {@code SMI-0007-M26}).
+ * (e.g. {@code NSW-1A2B3C4D-M26}).
  */
 @Component
 public class MembershipNumberGenerator {
@@ -32,7 +32,7 @@ public class MembershipNumberGenerator {
      *
      * @param customerCode     the owner's customer code, used as the prefix
      * @param registrationDate the owner's registration date; its year supplies the two-digit suffix
-     * @return the formatted membership number, e.g. {@code SMI-0007-M26}
+     * @return the formatted membership number, e.g. {@code NSW-1A2B3C4D-M26}
      */
     public String generate(String customerCode, LocalDate registrationDate) {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);

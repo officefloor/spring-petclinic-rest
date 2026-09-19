@@ -246,13 +246,19 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's locality: the canonical region derived by preferring the postcode (matched
-     * against the known region ranges) and falling back to the city-to-region table when the postcode
-     * is absent or in no known range, or {@code "UNKNOWN"} when neither yields a region.
+     * Return this owner's locality: the region segment of the {@code customerCode} (the leading
+     * {@code <REGION>} of {@code <REGION>-<HASH8>}), which is fixed at creation from the postcode
+     * (preferred, matched against the known region ranges) falling back to the city-to-region table,
+     * or {@code "UNKNOWN"} when neither yields a region. Before the customer code is assigned the
+     * region is resolved directly from the postcode and city.
      */
     @Transient
     public String getLocality() {
-        return LocalityResolver.regionFor(this.postcode, this.city);
+        if (this.customerCode == null) {
+            return LocalityResolver.regionFor(this.postcode, this.city);
+        }
+        int separator = this.customerCode.indexOf('-');
+        return separator < 0 ? this.customerCode : this.customerCode.substring(0, separator);
     }
 
     /**

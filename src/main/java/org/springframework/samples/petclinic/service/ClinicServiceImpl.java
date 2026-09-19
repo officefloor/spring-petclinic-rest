@@ -247,9 +247,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            long sequence = countOwnersInCity(owner.getCity()) + 1L;
+            String region = LocalityResolver.regionFor(owner.getPostcode(), owner.getCity());
             owner.setCustomerCode(
-                customerCodeGenerator.generate(owner.getCity(), owner.getLastName(), sequence));
+                customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -283,8 +283,7 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Count the owners already stored in the given city, compared case-insensitively. Used to
-     * derive the per-city sequence embedded in a new owner's customer code and to enforce the
-     * per-city capacity limit at creation time.
+     * enforce the per-city capacity limit at creation time.
      */
     @Override
     @Transactional(readOnly = true)
