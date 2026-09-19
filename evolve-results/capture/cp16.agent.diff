@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 30f652b4e..7d48403ff 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -41,7 +41,7 @@ public interface OwnerMapper {
+ 
+     /**
+      * Derive the membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last
+-     * two digits of the registration date year (e.g. 'SMI-0007-M26'). Returns null when
++     * two digits of the registration date year (e.g. 'SYD-SMI-0007-M26'). Returns null when
+      * either source field is absent.
+      */
+     default String membershipNumber(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 497ae80f2..0ef53d801 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -6,21 +6,37 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the owner's customer code before it is saved. The code is formatted
+- * {@code <LAST3>-<NNNN>}, where {@code LAST3} is the upper-cased first three letters of
+- * the last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to one
+- * more than the current number of owners (e.g. {@code SMI-0007}). Runs after
+- * {@link BuildOwner} has produced the entity and before {@link SaveOwner} persists it,
+- * mutating the built owner in place.
++ * {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the upper-cased first three
++ * letters of the city, {@code LAST3} the upper-cased first three letters of the last name
++ * and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
++ * number of owners already in that city (e.g. {@code SYD-SMI-0007}). Runs after
++ * {@link BuildOwner} has produced the entity and before {@link SaveOwner} persists it, so
++ * {@code findAll()} sees only the owners that existed before this create; mutates the
++ * built owner in place.
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        owner.setCustomerCode(format(owner.getLastName(), sequence));
++        String city = owner.getCity();
++        int sequence = countInCity(ownerRepository, city) + 1;
++        owner.setCustomerCode(format(city, owner.getLastName(), sequence));
+     }
+ 
+-    private static String format(String lastName, int sequence) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        return String.format("%s-%04d", prefix, sequence);
++    private static int countInCity(OwnerRepository ownerRepository, String city) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
++    private static String format(String city, String lastName, int sequence) {
++        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
++    }
++
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3103c5cc5..b620afd2e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2090,11 +2090,12 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: Server-assigned customer code formatted '<LAST3>-<NNNN>',
+-                where LAST3 is the upper-cased first three letters of the last name
+-                and NNNN is a global 4-digit zero-padded sequence.
++              description: Server-assigned customer code formatted '<CITY3>-<LAST3>-<NNNN>',
++                where CITY3 is the upper-cased first three letters of the city, LAST3 the
++                upper-cased first three letters of the last name and NNNN is a per-city
++                4-digit zero-padded sequence (one more than the owners already in that city).
+               type: string
+-              example: SMI-0007
++              example: SYD-SMI-0007
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2118,7 +2119,7 @@ components:
+               description: Derived membership number formatted '<customerCode>-M<YY>',
+                 where YY is the last two digits of the registrationDate year.
+               type: string
+-              example: SMI-0007-M26
++              example: SYD-SMI-0007-M26
+               readOnly: true
+             membershipTier:
+               title: Membership tier
