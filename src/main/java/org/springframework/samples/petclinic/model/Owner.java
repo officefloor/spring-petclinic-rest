@@ -279,6 +279,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's primary identifier: the single business identifier that currently identifies this
+     * owner to the outside world. Today this is the {@link #getCustomerCode() customerCode}; when the
+     * customer code is later unified into a member id this is the one place that changes, and every
+     * consumer (e.g. the {@code OWNER_CREATED} audit event) follows automatically.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
+    /**
      * The owner's locality: the REGION portion of its {@code customerCode} (see
      * {@link CustomerCode}), which is the region derived from the postcode or city at creation. This
      * disambiguates cities that share a name. Yields {@code "UNKNOWN"} when the owner has no customer
