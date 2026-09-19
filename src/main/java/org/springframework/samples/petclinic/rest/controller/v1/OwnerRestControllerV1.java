@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
@@ -78,6 +79,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
+    private final BusinessDayResolver businessDayResolver;
+
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
 
@@ -91,7 +94,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 AddressNormalizer addressNormalizer) {
+                                 AddressNormalizer addressNormalizer,
+                                 BusinessDayResolver businessDayResolver) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -100,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
+        this.businessDayResolver = businessDayResolver;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -136,9 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        owner.setRegistrationDate(this.businessDayResolver.toBusinessDay(effectiveDate));
         if (this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
             throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
