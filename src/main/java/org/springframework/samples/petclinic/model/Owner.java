@@ -64,6 +64,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @Column(name = "membership_number")
     private String membershipNumber;
 
@@ -137,6 +140,14 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     public String getMembershipNumber() {
         return this.membershipNumber;
     }
@@ -168,11 +179,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code SILVER} when this owner had no namesakes at
-     * creation ({@code namesakeCount} is 0) and has an email address, {@code BRONZE}
-     * otherwise. Derived from stored state, never persisted.
+     * The owner's membership tier: {@code GOLD} when this owner's household had 3 or more
+     * members at creation ({@code householdSize} is 3 or more); otherwise {@code SILVER}
+     * when this owner had no namesakes at creation ({@code namesakeCount} is 0) and has an
+     * email address, and {@code BRONZE} otherwise. Derived from stored state, never
+     * persisted.
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean silver = Integer.valueOf(0).equals(this.namesakeCount)
             && this.email != null && !this.email.isEmpty();
         return silver ? "SILVER" : "BRONZE";
