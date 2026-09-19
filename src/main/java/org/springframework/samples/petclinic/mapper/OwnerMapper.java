@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.Telephones;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -80,9 +81,9 @@ public interface OwnerMapper {
         return CustomerCode.regionOf(owner.getCustomerCode());
     }
 
-    /** Derive the owner's numeric membership level (1 to 3). */
+    /** Derive the owner's numeric membership level (1 to 4) as at the current date. */
     default Integer membershipLevel(Owner owner) {
-        return MembershipLevels.of(owner);
+        return MembershipLevels.of(owner, LocalDate.now());
     }
 
     /** Derive the owner's preferred contact method: EMAIL when an email is present, otherwise PHONE. */

@@ -3,6 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDate;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.MembershipLevels;
@@ -21,6 +23,6 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner) {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevels.of(owner));
+                MembershipLevels.of(owner, LocalDate.now()));
     }
 }
