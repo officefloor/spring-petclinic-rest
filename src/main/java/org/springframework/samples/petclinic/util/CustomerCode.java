@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * The owner customer-code identity, formatted {@code <REGION>-<HASH8>}: the region code
@@ -27,6 +28,23 @@ public final class CustomerCode {
         String hash8 = Sha256.hex(normalizedTelephone + lastName)
                 .substring(0, HASH_LENGTH).toUpperCase(Locale.ROOT);
         return region + SEPARATOR + hash8;
+    }
+
+    /**
+     * De-duplicate {@code customerCode} against the codes already {@code taken}. When it is free
+     * the code is returned unchanged; otherwise {@code -<n>} is appended with the smallest
+     * {@code n} of 2 or more that yields a code no owner already holds.
+     */
+    public static String deduplicate(String customerCode, Set<String> taken) {
+        if (!taken.contains(customerCode)) {
+            return customerCode;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = customerCode + SEPARATOR + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /**
