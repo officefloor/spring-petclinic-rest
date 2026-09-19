@@ -28,6 +28,8 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "address",
+        expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.normalize(ownerDto.getAddress()))")
     @Mapping(target = "telephone",
         expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.toE164(ownerDto.getTelephone()).orElse(null))")
     @Mapping(target = "email",
