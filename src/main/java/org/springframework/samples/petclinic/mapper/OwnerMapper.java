@@ -18,6 +18,8 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "displayName",
+        expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.displayName(owner.getFirstName(), owner.getLastName()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
