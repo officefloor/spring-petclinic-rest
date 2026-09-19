@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f972b301d..86b6b810f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -92,6 +92,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted", nullable = false)
++    private boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -279,6 +282,19 @@ public class Owner extends Person {
+         return this.possibleDuplicateOf != null;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted. A newly created owner is not deleted; deleting an owner
++     * flags it {@code true} and retains the record rather than removing it. Duplicate and identity
++     * checks at creation ignore owners flagged deleted.
++     */
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * Return this owner's name formatted for display as {@code "LastName, FirstName"}.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index c6ff8ac64..16fb47e0c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -148,7 +148,8 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void deleteOwner(Owner owner) throws DataAccessException {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ 
+     @Override
+@@ -343,13 +344,15 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Find the owners already stored whose derived {@link Owner#getIdentityKey() identity key}
+-     * equals the given key. Used as the single duplicate-detection check at creation time: a new
+-     * owner is a duplicate only when its whole identity key matches an existing owner's.
++     * equals the given key, ignoring any owner flagged {@link Owner#isDeleted() deleted}. Used as
++     * the single duplicate-detection check at creation time: a new owner is a duplicate only when
++     * its whole identity key matches a non-deleted existing owner's.
+      */
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException {
+         return ownerRepository.findAll().stream()
++            .filter(owner -> !owner.isDeleted())
+             .filter(owner -> owner.getIdentityKey().equals(identityKey))
+             .toList();
+     }
+@@ -358,8 +361,9 @@ public class ClinicServiceImpl implements ClinicService {
+      * Find an existing owner belonging to the same household as the given (not-yet-persisted) owner,
+      * i.e. one sharing its computed {@link Owner#getHouseholdId() householdId} (derived from last name
+      * and postcode). Because the household is keyed on (last name, postcode), such an owner is a
+-     * household duplicate of the new one. Returns the first such owner, or {@code null} when the owner
+-     * has no household ({@code householdId} is null) or no match exists.
++     * household duplicate of the new one. Owners flagged {@link Owner#isDeleted() deleted} are ignored.
++     * Returns the first such owner, or {@code null} when the owner has no household
++     * ({@code householdId} is null) or no match exists.
+      */
+     @Override
+     @Transactional(readOnly = true)
+@@ -369,6 +373,7 @@ public class ClinicServiceImpl implements ClinicService {
+             return null;
+         }
+         return ownerRepository.findAll().stream()
++            .filter(existing -> !existing.isDeleted())
+             .filter(existing -> householdId.equals(existing.getHouseholdId()))
+             .findFirst()
+             .orElse(null);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index adff3788c..71eed55c4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 122fafbe7..14dd8824f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c76cbc532..8e37e35f2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INT,
+   postcode VARCHAR(4),
+   possible_duplicate_of INT,
++  deleted BIT DEFAULT 0 NOT NULL,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e2ddcbdd8..bae12fd65 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       postcode TEXT,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ae1cde637..7baea0107 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2242,6 +2242,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: Whether this owner has been soft-deleted. False for a newly created owner; set true when the owner is deleted, which retains the record rather than removing it.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
