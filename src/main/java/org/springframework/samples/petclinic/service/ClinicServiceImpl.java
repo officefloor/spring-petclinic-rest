@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
@@ -262,6 +263,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        if (DisposableEmailDomains.isDisposable(owner.getEmail())) {
+            throw new DisposableEmailDomainException(owner.getEmail());
+        }
         owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         rejectIdentityCollision(owner);
         List<Owner> householdMembers = findHouseholdMembers(owner);

@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.CityCapacityExceededException;
 import org.springframework.samples.petclinic.service.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.service.DuplicateOwnerException;
 import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
 import org.springframework.security.access.AccessDeniedException;
@@ -61,6 +62,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_HOUSEHOLD_DUPLICATE = "An owner already belongs to this household (same last name and postcode)";
     private static final String ERROR_CITY_CAPACITY = "The owner's city has already reached its maximum number of owners";
     private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners for today has already been reached";
+    private static final String ERROR_DISPOSABLE_EMAIL = "The owner's email uses a disposable domain that is not allowed";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -189,6 +191,26 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_OWNER_LIMIT);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException} raised when creating an owner whose email domain is on the
+     * disposable-domain blocklist, returning a 400 Bad Request status.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        logger.warn("Disposable email domain at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DISPOSABLE_EMAIL);
         return ResponseEntity.status(status).body(detail);
     }
 
