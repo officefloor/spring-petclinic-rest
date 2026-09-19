@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
@@ -28,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' for display. */
@@ -83,6 +85,15 @@ public interface OwnerMapper {
     /** Derive the owner's preferred contact method: EMAIL when an email is present, otherwise PHONE. */
     default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
         return owner.hasEmail() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Derive the owner's age band from the birth date as at the registration date, or null
+     * when no birth date was supplied.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        AgeBand band = AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
+        return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
     }
 
     Owner toOwner(OwnerDto ownerDto);
