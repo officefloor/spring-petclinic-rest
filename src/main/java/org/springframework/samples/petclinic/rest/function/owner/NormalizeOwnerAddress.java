@@ -6,18 +6,31 @@ import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
- * First step of the create-owner pipeline: reads the request body once, normalizes its
- * address to canonical form (see {@link AddressNormalizer}) and republishes the body so
- * downstream steps consume it as {@code @Val}. Running before {@link ValidateOwnerFields}
- * means the required-field check sees the normalized address, so an address that is blank
- * only after normalization is rejected; and because {@link BuildOwner} stores the same
- * value, the persisted and returned address is the normalized one. Household comparison
- * (see {@link Households}) then works from the normalized form too.
+ * First step of the create-owner pipeline: reads the request body once, normalizes whichever
+ * address fields it supplies to canonical form (see {@link AddressNormalizer}) and republishes
+ * the body so downstream steps consume it as {@code @Val}.
+ *
+ * <p>The structured fields are preferred when present: a non-blank {@code addressLine1} (with an
+ * optional {@code addressLine2}) is normalized in place, and the flat {@code address} is set to
+ * their composed form. Otherwise the flat {@code address} is normalized as before, keeping the
+ * contract backward-compatible. Either way the flat {@code address} carries the effective
+ * address, so everything downstream — {@link ValidateOwnerFields}, {@link BuildOwner} (hence the
+ * persisted and returned value) and household comparison (see {@link Households}) — works from the
+ * normalized, preferred form.
  */
 public class NormalizeOwnerAddress {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> normalized) {
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        String line1 = request.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine2 = AddressNormalizer.normalize(request.getAddressLine2());
+            request.setAddressLine1(AddressNormalizer.normalize(line1));
+            request.setAddressLine2(normalizedLine2.isEmpty() ? null : normalizedLine2);
+            request.setAddress(AddressNormalizer.compose(line1, normalizedLine2));
+        }
+        else {
+            request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        }
         normalized.set(request);
     }
 }

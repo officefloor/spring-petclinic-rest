@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsE
 /**
  * Rejects a create-owner body that is missing or blank in any required field before
  * {@link BuildOwner} runs. Runs after {@link NormalizeOwnerAddress} has canonicalized the
- * body, so the address check sees the normalized value and an address that is blank only
- * after normalization is rejected here.
+ * body, so the {@code address} check sees the effective address — the composed structured
+ * form when {@code addressLine1} was supplied, otherwise the normalized flat address — and
+ * an owner supplying an address in either form (plus a city) is accepted.
  */
 public class ValidateOwnerFields {
 

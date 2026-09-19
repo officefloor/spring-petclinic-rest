@@ -46,6 +46,12 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -100,6 +106,31 @@ public class Owner extends Person {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    /**
+     * The first line of the owner's structured address, in normalized form, or null when the
+     * owner was created from the flat {@link #getAddress() address} only. The composed
+     * {@code address} is derived from this and {@link #getAddressLine2()}.
+     */
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = addressLine1;
+    }
+
+    /**
+     * The optional second line of the owner's structured address, in normalized form, or null
+     * when absent or when the owner was created from the flat {@link #getAddress() address}.
+     */
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = addressLine2;
     }
 
     public String getCity() {
