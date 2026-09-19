@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -232,8 +233,13 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && ownerRepository.existsByTelephone(owner.getTelephone())) {
-            throw new DuplicateTelephoneException(owner.getTelephone());
+        if (owner.isNew()) {
+            if (ownerRepository.existsByTelephone(owner.getTelephone())) {
+                throw new DuplicateTelephoneException(owner.getTelephone());
+            }
+            if (owner.getRegistrationDate() == null) {
+                owner.setRegistrationDate(LocalDate.now());
+            }
         }
         ownerRepository.save(owner);
 
