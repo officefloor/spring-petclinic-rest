@@ -40,8 +40,14 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's canonical API path, '/api/owners/' followed by its id, or null before an id is assigned. */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /** Format an owner's name as 'LastName, FirstName' for display. */
     default String displayName(Owner owner) {
