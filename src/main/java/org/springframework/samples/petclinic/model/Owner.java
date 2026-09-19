@@ -256,6 +256,15 @@ public class Owner extends Person {
     }
 
     /**
+     * Return this owner's check digit: the single Luhn check digit computed over the digits of the
+     * {@code customerCode}.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        return this.customerCode == null ? null : LuhnCheckDigit.of(this.customerCode);
+    }
+
+    /**
      * Return this owner's identity key, the single derived value all duplicate detection is based
      * on: the normalized telephone, email and household id joined with {@code '|'} as
      * {@code telephone + "|" + email + "|" + householdId}, with each absent component rendered as
