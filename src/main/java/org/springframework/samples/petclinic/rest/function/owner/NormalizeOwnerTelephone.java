@@ -5,22 +5,20 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * Normalizes the telephone on a create request: strips every non-digit character, then
- * requires exactly ten digits. Stores the 10-digit value back on the request (mutating
- * the shared {@code @Val} object) so {@link BuildOwner} and the response carry it; rejects
- * with {@link InvalidTelephoneException} (400) otherwise. Runs after {@link ValidateNewOwner}
- * has confirmed the field is present.
+ * Normalizes the telephone on a create request to E.164 form (see {@link TelephoneNormalizer}).
+ * Stores the E.164 value back on the request (mutating the shared {@code @Val} object) so
+ * {@link BuildOwner} and the response carry it; rejects with {@link InvalidTelephoneException}
+ * (400) when the number cannot form valid E.164. Runs after {@link ValidateNewOwner} has
+ * confirmed the field is present.
  */
 public class NormalizeOwnerTelephone {
 
-    private static final int REQUIRED_DIGITS = 10;
-
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
         String raw = request.getTelephone();
-        String digits = TelephoneNormalizer.digits(raw);
-        if (digits.length() != REQUIRED_DIGITS) {
+        String e164 = TelephoneNormalizer.toE164(raw);
+        if (e164 == null) {
             throw new InvalidTelephoneException(raw);
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
     }
 }

@@ -11,7 +11,7 @@ public class InvalidTelephoneExceptionHandler {
     public void handle(@Parameter InvalidTelephoneException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
-                "The telephone must contain exactly 10 digits");
+                "The telephone must be a valid E.164 number (a '+' followed by 8 to 15 digits)");
         detail.setProperty("rejectedValue", ex.getRejectedValue());
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
