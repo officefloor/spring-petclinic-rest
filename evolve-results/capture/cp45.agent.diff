@@ -1,0 +1,183 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f31f38436..89f2d33e9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -42,6 +42,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.util.OwnerIdentityKey.of(owner))")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplayFormatter.format(owner.getTelephone()))")
++    @Mapping(target = "salutation",
++        expression = "java(org.springframework.samples.petclinic.util.SalutationFormatter.format(owner.getTitle(), owner.getLastName()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b0b756bc3..182997d03 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -35,6 +35,9 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "address")
+     @NotEmpty
+     private String address;
+@@ -90,6 +93,14 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b261f45dd..051501cc2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -127,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
++        currentOwner.setTitle(ownerFieldsDto.getTitle());
+         currentOwner.setTelephone(TelephoneNormalizer.toE164(ownerFieldsDto.getTelephone()).orElse(null));
+         currentOwner.setEmail(EmailNormalizer.normalize(ownerFieldsDto.getEmail()));
+         currentOwner.setPostcode(ownerFieldsDto.getPostcode());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/SalutationFormatter.java b/src/main/java/org/springframework/samples/petclinic/util/SalutationFormatter.java
+new file mode 100644
+index 000000000..7195c69ac
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/SalutationFormatter.java
+@@ -0,0 +1,41 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Composes an owner's salutation from their optional title and last name.
++ */
++public final class SalutationFormatter {
++
++    private SalutationFormatter() {
++    }
++
++    /**
++     * Format the salutation as {@code "<title> <lastName>"}, or just {@code lastName}
++     * when no title is given.
++     *
++     * @param title the courtesy title (e.g. {@code "MR"}, {@code "DR"}); may be {@code null} or blank
++     * @param lastName the last name
++     * @return the composed salutation
++     */
++    public static String format(String title, String lastName) {
++        if (title == null || title.isBlank()) {
++            return lastName;
++        }
++        return title + " " + lastName;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f15e185a3..047e8bfa4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
++  title VARCHAR(3),
+   address VARCHAR(255) NOT NULL,
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6fb25f031..1f4091541 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE owners (
+   id         INTEGER IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
++  title      VARCHAR(3),
+   address    VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 167a3b58c..79f117f36 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
++  title VARCHAR(3),
+   address VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 27cce2e92..c6b51863f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                                       first_name TEXT,
+                                       last_name  TEXT,
++                                      title      TEXT,
+                                       address    TEXT,
+                                       address_line1 TEXT,
+                                       address_line2 TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 96da8c69c..23a82b09c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2010,6 +2010,14 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            The owner's optional courtesy title, one of MR, MRS, MS or DR. When supplied it is
++            prefixed to the last name to form the owner's 'salutation'.
++          type: string
++          pattern: "^(MR|MRS|MS|DR)$"
++          example: DR
+         address:
+           title: Address
+           description: >-
+@@ -2128,6 +2136,14 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, formed as '<title> <lastName>' when a title is on file,
++                or just the last name when no title is given.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             initials:
+               title: Initials
+               description: The upper-cased first letters of the first and last name, dot-separated with a trailing dot.
