@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -81,9 +82,14 @@ public interface OwnerMapper {
         return CustomerCode.regionOf(owner.getCustomerCode());
     }
 
-    /** Derive the owner's numeric membership level (1 to 4) as at the current date. */
+    /** Derive the owner's membership points as at the current date. */
+    default Integer membershipPoints(Owner owner) {
+        return MembershipLevels.pointsOf(owner, LocalDate.now());
+    }
+
+    /** Derive the owner's numeric membership level (1 to 4) from the current membership points. */
     default Integer membershipLevel(Owner owner) {
-        return MembershipLevels.of(owner, LocalDate.now());
+        return MembershipLevels.levelFor(MembershipLevels.pointsOf(owner, LocalDate.now()));
     }
 
     /** Derive the owner's preferred contact method: EMAIL when an email is present, otherwise PHONE. */

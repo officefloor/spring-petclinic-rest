@@ -12,17 +12,18 @@ import org.springframework.samples.petclinic.util.MembershipLevels;
 /**
  * Emits an audit trail line for a newly created owner. Runs after {@link SaveOwner} has
  * persisted the entity, so the generated id is available, and records the owner id, the
- * assigned customer code, the effective registration date and the derived membership level
- * on the dedicated {@code AUDIT} logger. Purely a side-effect step; it leaves the owner
- * unchanged for the responder.
+ * assigned customer code, the effective registration date and the derived membership points
+ * and level on the dedicated {@code AUDIT} logger. Purely a side-effect step; it leaves the
+ * owner unchanged for the responder.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        int points = MembershipLevels.pointsOf(owner, LocalDate.now());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevels.of(owner, LocalDate.now()));
+                points, MembershipLevels.levelFor(points));
     }
 }

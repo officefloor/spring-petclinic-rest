@@ -6,39 +6,73 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric membership level. The level starts at {@link #BASE} and gains a
- * point for each qualifying factor: a present email, having no namesakes ({@code namesakeCount}
- * is 0), and tenure of more than {@link #TENURE_DAYS} days since registration. It is capped at
- * {@link #MAX}. A newly created owner has zero tenure, so the tenure point is out of reach on
- * creation and a new owner never exceeds level 3.
+ * Scores an owner's membership and maps that score to a numeric level. Points start at zero and
+ * accrue for each qualifying factor: {@link #EMAIL_POINTS} for a present email,
+ * {@link #NO_NAMESAKE_POINTS} for having no namesakes ({@code namesakeCount} is 0),
+ * {@link #HOUSEHOLD_POINTS} for a household of {@link #HOUSEHOLD_SIZE} or more, and
+ * {@link #TENURE_POINTS} for tenure of more than {@link #TENURE_DAYS} days since registration.
+ * The total is mapped to a level of 1 to 4 by {@link #levelFor(int)}. A newly created owner has
+ * zero tenure, so the tenure points are out of reach on creation.
  */
 public final class MembershipLevels {
 
-    /** Level every owner starts at. */
-    public static final int BASE = 1;
+    /** Points added when an email is present. */
+    public static final int EMAIL_POINTS = 2;
 
-    /** Highest level derivable here; reachable only with the tenure point. */
-    public static final int MAX = 4;
+    /** Points added when the owner has no namesakes ({@code namesakeCount} is 0). */
+    public static final int NO_NAMESAKE_POINTS = 1;
 
-    /** Tenure, in days since registration, must exceed this for the tenure point. */
+    /** Points added for a household of {@link #HOUSEHOLD_SIZE} or more. */
+    public static final int HOUSEHOLD_POINTS = 2;
+
+    /** Household size, in members, that must be reached for {@link #HOUSEHOLD_POINTS}. */
+    public static final int HOUSEHOLD_SIZE = 3;
+
+    /** Points added for tenure of more than {@link #TENURE_DAYS} days. */
+    public static final int TENURE_POINTS = 3;
+
+    /** Tenure, in days since registration, must exceed this for {@link #TENURE_POINTS}. */
     public static final int TENURE_DAYS = 365;
 
     private MembershipLevels() {
     }
 
-    /** Return the membership level (1 to 4) for {@code owner} as at {@code asOf}. */
-    public static int of(Owner owner, LocalDate asOf) {
-        int level = BASE;
+    /** Return the membership points for {@code owner} as at {@code asOf}. */
+    public static int pointsOf(Owner owner, LocalDate asOf) {
+        int points = 0;
         if (owner.hasEmail()) {
-            level++;
+            points += EMAIL_POINTS;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += NO_NAMESAKE_POINTS;
+        }
+        if (hasHousehold(owner)) {
+            points += HOUSEHOLD_POINTS;
         }
         if (hasTenure(owner, asOf)) {
-            level++;
+            points += TENURE_POINTS;
         }
-        return Math.min(level, MAX);
+        return points;
+    }
+
+    /** Map membership points to a level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    public static int levelFor(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
+    }
+
+    /** Whether the owner's household has {@link #HOUSEHOLD_SIZE} or more members. */
+    private static boolean hasHousehold(Owner owner) {
+        Integer size = owner.getHouseholdSize();
+        return size != null && size >= HOUSEHOLD_SIZE;
     }
 
     /** Whether the owner's tenure as at {@code asOf} exceeds {@link #TENURE_DAYS} days. */
