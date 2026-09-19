@@ -27,6 +27,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -43,6 +44,15 @@ public interface OwnerMapper {
     /** Format an owner's name as 'LastName, FirstName' for display. */
     default String displayName(Owner owner) {
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Compose the owner's salutation as the title, a space and the last name (e.g. 'DR Who'),
+     * or just the last name when no title was supplied.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        return (title == null || title.isBlank()) ? owner.getLastName() : title + " " + owner.getLastName();
     }
 
     /** Upper-cased first letters of first and last name, dot-separated with a trailing dot (e.g. 'J.S.'). */
