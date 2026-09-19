@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/AddressNormalizer.java
+new file mode 100644
+index 000000000..39be06774
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/AddressNormalizer.java
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.util.Locale;
++import java.util.Map;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Normalizes an owner's postal address on create.
++ *
++ * <p>The raw value is trimmed, every run of whitespace is collapsed to a single space,
++ * the text is upper-cased, and common street-type abbreviations are expanded to their
++ * full words ({@code ST}&rarr;{@code STREET}, {@code RD}&rarr;{@code ROAD},
++ * {@code AVE}&rarr;{@code AVENUE}). This canonical form is what gets stored, returned,
++ * and compared when detecting duplicate households.
++ */
++@Component
++public class AddressNormalizer {
++
++    /** Whole-word abbreviations expanded to their canonical street type. */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    /**
++     * Reduce {@code raw} to its canonical address form.
++     *
++     * @param raw the submitted address value (may be {@code null})
++     * @return the normalized address, or an empty string when {@code raw} is {@code null}
++     *         or blank
++     */
++    public String normalize(String raw) {
++        if (raw == null) {
++            return "";
++        }
++        String collapsed = raw.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder normalized = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return normalized.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bce80b4b8..0a7df1878 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
++import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+@@ -73,13 +74,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final EmailNormalizer emailNormalizer;
+ 
++    private final AddressNormalizer addressNormalizer;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  OwnerFieldsValidator ownerFieldsValidator,
+                                  TelephoneNormalizer telephoneNormalizer,
+-                                 EmailNormalizer emailNormalizer) {
++                                 EmailNormalizer emailNormalizer,
++                                 AddressNormalizer addressNormalizer) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -87,6 +91,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.ownerFieldsValidator = ownerFieldsValidator;
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
++        this.addressNormalizer = addressNormalizer;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -117,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+         this.ownerFieldsValidator.validate(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
