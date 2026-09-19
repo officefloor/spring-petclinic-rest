@@ -35,6 +35,10 @@ import org.springframework.stereotype.Component;
 public class OwnerFieldsValidator {
 
     /**
+     * <p>An owner supplies an address in either form: the structured {@code addressLine1} or the
+     * flat {@code address}. It is valid when at least one of them is non-blank; when neither is,
+     * {@code addressLine1} is reported as missing.
+     *
      * @param fields the submitted owner fields
      * @throws MissingOwnerFieldsException if any required field is missing or blank
      */
@@ -42,7 +46,9 @@ public class OwnerFieldsValidator {
         List<String> missing = new ArrayList<>();
         checkRequired("firstName", fields.getFirstName(), missing);
         checkRequired("lastName", fields.getLastName(), missing);
-        checkRequired("address", fields.getAddress(), missing);
+        if (isBlank(fields.getAddressLine1()) && isBlank(fields.getAddress())) {
+            missing.add("addressLine1");
+        }
         checkRequired("city", fields.getCity(), missing);
         checkRequired("telephone", fields.getTelephone(), missing);
         if (!missing.isEmpty()) {
@@ -50,8 +56,12 @@ public class OwnerFieldsValidator {
         }
     }
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     private void checkRequired(String name, String value, List<String> missing) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(name);
         }
     }

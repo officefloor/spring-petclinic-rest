@@ -40,6 +40,12 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -91,6 +97,32 @@ public class Owner extends Person {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    /**
+     * The first line of this owner's structured postal address, or {@code null} when the owner was
+     * created with only the flat {@link #getAddress() address}. Preferred over the flat address when
+     * present; see {@link #getAddress()} for the composed form.
+     */
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = addressLine1;
+    }
+
+    /**
+     * The optional second line of this owner's structured postal address, or {@code null} when none
+     * was supplied. When present it is appended to {@link #getAddressLine1() addressLine1} in the
+     * composed {@link #getAddress() address}.
+     */
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = addressLine2;
     }
 
     public String getCity() {

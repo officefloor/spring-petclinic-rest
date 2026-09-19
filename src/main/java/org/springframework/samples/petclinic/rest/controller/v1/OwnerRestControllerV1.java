@@ -154,7 +154,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        this.normalizeAddress(ownerFieldsDto);
         this.ownerFieldsValidator.validate(ownerFieldsDto);
         this.postcodeValidator.validate(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
@@ -191,6 +191,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Canonicalize the request's address fields in place, preferring the structured form. When a
+     * non-blank {@code addressLine1} is supplied it and the optional {@code addressLine2} are
+     * normalized and the composed value stored on {@code address}; otherwise only the flat
+     * {@code address} is normalized. This keeps the stored {@code address} the single canonical
+     * value everything downstream reads.
+     */
+    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
+        if (ownerFieldsDto.getAddressLine1() != null && !ownerFieldsDto.getAddressLine1().isBlank()) {
+            ownerFieldsDto.setAddressLine1(this.addressNormalizer.normalize(ownerFieldsDto.getAddressLine1()));
+            String line2 = this.addressNormalizer.normalize(ownerFieldsDto.getAddressLine2());
+            ownerFieldsDto.setAddressLine2(line2.isEmpty() ? null : line2);
+            ownerFieldsDto.setAddress(
+                this.addressNormalizer.compose(ownerFieldsDto.getAddressLine1(), ownerFieldsDto.getAddressLine2()));
+        }
+        else {
+            ownerFieldsDto.setAddress(this.addressNormalizer.normalize(ownerFieldsDto.getAddress()));
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
