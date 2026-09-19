@@ -30,6 +30,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -241,8 +242,9 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
             String region = LocalityResolver.regionFor(owner.getPostcode(), owner.getCity());
-            owner.setCustomerCode(
-                customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
+            String customerCode =
+                customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
+            owner.setCustomerCode(deduplicateCustomerCode(customerCode));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -307,6 +309,26 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
                 && equalsIgnoreCase(existing.getLastName(), lastName))
             .count();
+    }
+
+    /**
+     * Ensure the given customer code does not collide with an already stored owner's. When it does,
+     * append {@code -<n>} using the smallest {@code n} of 2 or more that makes it unique. Used to
+     * guarantee that distinct owners always receive distinct customer codes at creation time.
+     */
+    private String deduplicateCustomerCode(String customerCode) {
+        Set<String> existing = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(Collectors.toSet());
+        if (!existing.contains(customerCode)) {
+            return customerCode;
+        }
+        int suffix = 2;
+        while (existing.contains(customerCode + "-" + suffix)) {
+            suffix++;
+        }
+        return customerCode + "-" + suffix;
     }
 
     private static boolean equalsIgnoreCase(String a, String b) {
