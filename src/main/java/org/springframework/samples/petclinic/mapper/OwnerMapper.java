@@ -36,6 +36,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.AgeBandResolver.resolve(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.util.OwnerIdentityKey.of(owner))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplayFormatter.format(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

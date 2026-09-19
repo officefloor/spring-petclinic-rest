@@ -60,6 +60,14 @@ enum CountryCallingCode {
     }
 
     /**
+     * The E.164 calling code (the digits following the {@code '+'}), without the {@code '+'}
+     * itself, e.g. {@code "61"} for Australia.
+     */
+    String code() {
+        return code;
+    }
+
+    /**
      * Whether {@code digits} carries exactly the national-digit count this country requires.
      *
      * @param digits the digits of an E.164 number, without the leading {@code '+'}, that this
