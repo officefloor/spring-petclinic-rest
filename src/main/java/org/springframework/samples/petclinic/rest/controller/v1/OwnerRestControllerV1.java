@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouse
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -79,6 +80,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
+
+    /** Maximum number of owners that may be registered on a single day before further creations are rejected. */
+    static final long MAX_OWNERS_PER_DAY = 100;
 
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
@@ -134,6 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
+        }
+        if (this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+            throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());

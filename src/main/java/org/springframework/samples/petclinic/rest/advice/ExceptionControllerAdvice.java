@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.controller.InvalidEmailExcepti
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -281,6 +282,24 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
         detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link OwnerDailyRegistrationLimitExceededException} raised when an owner request
+     * would exceed the maximum number of owners permitted to register on a single day (by
+     * registration date). Returns a 429 Too Many Requests.
+     *
+     * @param e The {@link OwnerDailyRegistrationLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(OwnerDailyRegistrationLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerDailyRegistrationLimitExceededException(OwnerDailyRegistrationLimitExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("registrationDate"));
         return ResponseEntity.status(status).body(detail);
     }
 
