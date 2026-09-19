@@ -173,6 +173,15 @@ public class Owner extends Person {
         return unique && hasEmail ? "SILVER" : "BRONZE";
     }
 
+    /**
+     * Return this owner's locality: the canonical region derived from the city via the fixed
+     * city-to-region table, or {@code "UNKNOWN"} when the city is not in the table.
+     */
+    @Transient
+    public String getLocality() {
+        return LocalityResolver.regionFor(this.city);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
