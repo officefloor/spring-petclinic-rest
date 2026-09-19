@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 import org.springframework.dao.DataAccessException;
@@ -90,6 +91,15 @@ public interface OwnerRepository {
      * @return the number of stored owners in that city
      */
     long countByCity(String city) throws DataAccessException;
+
+    /**
+     * Count the <code>Owner</code>s already registered on the given date. Used to enforce the maximum
+     * number of owner registrations allowed per day.
+     *
+     * @param registrationDate the registration date to count owners for
+     * @return the number of stored owners registered on that date
+     */
+    long countByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 
 
     /**

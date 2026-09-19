@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.repository.springdatajpa;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 import org.springframework.context.annotation.Profile;
@@ -69,4 +70,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     @Override
     @Query("SELECT COUNT(owner) FROM Owner owner WHERE UPPER(owner.city) = UPPER(:city)")
     long countByCity(@Param("city") String city);
+
+    @Override
+    @Query("SELECT COUNT(owner) FROM Owner owner WHERE owner.registrationDate = :registrationDate")
+    long countByRegistrationDate(@Param("registrationDate") LocalDate registrationDate);
 }

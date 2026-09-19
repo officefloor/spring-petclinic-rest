@@ -239,6 +239,12 @@ public class ClinicServiceImpl implements ClinicService {
      */
     static final int MAX_OWNERS_PER_CITY = 50;
 
+    /**
+     * Maximum number of owners allowed to register on a single day. Creating an owner once a day has
+     * already reached this many registrations is rejected as a rate-limit violation.
+     */
+    static final int MAX_OWNERS_PER_DAY = 100;
+
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
@@ -253,10 +259,14 @@ public class ClinicServiceImpl implements ClinicService {
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
-        owner.setNamesakeCount(countNamesakes(owner));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        long ownersOnDate = ownerRepository.countByRegistrationDate(owner.getRegistrationDate());
+        if (ownersOnDate >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
+        }
+        owner.setNamesakeCount(countNamesakes(owner));
         owner.setCustomerCode(CustomerCodeGenerator.format(
             owner.getCity(), owner.getLastName(), ownersInCity + 1));
         if (!householdMembers.isEmpty()) {
