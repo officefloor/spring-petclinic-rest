@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.util;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Derives an owner's {@code locality} (canonical region), preferring the postcode range
@@ -31,6 +32,8 @@ public final class LocalityResolver {
         "Sydney", "NSW",
         "Melbourne", "VIC",
         "Brisbane", "QLD");
+
+    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
 
     private LocalityResolver() {
     }
@@ -72,5 +75,16 @@ public final class LocalityResolver {
      */
     public static String regionForCity(String city) {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * Report whether the given region is one of the known canonical regions (NSW, VIC or QLD),
+     * as opposed to {@code "UNKNOWN"} or any unrecognised value.
+     *
+     * @param region the canonical region (locality), may be {@code null}
+     * @return {@code true} when the region is a known region, {@code false} otherwise
+     */
+    public static boolean isKnownRegion(String region) {
+        return KNOWN_REGIONS.contains(region);
     }
 }
