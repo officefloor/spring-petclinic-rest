@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+index 1ab14dbe9..c08672c49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+@@ -11,7 +11,9 @@ public class InvalidTelephoneExceptionHandler {
+     public void handle(@Parameter InvalidTelephoneException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+-                "The telephone must be a valid E.164 number (a '+' followed by 8 to 15 digits)");
++                "The telephone must be a valid E.164 number (a '+' followed by 8 to 15 digits) "
++                        + "with the national-number length its country code requires "
++                        + "('+61' needs 9 national digits, '+1' needs 10)");
+         detail.setProperty("rejectedValue", ex.getRejectedValue());
+         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164CountryLength.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164CountryLength.java
+new file mode 100644
+index 000000000..37c76b0d3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164CountryLength.java
+@@ -0,0 +1,52 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * Per-country rule for the national-number length an E.164 telephone must carry after its
++ * country calling code: '+61' (Australia) requires 9 national digits, '+1' (NANP) requires
++ * 10. A number whose country code is not listed here has no per-country constraint beyond
++ * {@link TelephoneNormalizer}'s generic 8-15 digit bound. Kept separate from
++ * {@link TelephoneNormalizer} so canonicalization (used to compare against stored owners)
++ * stays lenient while the create request is held to the stricter, country-specific length.
++ */
++final class E164CountryLength {
++
++    /** Country calling code -> required national-number length. Matched longest-code-first,
++     *  so a code that is a prefix of another still resolves to the more specific rule. */
++    private static final Map<String, Integer> NATIONAL_DIGITS = Map.of(
++            "61", 9,
++            "1", 10);
++
++    private E164CountryLength() {
++    }
++
++    /**
++     * Returns {@code true} when {@code e164} (a '+' followed by digits, as produced by
++     * {@link TelephoneNormalizer#toE164}) carries the national-number length required for its
++     * country code, or when its country code has no configured length. A {@code null} or
++     * non-E.164 argument returns {@code false}.
++     */
++    static boolean isNationalLengthValid(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return false;
++        }
++        String digits = e164.substring(1);
++        String code = longestMatchingCode(digits);
++        if (code == null) {
++            return true;
++        }
++        return digits.length() - code.length() == NATIONAL_DIGITS.get(code);
++    }
++
++    /** The longest configured country code that prefixes {@code digits}, or {@code null}. */
++    private static String longestMatchingCode(String digits) {
++        String best = null;
++        for (String code : NATIONAL_DIGITS.keySet()) {
++            if (digits.startsWith(code) && (best == null || code.length() > best.length())) {
++                best = code;
++            }
++        }
++        return best;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index b5ae3763f..e63b692ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * Normalizes the telephone on a create request to E.164 form (see {@link TelephoneNormalizer}).
+  * Stores the E.164 value back on the request (mutating the shared {@code @Val} object) so
+  * {@link BuildOwner} and the response carry it; rejects with {@link InvalidTelephoneException}
+- * (400) when the number cannot form valid E.164. Runs after {@link ValidateNewOwner} has
++ * (400) when the number cannot form valid E.164 or its national-number length is wrong for the
++ * country code (see {@link E164CountryLength}). Runs after {@link ValidateNewOwner} has
+  * confirmed the field is present.
+  */
+ public class NormalizeOwnerTelephone {
+@@ -16,7 +17,7 @@ public class NormalizeOwnerTelephone {
+     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
+         String raw = request.getTelephone();
+         String e164 = TelephoneNormalizer.toE164(raw);
+-        if (e164 == null) {
++        if (e164 == null || !E164CountryLength.isNationalLengthValid(e164)) {
+             throw new InvalidTelephoneException(raw);
+         }
+         request.setTelephone(e164);
