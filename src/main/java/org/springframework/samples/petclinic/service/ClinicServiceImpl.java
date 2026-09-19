@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -331,6 +332,19 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
         return ownerRepository.findByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersByEmail(String email) throws DataAccessException {
+        if (email == null) {
+            return List.of();
+        }
+        String target = email.toLowerCase(Locale.ROOT);
+        return ownerRepository.findAll().stream()
+            .filter(owner -> owner.getEmail() != null
+                && owner.getEmail().toLowerCase(Locale.ROOT).equals(target))
+            .toList();
     }
 
     @Override
