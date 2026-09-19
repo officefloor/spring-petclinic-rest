@@ -27,7 +27,9 @@ import java.util.regex.Pattern;
  * <p>A leading {@code '+'} with its country code is kept as given; otherwise the Australian
  * country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the
  * national digits. Spaces, dashes and brackets are ignored. The digits following the
- * {@code '+'} must number between 8 and 15 inclusive.
+ * {@code '+'} must number between 8 and 15 inclusive, and for a recognised country calling
+ * code the national-number length must match what that country requires (see
+ * {@link CountryCallingCode}).
  */
 public final class TelephoneNormalizer {
 
@@ -63,6 +65,10 @@ public final class TelephoneNormalizer {
             digits = DEFAULT_COUNTRY_CODE + national;
         }
         if (digits.length() < MIN_DIGITS || digits.length() > MAX_DIGITS || !isAllDigits(digits)) {
+            return Optional.empty();
+        }
+        Optional<CountryCallingCode> country = CountryCallingCode.forDigits(digits);
+        if (country.isPresent() && !country.get().hasValidNationalLength(digits)) {
             return Optional.empty();
         }
         return Optional.of("+" + digits);
