@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f100923d0..d5765ee5d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "telephone",
++        expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.normalize(ownerDto.getTelephone()))")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigits.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigits.java
+new file mode 100644
+index 000000000..6033f23b3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigits.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Validates that a telephone value contains exactly ten digits once every non-digit
++ * character has been stripped.
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = TelephoneDigitsValidator.class)
++@Documented
++public @interface TelephoneDigits {
++
++    String message() default "Telephone must contain exactly 10 digits";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigitsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigitsValidator.java
+new file mode 100644
+index 000000000..f3343e7e6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneDigitsValidator.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import org.springframework.samples.petclinic.util.TelephoneNormalizer;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++public class TelephoneDigitsValidator implements ConstraintValidator<TelephoneDigits, String> {
++
++    @Override
++    public boolean isValid(String telephone, ConstraintValidatorContext context) {
++        if (telephone == null) {
++            return true;
++        }
++        return TelephoneNormalizer.normalize(telephone).length() == 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+new file mode 100644
+index 000000000..1040808ab
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Normalizes telephone numbers to their bare digits. Shared by the create-time validation
++ * constraint and the mapping that stores the value, so both agree on what "the digits" are.
++ */
++public final class TelephoneNormalizer {
++
++    private TelephoneNormalizer() {
++    }
++
++    /**
++     * Strip every non-digit character from the given telephone value.
++     *
++     * @param telephone the raw telephone value (may be {@code null})
++     * @return the digits contained in {@code telephone}, or an empty string when it is {@code null}
++     */
++    public static String normalize(String telephone) {
++        if (telephone == null) {
++            return "";
++        }
++        return telephone.replaceAll("\\D", "");
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2e218cdc9..fc373dcaa 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2031,8 +2031,8 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.TelephoneDigits"
+       required:
+         - firstName
+         - lastName
