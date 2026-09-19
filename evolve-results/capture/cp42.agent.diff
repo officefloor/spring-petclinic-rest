@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ba8c922ee..864ef80af 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(org.springframework.samples.petclinic.util.MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(), owner.getHouseholdSize(), owner.getRegistrationDate())))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.util.TimezoneResolver.forRegion(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "contactPreference",
+         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TimezoneResolver.java b/src/main/java/org/springframework/samples/petclinic/util/TimezoneResolver.java
+new file mode 100644
+index 000000000..1bf276191
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/TimezoneResolver.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's {@code timezone} (an IANA name) from their canonical region (locality)
++ * using a fixed region-to-timezone table.
++ */
++public final class TimezoneResolver {
++
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    private TimezoneResolver() {
++    }
++
++    /**
++     * Resolve the IANA timezone name for the given region.
++     *
++     * @param region the owner's canonical region (locality), may be {@code null}
++     * @return the IANA timezone name from the fixed table, or {@code null} when the region
++     * maps to no known timezone
++     */
++    public static String forRegion(String region) {
++        return REGION_TIMEZONE.get(region);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f409e3597..c1c0fca9b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2205,6 +2205,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name derived from their locality (region) using a
++                fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane). Absent when the locality maps to no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
