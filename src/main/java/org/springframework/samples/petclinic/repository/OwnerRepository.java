@@ -64,6 +64,13 @@ public interface OwnerRepository {
      */
     boolean existsByTelephone(String telephone) throws DataAccessException;
 
+    /**
+     * Count the total number of <code>Owner</code>s currently in the data store.
+     *
+     * @return the number of stored owners
+     */
+    long count() throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

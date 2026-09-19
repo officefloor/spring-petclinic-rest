@@ -161,6 +161,16 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public long count() throws DataAccessException {
+        Long count = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners",
+            new HashMap<String, Object>(),
+            Long.class
+        );
+        return count == null ? 0 : count;
+    }
+
+    @Override
     public void save(Owner owner) throws DataAccessException {
         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
         if (owner.isNew()) {

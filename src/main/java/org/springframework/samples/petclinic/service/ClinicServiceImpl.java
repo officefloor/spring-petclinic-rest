@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -240,6 +241,8 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            owner.setCustomerCode(
+                CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
         }
         ownerRepository.save(owner);
 
