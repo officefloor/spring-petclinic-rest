@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0cea32570..1026d5c7a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity()))")
++        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index c8c3f3b82..453e5faad 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -19,8 +19,9 @@ package org.springframework.samples.petclinic.util;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's {@code locality} (canonical region) from their city using a
+- * fixed city-to-region table.
++ * Derives an owner's {@code locality} (canonical region), preferring the postcode range
++ * (via {@link PostcodePolicy}) and falling back to a fixed city-to-region table when the
++ * postcode is absent or in no known range.
+  */
+ public final class LocalityResolver {
+ 
+@@ -35,13 +36,25 @@ public final class LocalityResolver {
+     }
+ 
+     /**
+-     * Resolve the canonical region for the given city.
++     * Resolve the canonical region for an owner, preferring the postcode.
++     *
++     * @param city the owner's city, may be {@code null}
++     * @param postcode the owner's postcode, may be {@code null}
++     * @return the region derived from the postcode range when it is known, otherwise the
++     * region from the city table, or {@code "UNKNOWN"} when neither is known
++     */
++    public static String resolve(String city, String postcode) {
++        return PostcodePolicy.regionForPostcode(postcode).orElseGet(() -> regionForCity(city));
++    }
++
++    /**
++     * Resolve the canonical region for the given city using the fixed city-to-region table.
+      *
+      * @param city the owner's city, may be {@code null}
+      * @return the region string from the fixed table, or {@code "UNKNOWN"} when the
+      * city is not in the table
+      */
+-    public static String resolve(String city) {
++    public static String regionForCity(String city) {
+         return CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/PostcodePolicy.java b/src/main/java/org/springframework/samples/petclinic/util/PostcodePolicy.java
+index 16f92c2a9..7e893d683 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/PostcodePolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/PostcodePolicy.java
+@@ -17,11 +17,13 @@
+ package org.springframework.samples.petclinic.util;
+ 
+ import java.util.Map;
++import java.util.Optional;
+ 
+ /**
+- * Decides whether a 4-digit postcode is valid for a city, using a fixed table of
+- * inclusive postcode ranges keyed by the city's region (as resolved by
+- * {@link LocalityResolver}). A city whose region is unknown accepts any 4-digit postcode.
++ * Decides whether a 4-digit postcode is valid for a city, and reverse-maps a postcode
++ * to its region, using a fixed table of inclusive postcode ranges keyed by region
++ * (as resolved by {@link LocalityResolver}). A city whose region is unknown accepts any
++ * 4-digit postcode.
+  */
+ public final class PostcodePolicy {
+ 
+@@ -43,11 +45,38 @@ public final class PostcodePolicy {
+      * the region's inclusive range; {@code false} otherwise
+      */
+     public static boolean isValidForCity(String city, String postcode) {
+-        int[] range = REGION_POSTCODE_RANGE.get(LocalityResolver.resolve(city));
++        int[] range = REGION_POSTCODE_RANGE.get(LocalityResolver.regionForCity(city));
+         if (range == null) {
+             return true;
+         }
+-        int value = Integer.parseInt(postcode);
++        return inRange(Integer.parseInt(postcode), range);
++    }
++
++    /**
++     * Reverse-map a postcode to the region whose range contains it.
++     *
++     * @param postcode a postcode string, may be {@code null} or non-numeric
++     * @return the matching region, or {@link Optional#empty()} when the postcode is
++     * absent, non-numeric, or in no known range
++     */
++    public static Optional<String> regionForPostcode(String postcode) {
++        if (postcode == null) {
++            return Optional.empty();
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return Optional.empty();
++        }
++        return REGION_POSTCODE_RANGE.entrySet().stream()
++            .filter(entry -> inRange(value, entry.getValue()))
++            .map(Map.Entry::getKey)
++            .findFirst();
++    }
++
++    private static boolean inRange(int value, int[] range) {
+         return value >= range[0] && value <= range[1];
+     }
+ }
