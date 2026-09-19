@@ -28,12 +28,17 @@ public final class FiscalYears {
         return date.getMonth().getValue() >= FISCAL_YEAR_START.getValue() ? year : year - 1;
     }
 
-    /** Label {@code date}'s fiscal year as 'FY&lt;YY&gt;', or null when {@code date} is absent. */
-    public static String label(LocalDate date) {
-        if (date == null) {
-            return null;
-        }
-        return String.format("FY%02d", startYear(date) % 100);
+    /**
+     * The two-digit fiscal-year segment 'YY' for {@code date}: the last two digits of the calendar
+     * year in which its fiscal year begins.
+     */
+    public static String yearOfCentury(LocalDate date) {
+        return String.format("%02d", startYear(date) % 100);
+    }
+
+    /** Label a two-digit fiscal-year segment 'YY' as 'FY&lt;YY&gt;'. */
+    public static String labelFor(String yearOfCentury) {
+        return "FY" + yearOfCentury;
     }
 
     /**

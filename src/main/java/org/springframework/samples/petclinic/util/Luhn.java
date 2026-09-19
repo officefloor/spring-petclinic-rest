@@ -2,7 +2,7 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Computes the Luhn check digit over the decimal digits contained in a string. Non-digit
- * characters are ignored, so a formatted code such as a customer code ('SYD-SMI-0007') is
+ * characters are ignored, so a formatted code such as a member id ('NSW263A7BD3E2') is
  * reduced to its digits before the standard Luhn algorithm is applied: working right to
  * left, every second digit is doubled (subtracting 9 when the result exceeds 9), the digits
  * are summed and the check digit is the amount needed to round the sum up to a multiple of 10.

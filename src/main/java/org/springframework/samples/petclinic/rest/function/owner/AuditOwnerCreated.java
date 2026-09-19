@@ -10,13 +10,12 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.audit.OwnerCreatedEvent;
 import org.springframework.samples.petclinic.rest.audit.OwnerEventSequence;
 import org.springframework.samples.petclinic.util.MembershipLevels;
-import org.springframework.samples.petclinic.util.MembershipNumbers;
 
 /**
  * Emits the audit trail for a newly created owner. Runs after {@link SaveOwner} has persisted
  * the entity, so the generated id is available. On the dedicated {@code AUDIT} logger it emits
- * both a human-readable line (owner id, assigned customer code, effective registration date,
- * derived membership points, level and number) and an immutable structured
+ * both a human-readable line (owner id, assigned member id, effective registration date,
+ * derived membership points and level) and an immutable structured
  * {@link OwnerCreatedEvent}, stamped with the next sequence number. Purely a side-effect step;
  * it leaves the owner unchanged for the responder.
  */
@@ -28,9 +27,9 @@ public class AuditOwnerCreated {
         LocalDate asOf = LocalDate.now();
         int points = MembershipLevels.pointsOf(owner, asOf);
         AUDIT.info(
-                "Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                points, MembershipLevels.levelOf(owner, asOf), MembershipNumbers.of(owner));
+                "Owner created: id={} memberId={} registrationDate={} membershipPoints={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                points, MembershipLevels.levelOf(owner, asOf));
         AUDIT.info(OwnerCreatedEvent.of(sequence.next(), owner, asOf).toJson());
     }
 }

@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * SHA-256 hashing rendered as a lower-case hex string. A single home for the digest so the
- * several identifiers derived from a hash (household id, customer code) share one
+ * several identifiers derived from a hash (household id, member id) share one
  * implementation instead of each re-deriving it.
  */
 public final class Sha256 {

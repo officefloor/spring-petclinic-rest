@@ -9,14 +9,11 @@ import org.springframework.samples.petclinic.util.MembershipLevels;
 
 /**
  * Immutable structured audit event for a newly created owner, rendered as a single-line JSON
- * object {@code {seq, ownerId, customerCode, membershipLevel, event}}.
+ * object {@code {seq, ownerId, memberId, membershipLevel, event}}.
  *
- * <p>The event carries the owner's current primary identifier. Today that identifier is the
- * customer code, so it is read in {@link #of} alone: when the primary identifier is later
- * unified into a member id, only that one place changes and the event carries the member id
- * instead.
+ * <p>The event carries the owner's primary identifier, the member id, read in {@link #of} alone.
  */
-public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel,
         String event) {
 
     /** The {@code event} discriminator carried by every owner-creation event. */
@@ -30,7 +27,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int 
      * identifier is read here, in one place.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner, LocalDate asOf) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
                 MembershipLevels.levelOf(owner, asOf), OWNER_CREATED);
     }
 

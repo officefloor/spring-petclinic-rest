@@ -9,11 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
-import org.springframework.samples.petclinic.util.CustomerCode;
-import org.springframework.samples.petclinic.util.FiscalYears;
-import org.springframework.samples.petclinic.util.Luhn;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.MembershipLevels;
-import org.springframework.samples.petclinic.util.MembershipNumbers;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.Telephones;
 import org.springframework.samples.petclinic.util.Timezones;
@@ -31,9 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -75,39 +70,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the membership number '&lt;customerCode&gt;-M&lt;YY&gt;', where YY is the last
-     * two digits of the registration date year (e.g. 'SYD-SMI-0007-M26'). Returns null when
-     * either source field is absent.
-     */
-    default String membershipNumber(Owner owner) {
-        return MembershipNumbers.of(owner);
-    }
-
-    /**
-     * Derive the owner's fiscal year 'FY&lt;YY&gt;' from the (business-day-adjusted) registration
-     * date, where the fiscal year starts on 1 July. Returns null when no registration date is set.
+     * Derive the owner's fiscal year 'FY&lt;YY&gt;' from the two-digit fiscal-year segment of the
+     * member id (see {@link MemberId}). Returns null when no member id has been assigned.
      */
     default String fiscalYear(Owner owner) {
-        return FiscalYears.label(owner.getRegistrationDate());
+        return MemberId.fiscalYearLabel(owner.getMemberId());
     }
 
     /**
-     * Derive the Luhn check digit (0 to 9) over the digits of the owner's customer code.
-     * Returns null when the customer code has not yet been assigned.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner.getCustomerCode() == null) {
-            return null;
-        }
-        return Luhn.checkDigit(owner.getCustomerCode());
-    }
-
-    /**
-     * Derive the owner's locality (canonical region) as the region component of the customer
-     * code identity, or 'UNKNOWN' when the code carries no region.
+     * Derive the owner's locality (canonical region) as the region component of the member id
+     * identity, or 'UNKNOWN' when the id carries no region.
      */
     default String locality(Owner owner) {
-        return CustomerCode.regionOf(owner.getCustomerCode());
+        return MemberId.regionOf(owner.getMemberId());
     }
 
     /**
