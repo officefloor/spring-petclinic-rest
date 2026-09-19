@@ -27,6 +27,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -282,10 +283,11 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, from 1 to 3: starts at 1, gains 1 when this owner has
-     * an email address, and gains 1 when this owner had no namesakes at creation
-     * ({@code namesakeCount} is 0). Capped at 3 (level 4 is reserved for tenure). Derived
-     * from stored state, never persisted.
+     * The owner's membership level, from 1 to 4: starts at 1, gains 1 when this owner has
+     * an email address, gains 1 when this owner had no namesakes at creation
+     * ({@code namesakeCount} is 0), and gains 1 when this owner's tenure exceeds 365 days.
+     * A newly created owner has zero tenure, so it never exceeds level 3. Capped at 4.
+     * Derived from stored state, never persisted.
      */
     public int getMembershipLevel() {
         int level = 1;
@@ -295,7 +297,22 @@ public class Owner extends Person {
         if (Integer.valueOf(0).equals(this.namesakeCount)) {
             level++;
         }
-        return Math.min(level, 3);
+        if (getTenureDays() > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
+    }
+
+    /**
+     * The owner's tenure in whole days: the number of days from the {@code registrationDate}
+     * to the current server date, or 0 when no registration date is recorded. Never negative
+     * in practice, since a future registration date is rejected at creation.
+     */
+    private long getTenureDays() {
+        if (this.registrationDate == null) {
+            return 0;
+        }
+        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
     }
 
     /**
