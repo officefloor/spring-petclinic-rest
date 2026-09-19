@@ -233,6 +233,12 @@ public class ClinicServiceImpl implements ClinicService {
         return vetRepository.findAll();
     }
 
+    /**
+     * Maximum number of owners allowed in a single city. Creating an owner in a city that has
+     * already reached this many owners is rejected as a conflict.
+     */
+    static final int MAX_OWNERS_PER_CITY = 50;
+
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
@@ -243,12 +249,16 @@ public class ClinicServiceImpl implements ClinicService {
         if (!householdMembers.isEmpty() && !sharesHousehold) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
+        long ownersInCity = ownerRepository.countByCity(owner.getCity());
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
+            throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
+        }
         owner.setNamesakeCount(countNamesakes(owner));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(CustomerCodeGenerator.format(
-            owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity()) + 1));
+            owner.getCity(), owner.getLastName(), ownersInCity + 1));
         if (!householdMembers.isEmpty()) {
             owner.setHouseholdId(joinHousehold(owner, householdMembers));
         }
