@@ -1,0 +1,150 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d771e7ad7..a71f8a174 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit",
+         expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.compute(owner.getCustomerCode()))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
++        expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail(), owner.getRegistrationDate()))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java
+index f1d39627f..c67512486 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java
+@@ -16,16 +16,21 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
++import java.time.LocalDate;
++
+ /**
+- * Derives an owner's {@code membershipLevel} from their namesake count and email address.
++ * Derives an owner's {@code membershipLevel} from their namesake count, email address and tenure.
+  */
+ public final class MembershipLevelFormatter {
+ 
+     /** The level every owner starts at. */
+     private static final int BASE_LEVEL = 1;
+ 
+-    /** Highest level reachable from email and namesake status; level 4 is reserved for tenure. */
+-    private static final int MAX_LEVEL = 3;
++    /** Highest level reachable from email and namesake status alone; the top level is tenure-gated. */
++    private static final int PRE_TENURE_MAX_LEVEL = 3;
++
++    /** Tenure, in days, an owner must exceed to reach the top membership level. */
++    private static final int TENURE_THRESHOLD_DAYS = 365;
+ 
+     private MembershipLevelFormatter() {
+     }
+@@ -33,13 +38,17 @@ public final class MembershipLevelFormatter {
+     /**
+      * Return the membership level: starting at {@value #BASE_LEVEL}, add 1 when an email address is
+      * present and add 1 when the owner has no namesakes ({@code namesakeCount} is {@code 0}), capped
+-     * at {@value #MAX_LEVEL}.
++     * at {@value #PRE_TENURE_MAX_LEVEL}; then add 1 more (reaching level 4) once the owner's tenure
++     * exceeds {@value #TENURE_THRESHOLD_DAYS} days. A newly registered owner has zero tenure, so a
++     * new owner never exceeds level {@value #PRE_TENURE_MAX_LEVEL}.
+      *
+-     * @param namesakeCount the number of owners sharing this owner's name, may be {@code null}
+-     * @param email         the owner's email address, may be {@code null}
+-     * @return the membership level, between {@value #BASE_LEVEL} and {@value #MAX_LEVEL}
++     * @param namesakeCount    the number of owners sharing this owner's name, may be {@code null}
++     * @param email            the owner's email address, may be {@code null}
++     * @param registrationDate the date the owner was registered, may be {@code null}
++     * @return the membership level, between {@value #BASE_LEVEL} and {@value #PRE_TENURE_MAX_LEVEL}
++     *         plus 1 when the tenure threshold is exceeded
+      */
+-    public static int format(Integer namesakeCount, String email) {
++    public static int format(Integer namesakeCount, String email, LocalDate registrationDate) {
+         int level = BASE_LEVEL;
+         if (email != null && !email.isBlank()) {
+             level++;
+@@ -47,6 +56,10 @@ public final class MembershipLevelFormatter {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, MAX_LEVEL);
++        level = Math.min(level, PRE_TENURE_MAX_LEVEL);
++        if (OwnerTenure.inDays(registrationDate) > TENURE_THRESHOLD_DAYS) {
++            level++;
++        }
++        return level;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerTenure.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerTenure.java
+new file mode 100644
+index 000000000..ca27b7c99
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerTenure.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++/**
++ * Derives an owner's tenure: the number of whole days elapsed since their registration date.
++ */
++public final class OwnerTenure {
++
++    private OwnerTenure() {
++    }
++
++    /**
++     * Return the owner's tenure in whole days, measured from their registration date to today.
++     * A missing registration date, or one that has not yet arrived, yields a tenure of {@code 0}.
++     *
++     * @param registrationDate the date the owner was registered, may be {@code null}
++     * @return the tenure in days, never negative
++     */
++    public static long inDays(LocalDate registrationDate) {
++        if (registrationDate == null) {
++            return 0;
++        }
++        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
++        return Math.max(days, 0);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6f1416e98..4e3570c0a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2176,13 +2176,15 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3. It starts at 1, gains 1
++                The owner's membership level, a number from 1 to 4. It starts at 1, gains 1
+                 when an email address is on file, gains 1 when the owner has no namesakes
+-                (namesakeCount is 0), and is capped at 3 (level 4 is reserved for tenure).
++                (namesakeCount is 0), and is capped at 3; it gains a final level (reaching 4)
++                once the owner's tenure exceeds 365 days. A newly registered owner has zero
++                tenure, so a new owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
