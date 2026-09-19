@@ -47,13 +47,13 @@ public class OwnerAuditLogger {
     /**
      * Record that an owner was successfully created.
      *
-     * @param owner the persisted owner, with its generated id, customer code, registration date,
-     *              membership level and membership number
+     * @param owner the persisted owner, with its generated id, member id, registration date
+     *              and membership level
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            owner.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(this.sequence.incrementAndGet(), owner);
         AUDIT.info(MAPPER.writeValueAsString(event));
     }

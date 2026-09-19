@@ -67,17 +67,14 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
@@ -205,23 +202,18 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
-    }
-
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
     /**
-     * Return this owner's current primary identifier: the single value that identifies the owner in
-     * external audit events. Currently the {@link #getCustomerCode() customer code}; when the customer
-     * code is unified into the membership number this will return that instead, so callers that only
-     * need "the owner's identifier" stay correct across that change.
+     * Return this owner's member id, the single identifier formatted
+     * {@code <REGION><FY><HASH8><CHK>}: the region code, the two-digit fiscal year, the eight
+     * upper-case hex characters of SHA-256 over the normalized telephone followed by the last name,
+     * and a single Luhn check digit over the digits of the preceding segments.
      */
-    @Transient
-    public String getPrimaryIdentifier() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
+    }
+
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -238,14 +230,6 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     /**
@@ -511,19 +495,14 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's locality: the region segment of the {@code customerCode} (the leading
-     * {@code <REGION>} of {@code <REGION>-<HASH8>}), which is fixed at creation from the postcode
-     * (preferred, matched against the known region ranges) falling back to the city-to-region table,
-     * or {@code "UNKNOWN"} when neither yields a region. Before the customer code is assigned the
-     * region is resolved directly from the postcode and city.
+     * Return this owner's locality: the region code resolved from the postcode (preferred, matched
+     * against the known region ranges) falling back to the city-to-region table, or {@code "UNKNOWN"}
+     * when neither yields a region. This is the same {@code <REGION>} segment that leads the owner's
+     * {@link #getMemberId() member id}.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode == null) {
-            return LocalityResolver.regionFor(this.postcode, this.city);
-        }
-        int separator = this.customerCode.indexOf('-');
-        return separator < 0 ? this.customerCode : this.customerCode.substring(0, separator);
+        return LocalityResolver.regionFor(this.postcode, this.city);
     }
 
     /**
@@ -545,15 +524,6 @@ public class Owner extends Person {
     @Transient
     public String getOwnerSegment() {
         return OwnerSegment.of(getMembershipLevel(), getLocality());
-    }
-
-    /**
-     * Return this owner's check digit: the single Luhn check digit computed over the digits of the
-     * {@code customerCode}.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        return this.customerCode == null ? null : LuhnCheckDigit.of(this.customerCode);
     }
 
     /**

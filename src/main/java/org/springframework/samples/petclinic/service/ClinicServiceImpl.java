@@ -49,8 +49,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final CustomerCodeGenerator customerCodeGenerator;
-    private final MembershipNumberGenerator membershipNumberGenerator;
+    private final MemberIdGenerator memberIdGenerator;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -59,16 +58,14 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator,
-        MembershipNumberGenerator membershipNumberGenerator) {
+        MemberIdGenerator memberIdGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.customerCodeGenerator = customerCodeGenerator;
-        this.membershipNumberGenerator = membershipNumberGenerator;
+        this.memberIdGenerator = memberIdGenerator;
     }
 
     @Override
@@ -242,18 +239,14 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
+        if (owner.isNew() && owner.getMemberId() == null) {
             String region = LocalityResolver.regionFor(owner.getPostcode(), owner.getCity());
-            String customerCode =
-                customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
-            owner.setCustomerCode(deduplicateCustomerCode(customerCode));
+            String memberId = memberIdGenerator.generate(
+                region, owner.getTelephone(), owner.getLastName(), owner.getRegistrationDate());
+            owner.setMemberId(deduplicateMemberId(memberId));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        }
-        if (owner.isNew() && owner.getMembershipNumber() == null) {
-            owner.setMembershipNumber(
-                membershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         }
         if (owner.isNew() && owner.getHouseholdSize() == null) {
             owner.setHouseholdSize(countHouseholdMembers(owner));
@@ -338,23 +331,23 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Ensure the given customer code does not collide with an already stored owner's. When it does,
+     * Ensure the given member id does not collide with an already stored owner's. When it does,
      * append {@code -<n>} using the smallest {@code n} of 2 or more that makes it unique. Used to
-     * guarantee that distinct owners always receive distinct customer codes at creation time.
+     * guarantee that distinct owners always receive distinct member ids at creation time.
      */
-    private String deduplicateCustomerCode(String customerCode) {
+    private String deduplicateMemberId(String memberId) {
         Set<String> existing = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(Collectors.toSet());
-        if (!existing.contains(customerCode)) {
-            return customerCode;
+        if (!existing.contains(memberId)) {
+            return memberId;
         }
         int suffix = 2;
-        while (existing.contains(customerCode + "-" + suffix)) {
+        while (existing.contains(memberId + "-" + suffix)) {
             suffix++;
         }
-        return customerCode + "-" + suffix;
+        return memberId + "-" + suffix;
     }
 
     private static boolean equalsIgnoreCase(String a, String b) {

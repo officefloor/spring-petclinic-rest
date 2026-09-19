@@ -21,29 +21,27 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Immutable structured audit event recording that an owner was created.
  *
- * <p>Serializes to the JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}}.
- * The {@code customerCode} carries the owner's current {@link Owner#getPrimaryIdentifier() primary
- * identifier}, so it tracks that identifier automatically if the customer code is later unified into
- * the membership number.
+ * <p>Serializes to the JSON object {@code {seq, ownerId, memberId, membershipLevel, event}}.
+ * The {@code memberId} carries the owner's {@link Owner#getMemberId() member id}, the single
+ * identifier for the owner.
  *
  * @param seq            monotonically increasing sequence number across owner creations
  * @param ownerId        the created owner's id
- * @param customerCode   the owner's current primary identifier
+ * @param memberId       the owner's member id
  * @param membershipLevel the owner's membership level at creation
  * @param event          the event marker, always {@value #EVENT}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
                                 String event) {
 
     /** The event marker distinguishing this event type on the {@code AUDIT} stream. */
     public static final String EVENT = "OWNER_CREATED";
 
     /**
-     * Build the event for the given persisted owner and sequence number, reading the owner's current
-     * primary identifier so the event stays correct as that identifier evolves.
+     * Build the event for the given persisted owner and sequence number.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
             owner.getMembershipLevel(), EVENT);
     }
 }
