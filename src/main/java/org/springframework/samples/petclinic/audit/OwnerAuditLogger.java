@@ -19,9 +19,8 @@ package org.springframework.samples.petclinic.audit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.util.MembershipLevelFormatter;
 import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
-import org.springframework.samples.petclinic.util.MembershipPointsFormatter;
+import org.springframework.samples.petclinic.util.OwnerMembership;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,9 +46,7 @@ public class OwnerAuditLogger {
     }
 
     private static int membershipLevel(Owner owner) {
-        int points = MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(),
-            owner.getHouseholdSize(), owner.getRegistrationDate());
-        return MembershipLevelFormatter.format(points);
+        return OwnerMembership.level(owner);
     }
 
     private static String membershipNumber(Owner owner) {

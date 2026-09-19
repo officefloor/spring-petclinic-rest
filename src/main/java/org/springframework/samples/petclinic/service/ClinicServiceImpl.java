@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
+import org.springframework.samples.petclinic.util.OwnerMembership;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -288,6 +289,7 @@ public class ClinicServiceImpl implements ClinicService {
         flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
+        owner.setMembershipLevel(OwnerMembership.cappedLevel(owner, householdMembers));
         owner.setCustomerCode(assignCustomerCode(owner));
         ownerRepository.save(owner);
         ownerAuditLogger.ownerCreated(owner);
