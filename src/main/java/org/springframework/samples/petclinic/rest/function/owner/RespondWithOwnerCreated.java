@@ -11,9 +11,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 
 public class RespondWithOwnerCreated {
 
-    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
+    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
+            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
-        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning);
+        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

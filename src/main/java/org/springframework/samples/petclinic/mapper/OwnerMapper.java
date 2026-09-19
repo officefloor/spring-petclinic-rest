@@ -31,6 +31,16 @@ public interface OwnerMapper {
         return ownerDto;
     }
 
+    /**
+     * Maps an {@link Owner} to its DTO and attaches both response-only warnings, which are computed
+     * per request rather than stored on the owner.
+     */
+    default OwnerDto toOwnerDto(Owner owner, boolean bulkSignupWarning, boolean capacityWarning) {
+        OwnerDto ownerDto = toOwnerDto(owner, bulkSignupWarning);
+        ownerDto.setCapacityWarning(capacityWarning);
+        return ownerDto;
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)

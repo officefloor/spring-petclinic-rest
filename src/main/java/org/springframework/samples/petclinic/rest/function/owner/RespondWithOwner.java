@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 
 public class RespondWithOwner {
 
-    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
+    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
+            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
             ObjectResponse<OwnerDto> response) {
-        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning));
+        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning));
     }
 }
