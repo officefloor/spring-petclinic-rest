@@ -45,6 +45,20 @@ public final class FiscalYear {
     }
 
     /**
+     * Return the last two digits of the fiscal year's starting calendar year, zero-padded (for
+     * example {@code "26"} for fiscal year 2026).
+     *
+     * @param date the date whose fiscal year to format, may be {@code null}
+     * @return the two-digit fiscal year, or {@code null} if {@code date} is {@code null}
+     */
+    public static String twoDigit(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return String.format("%02d", startingYear(date) % 100);
+    }
+
+    /**
      * Format the fiscal year containing {@code date} as {@code "FY<YY>"}, where {@code YY} is the
      * last two digits of the fiscal year's starting calendar year, zero-padded (for example
      * {@code "FY26"}).
@@ -56,7 +70,7 @@ public final class FiscalYear {
         if (date == null) {
             return null;
         }
-        return String.format("FY%02d", startingYear(date) % 100);
+        return "FY" + twoDigit(date);
     }
 
     /**

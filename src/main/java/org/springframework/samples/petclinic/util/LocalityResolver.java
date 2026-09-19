@@ -51,19 +51,19 @@ public final class LocalityResolver {
     }
 
     /**
-     * Resolve an owner's locality from its {@code customerCode}, whose {@code REGION} prefix is the
+     * Resolve an owner's locality from its {@code memberId}, whose {@code REGION} prefix is the
      * canonical region. Falls back to {@link #resolve(String, String)} for owners that predate the
-     * customer code (and so have none), keeping their locality unchanged.
+     * member id (and so have none), keeping their locality unchanged.
      *
-     * @param customerCode the owner's customer code, may be {@code null}
+     * @param memberId the owner's member id, may be {@code null}
      * @param city the owner's city, used only for the fallback, may be {@code null}
      * @param postcode the owner's postcode, used only for the fallback, may be {@code null}
-     * @return the region carried by the customer code, or the city/postcode-derived region when the
-     * customer code is absent
+     * @return the region carried by the member id, or the city/postcode-derived region when the
+     * member id is absent
      */
-    public static String fromCustomerCode(String customerCode, String city, String postcode) {
-        String region = CustomerCodeGenerator.region(customerCode);
-        return region != null ? region : resolve(city, postcode);
+    public static String fromMemberId(String memberId, String city, String postcode) {
+        String region = MemberIdGenerator.region(memberId);
+        return region != null && !region.isEmpty() ? region : resolve(city, postcode);
     }
 
     /**

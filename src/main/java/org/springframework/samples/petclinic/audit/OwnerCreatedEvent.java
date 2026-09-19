@@ -19,23 +19,21 @@ package org.springframework.samples.petclinic.audit;
 /**
  * Immutable structured audit event recording that an owner was created.
  *
- * <p>The {@code customerCode} field carries the owner's <em>current primary
- * identifier</em>. Today that is the customer code; when the customer code is
- * later unified into the member id, the value supplied here becomes the member
- * id without any change to consumers of the event.
+ * <p>The {@code memberId} field carries the owner's <em>current primary
+ * identifier</em>: their unified member id.
  *
  * @param seq             monotonically increasing sequence number across creates
  * @param ownerId         the persisted owner's id
- * @param customerCode    the owner's current primary identifier
+ * @param memberId        the owner's current primary identifier
  * @param membershipLevel the owner's membership level
  * @param event           the event type discriminator, always {@link #EVENT_TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel, String event) {
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel, String event) {
 
     /** Discriminator value carried by every owner-created event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel) {
-        this(seq, ownerId, customerCode, membershipLevel, EVENT_TYPE);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel) {
+        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
     }
 }

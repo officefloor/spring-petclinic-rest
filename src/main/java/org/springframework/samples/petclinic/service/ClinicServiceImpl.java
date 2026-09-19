@@ -24,10 +24,10 @@ import org.springframework.samples.petclinic.audit.OwnerAuditLogger;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
-import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.LocalityResolver;
+import org.springframework.samples.petclinic.util.MemberIdGenerator;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
 import org.springframework.samples.petclinic.util.OwnerMembership;
 import org.springframework.samples.petclinic.util.Soundex;
@@ -297,7 +297,7 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setMembershipLevel(OwnerMembership.cappedLevel(owner, householdMembers));
-        owner.setCustomerCode(assignCustomerCode(owner));
+        owner.setMemberId(assignMemberId(owner));
         ownerRepository.save(owner);
         ownerAuditLogger.ownerCreated(owner);
         return owner.getHouseholdId();
@@ -328,18 +328,19 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build the new owner's {@code customerCode} and de-duplicate it against existing owners. The
-     * base code is derived from the owner's locality, telephone and last name; if it already belongs
-     * to another owner it is suffixed with the smallest {@code "-<n>"} (n &gt;= 2) that is still free.
+     * Build the new owner's {@code memberId} and de-duplicate it against existing owners. The base
+     * id is derived from the owner's locality, registration date, telephone and last name; if it
+     * already belongs to another owner it is suffixed with the smallest {@code "-<n>"} (n &gt;= 2)
+     * that is still free.
      */
-    private String assignCustomerCode(Owner owner) {
-        String baseCode = CustomerCodeGenerator.format(
+    private String assignMemberId(Owner owner) {
+        String baseId = MemberIdGenerator.format(
             LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
-            owner.getTelephone(), owner.getLastName());
-        Set<String> takenCodes = ownerRepository.findByCustomerCodeStartingWith(baseCode).stream()
-            .map(Owner::getCustomerCode)
+            owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
+        Set<String> takenIds = ownerRepository.findByMemberIdStartingWith(baseId).stream()
+            .map(Owner::getMemberId)
             .collect(Collectors.toSet());
-        return CustomerCodeGenerator.deduplicate(baseCode, takenCodes::contains);
+        return MemberIdGenerator.deduplicate(baseId, takenIds::contains);
     }
 
     /**

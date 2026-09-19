@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
 import org.springframework.samples.petclinic.util.OwnerMembership;
 import org.springframework.stereotype.Component;
 
@@ -51,28 +50,21 @@ public class OwnerAuditLogger {
      */
     public void ownerCreated(Owner owner) {
         AUDIT.info(
-            "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel(owner), membershipNumber(owner));
+            "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel(owner));
         OwnerCreatedEvent event = new OwnerCreatedEvent(
             sequence.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel(owner));
         AUDIT.info(EVENT_MAPPER.writeValueAsString(event));
     }
 
     /**
-     * The owner's current primary identifier. This is the single place that changes
-     * when the customer code is unified into the member id: return {@code owner}'s
-     * member id instead and the emitted event carries it automatically.
+     * The owner's current primary identifier: their unified {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     private static int membershipLevel(Owner owner) {
         return OwnerMembership.level(owner);
-    }
-
-    private static String membershipNumber(Owner owner) {
-        return MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate());
     }
 }

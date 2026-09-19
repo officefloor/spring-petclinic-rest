@@ -67,7 +67,7 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByPostcode(String postcode);
 
     @Override
-    Collection<Owner> findByCustomerCodeStartingWith(String customerCode);
+    Collection<Owner> findByMemberIdStartingWith(String memberId);
 
     @Override
     @Query("SELECT COUNT(owner) FROM Owner owner")
