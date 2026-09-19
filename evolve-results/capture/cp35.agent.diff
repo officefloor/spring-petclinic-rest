@@ -1,0 +1,181 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 40519c678..f757b50f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,9 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -197,6 +200,29 @@ public class Owner extends Person {
+         this.postcode = postcode;
+     }
+ 
++    /**
++     * The id of an existing owner this owner was flagged as a possible (soft) duplicate of at
++     * creation, or {@code null} when none. A soft duplicate shares an existing owner's last name and
++     * postcode but has a different telephone (so it is not a hard {@link #getIdentityKey() identity}
++     * duplicate). Captured once at creation.
++     */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
++    /**
++     * Whether this owner was flagged as a possible (soft) duplicate of an existing owner at creation,
++     * i.e. whether {@link #getPossibleDuplicateOf()} is set.
++     */
++    @Transient
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicateOf != null;
++    }
++
+     /**
+      * Return this owner's name formatted for display as {@code "LastName, FirstName"}.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e51d97148..a19bb82a2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -175,6 +175,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
+             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
+         }
++        Owner possibleDuplicate = this.clinicService.findPossibleDuplicateOf(owner);
++        if (possibleDuplicate != null) {
++            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
++        }
+         this.clinicService.saveOwner(owner);
+         this.ownerAuditLogger.logCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 5902deaa9..0bceb62b6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -61,6 +61,7 @@ public interface ClinicService {
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 	Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException;
++	Owner findPossibleDuplicateOf(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException;
+ 	long countOwnersInCity(String city) throws DataAccessException;
+ 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bd220972d..12eeb6f80 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -339,6 +339,26 @@ public class ClinicServiceImpl implements ClinicService {
+             .toList();
+     }
+ 
++    /**
++     * Find an existing owner the given (not-yet-persisted) owner is a soft duplicate of: one sharing
++     * the same last name (case-insensitively) and postcode but with a different telephone, so it is
++     * not a hard {@link Owner#getIdentityKey() identity} duplicate. Returns the first such owner, or
++     * {@code null} when the owner has no postcode or no match exists.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public Owner findPossibleDuplicateOf(Owner owner) throws DataAccessException {
++        if (owner.getPostcode() == null) {
++            return null;
++        }
++        return ownerRepository.findAll().stream()
++            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
++                && owner.getPostcode().equals(existing.getPostcode())
++                && !Objects.equals(existing.getTelephone(), owner.getTelephone()))
++            .findFirst()
++            .orElse(null);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f01024ba0..2de6856b9 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 8f9109026..35e0c0ce1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,8 @@ CREATE TABLE owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 165f82781..07f75fff4 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BIT,
+   household_size INT,
+   postcode VARCHAR(4),
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 88ea7e0fc..2efedaea7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+-                                      postcode TEXT
++                                      postcode TEXT,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3e8383c9e..2e227180a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2172,6 +2172,20 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner was flagged at creation as a possible (soft) duplicate of an existing owner, being one that shares an existing owner's last name and postcode but has a different telephone (so it is not a hard identityKey duplicate); otherwise false. Captured once at creation.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner was flagged as a possible (soft) duplicate of at creation, or absent when it is not a possible duplicate.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
