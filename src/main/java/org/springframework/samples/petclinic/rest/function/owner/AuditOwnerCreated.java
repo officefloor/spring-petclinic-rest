@@ -22,10 +22,11 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        int points = MembershipLevels.pointsOf(owner, LocalDate.now());
+        LocalDate asOf = LocalDate.now();
+        int points = MembershipLevels.pointsOf(owner, asOf);
         AUDIT.info(
                 "Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                points, MembershipLevels.levelFor(points), MembershipNumbers.of(owner));
+                points, MembershipLevels.levelOf(owner, asOf), MembershipNumbers.of(owner));
     }
 }

@@ -6,13 +6,13 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Records whether the new owner is a suspected soft duplicate. Duplicates are caught in layers: a
- * hard duplicate (same {@link OwnerIdentity identity key}) is rejected by
- * {@link EnsureUniqueIdentity}, and a household collision (an existing owner sharing this owner's
- * {@link HouseholdKey household id} — same last name and postcode) is rejected as a 409 by
- * {@link EnsureUniqueHousehold}. This step marks the survivors: it sets {@code possibleDuplicate}
- * to whether an existing owner shares this owner's household id, with {@code possibleDuplicateOf}
- * set to that owner's id.
+ * Records whether the new owner is a suspected soft duplicate. A hard duplicate (same
+ * {@link OwnerIdentity identity key}) is rejected by {@link EnsureUniqueIdentity}. A household
+ * collision (an existing owner sharing this owner's {@link HouseholdKey household id} — same last
+ * name and postcode) is not rejected: the owner joins the household (their membership level is
+ * capped by {@link CapMembershipLevel}). This step marks such survivors: it sets
+ * {@code possibleDuplicate} to whether an existing owner shares this owner's household id, with
+ * {@code possibleDuplicateOf} set to that owner's id.
  *
  * <p>A declared household member ({@code sharesHousehold}) knowingly joins the household, so it is
  * not a suspected duplicate and stays {@code possibleDuplicate = false}.

@@ -121,9 +121,12 @@ public interface OwnerMapper {
         return MembershipLevels.pointsOf(owner, LocalDate.now());
     }
 
-    /** Derive the owner's numeric membership level (1 to 4) from the current membership points. */
+    /**
+     * Derive the owner's numeric membership level (1 to 4) from the current membership points,
+     * capped at the owner's household membership-level cap when one applies.
+     */
     default Integer membershipLevel(Owner owner) {
-        return MembershipLevels.levelFor(MembershipLevels.pointsOf(owner, LocalDate.now()));
+        return MembershipLevels.levelOf(owner, LocalDate.now());
     }
 
     /** Derive the owner's preferred contact method: EMAIL when an email is present, otherwise PHONE. */

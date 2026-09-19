@@ -55,6 +55,17 @@ public final class MembershipLevels {
         return points;
     }
 
+    /**
+     * The owner's effective membership level as at {@code asOf}: the points-derived level (see
+     * {@link #levelFor(int)}) reduced to the owner's {@link Owner#getMembershipLevelCap() cap} when
+     * one applies. A null cap means the level is uncapped.
+     */
+    public static int levelOf(Owner owner, LocalDate asOf) {
+        int level = levelFor(pointsOf(owner, asOf));
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
+    }
+
     /** Map membership points to a level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
     public static int levelFor(int points) {
         if (points >= 6) {
