@@ -19,6 +19,9 @@ package org.springframework.samples.petclinic.audit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.MembershipLevelFormatter;
+import org.springframework.samples.petclinic.util.MembershipNumberFormatter;
+import org.springframework.samples.petclinic.util.MembershipPointsFormatter;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,13 +34,25 @@ public class OwnerAuditLogger {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
-     * Record that an owner was successfully created, capturing its id, customer code and
-     * registration date.
+     * Record that an owner was successfully created, capturing its id, customer code,
+     * registration date, membership level and membership number.
      *
      * @param owner the persisted owner (with its generated id) to audit
      */
     public void ownerCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info(
+            "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            membershipLevel(owner), membershipNumber(owner));
+    }
+
+    private static int membershipLevel(Owner owner) {
+        int points = MembershipPointsFormatter.format(owner.getNamesakeCount(), owner.getEmail(),
+            owner.getHouseholdSize(), owner.getRegistrationDate());
+        return MembershipLevelFormatter.format(points);
+    }
+
+    private static String membershipNumber(Owner owner) {
+        return MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate());
     }
 }
