@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
+import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -234,11 +235,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional
-    public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+    public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         if (ownerRepository.existsByTelephone(owner.getTelephone())) {
             throw new DuplicateTelephoneException(owner.getTelephone());
         }
-        if (!sharesHousehold && sharesHouseholdWithExistingOwner(owner)) {
+        List<Owner> householdMembers = findHouseholdMembers(owner);
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
             throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
         if (owner.getRegistrationDate() == null) {
@@ -246,7 +248,26 @@ public class ClinicServiceImpl implements ClinicService {
         }
         owner.setCustomerCode(
             CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
+        if (!householdMembers.isEmpty()) {
+            owner.setHouseholdId(joinHousehold(owner, householdMembers));
+        }
         ownerRepository.save(owner);
+        return owner.getHouseholdId();
+    }
+
+    /**
+     * Assign the stable household identifier to the new owner and to every existing member of the
+     * household, persisting the members whose identifier changes, and return the shared identifier.
+     */
+    private String joinHousehold(Owner owner, List<Owner> householdMembers) {
+        String householdId = HouseholdIdGenerator.generate(owner.getLastName(), owner.getAddress());
+        for (Owner member : householdMembers) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        return householdId;
     }
 
     @Override
@@ -256,16 +277,17 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Report whether another owner already shares this owner's household, i.e. has the same last name and
+     * Find the existing owners that already share this owner's household, i.e. that have the same last name and
      * address compared case-insensitively and with runs of whitespace collapsed.
      */
-    private boolean sharesHouseholdWithExistingOwner(Owner owner) {
+    private List<Owner> findHouseholdMembers(Owner owner) {
         String address = TextNormalizer.normalize(owner.getAddress());
         if (address == null) {
-            return false;
+            return List.of();
         }
         return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
-            .anyMatch(existing -> address.equals(TextNormalizer.normalize(existing.getAddress())));
+            .filter(existing -> address.equals(TextNormalizer.normalize(existing.getAddress())))
+            .toList();
     }
 
     @Override
