@@ -88,7 +88,7 @@ public interface OwnerRepository {
 
     /**
      * Count the <code>Owner</code>s already registered in the given city, compared case-insensitively.
-     * Used to derive the per-city sequence number embedded in an owner's customer code.
+     * Used to enforce the maximum number of owners allowed per city.
      *
      * @param city the city to count owners for
      * @return the number of stored owners in that city

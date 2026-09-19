@@ -16,10 +16,6 @@
 
 package org.springframework.samples.petclinic.util;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 /**
  * Derives the stable {@code householdId} shared by owners that live in the same household,
  * i.e. that have the same last name and address. The identifier is a deterministic function
@@ -45,19 +41,6 @@ public final class HouseholdIdGenerator {
      */
     public static String generate(String lastName, String address) {
         String key = TextNormalizer.normalize(lastName) + "\n" + TextNormalizer.normalize(address);
-        return shaHex(key).substring(0, LENGTH).toUpperCase();
-    }
-
-    private static String shaHex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
-        }
+        return Sha256.hex(key).substring(0, LENGTH).toUpperCase();
     }
 }

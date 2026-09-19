@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
 import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
@@ -277,7 +278,8 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(CustomerCodeGenerator.format(
-            owner.getCity(), owner.getLastName(), ownersInCity + 1));
+            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
+            owner.getTelephone(), owner.getLastName()));
         if (sharesHousehold && !householdMembers.isEmpty()) {
             owner.setHouseholdId(joinHousehold(owner, householdMembers));
         }

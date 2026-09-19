@@ -29,7 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity(), owner.getPostcode()))")
+        expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
     @Mapping(target = "identityKey",
