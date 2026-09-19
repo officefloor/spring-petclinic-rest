@@ -17,7 +17,7 @@
 package org.springframework.samples.petclinic.util;
 
 /**
- * Builds an owner's {@code customerCode} from a last name and a global sequence number.
+ * Builds an owner's {@code customerCode} from a city, a last name and a per-city sequence number.
  */
 public final class CustomerCodeGenerator {
 
@@ -25,16 +25,21 @@ public final class CustomerCodeGenerator {
     }
 
     /**
-     * Format a customer code as {@code "<LAST3>-<NNNN>"}, where {@code LAST3} is the
-     * upper-cased first three letters of the last name and {@code NNNN} is the sequence
-     * number zero-padded to four digits (for example {@code "SMI-0007"}).
+     * Format a customer code as {@code "<CITY3>-<LAST3>-<NNNN>"}, where {@code CITY3} is the
+     * upper-cased first three letters of the city, {@code LAST3} the upper-cased first three
+     * letters of the last name and {@code NNNN} the per-city sequence number zero-padded to
+     * four digits (for example {@code "LON-SMI-0007"}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
-     * @param sequence the global sequence number to encode
+     * @param sequence the per-city sequence number to encode
      * @return the formatted customer code
      */
-    public static String format(String lastName, long sequence) {
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        return String.format("%s-%04d", last3, sequence);
+    public static String format(String city, String lastName, long sequence) {
+        return String.format("%s-%s-%04d", firstThreeUpper(city), firstThreeUpper(lastName), sequence);
+    }
+
+    private static String firstThreeUpper(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }

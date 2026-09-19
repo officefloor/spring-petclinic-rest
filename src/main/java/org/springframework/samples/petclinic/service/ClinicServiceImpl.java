@@ -247,8 +247,8 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(
-            CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
+        owner.setCustomerCode(CustomerCodeGenerator.format(
+            owner.getCity(), owner.getLastName(), ownerRepository.countByCity(owner.getCity()) + 1));
         if (!householdMembers.isEmpty()) {
             owner.setHouseholdId(joinHousehold(owner, householdMembers));
         }

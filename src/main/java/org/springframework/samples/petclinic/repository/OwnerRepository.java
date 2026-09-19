@@ -82,6 +82,15 @@ public interface OwnerRepository {
      */
     long count() throws DataAccessException;
 
+    /**
+     * Count the <code>Owner</code>s already registered in the given city, compared case-insensitively.
+     * Used to derive the per-city sequence number embedded in an owner's customer code.
+     *
+     * @param city the city to count owners for
+     * @return the number of stored owners in that city
+     */
+    long countByCity(String city) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
