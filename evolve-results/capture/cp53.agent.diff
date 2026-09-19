@@ -1,0 +1,131 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a831d507e..91fb886cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -278,6 +278,17 @@ public class Owner extends Person {
+         return (this.getId() != null) ? "/api/owners/" + this.getId() : null;
+     }
+ 
++    /**
++     * The owner's primary identifier: the single business identifier that currently identifies this
++     * owner to the outside world. Today this is the {@link #getCustomerCode() customerCode}; when the
++     * customer code is later unified into a member id this is the one place that changes, and every
++     * consumer (e.g. the {@code OWNER_CREATED} audit event) follows automatically.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return this.customerCode;
++    }
++
+     /**
+      * The owner's locality: the REGION portion of its {@code customerCode} (see
+      * {@link CustomerCode}), which is the region derived from the postcode or city at creation. This
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditSequence.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditSequence.java
+new file mode 100644
+index 000000000..e9a2bd944
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditSequence.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Supplies the monotonically increasing sequence numbers stamped on audit events, so events can be
++ * totally ordered across owner creates.
++ *
++ * <p>Deliberately in-memory and non-transactional (like {@link IdempotencyStore}): the counter must
++ * advance once per emitted event and never roll back with the request that consumed it, so the
++ * ordering stays stable and strictly increasing for the life of the run.
++ */
++@Component
++public class AuditSequence {
++
++    private final AtomicLong counter = new AtomicLong();
++
++    /** The next sequence number; strictly greater than every value previously returned. */
++    public long next() {
++        return this.counter.incrementAndGet();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmitOwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmitOwnerCreatedEvent.java
+new file mode 100644
+index 000000000..d81a53001
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EmitOwnerCreatedEvent.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++
++import tools.jackson.databind.ObjectMapper;
++
++/**
++ * Emits the immutable {@link OwnerCreatedEvent} as a single JSON line on the {@code AUDIT} logger, in
++ * addition to the human-readable line from {@link AuditOwnerCreated}. Runs after {@link SaveOwner} so
++ * the owner id is assigned, and draws its sequence number from {@link AuditSequence} so events are
++ * totally ordered across creates.
++ */
++public class EmitOwnerCreatedEvent {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    private static final ObjectMapper JSON = new ObjectMapper();
++
++    public void service(@Val Owner owner, AuditSequence sequence) {
++        OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.next(), owner);
++        AUDIT.info(JSON.writeValueAsString(event));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..06a17969c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured audit event emitted when an owner is created, serialised to JSON on the
++ * {@code AUDIT} logger by {@link EmitOwnerCreatedEvent}.
++ *
++ * <p>The identifier field carries the owner's current
++ * {@link Owner#getPrimaryIdentifier() primary identifier} &mdash; the {@code customerCode} today.
++ * Sourcing it from that one accessor means that when the primary identifier is later unified into a
++ * member id, the event carries the member id without any change here.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++        String event) {
++
++    /** The event-type marker carried by every owner-created event. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    /** Build the event for a freshly created, persisted {@code owner}, stamped with {@code seq}. */
++    public static OwnerCreatedEvent of(long seq, Owner owner) {
++        return new OwnerCreatedEvent(seq, owner.getId(), owner.getPrimaryIdentifier(),
++                owner.getMembershipLevel(), OWNER_CREATED);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 47e1ef7b0..b475b7475 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -118,6 +118,11 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: emitEvent
++
++emitEvent:
++  class: org.springframework.samples.petclinic.rest.function.owner.EmitOwnerCreatedEvent
++  govern: [ transaction ]
+   next: resolveBulkWarning
+ 
+ resolveBulkWarning:
