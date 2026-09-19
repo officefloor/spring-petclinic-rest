@@ -278,9 +278,11 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the REGION portion of its {@code memberId} (see {@link MemberId}), which is
-     * the region derived from the postcode or city at creation. This disambiguates cities that share a
-     * name. Yields {@code "UNKNOWN"} when the owner has no member id or it resolves to no region.
+     * The owner's locality: the plain REGION portion of its {@code memberId} (see {@link MemberId}),
+     * which is the region derived from the postcode or city at creation, read back with the version-2
+     * tag stripped. This disambiguates cities that share a name and, being user-facing, never carries
+     * the {@code V2} tag. Yields {@code "UNKNOWN"} when the owner has no member id or it resolves to no
+     * region.
      */
     @Transient
     public String getLocality() {
@@ -359,8 +361,9 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value all duplicate detection is expressed
-     * through, the lower-case SHA-256 hex digest of
-     * {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}. Two owners are duplicates only
+     * through, the lower-case SHA-256 hex digest of the {@link IdentityVersion#taggedInput
+     * version-tagged} {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}. Mixing in the
+     * {@code V2} tag means no version-1 identity key is ever reproduced. Two owners are duplicates only
      * when their whole identity keys are equal, so household members (same last name and postcode)
      * with different telephones have different keys and are not hard duplicates.
      */
@@ -369,7 +372,7 @@ public class Owner extends Person {
         String raw = blankToEmpty(this.telephone) + '|'
                 + blankToEmpty(this.email).toLowerCase(Locale.ROOT) + '|'
                 + Soundex.encode(this.getLastName());
-        return Sha256.lowerHex(raw);
+        return Sha256.lowerHex(IdentityVersion.taggedInput(raw));
     }
 
     private static String blankToEmpty(String value) {

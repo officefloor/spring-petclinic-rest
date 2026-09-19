@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.List;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Sha256;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -31,16 +32,18 @@ final class Household {
     }
 
     /**
-     * The deterministic household id for the given last name and postcode: the first
-     * {@value #ID_LENGTH} hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)}.
-     * Returns {@code null} when no postcode is supplied, since a household is keyed on postcode and an
-     * owner without one belongs to no household.
+     * The deterministic version-2 household id for the given last name and postcode: the first
+     * {@value #ID_LENGTH} hex characters of {@code SHA-256} over the {@link IdentityVersion#taggedInput
+     * version-tagged} {@code normalizedLastName + '|' + postcode}. Mixing in the {@code V2} tag ensures
+     * no version-1 household id is ever reproduced. Returns {@code null} when no postcode is supplied,
+     * since a household is keyed on postcode and an owner without one belongs to no household.
      */
     static String idFor(String lastName, String postcode) {
         if (!StringUtils.hasText(postcode)) {
             return null;
         }
-        return Sha256.hex(normalizeLastName(lastName) + '|' + postcode).substring(0, ID_LENGTH);
+        return Sha256.hex(IdentityVersion.taggedInput(normalizeLastName(lastName) + '|' + postcode))
+            .substring(0, ID_LENGTH);
     }
 
     /**

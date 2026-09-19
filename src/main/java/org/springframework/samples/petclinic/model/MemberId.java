@@ -4,11 +4,12 @@ import java.util.function.Predicate;
 
 /**
  * The owner's member id, the single business identity every downstream value is derived from,
- * formatted {@code <REGION><FY><HASH8><CHK>} (no separators, e.g. {@code NSW261A2B3C4D5}):
+ * formatted {@code <REGION><FY><HASH8><CHK>} (no separators, e.g. {@code V2NSW261A2B3C4D5}):
  *
  * <ul>
- *   <li>REGION &mdash; the region code derived from the owner's postcode (falling back to its city,
- *       else {@link CityRegion#UNKNOWN}).</li>
+ *   <li>REGION &mdash; the version-2 region code (see {@link IdentityVersion#taggedRegion(String)}):
+ *       the region derived from the owner's postcode (falling back to its city, else
+ *       {@link CityRegion#UNKNOWN}) prefixed with the {@code V2} version tag.</li>
  *   <li>FY &mdash; the two-digit fiscal year (starting 1 July) of the business-day-adjusted
  *       registration date (see {@link FiscalYear}).</li>
  *   <li>HASH8 &mdash; the first 8 upper-case hex characters of SHA-256 over the normalized telephone
@@ -17,7 +18,8 @@ import java.util.function.Predicate;
  *       {@code <REGION><FY><HASH8>}, guarding against transcription errors of the id.</li>
  * </ul>
  *
- * <p>The owner's {@link Owner#getLocality() locality} is the REGION read back out of it.
+ * <p>The owner's {@link Owner#getLocality() locality} is the plain REGION read back out of it (with the
+ * version tag stripped), so the tag stays inside the identifier and never reaches the client.
  */
 public final class MemberId {
 
@@ -36,7 +38,7 @@ public final class MemberId {
      */
     public static String of(String region, int fiscalYearTwoDigit, String telephone, String lastName) {
         String hash8 = Sha256.hex(telephone + lastName).substring(0, HASH_LENGTH);
-        String body = String.format("%s%02d%s", region, fiscalYearTwoDigit, hash8);
+        String body = String.format("%s%02d%s", IdentityVersion.taggedRegion(region), fiscalYearTwoDigit, hash8);
         return body + Luhn.checkDigit(body);
     }
 
@@ -58,9 +60,11 @@ public final class MemberId {
     }
 
     /**
-     * The REGION portion of {@code memberId} &mdash; everything before its fixed-width
-     * {@code <FY><HASH8><CHK>} tail (and before any de-duplication suffix) &mdash; or
-     * {@link CityRegion#UNKNOWN} when the id is absent or carries no region.
+     * The plain REGION portion of {@code memberId} &mdash; everything before its fixed-width
+     * {@code <FY><HASH8><CHK>} tail (and before any de-duplication suffix), with the version tag
+     * stripped (see {@link IdentityVersion#plainRegion(String)}) &mdash; or {@link CityRegion#UNKNOWN}
+     * when the id is absent or carries no region. This is the client-facing region: the {@code V2}
+     * version tag embedded inside the id never appears in it.
      */
     public static String regionOf(String memberId) {
         if (memberId == null) {
@@ -68,6 +72,9 @@ public final class MemberId {
         }
         int dash = memberId.indexOf('-');
         String base = (dash < 0) ? memberId : memberId.substring(0, dash);
-        return (base.length() <= TAIL_LENGTH) ? CityRegion.UNKNOWN : base.substring(0, base.length() - TAIL_LENGTH);
+        if (base.length() <= TAIL_LENGTH) {
+            return CityRegion.UNKNOWN;
+        }
+        return IdentityVersion.plainRegion(base.substring(0, base.length() - TAIL_LENGTH));
     }
 }
