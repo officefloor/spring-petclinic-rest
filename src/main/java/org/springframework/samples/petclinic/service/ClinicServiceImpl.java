@@ -50,6 +50,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final CustomerCodeGenerator customerCodeGenerator;
     private final HouseholdNormalizer householdNormalizer;
     private final HouseholdIdGenerator householdIdGenerator;
+    private final MembershipNumberGenerator membershipNumberGenerator;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -60,7 +61,8 @@ public class ClinicServiceImpl implements ClinicService {
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
         HouseholdNormalizer householdNormalizer,
-        HouseholdIdGenerator householdIdGenerator) {
+        HouseholdIdGenerator householdIdGenerator,
+        MembershipNumberGenerator membershipNumberGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -70,6 +72,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdNormalizer = householdNormalizer;
         this.householdIdGenerator = householdIdGenerator;
+        this.membershipNumberGenerator = membershipNumberGenerator;
     }
 
     @Override
@@ -248,6 +251,10 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        }
+        if (owner.isNew() && owner.getMembershipNumber() == null) {
+            owner.setMembershipNumber(
+                membershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         }
         ownerRepository.save(owner);
     }
