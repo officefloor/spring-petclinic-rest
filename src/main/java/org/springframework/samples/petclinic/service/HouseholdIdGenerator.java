@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.model.Sha256Hex;
 import org.springframework.stereotype.Component;
 
@@ -41,14 +42,15 @@ public class HouseholdIdGenerator {
     /**
      * Build the household identifier shared by owners with the given last name and
      * postcode: the first {@value #ID_LENGTH} upper-case hex characters of SHA-256 over
-     * {@code normalize(lastName) + "|" + postcode}.
+     * {@code normalize(lastName) + "|" + postcode}, with the version tag mixed in (see
+     * {@link OwnerIdentityVersion#taggedInput(String)}).
      *
      * @param lastName the household's last name
      * @param postcode the household's postcode
      * @return a stable, upper-case hexadecimal identifier for the household
      */
     public String generate(String lastName, String postcode) {
-        String key = householdNormalizer.normalize(lastName) + "|" + postcode;
+        String key = OwnerIdentityVersion.taggedInput(householdNormalizer.normalize(lastName) + "|" + postcode);
         return Sha256Hex.upperHexPrefix(key, ID_LENGTH);
     }
 }

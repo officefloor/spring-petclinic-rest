@@ -204,9 +204,11 @@ public class Owner extends Person {
 
     /**
      * Return this owner's member id, the single identifier formatted
-     * {@code <REGION><FY><HASH8><CHK>}: the region code, the two-digit fiscal year, the eight
-     * upper-case hex characters of SHA-256 over the normalized telephone followed by the last name,
-     * and a single Luhn check digit over the digits of the preceding segments.
+     * {@code <REGION><FY><HASH8><CHK>}: the region code
+     * {@link OwnerIdentityVersion#identityRegion(String) used inside the identifiers} (the plain
+     * region with the version tag mixed in), the two-digit fiscal year, the eight upper-case hex
+     * characters of SHA-256 over the normalized telephone followed by the last name, and a single
+     * Luhn check digit over the digits of the preceding segments.
      */
     public String getMemberId() {
         return this.memberId;
@@ -516,8 +518,9 @@ public class Owner extends Person {
     /**
      * Return this owner's locality: the region code resolved from the postcode (preferred, matched
      * against the known region ranges) falling back to the city-to-region table, or {@code "UNKNOWN"}
-     * when neither yields a region. This is the same {@code <REGION>} segment that leads the owner's
-     * {@link #getMemberId() member id}.
+     * when neither yields a region. This is the plain region code (for example {@code NSW}); the
+     * identifiers instead lead with the {@link OwnerIdentityVersion#identityRegion(String) tagged
+     * region}, so the version tag never appears in this user-facing value.
      */
     @Transient
     public String getLocality() {
@@ -556,7 +559,7 @@ public class Owner extends Person {
     @Transient
     public String getIdentityKey() {
         String core = keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + Soundex.encode(this.getLastName());
-        return Sha256Hex.lowerHex(core);
+        return Sha256Hex.lowerHex(OwnerIdentityVersion.taggedInput(core));
     }
 
     private static String keyPart(String value) {

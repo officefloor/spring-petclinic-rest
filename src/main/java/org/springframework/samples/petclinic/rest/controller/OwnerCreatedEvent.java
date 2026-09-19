@@ -21,27 +21,33 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Immutable structured audit event recording that an owner was created.
  *
- * <p>Serializes to the JSON object {@code {seq, ownerId, memberId, membershipLevel, event}}.
- * The {@code memberId} carries the owner's {@link Owner#getMemberId() member id}, the single
- * identifier for the owner.
+ * <p>Serializes to the schema-version-2 JSON object
+ * {@code {seq, schemaVersion, ownerId, memberId, membershipLevel, ownerSegment, event}}. The
+ * {@code memberId} carries the owner's version-2 {@link Owner#getMemberId() member id}, the single
+ * identifier for the owner, and {@code ownerSegment} is recomputed from the version-2 identity.
  *
  * @param seq            monotonically increasing sequence number across owner creations
+ * @param schemaVersion  the audit event schema version, always {@value #SCHEMA_VERSION}
  * @param ownerId        the created owner's id
  * @param memberId       the owner's member id
  * @param membershipLevel the owner's membership level at creation
+ * @param ownerSegment   the owner's segment recomputed from the version-2 identity
  * @param event          the event marker, always {@value #EVENT}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-                                String event) {
+public record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
+                                Integer membershipLevel, String ownerSegment, String event) {
 
     /** The event marker distinguishing this event type on the {@code AUDIT} stream. */
     public static final String EVENT = "OWNER_CREATED";
+
+    /** The schema version of this structured audit event. */
+    public static final int SCHEMA_VERSION = 2;
 
     /**
      * Build the event for the given persisted owner and sequence number.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
-            owner.getMembershipLevel(), EVENT);
+        return new OwnerCreatedEvent(seq, SCHEMA_VERSION, owner.getId(), owner.getMemberId(),
+            owner.getMembershipLevel(), owner.getOwnerSegment(), EVENT);
     }
 }
