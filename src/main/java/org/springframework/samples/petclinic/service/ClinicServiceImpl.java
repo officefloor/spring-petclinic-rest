@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -257,6 +258,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getHouseholdSize() == null) {
             owner.setHouseholdSize(countHouseholdMembers(owner));
         }
+        if (owner.isNew() && owner.getMembershipLevelCap() == null) {
+            owner.setMembershipLevelCap(computeMembershipLevelCap(owner));
+        }
         ownerRepository.save(owner);
     }
 
@@ -275,6 +279,27 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existingOwner -> householdId.equals(existingOwner.getHouseholdId()))
             .count();
         return (int) (existing + 1);
+    }
+
+    /**
+     * Determine the membership-level ceiling for the given (not yet persisted) owner: one above the
+     * highest {@link Owner#getMembershipLevel() membership level} among the already stored,
+     * non-deleted members of its household (owners sharing its {@code householdId}). Returns
+     * {@code null} when the owner has no household ({@code householdId} is null) or no existing
+     * household member, in which case no ceiling applies. Used to cap an owner's membership level
+     * at creation time.
+     */
+    private Integer computeMembershipLevelCap(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return null;
+        }
+        OptionalInt maxLevel = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        return maxLevel.isPresent() ? maxLevel.getAsInt() + 1 : null;
     }
 
     /**

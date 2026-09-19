@@ -28,7 +28,6 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
-import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
@@ -192,10 +191,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
-        }
-        Owner householdDuplicate = this.clinicService.findHouseholdDuplicateOf(owner);
-        if (householdDuplicate != null && !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            throw new DuplicateHouseholdException(owner.getHouseholdId());
         }
         this.clinicService.saveOwner(owner);
         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());

@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
@@ -292,6 +295,20 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}: one above
+     * the highest membership level among the household members that already existed when this owner
+     * was created, or {@code null} when the owner joined no existing household and is therefore
+     * uncapped. Captured once at creation.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * Whether this owner has been soft-deleted. A newly created owner is not deleted; deleting an owner
      * flags it {@code true} and retains the record rather than removing it. Duplicate and identity
      * checks at creation ignore owners flagged deleted.
@@ -390,10 +407,20 @@ public class Owner extends Person {
 
     /**
      * Return this owner's membership level, derived from {@link #getMembershipPoints() membership
-     * points}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     * points}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more; then limited to the
+     * owner's {@link #getMembershipLevelCap() membership-level ceiling} when one applies.
      */
     @Transient
     public Integer getMembershipLevel() {
+        int level = membershipLevelFromPoints();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    /** Map this owner's {@link #getMembershipPoints() membership points} to the uncapped level. */
+    private int membershipLevelFromPoints() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;

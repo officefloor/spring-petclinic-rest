@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INTEGER,
   postcode VARCHAR(4),
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 
