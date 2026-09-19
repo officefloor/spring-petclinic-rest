@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.samples.petclinic.rest.controller;
+package org.springframework.samples.petclinic.model;
 
 import java.util.Optional;
 
@@ -25,7 +25,7 @@ import java.util.Optional;
  * <p>For example {@code +61} (Australia) requires 9 national digits while {@code +1} (the
  * North American Numbering Plan) requires 10.
  */
-enum E164CountryCode {
+public enum E164CountryCode {
 
     AUSTRALIA("61", 9),
     NORTH_AMERICA("1", 10);
@@ -39,12 +39,12 @@ enum E164CountryCode {
         this.nationalNumberLength = nationalNumberLength;
     }
 
-    String callingCode() {
+    public String callingCode() {
         return this.callingCode;
     }
 
     /** Whether {@code nationalDigits} carries exactly the number of digits this country requires. */
-    boolean acceptsNationalNumber(String nationalDigits) {
+    public boolean acceptsNationalNumber(String nationalDigits) {
         return nationalDigits.length() == this.nationalNumberLength;
     }
 
@@ -56,7 +56,7 @@ enum E164CountryCode {
      * @param e164Digits the E.164 digits without the leading {@code +}
      * @return the matching country, or empty if none is recognized
      */
-    static Optional<E164CountryCode> forE164Digits(String e164Digits) {
+    public static Optional<E164CountryCode> forE164Digits(String e164Digits) {
         E164CountryCode match = null;
         for (E164CountryCode candidate : values()) {
             if (e164Digits.startsWith(candidate.callingCode)

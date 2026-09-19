@@ -108,6 +108,16 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * Return this owner's stored E.164 {@link #getTelephone() telephone} formatted for human display
+     * as the calling code, a space, then the national digits grouped in threes, e.g.
+     * {@code "+61 412 345 678"}. See {@link TelephoneFormatter}.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        return TelephoneFormatter.toDisplay(this.telephone);
+    }
+
     public String getEmail() {
         return this.email;
     }
