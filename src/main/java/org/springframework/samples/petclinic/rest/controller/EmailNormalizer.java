@@ -25,8 +25,8 @@ import org.springframework.stereotype.Component;
  * Normalizes an owner's optional email address on create/update.
  *
  * <p>The email is optional: a {@code null} or blank value is treated as absent and left
- * unset. When a value is present it must be a syntactically valid address; it is then
- * stored and returned lower-cased.
+ * unset. When a value is present it must be a syntactically valid address whose domain is
+ * not on the disposable-domain blocklist; it is then stored and returned lower-cased.
  */
 @Component
 public class EmailNormalizer {
@@ -38,12 +38,19 @@ public class EmailNormalizer {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+
+    public EmailNormalizer(DisposableEmailDomainValidator disposableEmailDomainValidator) {
+        this.disposableEmailDomainValidator = disposableEmailDomainValidator;
+    }
+
     /**
      * Normalizes an optional email address.
      *
      * @param raw the submitted email value, possibly {@code null} or blank
      * @return the lower-cased email, or {@code null} when no value was supplied
      * @throws InvalidEmailException if a value is present but not a valid address
+     * @throws DisposableEmailDomainException if the domain is on the disposable-domain blocklist
      */
     public String normalize(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -53,6 +60,8 @@ public class EmailNormalizer {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException(raw);
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        this.disposableEmailDomainValidator.validate(normalized);
+        return normalized;
     }
 }

@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+import org.springframework.samples.petclinic.rest.controller.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
@@ -225,6 +226,24 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(InvalidEmailException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException} raised when an owner request supplies an
+     * email address whose domain is on the disposable-domain blocklist. Returns a 400 Bad
+     * Request whose {@code errors} array names the {@code email} field.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("email"));
