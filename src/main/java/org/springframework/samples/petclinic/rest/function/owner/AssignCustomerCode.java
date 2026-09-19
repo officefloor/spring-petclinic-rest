@@ -6,21 +6,37 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's customer code before it is saved. The code is formatted
- * {@code <LAST3>-<NNNN>}, where {@code LAST3} is the upper-cased first three letters of
- * the last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to one
- * more than the current number of owners (e.g. {@code SMI-0007}). Runs after
- * {@link BuildOwner} has produced the entity and before {@link SaveOwner} persists it,
- * mutating the built owner in place.
+ * {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the upper-cased first three
+ * letters of the city, {@code LAST3} the upper-cased first three letters of the last name
+ * and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
+ * number of owners already in that city (e.g. {@code SYD-SMI-0007}). Runs after
+ * {@link BuildOwner} has produced the entity and before {@link SaveOwner} persists it, so
+ * {@code findAll()} sees only the owners that existed before this create; mutates the
+ * built owner in place.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        int sequence = ownerRepository.findAll().size() + 1;
-        owner.setCustomerCode(format(owner.getLastName(), sequence));
+        String city = owner.getCity();
+        int sequence = countInCity(ownerRepository, city) + 1;
+        owner.setCustomerCode(format(city, owner.getLastName(), sequence));
     }
 
-    private static String format(String lastName, int sequence) {
-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        return String.format("%s-%04d", prefix, sequence);
+    private static int countInCity(OwnerRepository ownerRepository, String city) {
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String format(String city, String lastName, int sequence) {
+        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
+    }
+
+    private static String prefix(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }
