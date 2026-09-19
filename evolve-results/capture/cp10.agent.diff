@@ -1,0 +1,324 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 78d0e5428..451e2689c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -47,6 +47,17 @@ public interface OwnerRepository {
+ 
+     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
+ 
++    /**
++     * Retrieve every <code>Owner</code> whose last name matches the given value ignoring case. Unlike
++     * {@link #findByLastName(String)} this is an exact (not prefix) match and is used to gather the
++     * candidates for the household-duplicate check.
++     *
++     * @param lastName the last name to match, case-insensitively
++     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
++     * found)
++     */
++    Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 5a020775a..bafed98f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -148,6 +148,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         }
+     }
+ 
++    @Override
++    public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("lastName", lastName);
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName)",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     @Override
+     public boolean existsByTelephone(String telephone) throws DataAccessException {
+         Map<String, Object> params = new HashMap<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index f188bf837..f70553528 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -89,6 +89,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     }
+ 
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.lastName) = LOWER(:lastName)");
++        query.setParameter("lastName", lastName);
++        return query.getResultList();
++    }
++
+     @Override
+     public boolean existsByTelephone(String telephone) throws DataAccessException {
+         Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.telephone = :telephone");
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index d3bac1588..c08646231 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -59,6 +59,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     boolean existsByTelephone(String telephone);
+ 
++    @Override
++    Collection<Owner> findByLastNameIgnoreCase(String lastName);
++
+     @Override
+     @Query("SELECT COUNT(owner) FROM Owner owner")
+     long count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index bb829fc90..cf3e87f91 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -55,6 +56,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone number already exists";
++    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the same last name and address already exists";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -124,6 +126,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateHouseholdException} raised when creating an owner whose last name and address
++     * already belong to another owner (compared case-insensitively with collapsed whitespace), returning a
++     * 409 Conflict status.
++     *
++     * @param e The {@link DuplicateHouseholdException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(DuplicateHouseholdException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
++        logger.warn("Duplicate household at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
+      * method returns a 404 Not Found status if an entity does not exist.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7b70e1aff..2ab2a98ad 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        this.clinicService.saveOwner(owner);
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        this.clinicService.createOwner(owner, sharesHousehold);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a6fae5bd7..6f05aab54 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -56,6 +56,7 @@ public interface ClinicService {
+ 	Owner findOwnerById(int id) throws DataAccessException;
+ 	Collection<Owner> findAllOwners() throws DataAccessException;
+ 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
++	void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException;
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 6d41ce2c0..74adb6ae1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
++import org.springframework.samples.petclinic.util.TextNormalizer;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -233,19 +234,38 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     @Override
+     @Transactional
+-    public void saveOwner(Owner owner) throws DataAccessException {
+-        if (owner.isNew()) {
+-            if (ownerRepository.existsByTelephone(owner.getTelephone())) {
+-                throw new DuplicateTelephoneException(owner.getTelephone());
+-            }
+-            if (owner.getRegistrationDate() == null) {
+-                owner.setRegistrationDate(LocalDate.now());
+-            }
+-            owner.setCustomerCode(
+-                CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
++    public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
++        if (ownerRepository.existsByTelephone(owner.getTelephone())) {
++            throw new DuplicateTelephoneException(owner.getTelephone());
++        }
++        if (!sharesHousehold && sharesHouseholdWithExistingOwner(owner)) {
++            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
++        }
++        if (owner.getRegistrationDate() == null) {
++            owner.setRegistrationDate(LocalDate.now());
+         }
++        owner.setCustomerCode(
++            CustomerCodeGenerator.format(owner.getLastName(), ownerRepository.count() + 1));
+         ownerRepository.save(owner);
++    }
+ 
++    @Override
++    @Transactional
++    public void saveOwner(Owner owner) throws DataAccessException {
++        ownerRepository.save(owner);
++    }
++
++    /**
++     * Report whether another owner already shares this owner's household, i.e. has the same last name and
++     * address compared case-insensitively and with runs of whitespace collapsed.
++     */
++    private boolean sharesHouseholdWithExistingOwner(Owner owner) {
++        String address = TextNormalizer.normalize(owner.getAddress());
++        if (address == null) {
++            return false;
++        }
++        return ownerRepository.findByLastNameIgnoreCase(owner.getLastName()).stream()
++            .anyMatch(existing -> address.equals(TextNormalizer.normalize(existing.getAddress())));
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/service/DuplicateHouseholdException.java
+new file mode 100644
+index 000000000..2333ef5b3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DuplicateHouseholdException.java
+@@ -0,0 +1,29 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown when an owner is created whose last name and address match those of another owner
++ * (compared case-insensitively with collapsed whitespace), i.e. they belong to the same
++ * household. Signals a conflict with existing data rather than a bad request. Suppressed
++ * when the request explicitly opts in with {@code sharesHousehold}.
++ */
++public class DuplicateHouseholdException extends RuntimeException {
++
++    public DuplicateHouseholdException(String lastName, String address) {
++        super("An owner with last name '" + lastName + "' already exists at address '" + address + "'");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TextNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TextNormalizer.java
+new file mode 100644
+index 000000000..9b94a5f9b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/TextNormalizer.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++/**
++ * Reduces free-text values to a canonical form for case- and whitespace-insensitive
++ * comparison: leading/trailing whitespace is trimmed, internal runs of whitespace are
++ * collapsed to a single space, and the result is lower-cased. Two values that differ only
++ * in letter casing or in how their whitespace is laid out normalize to the same string.
++ */
++public final class TextNormalizer {
++
++    /** Any run of whitespace, collapsed to a single space. */
++    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
++
++    private TextNormalizer() {
++    }
++
++    /**
++     * Normalize the given value for comparison.
++     *
++     * @param value the raw value (may be {@code null})
++     * @return the trimmed, whitespace-collapsed, lower-cased value, or {@code null} when
++     * {@code value} is {@code null}
++     */
++    public static String normalize(String value) {
++        if (value == null) {
++            return null;
++        }
++        return WHITESPACE.matcher(value.strip()).replaceAll(" ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 32f3e488a..b98a76170 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2046,6 +2046,15 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            When true, allows creating this owner even though another owner already has the same
++            last name and address (i.e. they share a household). Write-only request flag; not persisted.
++          type: boolean
++          default: false
++          writeOnly: true
++          example: false
+       required:
+         - firstName
+         - lastName
