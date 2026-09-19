@@ -22,8 +22,9 @@ final class Households {
     }
 
     /**
-     * The existing owners that share a household (same last name and postcode) with the
-     * given fields. Empty when no postcode is supplied.
+     * The existing live owners that share a household (same last name and postcode) with the
+     * given fields. Soft-deleted owners are excluded, so a deleted owner no longer blocks or
+     * flags a new one. Empty when no postcode is supplied.
      */
     static List<Owner> membersOf(OwnerRepository ownerRepository, String lastName, String postcode) {
         String householdId = idFor(lastName, postcode);
@@ -31,6 +32,7 @@ final class Households {
             return List.of();
         }
         return ownerRepository.findByLastName(lastName).stream()
+                .filter(owner -> !owner.isDeleted())
                 .filter(owner -> householdId.equals(idFor(owner.getLastName(), owner.getPostcode())))
                 .toList();
     }
