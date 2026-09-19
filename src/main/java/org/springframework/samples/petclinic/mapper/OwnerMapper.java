@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
+import org.springframework.samples.petclinic.util.MembershipNumbers;
 import org.springframework.samples.petclinic.util.Telephones;
 import org.springframework.samples.petclinic.util.Timezones;
 
@@ -59,10 +60,7 @@ public interface OwnerMapper {
      * either source field is absent.
      */
     default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return MembershipNumbers.of(owner);
     }
 
     /**
