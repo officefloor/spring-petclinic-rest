@@ -148,7 +148,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -343,13 +344,15 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Find the owners already stored whose derived {@link Owner#getIdentityKey() identity key}
-     * equals the given key. Used as the single duplicate-detection check at creation time: a new
-     * owner is a duplicate only when its whole identity key matches an existing owner's.
+     * equals the given key, ignoring any owner flagged {@link Owner#isDeleted() deleted}. Used as
+     * the single duplicate-detection check at creation time: a new owner is a duplicate only when
+     * its whole identity key matches a non-deleted existing owner's.
      */
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException {
         return ownerRepository.findAll().stream()
+            .filter(owner -> !owner.isDeleted())
             .filter(owner -> owner.getIdentityKey().equals(identityKey))
             .toList();
     }
@@ -358,8 +361,9 @@ public class ClinicServiceImpl implements ClinicService {
      * Find an existing owner belonging to the same household as the given (not-yet-persisted) owner,
      * i.e. one sharing its computed {@link Owner#getHouseholdId() householdId} (derived from last name
      * and postcode). Because the household is keyed on (last name, postcode), such an owner is a
-     * household duplicate of the new one. Returns the first such owner, or {@code null} when the owner
-     * has no household ({@code householdId} is null) or no match exists.
+     * household duplicate of the new one. Owners flagged {@link Owner#isDeleted() deleted} are ignored.
+     * Returns the first such owner, or {@code null} when the owner has no household
+     * ({@code householdId} is null) or no match exists.
      */
     @Override
     @Transactional(readOnly = true)
@@ -369,6 +373,7 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .findFirst()
             .orElse(null);
