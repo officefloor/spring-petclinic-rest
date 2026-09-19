@@ -1,0 +1,159 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e104a0b7a..0c20eaf37 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,16 @@ public interface OwnerMapper {
+         return ownerDto;
+     }
+ 
++    /**
++     * Maps an {@link Owner} to its DTO and attaches both response-only warnings, which are computed
++     * per request rather than stored on the owner.
++     */
++    default OwnerDto toOwnerDto(Owner owner, boolean bulkSignupWarning, boolean capacityWarning) {
++        OwnerDto ownerDto = toOwnerDto(owner, bulkSignupWarning);
++        ownerDto.setCapacityWarning(capacityWarning);
++        return ownerDto;
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+new file mode 100644
+index 000000000..46737c878
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++
++import net.officefloor.plugin.clazz.Qualifier;
++
++/**
++ * Qualifies the per-city {@code capacityWarning} boolean variable so it does not collide with the
++ * unqualified per-day {@code bulkSignupWarning} boolean flowing through the same pipeline.
++ *
++ * @see ResolveCapacityWarning
++ */
++@Retention(RetentionPolicy.RUNTIME)
++@Qualifier
++public @interface CapacityWarning {
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveCapacityWarning.java
+new file mode 100644
+index 000000000..22f3c1a1b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveCapacityWarning.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Resolves whether the owner response should carry a per-city capacity warning and publishes it for
++ * the responder. The warning is raised once the owner's city holds at least {@value #WARN_THRESHOLD}
++ * owners but is still below {@link EnsureCityCapacity#CAPACITY}, i.e. it is approaching (but has not
++ * reached) the hard limit that {@link EnsureCityCapacity} enforces. Runs before the responder so both
++ * the create and read responses carry the flag.
++ */
++public class ResolveCapacityWarning {
++
++    /** A city warns once it holds this many owners, approaching {@link EnsureCityCapacity#CAPACITY}. */
++    static final int WARN_THRESHOLD = 40;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository,
++            @CapacityWarning Out<Boolean> capacityWarning) {
++        long count = ownerRepository.countByCity(owner.getCity());
++        capacityWarning.set(count >= WARN_THRESHOLD && count < EnsureCityCapacity.CAPACITY);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 2ea24302a..521159e0f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
++            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
+             ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning));
++        response.send(ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index b62cbc1e6..9e9406410 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -11,9 +11,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, @Val Boolean bulkSignupWarning,
++            @CapacityWarning @Val Boolean capacityWarning, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning);
++        OwnerDto dto = ownerMapper.toOwnerDto(owner, bulkSignupWarning, capacityWarning);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index b475b7475..5640f609c 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -128,6 +128,11 @@ emitEvent:
+ resolveBulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.ResolveBulkSignupWarning
+   govern: [ transaction ]
++  next: resolveCapacityWarning
++
++resolveCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.ResolveCapacityWarning
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ recordIdempotency:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index e044a9698..0f1b21f34 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -9,6 +9,11 @@ load:
+ resolveBulkWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.ResolveBulkSignupWarning
+   govern: [ readonly-transaction ]
++  next: resolveCapacityWarning
++
++resolveCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.ResolveCapacityWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5a1a6a485..32bc21670 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2255,6 +2255,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 owners, approaching the
++                per-city capacity limit of 50 beyond which further owners are rejected; false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
