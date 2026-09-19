@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.util;
 
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -22,6 +24,15 @@ public final class E164PhoneNumber {
 
     /** A well-formed E.164 number: '+' then 8 to 15 digits. */
     private static final Pattern E164 = Pattern.compile("\\+[0-9]{8,15}");
+
+    /**
+     * Required national-number length (the digits after the country code) for the country
+     * codes whose national number is a fixed length. Country codes not listed carry no
+     * length rule here, so any national length within the generic E.164 bounds is accepted.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
+            "1", 10,   // North American Numbering Plan
+            "61", 9);  // Australia
 
     private E164PhoneNumber() {
     }
@@ -47,5 +58,26 @@ public final class E164PhoneNumber {
         }
         String candidate = "+" + digits;
         return E164.matcher(candidate).matches() ? Optional.of(candidate) : Optional.empty();
+    }
+
+    /**
+     * Checks a normalized E.164 number's national-number length against its country code.
+     *
+     * @param e164 a normalized E.164 number (a '+' followed by digits), as produced by
+     *   {@link #toE164}
+     * @return {@code true} when the national number has the length its country code
+     *   requires, or the country code has no fixed-length rule; {@code false} when the
+     *   length is wrong for a country code with a known requirement
+     */
+    public static boolean hasValidNationalNumberLength(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return false;
+        }
+        String digits = e164.substring(1);
+        return NATIONAL_NUMBER_LENGTHS.entrySet().stream()
+                .filter(entry -> digits.startsWith(entry.getKey()))
+                .max(Comparator.comparingInt(entry -> entry.getKey().length()))
+                .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
+                .orElse(true);
     }
 }
