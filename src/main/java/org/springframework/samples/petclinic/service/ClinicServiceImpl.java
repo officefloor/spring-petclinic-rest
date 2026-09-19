@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -275,6 +276,7 @@ public class ClinicServiceImpl implements ClinicService {
             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
+        flagPossibleDuplicate(owner);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(CustomerCodeGenerator.format(
@@ -300,6 +302,24 @@ public class ClinicServiceImpl implements ClinicService {
         if (collides) {
             throw new DuplicateOwnerException(identityKey);
         }
+    }
+
+    /**
+     * Flag the new owner as a possible (soft) duplicate when it is not a hard duplicate but shares an
+     * existing owner's last name and postcode while carrying a different telephone. The new owner is
+     * still created; {@code possibleDuplicate} is set to whether such a match exists and
+     * {@code possibleDuplicateOf} to the matching owner's id (the lowest when several match), or
+     * {@code null} when there is no match. An owner without a postcode can never soft-match.
+     */
+    private void flagPossibleDuplicate(Owner owner) {
+        Owner match = owner.getPostcode() == null ? null : ownerRepository
+            .findByLastNameIgnoreCase(owner.getLastName()).stream()
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .min(Comparator.comparingInt(Owner::getId))
+            .orElse(null);
+        owner.setPossibleDuplicate(match != null);
+        owner.setPossibleDuplicateOf(match == null ? null : match.getId());
     }
 
     /**
