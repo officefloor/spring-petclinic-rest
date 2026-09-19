@@ -36,7 +36,10 @@ public final class HouseholdIdGenerator {
 
     /**
      * Compute the stable household identifier for the given last name and postcode: the first
-     * {@value #LENGTH} hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}.
+     * {@value #LENGTH} hex characters of SHA-256 over
+     * {@code normalizedLastName + '|' + postcode + '|' + versionTag}. The
+     * {@link IdentityVersion#TAG version tag} is mixed in so the version-2 identifier never
+     * coincides with the value derived from the same owner under version 1.
      *
      * @param lastName the household's last name
      * @param postcode the household's postcode (a {@code null} postcode contributes an empty component)
@@ -44,7 +47,8 @@ public final class HouseholdIdGenerator {
      * normalizes to the same value and whose postcode is equal
      */
     public static String generate(String lastName, String postcode) {
-        String key = TextNormalizer.normalize(lastName) + SEPARATOR + (postcode == null ? "" : postcode);
+        String key = TextNormalizer.normalize(lastName) + SEPARATOR + (postcode == null ? "" : postcode)
+            + SEPARATOR + IdentityVersion.TAG;
         return Sha256.hex(key).substring(0, LENGTH).toUpperCase();
     }
 }

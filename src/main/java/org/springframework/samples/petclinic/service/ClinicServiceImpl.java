@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+import org.springframework.samples.petclinic.util.IdentityRegionCode;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.MemberIdGenerator;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
@@ -340,7 +341,7 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private String assignMemberId(Owner owner) {
         String baseId = MemberIdGenerator.format(
-            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()),
+            IdentityRegionCode.v2(LocalityResolver.resolve(owner.getCity(), owner.getPostcode())),
             owner.getRegistrationDate(), owner.getTelephone(), owner.getLastName());
         Set<String> takenIds = ownerRepository.findByMemberIdStartingWith(baseId).stream()
             .map(Owner::getMemberId)

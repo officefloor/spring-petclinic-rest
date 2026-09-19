@@ -16,24 +16,31 @@
 
 package org.springframework.samples.petclinic.audit;
 
+import org.springframework.samples.petclinic.util.IdentityVersion;
+
 /**
  * Immutable structured audit event recording that an owner was created.
  *
  * <p>The {@code memberId} field carries the owner's <em>current primary
- * identifier</em>: their unified member id.
+ * identifier</em>: their unified member id. The event is emitted at schema version 2
+ * ({@link IdentityVersion#VERSION}), which adds the {@code schemaVersion} and {@code ownerSegment}
+ * fields.
  *
  * @param seq             monotonically increasing sequence number across creates
+ * @param schemaVersion   the audit schema version of this event
  * @param ownerId         the persisted owner's id
  * @param memberId        the owner's current primary identifier
  * @param membershipLevel the owner's membership level
+ * @param ownerSegment    the owner's segment, recomputed from the version-2 owner
  * @param event           the event type discriminator, always {@link #EVENT_TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel, String event) {
+public record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
+        int membershipLevel, String ownerSegment, String event) {
 
     /** Discriminator value carried by every owner-created event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
 
-    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel) {
-        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
+    public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel, String ownerSegment) {
+        this(seq, IdentityVersion.VERSION, ownerId, memberId, membershipLevel, ownerSegment, EVENT_TYPE);
     }
 }

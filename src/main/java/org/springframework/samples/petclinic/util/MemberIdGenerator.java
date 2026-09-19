@@ -79,24 +79,6 @@ public final class MemberIdGenerator {
         }
     }
 
-    /**
-     * Extract the {@code REGION} prefix from a member id produced by {@link #format}: its leading
-     * run of letters, which precedes the numeric fiscal-year segment.
-     *
-     * @param memberId the member id, may be {@code null}
-     * @return the region prefix, or {@code null} when the member id is {@code null}
-     */
-    public static String region(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int end = 0;
-        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
-            end++;
-        }
-        return memberId.substring(0, end);
-    }
-
     private static String hash8(String normalizedTelephone, String lastName) {
         String key = orEmpty(normalizedTelephone) + orEmpty(lastName);
         return Sha256.hex(key).substring(0, HASH_LENGTH).toUpperCase();

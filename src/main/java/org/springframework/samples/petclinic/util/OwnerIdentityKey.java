@@ -23,10 +23,12 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The key is the SHA-256 hex digest of the owner's already-normalized telephone, already
  * lower-cased email and the {@link Soundex Soundex code} of the last name, joined as
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are hard
- * duplicates only when their <em>whole</em> keys are equal: because the telephone is part of the
- * key, two members of the same household with different telephones derive different keys and are
- * both allowed (they are instead flagged as a soft match).
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName) + '|' + versionTag}.
+ * The {@link IdentityVersion#TAG version tag} is mixed in so the version-2 key never coincides
+ * with the value derived from the same owner under version 1. Two owners are hard duplicates only
+ * when their <em>whole</em> keys are equal: because the telephone is part of the key, two members
+ * of the same household with different telephones derive different keys and are both allowed (they
+ * are instead flagged as a soft match).
  */
 public final class OwnerIdentityKey {
 
@@ -46,7 +48,8 @@ public final class OwnerIdentityKey {
     public static String of(Owner owner) {
         String raw = orEmpty(owner.getTelephone())
             + SEPARATOR + orEmpty(owner.getEmail())
-            + SEPARATOR + Soundex.encode(owner.getLastName());
+            + SEPARATOR + Soundex.encode(owner.getLastName())
+            + SEPARATOR + IdentityVersion.TAG;
         return Sha256.hex(raw);
     }
 

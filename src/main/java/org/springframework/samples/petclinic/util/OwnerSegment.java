@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.util;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Derives an owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}, by combining
  * their membership tier with the area implied by their locality.
@@ -23,6 +25,19 @@ package org.springframework.samples.petclinic.util;
 public final class OwnerSegment {
 
     private OwnerSegment() {
+    }
+
+    /**
+     * Compose the segment for the given owner from their membership level and their plain locality
+     * (the untagged canonical region derived from city and postcode). This is the single derivation
+     * shared by the API response and the audit event.
+     *
+     * @param owner the owner to segment
+     * @return the owner's segment (see {@link #of(int, String)})
+     */
+    public static String of(Owner owner) {
+        return of(OwnerMembership.level(owner),
+            LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
     }
 
     /**

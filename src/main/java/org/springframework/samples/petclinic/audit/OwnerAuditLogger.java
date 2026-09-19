@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.util.OwnerMembership;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.stereotype.Component;
 
 import tools.jackson.databind.ObjectMapper;
@@ -52,8 +53,8 @@ public class OwnerAuditLogger {
         AUDIT.info(
             "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel(owner));
-        OwnerCreatedEvent event = new OwnerCreatedEvent(
-            sequence.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel(owner));
+        OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.incrementAndGet(), owner.getId(),
+            primaryIdentifier(owner), membershipLevel(owner), OwnerSegment.of(owner));
         AUDIT.info(EVENT_MAPPER.writeValueAsString(event));
     }
 
