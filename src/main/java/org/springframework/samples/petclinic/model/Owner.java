@@ -254,6 +254,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's current primary identifier: the {@link #getCustomerCode() customer code} today.
+     * The single source of truth for "which field identifies this owner", so a consumer such as the
+     * {@code OWNER_CREATED} audit event always carries the right value; when the customer code is
+     * later unified into a member id, this method returns that instead and every consumer follows
+     * automatically. Derived from stored state, never persisted.
+     */
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
+    /**
      * The stable identifier of the household this owner belongs to: the first twelve hex
      * characters of the SHA-256 of the normalized last name and postcode, so every owner
      * sharing a last name and postcode resolves to the same value. Null when the owner has
