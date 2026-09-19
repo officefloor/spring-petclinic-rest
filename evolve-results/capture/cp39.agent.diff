@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 440d03dce..38a646866 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.*;
+ 
+ /**
+@@ -258,14 +259,19 @@ public class Owner extends Person {
+     /** The membership level every owner starts at on creation. */
+     private static final int BASE_MEMBERSHIP_LEVEL = 1;
+ 
+-    /** The highest membership level derivable at creation; level 4 is reserved for tenure. */
+-    private static final int MAX_MEMBERSHIP_LEVEL = 3;
++    /** The highest membership level attainable; only reached with qualifying tenure. */
++    private static final int MAX_MEMBERSHIP_LEVEL = 4;
++
++    /** The tenure, in days, that must be exceeded to qualify for the top membership level. */
++    private static final long MEMBERSHIP_TENURE_THRESHOLD_DAYS = 365;
+ 
+     /**
+-     * Return this owner's membership level, a number from 1 to 3 derived at creation: every owner
+-     * starts at {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when
+-     * the owner has no namesakes ({@code namesakeCount} is 0); capped at
+-     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
++     * Return this owner's membership level, a number from 1 to 4: every owner starts at
++     * {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when the owner
++     * has no namesakes ({@code namesakeCount} is 0); add 1 when the owner has qualifying tenure
++     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days since registration); capped at
++     * {@value #MAX_MEMBERSHIP_LEVEL}. Because a newly created owner has zero tenure, a new owner
++     * never exceeds level 3.
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+@@ -276,9 +282,25 @@ public class Owner extends Person {
+         if (Integer.valueOf(0).equals(this.namesakeCount)) {
+             level++;
+         }
++        if (hasQualifyingTenure()) {
++            level++;
++        }
+         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+     }
+ 
++    /**
++     * Whether this owner's tenure exceeds {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days, i.e.
++     * more than that many days have elapsed since the {@code registrationDate}. Owners without a
++     * registration date have no measurable tenure and do not qualify.
++     */
++    private boolean hasQualifyingTenure() {
++        if (this.registrationDate == null) {
++            return false;
++        }
++        long tenureDays = ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++        return tenureDays > MEMBERSHIP_TENURE_THRESHOLD_DAYS;
++    }
++
+     /** Whether this owner has a usable email address (present and not blank). */
+     private boolean hasEmail() {
+         return this.email != null && !this.email.isBlank();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8eff2e895..2bc4c245e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2137,11 +2137,11 @@ components:
+               readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's membership level, a number from 1 to 3 derived at creation. Every owner starts at 1; add 1 when an email address is present; add 1 when the owner has no namesakes (namesakeCount is 0); capped at 3 (level 4 is reserved for tenure).
++              description: The owner's membership level, a number from 1 to 4. Every owner starts at 1; add 1 when an email address is present; add 1 when the owner has no namesakes (namesakeCount is 0); add 1 when the owner has qualifying tenure (more than 365 days since registration); capped at 4. Because a newly created owner has zero tenure, a new owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
