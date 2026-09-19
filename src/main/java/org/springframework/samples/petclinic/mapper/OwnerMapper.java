@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
+import org.springframework.samples.petclinic.util.Telephones;
 
 import java.util.Collection;
 import java.util.List;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -95,6 +97,11 @@ public interface OwnerMapper {
     default OwnerDto.AgeBandEnum ageBand(Owner owner) {
         AgeBand band = AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
         return band == null ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
+    }
+
+    /** Format the owner's stored E.164 telephone for humans (e.g. '+61 412 345 678'). */
+    default String telephoneDisplay(Owner owner) {
+        return Telephones.forDisplay(owner.getTelephone());
     }
 
     Owner toOwner(OwnerDto ownerDto);
