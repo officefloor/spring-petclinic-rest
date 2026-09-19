@@ -57,6 +57,15 @@ public interface OwnerRepository {
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
+     * Retrieve <code>Owner</code>s from the data store by exact, lower-cased email.
+     *
+     * @param email the (lower-cased) email to match, compared case-insensitively
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByEmail(String email) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

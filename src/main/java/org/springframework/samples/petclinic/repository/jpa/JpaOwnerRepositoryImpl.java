@@ -87,6 +87,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
         return query.getResultList();
     }
 
+    @SuppressWarnings("unchecked")
+    @Override
+    public Collection<Owner> findByEmail(String email) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT DISTINCT owner FROM Owner owner left join fetch owner.pets WHERE LOWER(owner.email) = :email");
+        query.setParameter("email", email.toLowerCase(java.util.Locale.ROOT));
+        return query.getResultList();
+    }
+
     @Override
     public Owner findById(int id) {
         // using 'join fetch' because a single query should load both owners and pets

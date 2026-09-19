@@ -124,6 +124,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return owners;
     }
 
+    @Override
+    public Collection<Owner> findByEmail(String email) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("email", email.toLowerCase(java.util.Locale.ROOT));
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE LOWER(email) = :email",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+        loadOwnersPetsAndVisits(owners);
+        return owners;
+    }
+
     /**
      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
      * for the corresponding owner, if not already loaded.
