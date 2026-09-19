@@ -1,0 +1,412 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index bad2cf748..99cd73814 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -59,6 +59,17 @@ public interface OwnerRepository {
+      */
+     Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
+ 
++    /**
++     * Retrieve every <code>Owner</code> that stores the given postcode. A shared postcode is a
++     * prerequisite for a soft (possible-duplicate) match, so these are the candidates compared
++     * against a new owner when detecting owners who live at the same locality.
++     *
++     * @param postcode the postcode to match
++     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
++     * found)
++     */
++    Collection<Owner> findByPostcode(String postcode) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index db55e3044..0791c54b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -162,6 +162,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return owners;
+     }
+ 
++    @Override
++    public Collection<Owner> findByPostcode(String postcode) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("postcode", postcode);
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone, email, postcode, household_id FROM owners WHERE postcode = :postcode",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     @Override
+     public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
+         Map<String, Object> params = new HashMap<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 3e758c414..be96a8454 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -98,6 +98,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return query.getResultList();
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByPostcode(String postcode) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.postcode = :postcode");
++        query.setParameter("postcode", postcode);
++        return query.getResultList();
++    }
++
+     @Override
+     @SuppressWarnings("unchecked")
+     public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index 18e71bad8..428911a9c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -63,6 +63,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     Collection<Owner> findByLastNameIgnoreCase(String lastName);
+ 
++    @Override
++    Collection<Owner> findByPostcode(String postcode);
++
+     @Override
+     Collection<Owner> findByCustomerCodeStartingWith(String customerCode);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 4eb8d9007..c05a7e245 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -34,7 +34,6 @@ import org.springframework.samples.petclinic.service.CityCapacityExceededExcepti
+ import org.springframework.samples.petclinic.service.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+-import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.validation.FieldError;
+@@ -58,8 +57,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+-    private static final String ERROR_DUPLICATE_OWNER = "An owner with the same identity (telephone, email and household) already exists";
+-    private static final String ERROR_HOUSEHOLD_DUPLICATE = "An owner already belongs to this household (same last name and postcode)";
++    private static final String ERROR_DUPLICATE_OWNER = "An owner with the same identity (telephone, email and last name) already exists";
+     private static final String ERROR_CITY_CAPACITY = "The owner's city has already reached its maximum number of owners";
+     private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners for today has already been reached";
+     private static final String ERROR_DISPOSABLE_EMAIL = "The owner's email uses a disposable domain that is not allowed";
+@@ -133,27 +131,6 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
+-    /**
+-     * Handles {@link HouseholdDuplicateException} raised when creating an owner into a household that
+-     * already has a member (another owner with the same last name and postcode) without declaring
+-     * {@code sharesHousehold}, returning a 409 Conflict status.
+-     *
+-     * @param e The {@link HouseholdDuplicateException} to be handled
+-     * @param request {@link HttpServletRequest} object referring to the current request.
+-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+-     */
+-    @ExceptionHandler(HouseholdDuplicateException.class)
+-    @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
+-        logger.warn("Household duplicate at {} {}: {}",
+-            request.getMethod(),
+-            request.getRequestURI(),
+-            e.getMessage());
+-        HttpStatus status = HttpStatus.CONFLICT;
+-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_HOUSEHOLD_DUPLICATE);
+-        return ResponseEntity.status(status).body(detail);
+-    }
+-
+     /**
+      * Handles {@link CityCapacityExceededException} raised when creating an owner in a city that has already
+      * reached its maximum number of owners, returning a 409 Conflict status.
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 6754a40ae..652ad7808 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+ import org.springframework.samples.petclinic.util.LocalityResolver;
+ import org.springframework.samples.petclinic.util.OwnerIdentityKey;
+ import org.springframework.samples.petclinic.util.OwnerMembership;
++import org.springframework.samples.petclinic.util.Soundex;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -272,9 +273,6 @@ public class ClinicServiceImpl implements ClinicService {
+         owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
+         rejectIdentityCollision(owner);
+         List<Owner> householdMembers = findHouseholdMembers(owner);
+-        if (!householdMembers.isEmpty() && !sharesHousehold) {
+-            throw new HouseholdDuplicateException(owner.getHouseholdId());
+-        }
+         long ownersInCity = ownerRepository.countByCity(owner.getCity());
+         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
+             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
+@@ -286,7 +284,7 @@ public class ClinicServiceImpl implements ClinicService {
+             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
+         }
+         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
+-        flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
++        flagPossibleDuplicate(owner, sharesHousehold);
+         owner.setNamesakeCount(countNamesakes(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         owner.setMembershipLevel(OwnerMembership.cappedLevel(owner, householdMembers));
+@@ -298,8 +296,9 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Reject creating an owner whose whole {@link OwnerIdentityKey identity key} already belongs to
+-     * another owner. Because the telephone is part of the key, only an existing owner sharing every
+-     * key component (normalized telephone, email and household identifier) is a duplicate.
++     * another active owner. Because the telephone is part of the key, only an existing owner sharing
++     * every key component (normalized telephone, lower-cased email and the last name's Soundex code)
++     * is a hard duplicate; telephone equality remains a prerequisite, so it prefilters the candidates.
+      */
+     private void rejectIdentityCollision(Owner owner) {
+         String identityKey = OwnerIdentityKey.of(owner);
+@@ -335,23 +334,42 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Flag the new owner as a possible (soft) duplicate of an existing household member carrying a
+-     * different telephone. The new owner is still created; {@code possibleDuplicate} is set to
+-     * whether such a match exists and {@code possibleDuplicateOf} to the matching owner's id (the
+-     * lowest when several match), or {@code null} when there is no match.
++     * Flag the new owner as a possible (soft) duplicate of an existing owner whose identity key
++     * <em>differs</em> but whose last name shares the same Soundex code and whose postcode is equal.
++     * The new owner is still created; {@code possibleDuplicate} is set to whether such a match exists
++     * and {@code possibleDuplicateOf} to the matching owner's id (the lowest when several match), or
++     * {@code null} when there is no match.
+      *
+      * <p>An owner that explicitly declares {@code sharesHousehold} is a <em>declared</em> household
+      * member rather than a suspected duplicate, so it is never flagged.
+      */
+-    private void flagPossibleDuplicate(Owner owner, List<Owner> householdMembers, boolean sharesHousehold) {
+-        Owner match = sharesHousehold ? null : householdMembers.stream()
+-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
++    private void flagPossibleDuplicate(Owner owner, boolean sharesHousehold) {
++        Owner match = sharesHousehold ? null : findSoftMatchCandidates(owner).stream()
+             .min(Comparator.comparingInt(Owner::getId))
+             .orElse(null);
+         owner.setPossibleDuplicate(match != null);
+         owner.setPossibleDuplicateOf(match == null ? null : match.getId());
+     }
+ 
++    /**
++     * Find the existing active owners that are a soft match for the new owner: those sharing its
++     * postcode and its last name's {@link org.springframework.samples.petclinic.util.Soundex Soundex}
++     * code, but deriving a <em>different</em> {@link OwnerIdentityKey identity key} (an equal key is a
++     * hard duplicate, rejected earlier). An owner without a postcode has no soft-match candidates.
++     */
++    private List<Owner> findSoftMatchCandidates(Owner owner) {
++        if (owner.getPostcode() == null) {
++            return List.of();
++        }
++        String soundex = Soundex.encode(owner.getLastName());
++        String identityKey = OwnerIdentityKey.of(owner);
++        return ownerRepository.findByPostcode(owner.getPostcode()).stream()
++            .filter(ClinicServiceImpl::isActive)
++            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
++            .filter(existing -> !identityKey.equals(OwnerIdentityKey.of(existing)))
++            .toList();
++    }
++
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/HouseholdDuplicateException.java b/src/main/java/org/springframework/samples/petclinic/service/HouseholdDuplicateException.java
+deleted file mode 100644
+index 6d95b5151..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/service/HouseholdDuplicateException.java
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/*
+- * Copyright 2002-2013 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package org.springframework.samples.petclinic.service;
+-
+-/**
+- * Thrown when an owner is created into a household that already has a member, i.e. another owner
+- * already shares the same {@code householdId} (the same last name and postcode), without declaring
+- * {@code sharesHousehold}. Signals a conflict with existing data rather than a bad request.
+- */
+-public class HouseholdDuplicateException extends RuntimeException {
+-
+-    public HouseholdDuplicateException(String householdId) {
+-        super("An owner already belongs to household '" + householdId + "'");
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerIdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerIdentityKey.java
+index b9be73173..6c79c2e77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/OwnerIdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerIdentityKey.java
+@@ -21,11 +21,12 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Derives an owner's {@code identityKey}, the single value that drives duplicate detection.
+  *
+- * <p>The key joins the owner's already-normalized telephone, email and household identifier as
+- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are
++ * <p>The key is the SHA-256 hex digest of the owner's already-normalized telephone, already
++ * lower-cased email and the {@link Soundex Soundex code} of the last name, joined as
++ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are hard
+  * duplicates only when their <em>whole</em> keys are equal: because the telephone is part of the
+  * key, two members of the same household with different telephones derive different keys and are
+- * both allowed.
++ * both allowed (they are instead flagged as a soft match).
+  */
+ public final class OwnerIdentityKey {
+ 
+@@ -35,17 +36,18 @@ public final class OwnerIdentityKey {
+     }
+ 
+     /**
+-     * Compute the identity key for the given owner from its stored (already normalized) telephone,
+-     * email and household identifier. A {@code null} email or household identifier contributes an
+-     * empty component.
++     * Compute the identity key for the given owner from its stored (already normalized) telephone
++     * and email and the Soundex code of its last name. A {@code null} telephone or email
++     * contributes an empty component.
+      *
+      * @param owner the owner to derive the key for
+-     * @return the owner's identity key
++     * @return the owner's identity key as a 64-character lower-case hex string
+      */
+     public static String of(Owner owner) {
+-        return orEmpty(owner.getTelephone())
++        String raw = orEmpty(owner.getTelephone())
+             + SEPARATOR + orEmpty(owner.getEmail())
+-            + SEPARATOR + orEmpty(owner.getHouseholdId());
++            + SEPARATOR + Soundex.encode(owner.getLastName());
++        return Sha256.hex(raw);
+     }
+ 
+     private static String orEmpty(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..958f58490
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,105 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++
++/**
++ * Computes the standard (American) Soundex code of a name: an upper-case letter followed by three
++ * digits that group names sharing a similar pronunciation. Non-letters are ignored, the first
++ * letter is kept verbatim, and the remaining consonants are mapped to their Soundex digit;
++ * adjacent letters mapping to the same digit (including when separated only by {@code h} or
++ * {@code w}) collapse to a single digit, while letters separated by a vowel are coded separately.
++ * The code is right-padded with zeros or truncated to exactly four characters.
++ */
++public final class Soundex {
++
++    /** Length of a Soundex code: the retained first letter plus three digits. */
++    private static final int LENGTH = 4;
++
++    private Soundex() {
++    }
++
++    /**
++     * Compute the Soundex code of the given name.
++     *
++     * @param name the name to encode (may be {@code null})
++     * @return the four-character Soundex code, or an empty string when {@code name} is {@code null}
++     * or contains no letters
++     */
++    public static String encode(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = lettersOnly(name);
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder(LENGTH);
++        code.append(letters.charAt(0));
++        char previous = digit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < LENGTH; i++) {
++            char letter = letters.charAt(i);
++            if (letter == 'H' || letter == 'W') {
++                // h and w never contribute a digit and do not separate equal digits.
++                continue;
++            }
++            char digit = digit(letter);
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            previous = digit;
++        }
++        while (code.length() < LENGTH) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static String lettersOnly(String name) {
++        StringBuilder sb = new StringBuilder(name.length());
++        for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
++            if (c >= 'A' && c <= 'Z') {
++                sb.append(c);
++            }
++        }
++        return sb.toString();
++    }
++
++    /**
++     * Map an upper-case letter to its Soundex digit, returning {@code '0'} for the vowels and for
++     * {@code y}, {@code h} and {@code w}, which are not coded.
++     */
++    private static char digit(char letter) {
++        switch (letter) {
++            case 'B': case 'F': case 'P': case 'V':
++                return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
++                return '2';
++            case 'D': case 'T':
++                return '3';
++            case 'L':
++                return '4';
++            case 'M': case 'N':
++                return '5';
++            case 'R':
++                return '6';
++            default:
++                return '0';
++        }
++    }
++}
