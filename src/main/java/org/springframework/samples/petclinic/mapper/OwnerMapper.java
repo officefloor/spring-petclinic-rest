@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.CityRegions;
+import org.springframework.samples.petclinic.util.MembershipLevels;
 
 import java.util.Collection;
 import java.util.List;
@@ -22,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -54,25 +55,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the membership tier: 'GOLD' when the owner's household has three or more members
-     * (householdSize is 3+); otherwise 'SILVER' when the owner has no namesakes (namesakeCount is
-     * 0) and an email is present, otherwise 'BRONZE'.
-     */
-    default String membershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return "GOLD";
-        }
-        boolean unique = Integer.valueOf(0).equals(owner.getNamesakeCount());
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
-    }
-
-    /**
      * Derive the owner's locality (canonical region) from their city using the fixed
      * city-to-region table, or 'UNKNOWN' when the city is not in the table.
      */
     default String locality(Owner owner) {
         return CityRegions.localityOf(owner.getCity());
+    }
+
+    /** Derive the owner's numeric membership level (1 to 3). */
+    default Integer membershipLevel(Owner owner) {
+        return MembershipLevels.of(owner);
     }
 
     Owner toOwner(OwnerDto ownerDto);

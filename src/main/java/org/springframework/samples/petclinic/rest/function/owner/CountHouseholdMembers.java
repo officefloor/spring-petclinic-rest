@@ -9,7 +9,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@code householdId} — once this create completes. Runs after {@link AssignHouseholdId} has set
  * the id and before {@link SaveOwner} persists the entity, so {@code findAll()} sees only the
  * owners that existed before this create; the new owner is counted too by starting from one. The
- * size is stored on the owner and drives the membership tier on every later read.
+ * size is stored on the owner for later reporting.
  */
 public class CountHouseholdMembers {
 
