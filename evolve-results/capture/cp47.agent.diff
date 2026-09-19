@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDayAdjuster.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDayAdjuster.java
+index 666c228ea..fff844e7c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/BusinessDayAdjuster.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDayAdjuster.java
+@@ -18,10 +18,10 @@ package org.springframework.samples.petclinic.util;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+-import java.time.temporal.TemporalAdjusters;
+ 
+ /**
+- * Adjusts dates so that they fall on a business day (Monday to Friday).
++ * Adjusts dates so that they fall on a business day: a weekday (Monday to Friday) that is not a
++ * listed public holiday.
+  */
+ public final class BusinessDayAdjuster {
+ 
+@@ -30,20 +30,26 @@ public final class BusinessDayAdjuster {
+ 
+     /**
+      * Return the given date if it already falls on a business day, otherwise roll it forward to the
+-     * next Monday. A Saturday or Sunday is rolled forward; any weekday is returned unchanged.
++     * next business day. A Saturday, Sunday or {@link PublicHolidays public holiday} is rolled
++     * forward one day at a time until a non-holiday weekday is reached.
+      *
+      * @param date the date to adjust
+-     * @return the date rolled forward to the next Monday when it lands on a weekend, or {@code null}
+-     *     if {@code date} is {@code null}
++     * @return the date rolled forward to the next business day, or {@code null} if {@code date} is
++     *     {@code null}
+      */
+     public static LocalDate toBusinessDay(LocalDate date) {
+         if (date == null) {
+             return null;
+         }
+-        DayOfWeek dayOfWeek = date.getDayOfWeek();
+-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+-            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        while (!isBusinessDay(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
++
++    private static boolean isBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        return dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY
++                && !PublicHolidays.isHoliday(date);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/PublicHolidays.java b/src/main/java/org/springframework/samples/petclinic/util/PublicHolidays.java
+new file mode 100644
+index 000000000..69c4dcf0c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/PublicHolidays.java
+@@ -0,0 +1,45 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.util.Set;
++
++/**
++ * The fixed list of public holidays observed by the clinic. On these dates the clinic is closed, so
++ * they do not count as business days.
++ */
++public final class PublicHolidays {
++
++    private static final Set<LocalDate> DATES = Set.of(
++            LocalDate.of(2026, 1, 1),
++            LocalDate.of(2026, 1, 26),
++            LocalDate.of(2026, 4, 25),
++            LocalDate.of(2026, 12, 25),
++            LocalDate.of(2026, 12, 28));
++
++    private PublicHolidays() {
++    }
++
++    /**
++     * @param date the date to test
++     * @return {@code true} if the given date is a listed public holiday
++     */
++    public static boolean isHoliday(LocalDate date) {
++        return DATES.contains(date);
++    }
++}
