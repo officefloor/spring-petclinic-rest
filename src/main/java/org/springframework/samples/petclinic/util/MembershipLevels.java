@@ -21,7 +21,7 @@ public final class MembershipLevels {
     /** Return the membership level (1 to 3) for {@code owner}. */
     public static int of(Owner owner) {
         int level = BASE;
-        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+        if (owner.hasEmail()) {
             level++;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {

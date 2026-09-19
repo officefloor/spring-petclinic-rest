@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -65,6 +66,11 @@ public interface OwnerMapper {
     /** Derive the owner's numeric membership level (1 to 3). */
     default Integer membershipLevel(Owner owner) {
         return MembershipLevels.of(owner);
+    }
+
+    /** Derive the owner's preferred contact method: EMAIL when an email is present, otherwise PHONE. */
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        return owner.hasEmail() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     Owner toOwner(OwnerDto ownerDto);
