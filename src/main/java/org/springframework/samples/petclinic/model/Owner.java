@@ -207,14 +207,27 @@ public class Owner extends Person {
     @Transient
     public Integer getMembershipLevel() {
         int level = BASE_MEMBERSHIP_LEVEL;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        if (hasEmail) {
+        if (hasEmail()) {
             level++;
         }
         if (Integer.valueOf(0).equals(this.namesakeCount)) {
             level++;
         }
         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+    }
+
+    /** Whether this owner has a usable email address (present and not blank). */
+    private boolean hasEmail() {
+        return this.email != null && !this.email.isBlank();
+    }
+
+    /**
+     * Return this owner's preferred contact channel: {@code "EMAIL"} when an email address is
+     * present, otherwise {@code "PHONE"}.
+     */
+    @Transient
+    public String getContactPreference() {
+        return hasEmail() ? "EMAIL" : "PHONE";
     }
 
     /**
