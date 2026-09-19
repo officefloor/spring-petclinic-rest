@@ -250,6 +250,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * Number of owners that must already have registered on a day before a new registration is
+     * flagged with a bulk-signup warning. Once the count already recorded for the day exceeds this
+     * value, the new owner carries {@code bulkSignupWarning == true}.
+     */
+    static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
@@ -270,6 +277,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (ownersOnDate >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
+        owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setCustomerCode(CustomerCodeGenerator.format(
             owner.getCity(), owner.getLastName(), ownersInCity + 1));
