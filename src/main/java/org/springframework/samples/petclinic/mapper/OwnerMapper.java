@@ -48,8 +48,12 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "addressLine1",
+        expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.normalize(ownerDto.getAddressLine1()))")
+    @Mapping(target = "addressLine2",
+        expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.normalize(ownerDto.getAddressLine2()))")
     @Mapping(target = "address",
-        expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.normalize(ownerDto.getAddress()))")
+        expression = "java(org.springframework.samples.petclinic.util.AddressComposer.compose(ownerDto.getAddressLine1(), ownerDto.getAddressLine2(), ownerDto.getAddress()))")
     @Mapping(target = "telephone",
         expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.toE164(ownerDto.getTelephone()).orElse(null))")
     @Mapping(target = "email",

@@ -36,6 +36,8 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.AddressComposer;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -118,7 +120,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(AddressNormalizer.normalize(ownerFieldsDto.getAddressLine1()));
+        currentOwner.setAddressLine2(AddressNormalizer.normalize(ownerFieldsDto.getAddressLine2()));
+        currentOwner.setAddress(AddressComposer.compose(ownerFieldsDto.getAddressLine1(),
+            ownerFieldsDto.getAddressLine2(), ownerFieldsDto.getAddress()));
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
