@@ -5,8 +5,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Computes the SHA-256 digest of a string as upper-case hexadecimal. Shared by the derived
- * identities that hash owner attributes (the customer code and the household id).
+ * Computes the SHA-256 digest of a string as hexadecimal. Shared by the derived identities that
+ * hash owner attributes: the customer code and household id use the upper-case {@link #hex} form,
+ * the identity key the lower-case {@link #lowerHex} form.
  */
 public final class Sha256 {
 
@@ -15,6 +16,15 @@ public final class Sha256 {
 
     /** The full upper-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
     public static String hex(String value) {
+        return digestHex(value, "%02X");
+    }
+
+    /** The full lower-case hex SHA-256 of the UTF-8 bytes of {@code value} (64 characters). */
+    public static String lowerHex(String value) {
+        return digestHex(value, "%02x");
+    }
+
+    private static String digestHex(String value, String byteFormat) {
         byte[] digest;
         try {
             digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
@@ -23,7 +33,7 @@ public final class Sha256 {
         }
         StringBuilder hex = new StringBuilder(digest.length * 2);
         for (byte b : digest) {
-            hex.append(String.format("%02X", b));
+            hex.append(String.format(byteFormat, b));
         }
         return hex.toString();
     }

@@ -236,9 +236,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the existing owner this one is a soft duplicate of: an owner sharing this one's last
-     * name and postcode but reachable on a different telephone, recorded at creation. {@code null}
-     * when no such owner existed.
+     * The id of the existing owner this one is a soft duplicate of: an owner with a different
+     * identity key whose last name sounds the same (soundex) and whose postcode is identical,
+     * recorded at creation. {@code null} when no such owner existed.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
@@ -360,13 +360,17 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value all duplicate detection is expressed
-     * through, formed as {@code <normalizedTelephone>|<email or empty>|<householdId or empty>}.
-     * Two owners are duplicates only when their whole identity keys are equal, so members of one
-     * household (same {@code householdId}) with different telephones have different keys.
+     * through, the lower-case SHA-256 hex digest of
+     * {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}. Two owners are duplicates only
+     * when their whole identity keys are equal, so household members (same last name and postcode)
+     * with different telephones have different keys and are not hard duplicates.
      */
     @Transient
     public String getIdentityKey() {
-        return blankToEmpty(this.telephone) + '|' + blankToEmpty(this.email) + '|' + blankToEmpty(this.householdId);
+        String raw = blankToEmpty(this.telephone) + '|'
+                + blankToEmpty(this.email).toLowerCase(Locale.ROOT) + '|'
+                + Soundex.encode(this.getLastName());
+        return Sha256.lowerHex(raw);
     }
 
     private static String blankToEmpty(String value) {

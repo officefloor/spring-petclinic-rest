@@ -10,8 +10,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * link. An owner without a postcode belongs to no household and is left without an id.
  *
  * <p>Runs under the request transaction, after {@link BuildOwner}, so later steps that key off the
- * household ({@link MarkDeclaredHouseholdMember}, {@link CountHouseholdMembers},
- * {@link EnsureUniqueIdentity} via the identity key) see the final id.
+ * household ({@link MarkDeclaredHouseholdMember}, {@link CountHouseholdMembers}) see the final id.
+ * The household id is no longer part of the {@link Owner#getIdentityKey() identity key}.
  */
 public class AssignHouseholdId {
 

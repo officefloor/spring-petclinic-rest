@@ -7,15 +7,15 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
 
 /**
  * The single duplicate check for creating an owner: rejects a request whose derived
- * {@link Owner#getIdentityKey() identity key} — normalized telephone, email and household id — equals
- * that of an existing owner. It subsumes the former separate telephone, email and household checks:
- * because the telephone is part of the key, two members of one household with different telephones
- * have different keys and are both allowed; only an exact full-key match is a duplicate.
+ * {@link Owner#getIdentityKey() identity key} — the hash of normalized telephone, lower-cased email
+ * and the soundex of the last name — equals that of an existing owner. It subsumes the former
+ * separate telephone, email and household checks: because the telephone is part of the key, two
+ * members of one household with different telephones have different keys and are both allowed (a soft
+ * match, see {@link DetectPossibleDuplicate}); only an exact full-key match is a duplicate.
  *
- * <p>Runs after {@link AssignHouseholdId} so the new owner carries its final {@code householdId}, and
- * before {@link SaveOwner} so a collision is rejected with 409 before anything is persisted. Only
- * owners sharing the (already normalized) telephone can share the whole key, so those are the
- * candidates compared.
+ * <p>Runs before {@link SaveOwner} so a collision is rejected with 409 before anything is persisted.
+ * Only owners sharing the (already normalized) telephone can share the whole key, so those are the
+ * candidates compared. Deleted owners are ignored.
  */
 public class EnsureUniqueIdentity {
 
