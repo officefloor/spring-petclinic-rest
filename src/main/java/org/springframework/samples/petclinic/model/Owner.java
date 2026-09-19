@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CityLocality;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
@@ -59,6 +60,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -131,6 +135,30 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    /**
+     * The owner's date of birth. Optional, so may be null.
+     */
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's age band as at registration: {@code "MINOR"} for under 18,
+     * {@code "ADULT"} for 18 to 64, or {@code "SENIOR"} for 65 and over, measured from the
+     * birth date against the registration date. Null when no birth date is recorded.
+     * Derived from stored state, never persisted.
+     */
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        return AgeBand.of(this.birthDate, this.registrationDate);
     }
 
     public String getCustomerCode() {
