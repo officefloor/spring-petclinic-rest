@@ -61,6 +61,46 @@ public final class E164PhoneNumber {
     }
 
     /**
+     * Formats a stored E.164 number for humans: the country code, a space, then the national
+     * digits grouped in threes. So {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
+     *
+     * <p>The country code is the longest {@link #NATIONAL_NUMBER_LENGTHS known} code that
+     * prefixes the number, reusing the same country-code facts as the length rule.
+     *
+     * @param e164 a normalized E.164 number (a '+' followed by digits), as produced by
+     *   {@link #toE164}
+     * @return the human-readable form, or {@code e164} unchanged when it is null, not a
+     *   well-formed E.164 number, or carries no recognized country code (so the split between
+     *   country code and national number is unknown)
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !E164.matcher(e164).matches()) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        Optional<String> countryCode = NATIONAL_NUMBER_LENGTHS.keySet().stream()
+                .filter(digits::startsWith)
+                .max(Comparator.comparingInt(String::length));
+        if (countryCode.isEmpty()) {
+            return e164;
+        }
+        String national = digits.substring(countryCode.get().length());
+        return "+" + countryCode.get() + " " + groupInThrees(national);
+    }
+
+    /** Groups a run of digits into space-separated groups of three, left to right. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Checks a normalized E.164 number's national-number length against its country code.
      *
      * @param e164 a normalized E.164 number (a '+' followed by digits), as produced by

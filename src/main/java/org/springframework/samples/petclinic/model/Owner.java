@@ -19,6 +19,7 @@ import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CityLocality;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 
 import jakarta.persistence.*;
@@ -113,6 +114,16 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = telephone;
+    }
+
+    /**
+     * The stored E.164 telephone formatted for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code "+61 412 345 678"}), while
+     * {@link #getTelephone()} keeps the raw E.164 form. Derived from stored state, never
+     * persisted.
+     */
+    public String getTelephoneDisplay() {
+        return E164PhoneNumber.toDisplay(this.telephone);
     }
 
     public String getEmail() {
