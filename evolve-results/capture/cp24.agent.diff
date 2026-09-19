@@ -1,0 +1,166 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c7d341e32..1f0570db5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.initials(owner.getFirstName(), owner.getLastName()))")
+     @Mapping(target = "membershipNumber",
+         expression = "java(org.springframework.samples.petclinic.util.MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate()))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(org.springframework.samples.petclinic.util.MembershipTierFormatter.format(owner.getHouseholdSize(), owner.getNamesakeCount(), owner.getEmail()))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(org.springframework.samples.petclinic.util.MembershipLevelFormatter.format(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.resolve(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java
+new file mode 100644
+index 000000000..f1d39627f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevelFormatter.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Derives an owner's {@code membershipLevel} from their namesake count and email address.
++ */
++public final class MembershipLevelFormatter {
++
++    /** The level every owner starts at. */
++    private static final int BASE_LEVEL = 1;
++
++    /** Highest level reachable from email and namesake status; level 4 is reserved for tenure. */
++    private static final int MAX_LEVEL = 3;
++
++    private MembershipLevelFormatter() {
++    }
++
++    /**
++     * Return the membership level: starting at {@value #BASE_LEVEL}, add 1 when an email address is
++     * present and add 1 when the owner has no namesakes ({@code namesakeCount} is {@code 0}), capped
++     * at {@value #MAX_LEVEL}.
++     *
++     * @param namesakeCount the number of owners sharing this owner's name, may be {@code null}
++     * @param email         the owner's email address, may be {@code null}
++     * @return the membership level, between {@value #BASE_LEVEL} and {@value #MAX_LEVEL}
++     */
++    public static int format(Integer namesakeCount, String email) {
++        int level = BASE_LEVEL;
++        if (email != null && !email.isBlank()) {
++            level++;
++        }
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, MAX_LEVEL);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipTierFormatter.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipTierFormatter.java
+deleted file mode 100644
+index 5a685a346..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipTierFormatter.java
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/*
+- * Copyright 2002-2013 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.util;
+-
+-/**
+- * Derives an owner's {@code membershipTier} from their household size, namesake count and email
+- * address.
+- */
+-public final class MembershipTierFormatter {
+-
+-    private static final String GOLD = "GOLD";
+-
+-    private static final String SILVER = "SILVER";
+-
+-    private static final String BRONZE = "BRONZE";
+-
+-    /**
+-     * Household size (members sharing the same household) at or above which an owner is {@code GOLD}.
+-     */
+-    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+-
+-    private MembershipTierFormatter() {
+-    }
+-
+-    /**
+-     * Return the membership tier: {@code "GOLD"} when the owner's household has
+-     * {@value #GOLD_HOUSEHOLD_SIZE} or more members; otherwise {@code "SILVER"} when the owner has
+-     * no namesakes ({@code namesakeCount} is {@code 0}) and an email address is present, otherwise
+-     * {@code "BRONZE"}.
+-     *
+-     * @param householdSize the number of owners sharing this owner's household, may be {@code null}
+-     * @param namesakeCount the number of owners sharing this owner's name, may be {@code null}
+-     * @param email         the owner's email address, may be {@code null}
+-     * @return {@code "GOLD"}, {@code "SILVER"} or {@code "BRONZE"}
+-     */
+-    public static String format(Integer householdSize, Integer namesakeCount, String email) {
+-        if (householdSize != null && householdSize >= GOLD_HOUSEHOLD_SIZE) {
+-            return GOLD;
+-        }
+-        boolean unique = namesakeCount != null && namesakeCount == 0;
+-        boolean hasEmail = email != null && !email.isBlank();
+-        return unique && hasEmail ? SILVER : BRONZE;
+-    }
+-}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3b50c1b22..c96280702 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2120,14 +2120,17 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when their household has 3 or more members;
+-                otherwise 'SILVER' when they have no namesakes and an email address on file,
+-                otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3. It starts at 1, gains 1
++                when an email address is on file, gains 1 when the owner has no namesakes
++                (namesakeCount is 0), and is capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
