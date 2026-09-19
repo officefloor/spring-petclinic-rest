@@ -40,6 +40,12 @@ public final class LocalityResolver {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONES = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private LocalityResolver() {
     }
 
@@ -64,6 +70,16 @@ public final class LocalityResolver {
      */
     public static String regionForCity(String city) {
         return CITY_REGIONS.getOrDefault(city, UNKNOWN);
+    }
+
+    /**
+     * The IANA timezone name for the given region via the fixed region-to-timezone table.
+     *
+     * @param region the region to look up
+     * @return the IANA timezone name, or {@code null} when the region has no known timezone
+     */
+    public static String timezoneFor(String region) {
+        return REGION_TIMEZONES.get(region);
     }
 
     /**
