@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java b/src/main/java/org/springframework/samples/petclinic/model/E164CountryCode.java
+similarity index 89%
+rename from src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java
+rename to src/main/java/org/springframework/samples/petclinic/model/E164CountryCode.java
+index 9476222c7..f2e2d104d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/E164CountryCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/E164CountryCode.java
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-package org.springframework.samples.petclinic.rest.controller;
++package org.springframework.samples.petclinic.model;
+ 
+ import java.util.Optional;
+ 
+@@ -25,7 +25,7 @@ import java.util.Optional;
+  * <p>For example {@code +61} (Australia) requires 9 national digits while {@code +1} (the
+  * North American Numbering Plan) requires 10.
+  */
+-enum E164CountryCode {
++public enum E164CountryCode {
+ 
+     AUSTRALIA("61", 9),
+     NORTH_AMERICA("1", 10);
+@@ -39,12 +39,12 @@ enum E164CountryCode {
+         this.nationalNumberLength = nationalNumberLength;
+     }
+ 
+-    String callingCode() {
++    public String callingCode() {
+         return this.callingCode;
+     }
+ 
+     /** Whether {@code nationalDigits} carries exactly the number of digits this country requires. */
+-    boolean acceptsNationalNumber(String nationalDigits) {
++    public boolean acceptsNationalNumber(String nationalDigits) {
+         return nationalDigits.length() == this.nationalNumberLength;
+     }
+ 
+@@ -56,7 +56,7 @@ enum E164CountryCode {
+      * @param e164Digits the E.164 digits without the leading {@code +}
+      * @return the matching country, or empty if none is recognized
+      */
+-    static Optional<E164CountryCode> forE164Digits(String e164Digits) {
++    public static Optional<E164CountryCode> forE164Digits(String e164Digits) {
+         E164CountryCode match = null;
+         for (E164CountryCode candidate : values()) {
+             if (e164Digits.startsWith(candidate.callingCode)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9acbbc58b..440d03dce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -108,6 +108,16 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    /**
++     * Return this owner's stored E.164 {@link #getTelephone() telephone} formatted for human display
++     * as the calling code, a space, then the national digits grouped in threes, e.g.
++     * {@code "+61 412 345 678"}. See {@link TelephoneFormatter}.
++     */
++    @Transient
++    public String getTelephoneDisplay() {
++        return TelephoneFormatter.toDisplay(this.telephone);
++    }
++
+     public String getEmail() {
+         return this.email;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+new file mode 100644
+index 000000000..68c03e66e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/TelephoneFormatter.java
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Formats a stored E.164 telephone number for human display: the calling code (kept with its
++ * leading {@code +}), a space, then the national digits grouped in threes from the left and
++ * separated by spaces, e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
++ *
++ * <p>The calling code is identified from the {@linkplain E164CountryCode recognized country codes};
++ * a number whose calling code is not recognized (so the boundary between calling code and national
++ * digits is unknown) is returned unchanged.
++ */
++public final class TelephoneFormatter {
++
++    private static final int GROUP_SIZE = 3;
++
++    private TelephoneFormatter() {
++    }
++
++    /**
++     * Format an E.164 telephone number for display.
++     *
++     * @param e164 the stored E.164 number (a leading {@code +} followed by digits), or {@code null}
++     * @return the display form ({@code "+<callingCode> <national digits grouped in threes>"}), or
++     *         the input unchanged when it is {@code null}, not E.164, or carries an unrecognized
++     *         calling code
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        return E164CountryCode.forE164Digits(digits)
++            .map(country -> {
++                String callingCode = country.callingCode();
++                String national = digits.substring(callingCode.length());
++                return "+" + callingCode + " " + groupInThrees(national);
++            })
++            .orElse(e164);
++    }
++
++    /** Group the digits into space-separated runs of {@value #GROUP_SIZE}, from the left. */
++    private static String groupInThrees(String national) {
++        StringBuilder grouped = new StringBuilder(national.length() + national.length() / GROUP_SIZE);
++        for (int i = 0; i < national.length(); i++) {
++            if (i > 0 && i % GROUP_SIZE == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(national.charAt(i));
++        }
++        return grouped.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+index 12593bd4a..bd55f9d7c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/TelephoneNormalizer.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import org.springframework.samples.petclinic.model.E164CountryCode;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f947e7406..8eff2e895 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2094,6 +2094,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for human display, being the calling code, a space, then the national digits grouped in threes.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: The owner's customer code, formatted '<REGION>-<HASH8>' where REGION is the region code derived from the postcode and HASH8 is the first 8 upper-case hex characters of SHA-256 over the normalized telephone followed by the last name.
