@@ -1,0 +1,187 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ad3ecc20a..483f4d918 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form: a '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index a7bf289f0..20d9dff1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -1,16 +1,16 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown when a create-owner request's telephone does not contain exactly 10 digits
+- * after every non-digit character is stripped. Handled by
+- * {@link InvalidTelephoneExceptionHandler}, which responds 400.
++ * Thrown when an owner request's telephone cannot be converted to a valid E.164 number
++ * (a '+' followed by 8 to 15 digits). Handled by {@link InvalidTelephoneExceptionHandler},
++ * which responds 400.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+     private final String telephone;
+ 
+     public InvalidTelephoneException(String telephone) {
+-        super("Telephone must contain exactly 10 digits after removing non-digit characters: " + telephone);
++        super("Telephone could not be converted to a valid E.164 number: " + telephone);
+         this.telephone = telephone;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+index 4a2256e1c..c7704048e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+@@ -11,7 +11,7 @@ public class InvalidTelephoneExceptionHandler {
+     public void handle(@Parameter InvalidTelephoneException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+-                "The telephone number must contain exactly 10 digits");
++                "The telephone number must be convertible to E.164 form (a '+' followed by 8 to 15 digits)");
+         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index eeb7cc203..a7aef3af1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -3,20 +3,20 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
++import org.springframework.samples.petclinic.util.E164PhoneNumber;
+ 
+ /**
+- * Normalizes the create-owner telephone: strips every non-digit character and requires
+- * exactly 10 digits, rejecting anything else with a 400. Runs after
+- * {@link ValidateOwnerFields} has confirmed the field is present, and mutates the shared
+- * request in place so {@link BuildOwner} stores the normalized value.
++ * Normalizes an owner request's telephone to E.164 form, rejecting anything that cannot
++ * form a valid E.164 number with a 400. Runs after the request's presence has been
++ * confirmed, and mutates the shared request in place so downstream steps
++ * ({@link BuildOwner} / {@link ApplyOwner}) store, and {@link EnsureUniqueTelephone}
++ * compares, the E.164 value.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
+-        String digits = request.getTelephone().replaceAll("\\D", "");
+-        if (digits.length() != 10) {
+-            throw new InvalidTelephoneException(request.getTelephone());
+-        }
+-        request.setTelephone(digits);
++        String e164 = E164PhoneNumber.toE164(request.getTelephone())
++                .orElseThrow(() -> new InvalidTelephoneException(request.getTelephone()));
++        request.setTelephone(e164);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java
+new file mode 100644
+index 000000000..3cd1402b7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java
+@@ -0,0 +1,51 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Optional;
++import java.util.regex.Pattern;
++
++/**
++ * Converts a raw telephone number to <a href="https://en.wikipedia.org/wiki/E.164">E.164</a>
++ * form: a leading '+' followed by 8 to 15 digits.
++ *
++ * <p>An explicit leading '+' and country code are kept; otherwise the default country code
++ * {@code +61} is assumed and a single leading '0' is dropped from the national digits.
++ * Spaces, dashes and brackets are stripped. So {@code "0412 345 678"} becomes
++ * {@code "+61412345678"} and {@code "+64 21 123 456"} becomes {@code "+6421123456"}.
++ */
++public final class E164PhoneNumber {
++
++    /** Country code assumed when the input does not carry an explicit '+' prefix. */
++    private static final String DEFAULT_COUNTRY_CODE = "61";
++
++    /** Separators removed before parsing: spaces, dashes and brackets. */
++    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-]");
++
++    /** A well-formed E.164 number: '+' then 8 to 15 digits. */
++    private static final Pattern E164 = Pattern.compile("\\+[0-9]{8,15}");
++
++    private E164PhoneNumber() {
++    }
++
++    /**
++     * @param raw the caller-supplied telephone, in any common format
++     * @return the E.164 string, or empty when {@code raw} cannot form a valid one
++     */
++    public static Optional<String> toE164(String raw) {
++        if (raw == null) {
++            return Optional.empty();
++        }
++        String trimmed = raw.trim();
++        boolean explicitCountryCode = trimmed.startsWith("+");
++        String cleaned = SEPARATORS.matcher(trimmed).replaceAll("");
++        String digits;
++        if (explicitCountryCode) {
++            digits = cleaned.substring(1); // drop the '+', keep the country code
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = DEFAULT_COUNTRY_CODE + national;
++        }
++        String candidate = "+" + digits;
++        return E164.matcher(candidate).matches() ? Optional.of(candidate) : Optional.empty();
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+index dee87067f..4c31fb4bd 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+@@ -4,6 +4,11 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
+   govern: [ transaction ]
++  next: normalizeTelephone
++
++normalizeTelephone:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
++  govern: [ transaction ]
+   next: normalizeEmail
+ 
+ normalizeEmail:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4595859a1..587a81dd2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,12 +2025,12 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: The telephone number of the pet owner. Stored and returned in E.164 form (a '+' followed by 8 to 15 digits).
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+-          example: '6085551023'
++          pattern: '^[-+0-9() ]*$'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Optional; stored and returned lower-cased.
