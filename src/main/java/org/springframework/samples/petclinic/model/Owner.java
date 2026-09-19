@@ -22,7 +22,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -180,6 +179,16 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    /**
+     * Return this owner's fiscal year, formatted {@code FY<YY>}, derived from the (business-day
+     * adjusted) {@code registrationDate}. The fiscal year starts on 1 July and is named by the
+     * calendar year in which it ends. {@code null} when no registration date is known.
+     */
+    @Transient
+    public String getFiscalYear() {
+        return this.registrationDate == null ? null : FiscalYear.of(this.registrationDate).getLabel();
     }
 
     public LocalDate getBirthDate() {
@@ -342,15 +351,15 @@ public class Owner extends Person {
     /** Points awarded for qualifying tenure. */
     private static final int TENURE_POINTS = 3;
 
-    /** The tenure, in days, that must be exceeded to earn {@link #TENURE_POINTS}. */
-    private static final long MEMBERSHIP_TENURE_THRESHOLD_DAYS = 365;
+    /** The tenure, in elapsed fiscal years, that must be exceeded to earn {@link #TENURE_POINTS}. */
+    private static final long MEMBERSHIP_TENURE_THRESHOLD_FISCAL_YEARS = 1;
 
     /**
      * Return this owner's membership points, starting at 0: add {@value #EMAIL_POINTS} when an email
      * address is present; add {@value #NO_NAMESAKE_POINTS} when the owner has no namesakes
      * ({@code namesakeCount} is 0); add {@value #LARGE_HOUSEHOLD_POINTS} for a household of
      * {@value #LARGE_HOUSEHOLD_SIZE} or more; add {@value #TENURE_POINTS} for qualifying tenure
-     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days since registration).
+     * (more than {@value #MEMBERSHIP_TENURE_THRESHOLD_FISCAL_YEARS} elapsed fiscal year since registration).
      */
     @Transient
     public Integer getMembershipPoints() {
@@ -399,16 +408,17 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner's tenure exceeds {@value #MEMBERSHIP_TENURE_THRESHOLD_DAYS} days, i.e.
-     * more than that many days have elapsed since the {@code registrationDate}. Owners without a
-     * registration date have no measurable tenure and do not qualify.
+     * Whether this owner's tenure exceeds {@value #MEMBERSHIP_TENURE_THRESHOLD_FISCAL_YEARS} elapsed
+     * fiscal year, i.e. more than that many fiscal years have elapsed between the fiscal year of the
+     * {@code registrationDate} and the fiscal year of today. Owners without a registration date have
+     * no measurable tenure and do not qualify.
      */
     private boolean hasQualifyingTenure() {
         if (this.registrationDate == null) {
             return false;
         }
-        long tenureDays = ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
-        return tenureDays > MEMBERSHIP_TENURE_THRESHOLD_DAYS;
+        long elapsedFiscalYears = FiscalYear.of(this.registrationDate).yearsUntil(FiscalYear.of(LocalDate.now()));
+        return elapsedFiscalYears > MEMBERSHIP_TENURE_THRESHOLD_FISCAL_YEARS;
     }
 
     /** Whether this owner has a usable email address (present and not blank). */

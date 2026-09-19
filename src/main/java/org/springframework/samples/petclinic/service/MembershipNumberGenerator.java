@@ -17,11 +17,12 @@ package org.springframework.samples.petclinic.service;
 
 import java.time.LocalDate;
 
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.stereotype.Component;
 
 /**
  * Builds an owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>}
- * where {@code YY} is the last two digits of the registration date's year
+ * where {@code YY} is the last two digits of the registration date's fiscal year
  * (e.g. {@code NSW-1A2B3C4D-M26}).
  */
 @Component
@@ -31,10 +32,10 @@ public class MembershipNumberGenerator {
      * Build the membership number for an owner.
      *
      * @param customerCode     the owner's customer code, used as the prefix
-     * @param registrationDate the owner's registration date; its year supplies the two-digit suffix
+     * @param registrationDate the owner's registration date; its fiscal year supplies the two-digit suffix
      * @return the formatted membership number, e.g. {@code NSW-1A2B3C4D-M26}
      */
     public String generate(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.of(registrationDate).getShortYear());
     }
 }
