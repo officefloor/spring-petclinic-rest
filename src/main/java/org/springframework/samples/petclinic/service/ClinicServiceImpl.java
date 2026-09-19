@@ -258,7 +258,27 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setMembershipNumber(
                 membershipNumberGenerator.generate(owner.getCustomerCode(), owner.getRegistrationDate()));
         }
+        if (owner.isNew() && owner.getHouseholdSize() == null) {
+            owner.setHouseholdSize(countHouseholdMembers(owner));
+        }
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Count the members of the given (not yet persisted) owner's household: the already stored
+     * owners sharing its {@code householdId} plus the owner itself. An owner with no household
+     * ({@code householdId} is null) is a household of one. Used to capture an owner's household
+     * size at creation time, which in turn drives the {@code GOLD} membership tier.
+     */
+    private int countHouseholdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 1;
+        }
+        long existing = ownerRepository.findAll().stream()
+            .filter(existingOwner -> householdId.equals(existingOwner.getHouseholdId()))
+            .count();
+        return (int) (existing + 1);
     }
 
     /**

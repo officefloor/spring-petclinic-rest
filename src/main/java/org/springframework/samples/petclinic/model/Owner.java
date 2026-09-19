@@ -69,6 +69,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -157,6 +160,18 @@ public class Owner extends Person {
     }
 
     /**
+     * The number of owners in this owner's household (owners sharing the same {@code householdId},
+     * counting this owner) captured once at creation. Drives the {@code "GOLD"} membership tier.
+     */
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
+    /**
      * Return this owner's name formatted for display as {@code "LastName, FirstName"}.
      */
     @Transient
@@ -177,12 +192,20 @@ public class Owner extends Person {
         return Character.toUpperCase(name.charAt(0)) + ".";
     }
 
+    /** Household size (inclusive) at or above which an owner qualifies for the {@code "GOLD"} tier. */
+    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+
     /**
-     * Return this owner's membership tier: {@code "SILVER"} for an owner with no namesakes
-     * ({@code namesakeCount} is 0) and an email address on file, otherwise {@code "BRONZE"}.
+     * Return this owner's membership tier: {@code "GOLD"} when the owner's household has
+     * {@value #GOLD_HOUSEHOLD_SIZE} or more members ({@code householdSize}); otherwise
+     * {@code "SILVER"} for an owner with no namesakes ({@code namesakeCount} is 0) and an email
+     * address on file, else {@code "BRONZE"}.
      */
     @Transient
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= GOLD_HOUSEHOLD_SIZE) {
+            return "GOLD";
+        }
         boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return unique && hasEmail ? "SILVER" : "BRONZE";
