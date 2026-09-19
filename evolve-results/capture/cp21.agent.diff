@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java
+new file mode 100644
+index 000000000..5877d0bb0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/audit/OwnerAuditLogger.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.audit;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Emits audit records for owner lifecycle events to the dedicated {@code AUDIT} logger,
++ * keeping audit-trail concerns out of the business logic that triggers them.
++ */
++@Component
++public class OwnerAuditLogger {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    /**
++     * Record that an owner was successfully created, capturing its id, customer code and
++     * registration date.
++     *
++     * @param owner the persisted owner (with its generated id) to audit
++     */
++    public void ownerCreated(Owner owner) {
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index fa26d6efc..d3279dd51 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -20,6 +20,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
++import org.springframework.samples.petclinic.audit.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
+@@ -51,6 +52,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private final VisitRepository visitRepository;
+     private final SpecialtyRepository specialtyRepository;
+     private final PetTypeRepository petTypeRepository;
++    private final OwnerAuditLogger ownerAuditLogger;
+ 
+     public ClinicServiceImpl(
+         PetRepository petRepository,
+@@ -58,13 +60,15 @@ public class ClinicServiceImpl implements ClinicService {
+         OwnerRepository ownerRepository,
+         VisitRepository visitRepository,
+         SpecialtyRepository specialtyRepository,
+-        PetTypeRepository petTypeRepository) {
++        PetTypeRepository petTypeRepository,
++        OwnerAuditLogger ownerAuditLogger) {
+         this.petRepository = petRepository;
+         this.vetRepository = vetRepository;
+         this.ownerRepository = ownerRepository;
+         this.visitRepository = visitRepository;
+         this.specialtyRepository = specialtyRepository;
+         this.petTypeRepository = petTypeRepository;
++        this.ownerAuditLogger = ownerAuditLogger;
+     }
+ 
+     @Override
+@@ -273,6 +277,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setHouseholdId(joinHousehold(owner, householdMembers));
+         }
+         ownerRepository.save(owner);
++        ownerAuditLogger.ownerCreated(owner);
+         return owner.getHouseholdId();
+     }
+ 
