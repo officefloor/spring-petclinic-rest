@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b7a282619..ec9a61b69 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+-import org.springframework.samples.petclinic.util.CityRegions;
+ import org.springframework.samples.petclinic.util.MembershipLevels;
++import org.springframework.samples.petclinic.util.Postcodes;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -55,11 +55,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derive the owner's locality (canonical region) from their city using the fixed
+-     * city-to-region table, or 'UNKNOWN' when the city is not in the table.
++     * Derive the owner's locality (canonical region), preferring the postcode range over the
++     * city-to-region table, or 'UNKNOWN' when neither resolves a region.
+      */
+     default String locality(Owner owner) {
+-        return CityRegions.localityOf(owner.getCity());
++        return Postcodes.localityOf(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /** Derive the owner's numeric membership level (1 to 3). */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java b/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
+index 8fadecfe1..5b73e274b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Postcodes.java
+@@ -28,6 +28,34 @@ public final class Postcodes {
+         return postcode != null && FOUR_DIGITS.matcher(postcode).matches();
+     }
+ 
++    /**
++     * The canonical region whose postcode range contains {@code postcode}, or {@code null} when
++     * the postcode is absent, malformed, or falls in no known range.
++     */
++    public static String regionOf(String postcode) {
++        if (!isWellFormed(postcode)) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
++    /**
++     * Derive an owner's locality (canonical region), preferring the postcode: use the region whose
++     * range contains {@code postcode}, falling back to the {@code city}-to-region table (see
++     * {@link CityRegions}) when the postcode is absent or in no known range.
++     */
++    public static String localityOf(String city, String postcode) {
++        String region = regionOf(postcode);
++        return region != null ? region : CityRegions.localityOf(city);
++    }
++
+     /**
+      * Whether {@code postcode} is valid for {@code city}: it must be four digits and, when the
+      * city's region has a known range, fall within it. A city with no known region accepts any
