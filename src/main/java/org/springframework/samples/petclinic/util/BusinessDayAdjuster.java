@@ -18,10 +18,10 @@ package org.springframework.samples.petclinic.util;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
 
 /**
- * Adjusts dates so that they fall on a business day (Monday to Friday).
+ * Adjusts dates so that they fall on a business day: a weekday (Monday to Friday) that is not a
+ * listed public holiday.
  */
 public final class BusinessDayAdjuster {
 
@@ -30,20 +30,26 @@ public final class BusinessDayAdjuster {
 
     /**
      * Return the given date if it already falls on a business day, otherwise roll it forward to the
-     * next Monday. A Saturday or Sunday is rolled forward; any weekday is returned unchanged.
+     * next business day. A Saturday, Sunday or {@link PublicHolidays public holiday} is rolled
+     * forward one day at a time until a non-holiday weekday is reached.
      *
      * @param date the date to adjust
-     * @return the date rolled forward to the next Monday when it lands on a weekend, or {@code null}
-     *     if {@code date} is {@code null}
+     * @return the date rolled forward to the next business day, or {@code null} if {@code date} is
+     *     {@code null}
      */
     public static LocalDate toBusinessDay(LocalDate date) {
         if (date == null) {
             return null;
         }
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
-            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+        while (!isBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
+    }
+
+    private static boolean isBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        return dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY
+                && !PublicHolidays.isHoliday(date);
     }
 }
