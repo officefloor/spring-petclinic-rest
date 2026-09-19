@@ -246,8 +246,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            long sequence = ownerRepository.findAll().size() + 1L;
-            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), sequence));
+            long sequence = countOwnersInCity(owner.getCity()) + 1L;
+            owner.setCustomerCode(
+                customerCodeGenerator.generate(owner.getCity(), owner.getLastName(), sequence));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -263,6 +264,16 @@ public class ClinicServiceImpl implements ClinicService {
      * Count the owners already stored that share the given first and last name, compared
      * case-insensitively. Used to capture an owner's namesake count at creation time.
      */
+    /**
+     * Count the owners already stored in the given city, compared case-insensitively. Used to
+     * derive the per-city sequence embedded in a new owner's customer code.
+     */
+    private long countOwnersInCity(String city) {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
+            .count();
+    }
+
     private int countNamesakes(String firstName, String lastName) {
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)

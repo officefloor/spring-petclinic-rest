@@ -20,9 +20,10 @@ import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>} where
- * {@code LAST3} is the upper-cased first three letters of the last name and
- * {@code NNNN} is a global, four-digit zero-padded sequence number (e.g. {@code SMI-0007}).
+ * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where
+ * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} the
+ * upper-cased first three letters of the last name and {@code NNNN} is a per-city,
+ * four-digit zero-padded sequence number (e.g. {@code SYD-SMI-0007}).
  */
 @Component
 public class CustomerCodeGenerator {
@@ -32,13 +33,17 @@ public class CustomerCodeGenerator {
     /**
      * Build the customer code for an owner.
      *
-     * @param lastName the owner's last name; its first three letters form the prefix
-     * @param sequence the global sequence number placed in the code (zero-padded to four digits)
-     * @return the formatted customer code, e.g. {@code SMI-0007}
+     * @param city     the owner's city; its first three letters form the leading prefix
+     * @param lastName the owner's last name; its first three letters form the second prefix
+     * @param sequence the per-city sequence number placed in the code (zero-padded to four digits)
+     * @return the formatted customer code, e.g. {@code SYD-SMI-0007}
      */
-    public String generate(String lastName, long sequence) {
-        String upper = lastName.toUpperCase(Locale.ROOT);
-        String prefix = upper.substring(0, Math.min(PREFIX_LENGTH, upper.length()));
-        return String.format("%s-%04d", prefix, sequence);
+    public String generate(String city, String lastName, long sequence) {
+        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
+    }
+
+    private String prefix(String value) {
+        String upper = value.toUpperCase(Locale.ROOT);
+        return upper.substring(0, Math.min(PREFIX_LENGTH, upper.length()));
     }
 }
