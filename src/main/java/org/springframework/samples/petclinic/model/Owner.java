@@ -51,6 +51,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -110,6 +113,14 @@ public class Owner extends Person {
     /** Whether this owner has an email address (non-null and non-empty). */
     public boolean hasEmail() {
         return this.email != null && !this.email.isEmpty();
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public LocalDate getRegistrationDate() {
