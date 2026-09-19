@@ -283,24 +283,47 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, from 1 to 4: starts at 1, gains 1 when this owner has
-     * an email address, gains 1 when this owner had no namesakes at creation
-     * ({@code namesakeCount} is 0), and gains 1 when this owner's tenure exceeds 365 days.
-     * A newly created owner has zero tenure, so it never exceeds level 3. Capped at 4.
-     * Derived from stored state, never persisted.
+     * The owner's membership points, from 0 upwards: starts at 0, gains 2 when this owner
+     * has an email address, gains 1 when this owner had no namesakes at creation
+     * ({@code namesakeCount} is 0), gains 2 when this owner's household has 3 or more
+     * members, and gains 3 when this owner's tenure exceeds 365 days. A newly created owner
+     * has zero tenure, so it never earns those points at creation. Derived from stored
+     * state, never persisted.
      */
-    public int getMembershipLevel() {
-        int level = 1;
+    public int getMembershipPoints() {
+        int points = 0;
         if (hasEmail()) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(this.namesakeCount)) {
-            level++;
+            points += 1;
+        }
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
         }
         if (getTenureDays() > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level, from 1 to 4: derived from {@link #getMembershipPoints()}
+     * as level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Derived from
+     * stored state, never persisted.
+     */
+    public int getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
