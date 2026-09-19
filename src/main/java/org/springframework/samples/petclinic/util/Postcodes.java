@@ -29,6 +29,34 @@ public final class Postcodes {
     }
 
     /**
+     * The canonical region whose postcode range contains {@code postcode}, or {@code null} when
+     * the postcode is absent, malformed, or falls in no known range.
+     */
+    public static String regionOf(String postcode) {
+        if (!isWellFormed(postcode)) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Derive an owner's locality (canonical region), preferring the postcode: use the region whose
+     * range contains {@code postcode}, falling back to the {@code city}-to-region table (see
+     * {@link CityRegions}) when the postcode is absent or in no known range.
+     */
+    public static String localityOf(String city, String postcode) {
+        String region = regionOf(postcode);
+        return region != null ? region : CityRegions.localityOf(city);
+    }
+
+    /**
      * Whether {@code postcode} is valid for {@code city}: it must be four digits and, when the
      * city's region has a known range, fall within it. A city with no known region accepts any
      * four-digit postcode.
