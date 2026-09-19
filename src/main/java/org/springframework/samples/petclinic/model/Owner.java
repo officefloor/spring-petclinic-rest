@@ -246,12 +246,13 @@ public class Owner extends Person {
     }
 
     /**
-     * Return this owner's locality: the canonical region derived from the city via the fixed
-     * city-to-region table, or {@code "UNKNOWN"} when the city is not in the table.
+     * Return this owner's locality: the canonical region derived by preferring the postcode (matched
+     * against the known region ranges) and falling back to the city-to-region table when the postcode
+     * is absent or in no known range, or {@code "UNKNOWN"} when neither yields a region.
      */
     @Transient
     public String getLocality() {
-        return LocalityResolver.regionFor(this.city);
+        return LocalityResolver.regionFor(this.postcode, this.city);
     }
 
     /**
