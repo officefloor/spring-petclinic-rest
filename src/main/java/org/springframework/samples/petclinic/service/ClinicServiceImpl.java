@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -48,6 +49,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
     private final HouseholdNormalizer householdNormalizer;
+    private final HouseholdIdGenerator householdIdGenerator;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -57,7 +59,8 @@ public class ClinicServiceImpl implements ClinicService {
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
-        HouseholdNormalizer householdNormalizer) {
+        HouseholdNormalizer householdNormalizer,
+        HouseholdIdGenerator householdIdGenerator) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -66,6 +69,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
         this.householdNormalizer = householdNormalizer;
+        this.householdIdGenerator = householdIdGenerator;
     }
 
     @Override
@@ -266,6 +270,28 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(owner -> householdNormalizer.normalize(owner.getLastName()).equals(targetLastName)
                 && householdNormalizer.normalize(owner.getAddress()).equals(targetAddress))
             .toList();
+    }
+
+    @Override
+    @Transactional
+    public String joinHousehold(Owner owner) throws DataAccessException {
+        Collection<Owner> members = findOwnersInSameHousehold(owner.getLastName(), owner.getAddress());
+        if (members.isEmpty()) {
+            return null;
+        }
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElseGet(() -> householdIdGenerator.generate(owner.getLastName(), owner.getAddress()));
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        owner.setHouseholdId(householdId);
+        return householdId;
     }
 
     @Override

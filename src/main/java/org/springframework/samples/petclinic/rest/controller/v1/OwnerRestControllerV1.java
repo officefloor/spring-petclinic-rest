@@ -128,8 +128,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && !this.clinicService.findOwnersInSameHousehold(owner.getLastName(), owner.getAddress()).isEmpty()) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            this.clinicService.joinHousehold(owner);
+        } else if (!this.clinicService.findOwnersInSameHousehold(owner.getLastName(), owner.getAddress()).isEmpty()) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
         }
         this.clinicService.saveOwner(owner);
