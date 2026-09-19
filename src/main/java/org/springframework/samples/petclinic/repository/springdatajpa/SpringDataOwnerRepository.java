@@ -64,6 +64,9 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Collection<Owner> findByLastNameIgnoreCase(String lastName);
 
     @Override
+    Collection<Owner> findByPostcode(String postcode);
+
+    @Override
     Collection<Owner> findByCustomerCodeStartingWith(String customerCode);
 
     @Override

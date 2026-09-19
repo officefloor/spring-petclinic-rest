@@ -100,6 +100,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
 
     @Override
     @SuppressWarnings("unchecked")
+    public Collection<Owner> findByPostcode(String postcode) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.postcode = :postcode");
+        query.setParameter("postcode", postcode);
+        return query.getResultList();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
     public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
         Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone");
         query.setParameter("telephone", telephone);

@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.OwnerIdentityKey;
 import org.springframework.samples.petclinic.util.OwnerMembership;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -272,9 +273,6 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setHouseholdId(HouseholdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         rejectIdentityCollision(owner);
         List<Owner> householdMembers = findHouseholdMembers(owner);
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
-            throw new HouseholdDuplicateException(owner.getHouseholdId());
-        }
         long ownersInCity = ownerRepository.countByCity(owner.getCity());
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
@@ -286,7 +284,7 @@ public class ClinicServiceImpl implements ClinicService {
             throw new DailyOwnerLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         owner.setBulkSignupWarning(ownersOnDate > BULK_SIGNUP_WARNING_THRESHOLD);
-        flagPossibleDuplicate(owner, householdMembers, sharesHousehold);
+        flagPossibleDuplicate(owner, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setMembershipLevel(OwnerMembership.cappedLevel(owner, householdMembers));
@@ -298,8 +296,9 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Reject creating an owner whose whole {@link OwnerIdentityKey identity key} already belongs to
-     * another owner. Because the telephone is part of the key, only an existing owner sharing every
-     * key component (normalized telephone, email and household identifier) is a duplicate.
+     * another active owner. Because the telephone is part of the key, only an existing owner sharing
+     * every key component (normalized telephone, lower-cased email and the last name's Soundex code)
+     * is a hard duplicate; telephone equality remains a prerequisite, so it prefilters the candidates.
      */
     private void rejectIdentityCollision(Owner owner) {
         String identityKey = OwnerIdentityKey.of(owner);
@@ -335,21 +334,40 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Flag the new owner as a possible (soft) duplicate of an existing household member carrying a
-     * different telephone. The new owner is still created; {@code possibleDuplicate} is set to
-     * whether such a match exists and {@code possibleDuplicateOf} to the matching owner's id (the
-     * lowest when several match), or {@code null} when there is no match.
+     * Flag the new owner as a possible (soft) duplicate of an existing owner whose identity key
+     * <em>differs</em> but whose last name shares the same Soundex code and whose postcode is equal.
+     * The new owner is still created; {@code possibleDuplicate} is set to whether such a match exists
+     * and {@code possibleDuplicateOf} to the matching owner's id (the lowest when several match), or
+     * {@code null} when there is no match.
      *
      * <p>An owner that explicitly declares {@code sharesHousehold} is a <em>declared</em> household
      * member rather than a suspected duplicate, so it is never flagged.
      */
-    private void flagPossibleDuplicate(Owner owner, List<Owner> householdMembers, boolean sharesHousehold) {
-        Owner match = sharesHousehold ? null : householdMembers.stream()
-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+    private void flagPossibleDuplicate(Owner owner, boolean sharesHousehold) {
+        Owner match = sharesHousehold ? null : findSoftMatchCandidates(owner).stream()
             .min(Comparator.comparingInt(Owner::getId))
             .orElse(null);
         owner.setPossibleDuplicate(match != null);
         owner.setPossibleDuplicateOf(match == null ? null : match.getId());
+    }
+
+    /**
+     * Find the existing active owners that are a soft match for the new owner: those sharing its
+     * postcode and its last name's {@link org.springframework.samples.petclinic.util.Soundex Soundex}
+     * code, but deriving a <em>different</em> {@link OwnerIdentityKey identity key} (an equal key is a
+     * hard duplicate, rejected earlier). An owner without a postcode has no soft-match candidates.
+     */
+    private List<Owner> findSoftMatchCandidates(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return List.of();
+        }
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = OwnerIdentityKey.of(owner);
+        return ownerRepository.findByPostcode(owner.getPostcode()).stream()
+            .filter(ClinicServiceImpl::isActive)
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
+            .filter(existing -> !identityKey.equals(OwnerIdentityKey.of(existing)))
+            .toList();
     }
 
     @Override

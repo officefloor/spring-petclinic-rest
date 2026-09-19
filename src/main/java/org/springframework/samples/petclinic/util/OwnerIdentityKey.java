@@ -21,11 +21,12 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Derives an owner's {@code identityKey}, the single value that drives duplicate detection.
  *
- * <p>The key joins the owner's already-normalized telephone, email and household identifier as
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are
+ * <p>The key is the SHA-256 hex digest of the owner's already-normalized telephone, already
+ * lower-cased email and the {@link Soundex Soundex code} of the last name, joined as
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are hard
  * duplicates only when their <em>whole</em> keys are equal: because the telephone is part of the
  * key, two members of the same household with different telephones derive different keys and are
- * both allowed.
+ * both allowed (they are instead flagged as a soft match).
  */
 public final class OwnerIdentityKey {
 
@@ -35,17 +36,18 @@ public final class OwnerIdentityKey {
     }
 
     /**
-     * Compute the identity key for the given owner from its stored (already normalized) telephone,
-     * email and household identifier. A {@code null} email or household identifier contributes an
-     * empty component.
+     * Compute the identity key for the given owner from its stored (already normalized) telephone
+     * and email and the Soundex code of its last name. A {@code null} telephone or email
+     * contributes an empty component.
      *
      * @param owner the owner to derive the key for
-     * @return the owner's identity key
+     * @return the owner's identity key as a 64-character lower-case hex string
      */
     public static String of(Owner owner) {
-        return orEmpty(owner.getTelephone())
+        String raw = orEmpty(owner.getTelephone())
             + SEPARATOR + orEmpty(owner.getEmail())
-            + SEPARATOR + orEmpty(owner.getHouseholdId());
+            + SEPARATOR + Soundex.encode(owner.getLastName());
+        return Sha256.hex(raw);
     }
 
     private static String orEmpty(String value) {

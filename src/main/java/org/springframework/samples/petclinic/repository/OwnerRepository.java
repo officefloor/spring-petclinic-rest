@@ -60,6 +60,17 @@ public interface OwnerRepository {
     Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException;
 
     /**
+     * Retrieve every <code>Owner</code> that stores the given postcode. A shared postcode is a
+     * prerequisite for a soft (possible-duplicate) match, so these are the candidates compared
+     * against a new owner when detecting owners who live at the same locality.
+     *
+     * @param postcode the postcode to match
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
+     */
+    Collection<Owner> findByPostcode(String postcode) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for

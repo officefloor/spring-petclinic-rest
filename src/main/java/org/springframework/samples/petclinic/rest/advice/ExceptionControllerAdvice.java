@@ -34,7 +34,6 @@ import org.springframework.samples.petclinic.service.CityCapacityExceededExcepti
 import org.springframework.samples.petclinic.service.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.service.DuplicateOwnerException;
-import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -58,8 +57,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
-    private static final String ERROR_DUPLICATE_OWNER = "An owner with the same identity (telephone, email and household) already exists";
-    private static final String ERROR_HOUSEHOLD_DUPLICATE = "An owner already belongs to this household (same last name and postcode)";
+    private static final String ERROR_DUPLICATE_OWNER = "An owner with the same identity (telephone, email and last name) already exists";
     private static final String ERROR_CITY_CAPACITY = "The owner's city has already reached its maximum number of owners";
     private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners for today has already been reached";
     private static final String ERROR_DISPOSABLE_EMAIL = "The owner's email uses a disposable domain that is not allowed";
@@ -130,27 +128,6 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_OWNER);
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link HouseholdDuplicateException} raised when creating an owner into a household that
-     * already has a member (another owner with the same last name and postcode) without declaring
-     * {@code sharesHousehold}, returning a 409 Conflict status.
-     *
-     * @param e The {@link HouseholdDuplicateException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
-     */
-    @ExceptionHandler(HouseholdDuplicateException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
-        logger.warn("Household duplicate at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_HOUSEHOLD_DUPLICATE);
         return ResponseEntity.status(status).body(detail);
     }
 
