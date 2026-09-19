@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 91fb886cf..e2e6636e0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -359,6 +359,16 @@ public class Owner extends Person {
+         return AgeBand.classify(this.birthDate, this.registrationDate);
+     }
+ 
++    /**
++     * The owner's market segment: {@code <TIER>_<AREA>} (see {@link OwnerSegment}) where TIER is
++     * {@code "PREMIUM"} at membership level 3 or more else {@code "STANDARD"}, and AREA is
++     * {@code "METRO"} for a known-region {@link #getLocality() locality} else {@code "REGIONAL"}.
++     */
++    @Transient
++    public String getOwnerSegment() {
++        return OwnerSegment.classify(this.membershipLevel, this.getLocality());
++    }
++
+     /**
+      * The owner's fiscal year: the {@code FY<YY>} label of the fiscal year (starting 1 July)
+      * containing its business-day-adjusted registration date (see {@link FiscalYear}), or
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+new file mode 100644
+index 000000000..ad1f44521
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Classifies an owner into a market segment formatted {@code <TIER>_<AREA>}, one of
++ * {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"}, {@code "STANDARD_METRO"} or
++ * {@code "STANDARD_REGIONAL"}. TIER is {@code "PREMIUM"} when the membership level is 3 or more,
++ * otherwise {@code "STANDARD"}. AREA is {@code "METRO"} when the locality is a known region (see
++ * {@link CityRegion}), otherwise {@code "REGIONAL"}. Used to derive an owner's segment from its
++ * membership level and locality.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * The segment of an owner with membership {@code level} and {@code locality}. A {@code null}
++     * level is treated as below the PREMIUM threshold; a {@code null} or {@link CityRegion#UNKNOWN}
++     * locality as not a known region.
++     */
++    public static String classify(Integer level, String locality) {
++        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
++        boolean knownRegion = locality != null && !CityRegion.UNKNOWN.equals(locality);
++        String area = knownRegion ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 32bc21670..60782d84a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2247,6 +2247,16 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's market segment, formatted '<TIER>_<AREA>': TIER is 'PREMIUM' when the
++                membershipLevel is 3 or more, otherwise 'STANDARD'; AREA is 'METRO' when the locality
++                is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'. One of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
