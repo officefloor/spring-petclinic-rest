@@ -162,6 +162,17 @@ public class Owner extends Person {
         return Character.toUpperCase(name.charAt(0)) + ".";
     }
 
+    /**
+     * Return this owner's membership tier: {@code "SILVER"} for an owner with no namesakes
+     * ({@code namesakeCount} is 0) and an email address on file, otherwise {@code "BRONZE"}.
+     */
+    @Transient
+    public String getMembershipTier() {
+        boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return unique && hasEmail ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
