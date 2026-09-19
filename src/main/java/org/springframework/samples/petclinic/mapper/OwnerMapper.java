@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.FiscalYears;
 import org.springframework.samples.petclinic.util.Luhn;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.MembershipNumbers;
@@ -30,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -71,6 +73,14 @@ public interface OwnerMapper {
      */
     default String membershipNumber(Owner owner) {
         return MembershipNumbers.of(owner);
+    }
+
+    /**
+     * Derive the owner's fiscal year 'FY&lt;YY&gt;' from the (business-day-adjusted) registration
+     * date, where the fiscal year starts on 1 July. Returns null when no registration date is set.
+     */
+    default String fiscalYear(Owner owner) {
+        return FiscalYears.label(owner.getRegistrationDate());
     }
 
     /**

@@ -3,16 +3,16 @@ package org.springframework.samples.petclinic.util;
 import org.springframework.samples.petclinic.model.Owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Scores an owner's membership and maps that score to a numeric level. Points start at zero and
  * accrue for each qualifying factor: {@link #EMAIL_POINTS} for a present email,
  * {@link #NO_NAMESAKE_POINTS} for having no namesakes ({@code namesakeCount} is 0),
  * {@link #HOUSEHOLD_POINTS} for a household of {@link #HOUSEHOLD_SIZE} or more, and
- * {@link #TENURE_POINTS} for tenure of more than {@link #TENURE_DAYS} days since registration.
- * The total is mapped to a level of 1 to 4 by {@link #levelFor(int)}. A newly created owner has
- * zero tenure, so the tenure points are out of reach on creation.
+ * {@link #TENURE_POINTS} for tenure of at least {@link #TENURE_FISCAL_YEARS} elapsed fiscal
+ * year(s) since registration (see {@link FiscalYears}). The total is mapped to a level of 1 to 4
+ * by {@link #levelFor(int)}. A newly created owner has zero tenure, so the tenure points are out
+ * of reach on creation.
  */
 public final class MembershipLevels {
 
@@ -28,11 +28,11 @@ public final class MembershipLevels {
     /** Household size, in members, that must be reached for {@link #HOUSEHOLD_POINTS}. */
     public static final int HOUSEHOLD_SIZE = 3;
 
-    /** Points added for tenure of more than {@link #TENURE_DAYS} days. */
+    /** Points added for tenure of at least {@link #TENURE_FISCAL_YEARS} elapsed fiscal year(s). */
     public static final int TENURE_POINTS = 3;
 
-    /** Tenure, in days since registration, must exceed this for {@link #TENURE_POINTS}. */
-    public static final int TENURE_DAYS = 365;
+    /** Elapsed fiscal years since registration required to earn {@link #TENURE_POINTS}. */
+    public static final int TENURE_FISCAL_YEARS = 1;
 
     private MembershipLevels() {
     }
@@ -75,12 +75,15 @@ public final class MembershipLevels {
         return size != null && size >= HOUSEHOLD_SIZE;
     }
 
-    /** Whether the owner's tenure as at {@code asOf} exceeds {@link #TENURE_DAYS} days. */
+    /**
+     * Whether at least {@link #TENURE_FISCAL_YEARS} fiscal year(s) have elapsed between the owner's
+     * registration date and {@code asOf}.
+     */
     private static boolean hasTenure(Owner owner, LocalDate asOf) {
         LocalDate registration = owner.getRegistrationDate();
         if (registration == null || asOf == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registration, asOf) > TENURE_DAYS;
+        return FiscalYears.elapsedBetween(registration, asOf) >= TENURE_FISCAL_YEARS;
     }
 }
