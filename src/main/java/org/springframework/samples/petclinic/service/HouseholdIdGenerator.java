@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import org.springframework.samples.petclinic.model.Sha256Hex;
 import org.springframework.stereotype.Component;
 
 /**

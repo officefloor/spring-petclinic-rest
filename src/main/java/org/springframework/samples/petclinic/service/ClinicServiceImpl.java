@@ -383,23 +383,25 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Find an existing owner belonging to the same household as the given (not-yet-persisted) owner,
-     * i.e. one sharing its computed {@link Owner#getHouseholdId() householdId} (derived from last name
-     * and postcode). Because the household is keyed on (last name, postcode), such an owner is a
-     * household duplicate of the new one. Owners flagged {@link Owner#isDeleted() deleted} are ignored.
-     * Returns the first such owner, or {@code null} when the owner has no household
-     * ({@code householdId} is null) or no match exists.
+     * Find an existing owner that is a soft (possible) match of the given (not-yet-persisted) owner:
+     * a non-deleted owner sharing its {@code soundex(lastName)} and postcode but with a different
+     * {@link Owner#getIdentityKey() identity key} (so it is not a hard duplicate). Returns the first
+     * such owner, or {@code null} when the owner has no postcode or no match exists. Used to flag an
+     * owner as a possible duplicate at creation time.
      */
     @Override
     @Transactional(readOnly = true)
-    public Owner findHouseholdDuplicateOf(Owner owner) throws DataAccessException {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
+    public Owner findSoftMatchOf(Owner owner) throws DataAccessException {
+        if (owner.getPostcode() == null) {
             return null;
         }
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
             .findFirst()
             .orElse(null);
     }

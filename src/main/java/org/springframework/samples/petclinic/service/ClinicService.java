@@ -61,7 +61,7 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException;
-	Owner findHouseholdDuplicateOf(Owner owner) throws DataAccessException;
+	Owner findSoftMatchOf(Owner owner) throws DataAccessException;
 	long countOwnersInCity(String city) throws DataAccessException;
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;
 

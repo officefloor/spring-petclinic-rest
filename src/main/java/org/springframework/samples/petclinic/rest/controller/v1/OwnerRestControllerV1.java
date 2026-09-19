@@ -192,6 +192,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
         }
+        Owner softMatch = this.clinicService.findSoftMatchOf(owner);
+        if (softMatch != null) {
+            owner.setPossibleDuplicateOf(softMatch.getId());
+        }
         this.clinicService.saveOwner(owner);
         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
         this.ownerAuditLogger.logCreated(owner);

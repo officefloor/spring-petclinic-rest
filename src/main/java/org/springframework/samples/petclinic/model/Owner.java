@@ -272,10 +272,10 @@ public class Owner extends Person {
 
     /**
      * The id of an existing owner this owner was flagged as a possible (soft) duplicate of at
-     * creation, or {@code null} when none. Because owners sharing a last name and postcode now form
-     * the same household — rejected as a household duplicate unless declared via {@code sharesHousehold},
-     * and a declared member is not a suspected duplicate — this is not populated at creation.
-     * Captured once at creation.
+     * creation, or {@code null} when none. Set at creation when an existing owner shares this
+     * owner's {@code soundex(lastName)} and postcode but has a different {@link #getIdentityKey()
+     * identity key} (e.g. a different telephone), so the two are not a hard duplicate. Captured
+     * once at creation.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
@@ -520,15 +520,16 @@ public class Owner extends Person {
 
     /**
      * Return this owner's identity key, the single derived value all duplicate detection is based
-     * on: the normalized telephone, email and household id joined with {@code '|'} as
-     * {@code telephone + "|" + email + "|" + householdId}, with each absent component rendered as
-     * the empty string. Two owners are duplicates only when their whole identity keys are equal;
-     * because the telephone is part of the key, members of one household (same {@code householdId})
-     * with different telephones have distinct keys and are not duplicates.
+     * on: the lower-case SHA-256 hex digest over {@code normalizedTelephone + "|" + lowerEmail +
+     * "|" + soundex(lastName)}, with an absent email rendered as the empty string. Two owners are
+     * duplicates only when their whole identity keys are equal; because the telephone is part of
+     * the key, two owners with the same last name and postcode but different telephones have
+     * distinct keys and are not duplicates (they are instead flagged as a soft match).
      */
     @Transient
     public String getIdentityKey() {
-        return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
+        String core = keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + Soundex.encode(this.getLastName());
+        return Sha256Hex.lowerHex(core);
     }
 
     private static String keyPart(String value) {
