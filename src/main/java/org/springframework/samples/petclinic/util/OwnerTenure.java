@@ -17,10 +17,10 @@
 package org.springframework.samples.petclinic.util;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's tenure: the number of whole days elapsed since their registration date.
+ * Derives an owner's tenure: the number of whole {@link FiscalYear fiscal years} elapsed since their
+ * registration date.
  */
 public final class OwnerTenure {
 
@@ -28,17 +28,17 @@ public final class OwnerTenure {
     }
 
     /**
-     * Return the owner's tenure in whole days, measured from their registration date to today.
-     * A missing registration date, or one that has not yet arrived, yields a tenure of {@code 0}.
+     * Return the owner's tenure in whole fiscal years, measured from their registration date to
+     * today. A missing registration date, or one that has not yet arrived, yields a tenure of
+     * {@code 0}.
      *
      * @param registrationDate the date the owner was registered, may be {@code null}
-     * @return the tenure in days, never negative
+     * @return the tenure in elapsed fiscal years, never negative
      */
-    public static long inDays(LocalDate registrationDate) {
+    public static int inFiscalYears(LocalDate registrationDate) {
         if (registrationDate == null) {
             return 0;
         }
-        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return Math.max(days, 0);
+        return FiscalYear.elapsed(registrationDate, LocalDate.now());
     }
 }

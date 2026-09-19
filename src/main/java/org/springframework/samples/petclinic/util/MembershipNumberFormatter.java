@@ -28,7 +28,8 @@ public final class MembershipNumberFormatter {
 
     /**
      * Format a membership number as {@code "<customerCode>-M<YY>"}, where {@code YY} is the last
-     * two digits of the registration date's year, zero-padded (for example {@code "SMI-0007-M26"}).
+     * two digits of the registration date's {@link FiscalYear fiscal year}, zero-padded (for
+     * example {@code "SMI-0007-M26"}).
      *
      * @param customerCode     the owner's customer code
      * @param registrationDate the owner's registration date
@@ -38,6 +39,6 @@ public final class MembershipNumberFormatter {
         if (customerCode == null || registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.startingYear(registrationDate) % 100);
     }
 }

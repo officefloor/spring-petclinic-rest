@@ -36,11 +36,11 @@ public final class MembershipPointsFormatter {
     /** Household size at or above which the large-household points are awarded. */
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Points awarded once the owner's tenure exceeds {@value #TENURE_THRESHOLD_DAYS} days. */
+    /** Points awarded once the owner's tenure exceeds {@value #TENURE_THRESHOLD_FISCAL_YEARS} fiscal year. */
     private static final int TENURE_POINTS = 3;
 
-    /** Tenure, in days, an owner must exceed to earn the tenure points. */
-    private static final int TENURE_THRESHOLD_DAYS = 365;
+    /** Tenure, in elapsed fiscal years, an owner must exceed to earn the tenure points. */
+    private static final int TENURE_THRESHOLD_FISCAL_YEARS = 1;
 
     private MembershipPointsFormatter() {
     }
@@ -50,7 +50,7 @@ public final class MembershipPointsFormatter {
      * address is present, {@value #NO_NAMESAKE_POINTS} when the owner has no namesakes
      * ({@code namesakeCount} is {@code 0}), {@value #LARGE_HOUSEHOLD_POINTS} for a household of
      * {@value #LARGE_HOUSEHOLD_SIZE} or more members, and {@value #TENURE_POINTS} once the owner's
-     * tenure exceeds {@value #TENURE_THRESHOLD_DAYS} days.
+     * tenure exceeds {@value #TENURE_THRESHOLD_FISCAL_YEARS} fiscal year.
      *
      * @param namesakeCount    the number of owners sharing this owner's name, may be {@code null}
      * @param email            the owner's email address, may be {@code null}
@@ -70,7 +70,7 @@ public final class MembershipPointsFormatter {
         if (householdSize != null && householdSize >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
-        if (OwnerTenure.inDays(registrationDate) > TENURE_THRESHOLD_DAYS) {
+        if (OwnerTenure.inFiscalYears(registrationDate) > TENURE_THRESHOLD_FISCAL_YEARS) {
             points += TENURE_POINTS;
         }
         return points;
