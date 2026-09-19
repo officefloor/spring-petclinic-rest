@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrat
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
+import org.springframework.samples.petclinic.rest.controller.WelcomeNotifier;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -89,6 +90,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     private final HouseholdIdGenerator householdIdGenerator;
 
     private final IdempotencyKeyRegistry idempotencyKeyRegistry;
@@ -116,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  AddressNormalizer addressNormalizer,
                                  BusinessDayResolver businessDayResolver,
                                  OwnerAuditLogger ownerAuditLogger,
+                                 WelcomeNotifier welcomeNotifier,
                                  HouseholdIdGenerator householdIdGenerator,
                                  IdempotencyKeyRegistry idempotencyKeyRegistry) {
         this.clinicService = clinicService;
@@ -129,6 +133,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.addressNormalizer = addressNormalizer;
         this.businessDayResolver = businessDayResolver;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.welcomeNotifier = welcomeNotifier;
         this.householdIdGenerator = householdIdGenerator;
         this.idempotencyKeyRegistry = idempotencyKeyRegistry;
     }
@@ -204,6 +209,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         this.idempotencyKeyRegistry.remember(idempotencyKey, owner.getId());
         this.ownerAuditLogger.logCreated(owner);
+        this.welcomeNotifier.enqueueWelcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
