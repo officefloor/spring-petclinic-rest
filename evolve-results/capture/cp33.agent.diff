@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 46be917a4..e187b02ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
++import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
+@@ -294,6 +295,24 @@ public class ExceptionControllerAdvice {
+      * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+      */
++    /**
++     * Handles {@link FutureRegistrationDateException} raised when an owner request supplies a
++     * {@code registrationDate} later than the current server date. Returns a 400 Bad Request
++     * whose {@code errors} array names the {@code registrationDate} field.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("registrationDate"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     @ExceptionHandler(OwnerDailyRegistrationLimitExceededException.class)
+     @ResponseBody
+     public ResponseEntity<ProblemDetail> handleOwnerDailyRegistrationLimitExceededException(OwnerDailyRegistrationLimitExceededException e, HttpServletRequest request) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..eec8c1d56
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/FutureRegistrationDateException.java
+@@ -0,0 +1,33 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.LocalDate;
++
++/**
++ * Signals that an owner request supplied a {@code registrationDate} later than the
++ * current server date.
++ *
++ * <p>Owners cannot be registered into the future, so the supplied date is rejected as
++ * an invalid request rather than being stored or rolled to a business day.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    public FutureRegistrationDateException(LocalDate registrationDate, LocalDate serverDate) {
++        super("Registration date " + registrationDate + " is later than the server date " + serverDate);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9622eee53..e51d97148 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
+ import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
++import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
+@@ -154,7 +155,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(this.telephoneNormalizer.normalize(owner.getTelephone()));
+         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
+-        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        LocalDate serverDate = LocalDate.now();
++        if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(serverDate)) {
++            throw new FutureRegistrationDateException(owner.getRegistrationDate(), serverDate);
++        }
++        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : serverDate;
+         owner.setRegistrationDate(this.businessDayResolver.toBusinessDay(effectiveDate));
+         long ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate());
+         if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
