@@ -47,6 +47,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final HouseholdNormalizer householdNormalizer;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -55,7 +56,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator) {
+        CustomerCodeGenerator customerCodeGenerator,
+        HouseholdNormalizer householdNormalizer) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -63,6 +65,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.householdNormalizer = householdNormalizer;
     }
 
     @Override
@@ -252,6 +255,17 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
         return ownerRepository.findByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException {
+        String targetLastName = householdNormalizer.normalize(lastName);
+        String targetAddress = householdNormalizer.normalize(address);
+        return ownerRepository.findAll().stream()
+            .filter(owner -> householdNormalizer.normalize(owner.getLastName()).equals(targetLastName)
+                && householdNormalizer.normalize(owner.getAddress()).equals(targetAddress))
+            .toList();
     }
 
     @Override

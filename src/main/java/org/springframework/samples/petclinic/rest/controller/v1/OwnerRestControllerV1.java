@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
@@ -126,6 +127,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && !this.clinicService.findOwnersInSameHousehold(owner.getLastName(), owner.getAddress()).isEmpty()) {
+            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
         }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
