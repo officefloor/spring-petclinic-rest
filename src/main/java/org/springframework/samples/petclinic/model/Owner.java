@@ -161,7 +161,7 @@ public class Owner extends Person {
 
     /**
      * The number of owners in this owner's household (owners sharing the same {@code householdId},
-     * counting this owner) captured once at creation. Drives the {@code "GOLD"} membership tier.
+     * counting this owner) captured once at creation.
      */
     public Integer getHouseholdSize() {
         return this.householdSize;
@@ -192,23 +192,29 @@ public class Owner extends Person {
         return Character.toUpperCase(name.charAt(0)) + ".";
     }
 
-    /** Household size (inclusive) at or above which an owner qualifies for the {@code "GOLD"} tier. */
-    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+    /** The membership level every owner starts at on creation. */
+    private static final int BASE_MEMBERSHIP_LEVEL = 1;
+
+    /** The highest membership level derivable at creation; level 4 is reserved for tenure. */
+    private static final int MAX_MEMBERSHIP_LEVEL = 3;
 
     /**
-     * Return this owner's membership tier: {@code "GOLD"} when the owner's household has
-     * {@value #GOLD_HOUSEHOLD_SIZE} or more members ({@code householdSize}); otherwise
-     * {@code "SILVER"} for an owner with no namesakes ({@code namesakeCount} is 0) and an email
-     * address on file, else {@code "BRONZE"}.
+     * Return this owner's membership level, a number from 1 to 3 derived at creation: every owner
+     * starts at {@value #BASE_MEMBERSHIP_LEVEL}; add 1 when an email address is present; add 1 when
+     * the owner has no namesakes ({@code namesakeCount} is 0); capped at
+     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
      */
     @Transient
-    public String getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= GOLD_HOUSEHOLD_SIZE) {
-            return "GOLD";
-        }
-        boolean unique = Integer.valueOf(0).equals(this.namesakeCount);
+    public Integer getMembershipLevel() {
+        int level = BASE_MEMBERSHIP_LEVEL;
         boolean hasEmail = this.email != null && !this.email.isBlank();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
+        if (hasEmail) {
+            level++;
+        }
+        if (Integer.valueOf(0).equals(this.namesakeCount)) {
+            level++;
+        }
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
     }
 
     /**

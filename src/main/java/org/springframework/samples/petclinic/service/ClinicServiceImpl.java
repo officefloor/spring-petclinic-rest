@@ -268,7 +268,7 @@ public class ClinicServiceImpl implements ClinicService {
      * Count the members of the given (not yet persisted) owner's household: the already stored
      * owners sharing its {@code householdId} plus the owner itself. An owner with no household
      * ({@code householdId} is null) is a household of one. Used to capture an owner's household
-     * size at creation time, which in turn drives the {@code GOLD} membership tier.
+     * size at creation time.
      */
     private int countHouseholdMembers(Owner owner) {
         String householdId = owner.getHouseholdId();
