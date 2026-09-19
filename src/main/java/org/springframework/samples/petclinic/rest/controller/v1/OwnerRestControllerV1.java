@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerDailyRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final BusinessDayResolver businessDayResolver;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
 
@@ -95,7 +98,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 BusinessDayResolver businessDayResolver) {
+                                 BusinessDayResolver businessDayResolver,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -105,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.businessDayResolver = businessDayResolver;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -158,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
         }
         this.clinicService.saveOwner(owner);
+        this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
