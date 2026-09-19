@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 55609eed3..d1ac1943d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -19,6 +19,7 @@ import org.springframework.core.style.ToStringCreator;
+ import org.springframework.samples.petclinic.util.AgeBand;
+ import org.springframework.samples.petclinic.util.CityLocality;
+ import org.springframework.samples.petclinic.util.CustomerCode;
++import org.springframework.samples.petclinic.util.E164PhoneNumber;
+ import org.springframework.samples.petclinic.util.LuhnCheckDigit;
+ 
+ import jakarta.persistence.*;
+@@ -115,6 +116,16 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    /**
++     * The stored E.164 telephone formatted for humans: the country code, a space, then the
++     * national digits grouped in threes (e.g. {@code "+61 412 345 678"}), while
++     * {@link #getTelephone()} keeps the raw E.164 form. Derived from stored state, never
++     * persisted.
++     */
++    public String getTelephoneDisplay() {
++        return E164PhoneNumber.toDisplay(this.telephone);
++    }
++
+     public String getEmail() {
+         return this.email;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java
+index c143c5731..a1e8a9fbf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumber.java
+@@ -60,6 +60,46 @@ public final class E164PhoneNumber {
+         return E164.matcher(candidate).matches() ? Optional.of(candidate) : Optional.empty();
+     }
+ 
++    /**
++     * Formats a stored E.164 number for humans: the country code, a space, then the national
++     * digits grouped in threes. So {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
++     *
++     * <p>The country code is the longest {@link #NATIONAL_NUMBER_LENGTHS known} code that
++     * prefixes the number, reusing the same country-code facts as the length rule.
++     *
++     * @param e164 a normalized E.164 number (a '+' followed by digits), as produced by
++     *   {@link #toE164}
++     * @return the human-readable form, or {@code e164} unchanged when it is null, not a
++     *   well-formed E.164 number, or carries no recognized country code (so the split between
++     *   country code and national number is unknown)
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null || !E164.matcher(e164).matches()) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        Optional<String> countryCode = NATIONAL_NUMBER_LENGTHS.keySet().stream()
++                .filter(digits::startsWith)
++                .max(Comparator.comparingInt(String::length));
++        if (countryCode.isEmpty()) {
++            return e164;
++        }
++        String national = digits.substring(countryCode.get().length());
++        return "+" + countryCode.get() + " " + groupInThrees(national);
++    }
++
++    /** Groups a run of digits into space-separated groups of three, left to right. */
++    private static String groupInThrees(String digits) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(digits.charAt(i));
++        }
++        return grouped.toString();
++    }
++
+     /**
+      * Checks a normalized E.164 number's national-number length against its country code.
+      *
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b361a0ce0..e0776d54a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,6 +2092,12 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: "The stored E.164 telephone formatted for humans: the country code, a space, then the national digits grouped in threes. The raw 'telephone' stays in E.164 form. Derived from stored state, never persisted."
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             initials:
+               title: Initials
+               description: The upper-cased first letters of the first and last name, dot-separated with a trailing dot.
