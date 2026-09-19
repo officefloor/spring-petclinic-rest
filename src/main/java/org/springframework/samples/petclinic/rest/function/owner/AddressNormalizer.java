@@ -37,4 +37,34 @@ final class AddressNormalizer {
         }
         return normalized.toString();
     }
+
+    /** Whether {@code value} carries content once leading/trailing whitespace is ignored. */
+    static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    /**
+     * The composed structured address: the {@link #normalize(String) normalized} {@code addressLine1},
+     * with a single space and the normalized {@code addressLine2} appended when {@code addressLine2}
+     * is present.
+     */
+    static String compose(String addressLine1, String addressLine2) {
+        String composed = normalize(addressLine1);
+        if (isPresent(addressLine2)) {
+            composed = composed + ' ' + normalize(addressLine2);
+        }
+        return composed;
+    }
+
+    /**
+     * The canonical address for an owner: the {@link #compose(String, String) composed} structured
+     * address when a structured {@code addressLine1} is present, otherwise the normalized flat
+     * {@code address}. Structured fields are preferred so everything downstream reads one form.
+     */
+    static String canonical(String addressLine1, String addressLine2, String flatAddress) {
+        if (isPresent(addressLine1)) {
+            return compose(addressLine1, addressLine2);
+        }
+        return normalize(flatAddress);
+    }
 }

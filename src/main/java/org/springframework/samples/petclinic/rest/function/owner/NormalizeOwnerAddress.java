@@ -5,14 +5,24 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Normalizes the address on a create request to its canonical form (see
- * {@link AddressNormalizer}). Stores the normalized value back on the shared {@code @Val}
- * request so duplicate detection, {@link BuildOwner} and the response all carry it. Runs
- * after {@link ValidateNewOwner} has confirmed the field is non-blank after normalization,
- * and before {@link EnsureUniqueIdentity} so the derived identity key uses the normalized form.
+ * {@link AddressNormalizer}). Normalization applies to whichever address fields are supplied:
+ * each structured field ({@code addressLine1}, {@code addressLine2}) is normalized in place, and
+ * the flat {@code address} is set to the canonical value — the composed structured address when a
+ * structured {@code addressLine1} is present, otherwise the normalized flat address. Storing it
+ * back on the shared {@code @Val} request means duplicate detection, {@link BuildOwner} and the
+ * response all read the same canonical form. Runs after {@link ValidateNewOwner} has confirmed an
+ * address is present, and before {@link EnsureUniqueIdentity} so the derived identity key uses it.
  */
 public class NormalizeOwnerAddress {
 
     public void service(@Val OwnerFieldsDto request) {
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        if (AddressNormalizer.isPresent(request.getAddressLine1())) {
+            request.setAddressLine1(AddressNormalizer.normalize(request.getAddressLine1()));
+        }
+        if (AddressNormalizer.isPresent(request.getAddressLine2())) {
+            request.setAddressLine2(AddressNormalizer.normalize(request.getAddressLine2()));
+        }
+        request.setAddress(AddressNormalizer.canonical(
+                request.getAddressLine1(), request.getAddressLine2(), request.getAddress()));
     }
 }
