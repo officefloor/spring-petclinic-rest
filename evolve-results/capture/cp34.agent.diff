@@ -1,0 +1,195 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bf6f5efb9..ff5fde755 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.util.LocalityResolver.fromCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(org.springframework.samples.petclinic.util.ContactPreferenceResolver.resolve(owner.getEmail()))")
++    @Mapping(target = "ageBand",
++        expression = "java(org.springframework.samples.petclinic.util.AgeBandResolver.resolve(owner.getBirthDate(), owner.getRegistrationDate()))")
+     @Mapping(target = "identityKey",
+         expression = "java(org.springframework.samples.petclinic.util.OwnerIdentityKey.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ca22d92dd..5024e2c3a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -123,6 +126,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AgeBandResolver.java b/src/main/java/org/springframework/samples/petclinic/util/AgeBandResolver.java
+new file mode 100644
+index 000000000..d1e67ad12
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/AgeBandResolver.java
+@@ -0,0 +1,64 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * Derives an owner's age band from their birth date, measured as at their registration date:
++ * {@code MINOR} for under 18s, {@code ADULT} for 18 to 64 and {@code SENIOR} for 65 and over.
++ */
++public final class AgeBandResolver {
++
++    /** Age band for owners younger than {@link #ADULT_AGE} at registration. */
++    private static final String MINOR = "MINOR";
++
++    /** Age band for owners aged {@link #ADULT_AGE} up to (but not including) {@link #SENIOR_AGE}. */
++    private static final String ADULT = "ADULT";
++
++    /** Age band for owners aged {@link #SENIOR_AGE} or older at registration. */
++    private static final String SENIOR = "SENIOR";
++
++    /** Lower bound (inclusive) of the {@link #ADULT} band. */
++    private static final int ADULT_AGE = 18;
++
++    /** Lower bound (inclusive) of the {@link #SENIOR} band. */
++    private static final int SENIOR_AGE = 65;
++
++    private AgeBandResolver() {
++    }
++
++    /**
++     * Resolve the owner's age band as at their registration date.
++     *
++     * @param birthDate        the owner's date of birth, may be {@code null}
++     * @param registrationDate the date the owner was registered, may be {@code null}
++     * @return {@code "MINOR"}, {@code "ADULT"} or {@code "SENIOR"}, or {@code null} when either
++     *         date is missing
++     */
++    public static String resolve(LocalDate birthDate, LocalDate registrationDate) {
++        if (birthDate == null || registrationDate == null) {
++            return null;
++        }
++        int age = Period.between(birthDate, registrationDate).getYears();
++        if (age < ADULT_AGE) {
++            return MINOR;
++        }
++        return age < SENIOR_AGE ? ADULT : SENIOR;
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 4718c75b8..53630427f 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 2af0f6778..290032243 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c4f3ca736..0a76b095b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 26fd24250..c24fcf77f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f0d3c7ada..340fa7a9a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2059,6 +2059,14 @@ components:
+           format: date
+           example: '2020-06-15'
+           x-field-extra-annotation: "@jakarta.validation.constraints.PastOrPresent"
++        birthDate:
++          title: Birth date
++          description: >-
++            The owner's date of birth. Optional; when supplied it is used to derive the owner's
++            'ageBand' relative to their registration date.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2182,6 +2190,15 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band derived from their birth date relative to their
++                registration date: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+).
++                Present only when a birth date is on file.
++              type: string
++              example: 'ADULT'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
