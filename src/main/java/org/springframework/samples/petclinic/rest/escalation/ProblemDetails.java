@@ -26,4 +26,14 @@ final class ProblemDetails {
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
     }
+
+    /**
+     * As {@link #build}, additionally naming the request field(s) the rejection concerns in an
+     * {@code errors} member — the field-level signal the pre-RFC7807 handlers returned.
+     */
+    static ProblemDetail withErrors(Exception ex, HttpStatus status, String detail, List<String> errors) {
+        ProblemDetail problemDetail = build(ex, status, detail);
+        problemDetail.setProperty("errors", errors);
+        return problemDetail;
+    }
 }
