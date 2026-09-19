@@ -96,6 +96,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may hold before further creations are rejected. */
     static final long MAX_OWNERS_PER_CITY = 50;
 
+    /** Number of owners already in a city at or above which a new owner is flagged as approaching the per-city capacity limit. */
+    static final long CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be registered on a single day before further creations are rejected. */
     static final long MAX_OWNERS_PER_DAY = 100;
 
@@ -183,9 +186,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
-        if (this.clinicService.countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+        long ownersInCity = this.clinicService.countOwnersInCity(owner.getCity());
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
+        owner.setCapacityWarning(ownersInCity >= CAPACITY_WARNING_THRESHOLD);
         if (owner.getPostcode() != null) {
             owner.setHouseholdId(this.householdIdGenerator.generate(owner.getLastName(), owner.getPostcode()));
         }
