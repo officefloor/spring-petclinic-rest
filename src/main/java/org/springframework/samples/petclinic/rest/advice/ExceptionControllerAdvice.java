@@ -29,9 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.MissingOwnerFieldsException;
@@ -231,58 +229,22 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateOwnerTelephoneException} raised when an owner request supplies a
-     * telephone number whose normalized value is already used by an existing owner. Returns a
-     * 409 Conflict whose {@code errors} array names the {@code telephone} field.
+     * Handles {@link DuplicateOwnerIdentityException} raised when an owner request would create an
+     * owner whose whole derived identity key (normalized telephone, email and household id) already
+     * belongs to an existing owner. This is the single duplicate check: telephone, email and
+     * household are no longer detected independently but only through the combined key. Returns a
+     * 409 Conflict whose {@code errors} array names the {@code identityKey} field.
      *
-     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
+     * @param e The {@link DuplicateOwnerIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
+    @ExceptionHandler(DuplicateOwnerIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerIdentityException(DuplicateOwnerIdentityException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateOwnerEmailException} raised when an owner request supplies an
-     * email address whose lower-cased value is already used by an existing owner. Returns a
-     * 409 Conflict whose {@code errors} array names the {@code email} field.
-     *
-     * @param e The {@link DuplicateOwnerEmailException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateOwnerEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateOwnerEmailException(DuplicateOwnerEmailException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("email"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateOwnerHouseholdException} raised when an owner request would
-     * create an owner whose last name and address (compared case-insensitively with
-     * collapsed whitespace) already belong to another owner, without opting in to a shared
-     * household. Returns a 409 Conflict whose {@code errors} array names the {@code lastName}
-     * and {@code address} fields.
-     *
-     * @param e The {@link DuplicateOwnerHouseholdException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateOwnerHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateOwnerHouseholdException(DuplicateOwnerHouseholdException e, HttpServletRequest request) {
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("lastName", "address"));
+        detail.setProperty("errors", List.of("identityKey"));
         return ResponseEntity.status(status).body(detail);
     }
 

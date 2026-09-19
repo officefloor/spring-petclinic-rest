@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -328,22 +327,16 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findByLastName(lastName);
     }
 
+    /**
+     * Find the owners already stored whose derived {@link Owner#getIdentityKey() identity key}
+     * equals the given key. Used as the single duplicate-detection check at creation time: a new
+     * owner is a duplicate only when its whole identity key matches an existing owner's.
+     */
     @Override
     @Transactional(readOnly = true)
-    public Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException {
-        return ownerRepository.findByTelephone(telephone);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Collection<Owner> findOwnersByEmail(String email) throws DataAccessException {
-        if (email == null) {
-            return List.of();
-        }
-        String target = email.toLowerCase(Locale.ROOT);
+    public Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException {
         return ownerRepository.findAll().stream()
-            .filter(owner -> owner.getEmail() != null
-                && owner.getEmail().toLowerCase(Locale.ROOT).equals(target))
+            .filter(owner -> owner.getIdentityKey().equals(identityKey))
             .toList();
     }
 

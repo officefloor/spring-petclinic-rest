@@ -17,17 +17,16 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Signals that a new owner could not be created because another owner already shares
- * the same last name and address (compared case-insensitively with collapsed
- * whitespace) and the request did not opt in to a shared household.
+ * Signals that a new owner could not be created because its whole derived identity key
+ * (normalized telephone, email and household id) already belongs to an existing owner.
  *
- * <p>Handled as a 409 Conflict, reporting {@code lastName} and {@code address} as the
- * offending fields.
+ * <p>This is the single duplicate-detection failure: telephone, email and household are no
+ * longer checked independently but only through the combined key. Handled as a 409 Conflict,
+ * reporting {@code identityKey} as the offending field.
  */
-public class DuplicateOwnerHouseholdException extends RuntimeException {
+public class DuplicateOwnerIdentityException extends RuntimeException {
 
-    public DuplicateOwnerHouseholdException(String lastName, String address) {
-        super("An owner with the same last name and address already exists: "
-            + lastName + ", " + address);
+    public DuplicateOwnerIdentityException(String identityKey) {
+        super("Identity key already in use by another owner: " + identityKey);
     }
 }

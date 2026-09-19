@@ -60,8 +60,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
-	Collection<Owner> findOwnerByTelephone(String telephone) throws DataAccessException;
-	Collection<Owner> findOwnersByEmail(String email) throws DataAccessException;
+	Collection<Owner> findOwnersByIdentityKey(String identityKey) throws DataAccessException;
 	Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException;
 	long countOwnersInCity(String city) throws DataAccessException;
 	long countOwnersRegisteredOn(LocalDate registrationDate) throws DataAccessException;

@@ -28,9 +28,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.BusinessDayResolver;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerCityCapacityExceededException;
@@ -157,19 +155,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
-        if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
-            throw new DuplicateOwnerTelephoneException(owner.getTelephone());
-        }
-        if (owner.getEmail() != null && !this.clinicService.findOwnersByEmail(owner.getEmail()).isEmpty()) {
-            throw new DuplicateOwnerEmailException(owner.getEmail());
-        }
         if (this.clinicService.countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
         }
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             this.clinicService.joinHousehold(owner);
-        } else if (!this.clinicService.findOwnersInSameHousehold(owner.getLastName(), owner.getAddress()).isEmpty()) {
-            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+        if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
+            throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
         }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);

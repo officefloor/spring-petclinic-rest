@@ -239,6 +239,23 @@ public class Owner extends Person {
         return LocalityResolver.regionFor(this.city);
     }
 
+    /**
+     * Return this owner's identity key, the single derived value all duplicate detection is based
+     * on: the normalized telephone, email and household id joined with {@code '|'} as
+     * {@code telephone + "|" + email + "|" + householdId}, with each absent component rendered as
+     * the empty string. Two owners are duplicates only when their whole identity keys are equal;
+     * because the telephone is part of the key, members of one household (same {@code householdId})
+     * with different telephones have distinct keys and are not duplicates.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
+    }
+
+    private static String keyPart(String value) {
+        return value == null ? "" : value;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
