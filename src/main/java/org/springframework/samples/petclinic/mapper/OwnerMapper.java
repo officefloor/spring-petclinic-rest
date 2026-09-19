@@ -22,6 +22,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.displayName(owner.getFirstName(), owner.getLastName()))")
     @Mapping(target = "initials",
         expression = "java(org.springframework.samples.petclinic.util.PersonNameFormatter.initials(owner.getFirstName(), owner.getLastName()))")
+    @Mapping(target = "membershipNumber",
+        expression = "java(org.springframework.samples.petclinic.util.MembershipNumberFormatter.format(owner.getCustomerCode(), owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
