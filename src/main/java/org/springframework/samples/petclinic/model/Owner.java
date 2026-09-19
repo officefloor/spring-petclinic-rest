@@ -78,6 +78,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -195,6 +198,29 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    /**
+     * The id of an existing owner this owner was flagged as a possible (soft) duplicate of at
+     * creation, or {@code null} when none. A soft duplicate shares an existing owner's last name and
+     * postcode but has a different telephone (so it is not a hard {@link #getIdentityKey() identity}
+     * duplicate). Captured once at creation.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner was flagged as a possible (soft) duplicate of an existing owner at creation,
+     * i.e. whether {@link #getPossibleDuplicateOf()} is set.
+     */
+    @Transient
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     /**

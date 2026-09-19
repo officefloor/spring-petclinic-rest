@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   bulk_signup_warning BOOLEAN,
   household_size INTEGER,
-  postcode VARCHAR(4)
+  postcode VARCHAR(4),
+  possible_duplicate_of INTEGER
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

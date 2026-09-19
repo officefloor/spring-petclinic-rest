@@ -339,6 +339,26 @@ public class ClinicServiceImpl implements ClinicService {
             .toList();
     }
 
+    /**
+     * Find an existing owner the given (not-yet-persisted) owner is a soft duplicate of: one sharing
+     * the same last name (case-insensitively) and postcode but with a different telephone, so it is
+     * not a hard {@link Owner#getIdentityKey() identity} duplicate. Returns the first such owner, or
+     * {@code null} when the owner has no postcode or no match exists.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Owner findPossibleDuplicateOf(Owner owner) throws DataAccessException {
+        if (owner.getPostcode() == null) {
+            return null;
+        }
+        return ownerRepository.findAll().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !Objects.equals(existing.getTelephone(), owner.getTelephone()))
+            .findFirst()
+            .orElse(null);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnersInSameHousehold(String lastName, String address) throws DataAccessException {

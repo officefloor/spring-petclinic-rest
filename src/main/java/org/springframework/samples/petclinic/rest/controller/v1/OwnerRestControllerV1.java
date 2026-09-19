@@ -175,6 +175,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnersByIdentityKey(owner.getIdentityKey()).isEmpty()) {
             throw new DuplicateOwnerIdentityException(owner.getIdentityKey());
         }
+        Owner possibleDuplicate = this.clinicService.findPossibleDuplicateOf(owner);
+        if (possibleDuplicate != null) {
+            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
+        }
         this.clinicService.saveOwner(owner);
         this.ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
