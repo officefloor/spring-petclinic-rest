@@ -20,6 +20,7 @@ import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CityLocality;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 
@@ -28,7 +29,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -371,9 +371,9 @@ public class Owner extends Person {
      * The owner's membership points, from 0 upwards: starts at 0, gains 2 when this owner
      * has an email address, gains 1 when this owner had no namesakes at creation
      * ({@code namesakeCount} is 0), gains 2 when this owner's household has 3 or more
-     * members, and gains 3 when this owner's tenure exceeds 365 days. A newly created owner
-     * has zero tenure, so it never earns those points at creation. Derived from stored
-     * state, never persisted.
+     * members, and gains 3 once this owner's tenure spans at least one elapsed fiscal year.
+     * A newly created owner has zero tenure, so it never earns those points at creation.
+     * Derived from stored state, never persisted.
      */
     public int getMembershipPoints() {
         int points = 0;
@@ -386,10 +386,20 @@ public class Owner extends Person {
         if (this.householdSize != null && this.householdSize >= 3) {
             points += 2;
         }
-        if (getTenureDays() > 365) {
+        if (getTenureFiscalYears() >= 1) {
             points += 3;
         }
         return points;
+    }
+
+    /**
+     * The owner's fiscal year: the {@code FY<YY>} label (fiscal year starting 1 July,
+     * identified by its ending calendar year) of the {@code registrationDate}, or
+     * {@code null} when no registration date is recorded. Derived from stored state, never
+     * persisted.
+     */
+    public String getFiscalYear() {
+        return this.registrationDate == null ? null : FiscalYear.labelOf(this.registrationDate);
     }
 
     /**
@@ -412,15 +422,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure in whole days: the number of days from the {@code registrationDate}
-     * to the current server date, or 0 when no registration date is recorded. Never negative
-     * in practice, since a future registration date is rejected at creation.
+     * The owner's tenure in elapsed fiscal years: the number of fiscal years (each
+     * starting 1 July) between the {@code registrationDate} and the current server date, or
+     * 0 when no registration date is recorded. Never negative in practice, since a future
+     * registration date is rejected at creation.
      */
-    private long getTenureDays() {
+    private int getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return FiscalYear.elapsed(this.registrationDate, LocalDate.now());
     }
 
     /**
