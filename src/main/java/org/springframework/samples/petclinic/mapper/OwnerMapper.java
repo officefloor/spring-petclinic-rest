@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.AgeBand;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.MembershipLevels;
 import org.springframework.samples.petclinic.util.OwnerSegment;
@@ -38,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -131,6 +133,17 @@ public interface OwnerMapper {
     /** Format the owner's stored E.164 telephone for humans (e.g. '+61 412 345 678'). */
     default String telephoneDisplay(Owner owner) {
         return Telephones.forDisplay(owner.getTelephone());
+    }
+
+    /**
+     * Derive the aggregate risk flag: true when the owner is a possible duplicate, its email
+     * domain is disposable-adjacent, or its city is over the soft capacity warning threshold;
+     * otherwise false.
+     */
+    default boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+                || Boolean.TRUE.equals(owner.getCapacityWarning())
+                || DisposableEmailDomains.isDisposableAdjacent(DisposableEmailDomains.domainOf(owner.getEmail()));
     }
 
     Owner toOwner(OwnerDto ownerDto);
