@@ -74,6 +74,9 @@ public final class LocalityResolver {
      * city is not in the table
      */
     public static String regionForCity(String city) {
+        if (city == null) {
+            return UNKNOWN;
+        }
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
 
