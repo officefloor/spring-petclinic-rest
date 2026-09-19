@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * derived from its last name and postcode, so every owner that shares a last name and
  * postcode resolves to the same stable value automatically — no coordination and no
  * opt-in required. An owner with no postcode gets no household id. Runs after
- * {@link BuildOwner} (so the entity, its name and postcode exist) and before the household
- * duplicate check ({@link EnsureUniqueHousehold}) and {@link SaveOwner}, both of which key
- * off this value.
+ * {@link BuildOwner} (so the entity, its name and postcode exist) and before
+ * {@link AssignOwnerHouseholdSize} and {@link AssignOwnerMembershipLevelCap}, which key off
+ * the household, and {@link SaveOwner}.
  */
 public class AssignHouseholdId {
 

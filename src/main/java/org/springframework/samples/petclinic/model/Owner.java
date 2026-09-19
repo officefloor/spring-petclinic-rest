@@ -23,6 +23,8 @@ import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
 import org.springframework.samples.petclinic.util.RegionTimezone;
+import org.springframework.samples.petclinic.util.Sha256;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -317,12 +319,12 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner resembles an existing one: {@code true} when, at creation, it
-     * shared an existing owner's household (same last name and postcode, hence the same
-     * {@link #getHouseholdId() household id}) while having a different telephone and was not
-     * a declared household member, {@code false} otherwise. A declared member (created with
-     * {@code sharesHousehold}) is a genuine member, not a suspected duplicate. When true,
-     * {@link #getPossibleDuplicateOf()} holds that owner's id. Captured at creation.
+     * Whether this owner resembles an existing one: {@code true} when, at creation, it shared
+     * an existing owner's postcode and a phonetically-equal last name ({@link Soundex Soundex})
+     * yet differed in {@link #getIdentityKey() identity key} and was not a declared household
+     * member, {@code false} otherwise. A declared member (created with {@code sharesHousehold})
+     * is a genuine member, not a suspected duplicate. When true, {@link #getPossibleDuplicateOf()}
+     * holds that owner's id. Captured at creation.
      */
     public boolean isPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -333,9 +335,9 @@ public class Owner extends Person {
     }
 
     /**
-     * The id of the existing owner this owner possibly duplicates (same household — last
-     * name and postcode — different telephone), or null when it is not a possible
-     * duplicate. Captured at creation.
+     * The id of the existing owner this owner possibly duplicates (same postcode and a
+     * phonetically-equal last name but a different {@link #getIdentityKey() identity key}), or
+     * null when it is not a possible duplicate. Captured at creation.
      */
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
@@ -474,14 +476,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: a composite fingerprint formed as the normalized telephone,
-     * the email (or empty when absent) and the household id (or empty when none), joined by
-     * {@code '|'}. Derived from stored state, never persisted.
+     * The owner's identity key: the 64-character lower-case SHA-256 hex of the normalized
+     * telephone, the lower-cased email (or empty when absent) and the {@link Soundex Soundex}
+     * code of the last name, joined by {@code '|'}. Two owners collide on this key only when
+     * they share a telephone, an email and a phonetically-equal surname, so it is the single
+     * fingerprint the create endpoint's duplicate check keys off. Derived from stored state,
+     * never persisted.
      */
     public String getIdentityKey() {
-        String emailPart = hasEmail() ? this.email : "";
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return this.telephone + "|" + emailPart + "|" + householdPart;
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = hasEmail() ? this.email.toLowerCase(Locale.ROOT) : "";
+        String namePart = Soundex.of(getLastName());
+        return Sha256.lowerHex(telephonePart + "|" + emailPart + "|" + namePart);
     }
 
     private boolean hasEmail() {
