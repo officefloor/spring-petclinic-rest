@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.CustomerCodeGenerator;
 import org.springframework.samples.petclinic.util.HouseholdIdGenerator;
+import org.springframework.samples.petclinic.util.OwnerIdentityKey;
 import org.springframework.samples.petclinic.util.TextNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -260,16 +261,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public String createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
-        if (ownerRepository.existsByTelephone(owner.getTelephone())) {
-            throw new DuplicateTelephoneException(owner.getTelephone());
-        }
-        if (owner.getEmail() != null && ownerRepository.existsByEmailIgnoreCase(owner.getEmail())) {
-            throw new DuplicateEmailException(owner.getEmail());
-        }
+        rejectIdentityCollision(owner);
         List<Owner> householdMembers = findHouseholdMembers(owner);
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-        }
         long ownersInCity = ownerRepository.countByCity(owner.getCity());
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityExceededException(owner.getCity(), MAX_OWNERS_PER_CITY);
@@ -285,12 +278,26 @@ public class ClinicServiceImpl implements ClinicService {
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(CustomerCodeGenerator.format(
             owner.getCity(), owner.getLastName(), ownersInCity + 1));
-        if (!householdMembers.isEmpty()) {
+        if (sharesHousehold && !householdMembers.isEmpty()) {
             owner.setHouseholdId(joinHousehold(owner, householdMembers));
         }
         ownerRepository.save(owner);
         ownerAuditLogger.ownerCreated(owner);
         return owner.getHouseholdId();
+    }
+
+    /**
+     * Reject creating an owner whose whole {@link OwnerIdentityKey identity key} already belongs to
+     * another owner. Because the telephone is part of the key, only an existing owner sharing every
+     * key component (normalized telephone, email and household identifier) is a duplicate.
+     */
+    private void rejectIdentityCollision(Owner owner) {
+        String identityKey = OwnerIdentityKey.of(owner);
+        boolean collides = ownerRepository.findByTelephone(owner.getTelephone()).stream()
+            .anyMatch(existing -> identityKey.equals(OwnerIdentityKey.of(existing)));
+        if (collides) {
+            throw new DuplicateOwnerException(identityKey);
+        }
     }
 
     /**

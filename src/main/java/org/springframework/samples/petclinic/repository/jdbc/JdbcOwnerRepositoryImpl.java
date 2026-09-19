@@ -163,27 +163,16 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
-    public boolean existsByTelephone(String telephone) throws DataAccessException {
+    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
         Map<String, Object> params = new HashMap<>();
         params.put("telephone", telephone);
-        Long count = this.namedParameterJdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM owners WHERE telephone = :telephone",
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone, email, household_id FROM owners WHERE telephone = :telephone",
             params,
-            Long.class
+            BeanPropertyRowMapper.newInstance(Owner.class)
         );
-        return count != null && count > 0;
-    }
-
-    @Override
-    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
-        Map<String, Object> params = new HashMap<>();
-        params.put("email", email);
-        Long count = this.namedParameterJdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM owners WHERE LOWER(email) = LOWER(:email)",
-            params,
-            Long.class
-        );
-        return count != null && count > 0;
+        loadOwnersPetsAndVisits(owners);
+        return owners;
     }
 
     @Override

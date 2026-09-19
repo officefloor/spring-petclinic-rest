@@ -69,21 +69,15 @@ public interface OwnerRepository {
     Owner findById(int id) throws DataAccessException;
 
     /**
-     * Report whether any <code>Owner</code> already stores the given (normalized) telephone number.
+     * Retrieve every <code>Owner</code> that already stores the given (normalized) telephone number.
+     * Telephone equality is a prerequisite for an identity-key collision, so these are the candidates
+     * compared against a new owner when detecting duplicates.
      *
-     * @param telephone the normalized telephone digits to look for
-     * @return <code>true</code> if an owner with that telephone exists, <code>false</code> otherwise
+     * @param telephone the normalized telephone to match
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty <code>Collection</code> if none
+     * found)
      */
-    boolean existsByTelephone(String telephone) throws DataAccessException;
-
-    /**
-     * Report whether any <code>Owner</code> already stores the given email, compared case-insensitively.
-     * Used to reject creating an owner whose lower-cased email is already used by another owner.
-     *
-     * @param email the email to look for, matched ignoring case
-     * @return <code>true</code> if an owner with that email exists, <code>false</code> otherwise
-     */
-    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
     /**
      * Count the total number of <code>Owner</code>s currently in the data store.

@@ -16,14 +16,13 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown when an owner is created whose last name and address match those of another owner
- * (compared case-insensitively with collapsed whitespace), i.e. they belong to the same
- * household. Signals a conflict with existing data rather than a bad request. Suppressed
- * when the request explicitly opts in with {@code sharesHousehold}.
+ * Thrown when an owner is created whose whole {@code identityKey} (normalized telephone, email and
+ * household identifier) already belongs to another owner. Signals a conflict with existing data
+ * rather than a bad request.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateOwnerException extends RuntimeException {
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("An owner with last name '" + lastName + "' already exists at address '" + address + "'");
+    public DuplicateOwnerException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
     }
 }

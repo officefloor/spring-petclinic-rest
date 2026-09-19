@@ -58,10 +58,7 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Owner findById(@Param("id") int id);
 
     @Override
-    boolean existsByTelephone(String telephone);
-
-    @Override
-    boolean existsByEmailIgnoreCase(String email);
+    Collection<Owner> findByTelephone(String telephone);
 
     @Override
     Collection<Owner> findByLastNameIgnoreCase(String lastName);
