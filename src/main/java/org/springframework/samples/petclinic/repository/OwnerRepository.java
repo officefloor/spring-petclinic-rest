@@ -56,6 +56,14 @@ public interface OwnerRepository {
      */
     Owner findById(int id) throws DataAccessException;
 
+    /**
+     * Report whether any <code>Owner</code> already stores the given (normalized) telephone number.
+     *
+     * @param telephone the normalized telephone digits to look for
+     * @return <code>true</code> if an owner with that telephone exists, <code>false</code> otherwise
+     */
+    boolean existsByTelephone(String telephone) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
