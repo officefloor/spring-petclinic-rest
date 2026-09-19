@@ -1,0 +1,192 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fe2343022..4b02fa698 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,12 @@ public class Owner extends Person {
+     @Column(name = "identity_key")
+     private String identityKey;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -190,6 +196,22 @@ public class Owner extends Person {
+         this.identityKey = identityKey;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+new file mode 100644
+index 000000000..633511012
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a soft duplicate at creation time. A hard duplicate (same {@link OwnerIdentity identity
++ * key}) has already been rejected by {@link EnsureUniqueIdentity}, so any collision here is a
++ * softer one: an existing owner that shares this owner's last name (case-insensitively) and
++ * postcode but has a different telephone. Such an owner is still created, but flagged
++ * {@code possibleDuplicate = true} with {@code possibleDuplicateOf} set to the matching owner's
++ * id; otherwise {@code possibleDuplicate = false}.
++ *
++ * <p>Runs after {@link BuildOwner} has produced the entity and before {@link SaveOwner} persists
++ * it, so {@code findAll()} sees only the owners that existed before this create. The flags are
++ * stored on the owner and returned on every later read.
++ */
++public class FlagPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        owner.setPossibleDuplicate(false);
++        owner.setPossibleDuplicateOf(null);
++
++        String postcode = owner.getPostcode();
++        if (owner.getLastName() == null || postcode == null || postcode.isBlank()) {
++            return;
++        }
++        String telephone = TelephoneNormalizer.toE164(owner.getTelephone());
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getLastName().equalsIgnoreCase(existing.getLastName())
++                    && postcode.equals(existing.getPostcode())
++                    && !equalsIgnoreNull(telephone, TelephoneNormalizer.toE164(existing.getTelephone()))) {
++                owner.setPossibleDuplicate(true);
++                owner.setPossibleDuplicateOf(existing.getId());
++                return;
++            }
++        }
++    }
++
++    private static boolean equalsIgnoreNull(String a, String b) {
++        return a == null ? b == null : a.equals(b);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c0d2ac733..a87ac0ceb 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  identity_key VARCHAR(512)
++  identity_key VARCHAR(512),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 88d647c2d..381eabf90 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,9 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  identity_key VARCHAR(512)
++  identity_key VARCHAR(512),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index afb683b52..136746e76 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   identity_key VARCHAR(512),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 2e667b59a..ab511b75d 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+-                                      identity_key TEXT
++                                      identity_key TEXT,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 0ba491b6d..a861249a8 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -84,6 +84,11 @@ countHousehold:
+ flagBulkSignup:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ transaction ]
++  next: flagPossibleDuplicate
++
++flagPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4ef5d1357..be0bd336b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2137,6 +2137,23 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner is not a hard duplicate but, at the moment
++                it was created, shared an existing owner's last name and postcode with a
++                different telephone, flagging a likely soft duplicate; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The ID of the existing owner this owner was flagged a possible
++                duplicate of, or absent when possibleDuplicate is false.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: Derived membership number formatted '<customerCode>-M<YY>',
