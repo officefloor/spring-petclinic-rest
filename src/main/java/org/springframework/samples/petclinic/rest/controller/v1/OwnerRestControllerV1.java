@@ -90,6 +90,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners that may be registered on a single day before further creations are rejected. */
     static final long MAX_OWNERS_PER_DAY = 100;
 
+    /** Number of owners already registered on a day above which a new owner is flagged with a bulk-signup warning. */
+    static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -148,9 +151,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(this.emailNormalizer.normalize(owner.getEmail()));
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(this.businessDayResolver.toBusinessDay(effectiveDate));
-        if (this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+        long ownersRegisteredToday = this.clinicService.countOwnersRegisteredOn(owner.getRegistrationDate());
+        if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
             throw new OwnerDailyRegistrationLimitExceededException(owner.getRegistrationDate(), MAX_OWNERS_PER_DAY);
         }
+        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         if (!this.clinicService.findOwnerByTelephone(owner.getTelephone()).isEmpty()) {
             throw new DuplicateOwnerTelephoneException(owner.getTelephone());
         }
