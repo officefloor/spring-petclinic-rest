@@ -15,7 +15,9 @@ public class InvalidTelephoneExceptionHandler {
     public void handle(@Parameter InvalidTelephoneException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
-                "The telephone number must form a valid E.164 number (8 to 15 digits)");
+                "The telephone number must form a valid E.164 number (8 to 15 digits) with the "
+                        + "correct national-number length for its country code "
+                        + "('+61' requires 9 national digits, '+1' requires 10)");
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
