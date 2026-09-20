@@ -1,0 +1,325 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fe0cfb06b..bbdd85597 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.rest.controller.CityCapacityWarningEvaluator;
+ import org.springframework.samples.petclinic.rest.controller.OwnerIdentity;
++import org.springframework.samples.petclinic.rest.controller.RiskFlagEvaluator;
+ import org.springframework.samples.petclinic.rest.controller.TelephoneFormatter;
+ import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
+ import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
+@@ -33,6 +34,9 @@ public abstract class OwnerMapper {
+     @Autowired
+     protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+ 
++    @Autowired
++    protected RiskFlagEvaluator riskFlagEvaluator;
++
+     @Autowired
+     protected OwnerIdentity ownerIdentity;
+ 
+@@ -52,6 +56,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
+     @Mapping(target = "capacityWarning", expression = "java(cityCapacityWarningEvaluator.isWarranted(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlagEvaluator.isRisk(owner))")
+     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainEvaluator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainEvaluator.java
+new file mode 100644
+index 000000000..b2e8c4d45
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainEvaluator.java
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Decides whether an owner's email domain is <em>disposable-adjacent</em>: it belongs to a known
++ * disposable-email provider's family (a sibling TLD or a subdomain) without being an exact match
++ * that the hard {@link DisposableEmailDomainValidator} would already have rejected. Unlike that
++ * validator this never blocks creation; it only surfaces a soft signal.
++ */
++@Component
++public class DisposableEmailDomainEvaluator {
++
++    private final DisposableEmailDomains disposableEmailDomains;
++
++    public DisposableEmailDomainEvaluator(DisposableEmailDomains disposableEmailDomains) {
++        this.disposableEmailDomains = disposableEmailDomains;
++    }
++
++    /**
++     * @param owner the owner whose email is checked
++     * @return {@code true} when the owner has an email whose domain is disposable-adjacent,
++     *         {@code false} otherwise (including when the owner or its email is absent)
++     */
++    public boolean isDisposableAdjacent(Owner owner) {
++        if (owner == null) {
++            return false;
++        }
++        String domain = disposableEmailDomains.domainOf(owner.getEmail());
++        return disposableEmailDomains.isDisposableAdjacent(domain);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
+index eac5211e4..342e5af6a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomainValidator.java
+@@ -16,12 +16,8 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+-import java.util.Locale;
+-import java.util.Set;
+-
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.stereotype.Component;
+-import org.springframework.util.StringUtils;
+ import org.springframework.validation.Errors;
+ import org.springframework.validation.Validator;
+ 
+@@ -36,10 +32,11 @@ import org.springframework.validation.Validator;
+ @Component
+ public class DisposableEmailDomainValidator implements Validator {
+ 
+-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+-        "mailinator.com",
+-        "tempmail.com",
+-        "guerrillamail.com");
++    private final DisposableEmailDomains disposableEmailDomains;
++
++    public DisposableEmailDomainValidator(DisposableEmailDomains disposableEmailDomains) {
++        this.disposableEmailDomains = disposableEmailDomains;
++    }
+ 
+     @Override
+     public boolean supports(Class<?> clazz) {
+@@ -49,24 +46,10 @@ public class DisposableEmailDomainValidator implements Validator {
+     @Override
+     public void validate(Object target, Errors errors) {
+         OwnerFieldsDto owner = (OwnerFieldsDto) target;
+-        String domain = domainOf(owner.getEmail());
+-        if (domain != null && DISPOSABLE_DOMAINS.contains(domain)) {
++        String domain = disposableEmailDomains.domainOf(owner.getEmail());
++        if (disposableEmailDomains.isDisposable(domain)) {
+             errors.rejectValue("email", "email.disposableDomain",
+                 "email domain is not accepted");
+         }
+     }
+-
+-    /**
+-     * Extract the lower-cased domain from an email address, or {@code null} when none is present.
+-     */
+-    private String domainOf(String email) {
+-        if (!StringUtils.hasText(email)) {
+-            return null;
+-        }
+-        int at = email.lastIndexOf('@');
+-        if (at < 0 || at == email.length() - 1) {
+-            return null;
+-        }
+-        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..43811aecf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DisposableEmailDomains.java
+@@ -0,0 +1,92 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.stereotype.Component;
++import org.springframework.util.StringUtils;
++
++/**
++ * Shared knowledge of disposable-email providers, used both by the hard
++ * {@link DisposableEmailDomainValidator} (which rejects an exact disposable domain) and by the
++ * soft {@link DisposableEmailDomainEvaluator} (which flags domains that merely belong to the same
++ * provider family). Centralising the provider list and the address-parsing here keeps the two
++ * checks in agreement.
++ */
++@Component
++public class DisposableEmailDomains {
++
++    /** Fully-qualified domains of known disposable-email providers. */
++    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
++        "mailinator.com",
++        "tempmail.com",
++        "guerrillamail.com");
++
++    /**
++     * The registrable labels (the token immediately before the TLD) of the known disposable
++     * providers, so sibling TLDs ({@code mailinator.net}) and subdomains ({@code x.mailinator.com})
++     * can be recognised as belonging to the same family.
++     */
++    private static final Set<String> DISPOSABLE_LABELS = DISPOSABLE_DOMAINS.stream()
++        .map(DisposableEmailDomains::secondLevelLabel)
++        .collect(java.util.stream.Collectors.toUnmodifiableSet());
++
++    /**
++     * Extract the lower-cased domain from an email address, or {@code null} when none is present.
++     */
++    public String domainOf(String email) {
++        if (!StringUtils.hasText(email)) {
++            return null;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return null;
++        }
++        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++    }
++
++    /**
++     * Whether {@code domain} is exactly one of the known disposable-email domains.
++     */
++    public boolean isDisposable(String domain) {
++        return domain != null && DISPOSABLE_DOMAINS.contains(domain);
++    }
++
++    /**
++     * Whether {@code domain} belongs to a known disposable-email provider's family: it shares a
++     * disposable provider's registrable label, whether as a sibling TLD ({@code mailinator.net}),
++     * a subdomain ({@code inbox.mailinator.com}) or the exact domain itself.
++     */
++    public boolean isDisposableAdjacent(String domain) {
++        return domain != null && DISPOSABLE_LABELS.contains(secondLevelLabel(domain));
++    }
++
++    /**
++     * The token immediately before the top-level domain (e.g. {@code "mailinator"} for both
++     * {@code "mailinator.com"} and {@code "inbox.mailinator.co"}), or the whole value when it has
++     * no dot.
++     */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return domain;
++        }
++        return labels[labels.length - 2];
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RiskFlagEvaluator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RiskFlagEvaluator.java
+new file mode 100644
+index 000000000..4004d963a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/RiskFlagEvaluator.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Aggregates an owner's soft risk signals into a single flag: an owner is risky when it is a
++ * possible duplicate, or its email domain is disposable-adjacent, or its city is over its soft
++ * capacity. Each underlying signal is owned by its own component; this evaluator only combines
++ * them.
++ */
++@Component
++public class RiskFlagEvaluator {
++
++    private final DisposableEmailDomainEvaluator disposableEmailDomainEvaluator;
++
++    private final CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
++
++    public RiskFlagEvaluator(DisposableEmailDomainEvaluator disposableEmailDomainEvaluator,
++            CityCapacityWarningEvaluator cityCapacityWarningEvaluator) {
++        this.disposableEmailDomainEvaluator = disposableEmailDomainEvaluator;
++        this.cityCapacityWarningEvaluator = cityCapacityWarningEvaluator;
++    }
++
++    /**
++     * @param owner the owner to assess
++     * @return {@code true} when any risk signal holds for {@code owner}, {@code false} otherwise
++     *         (including for a {@code null} owner)
++     */
++    public boolean isRisk(Owner owner) {
++        if (owner == null) {
++            return false;
++        }
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || disposableEmailDomainEvaluator.isDisposableAdjacent(owner)
++            || cityCapacityWarningEvaluator.isWarranted(owner);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 140914a80..cb0639182 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2362,6 +2362,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any soft risk signal holds for this owner: it is a
++                possible duplicate, its email domain is disposable-adjacent
++                (belongs to a known disposable-email provider's family, such as a
++                sibling TLD or subdomain), or its city is over its soft capacity
++                (holding between 40 and 49 owners); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
