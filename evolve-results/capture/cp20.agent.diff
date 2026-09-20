@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e06377253..6c1b76a8a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -132,17 +132,6 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
+-    /**
+-     * Defaults the registration date to the server's current date when none was
+-     * supplied, so every newly created owner is registered as of today.
+-     */
+-    @PrePersist
+-    protected void defaultRegistrationDate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
+-        }
+-    }
+-
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+new file mode 100644
+index 000000000..5b8efec2d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/BusinessDayAdjuster.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Rolls a date forward onto a business day: when the given date falls on a Saturday or
++ * Sunday it is advanced to the following Monday, otherwise it is returned unchanged.
++ */
++@Component
++public class BusinessDayAdjuster {
++
++    /**
++     * Return {@code date} if it is a weekday, otherwise the next Monday.
++     *
++     * @param date the date to adjust
++     * @return the same date when it is a business day, or the following Monday for a weekend date
++     */
++    public LocalDate toBusinessDay(LocalDate date) {
++        LocalDate adjusted = date;
++        while (adjusted.getDayOfWeek() == DayOfWeek.SATURDAY || adjusted.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            adjusted = adjusted.plusDays(1);
++        }
++        return adjusted;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimitValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimitValidator.java
+index 5304c908c..0e83f6e71 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimitValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/DailyRegistrationLimitValidator.java
+@@ -39,12 +39,14 @@ public class DailyRegistrationLimitValidator {
+     }
+ 
+     /**
+-     * Reject owner creation when today's registrations have already reached the daily limit.
++     * Reject owner creation when the registrations already booked for the given business day
++     * have reached the daily limit.
+      *
++     * @param registrationDate the (business-day adjusted) date the new owner would be registered on
+      * @throws DailyRegistrationLimitExceededException if the daily limit has been reached
+      */
+-    public void validate() {
+-        if (clinicService.countOwnersRegisteredOn(LocalDate.now()) >= MAX_OWNERS_PER_DAY) {
++    public void validate(LocalDate registrationDate) {
++        if (clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+             throw new DailyRegistrationLimitExceededException(MAX_OWNERS_PER_DAY);
+         }
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4d3297af2..53f97f831 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -26,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster;
+ import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
+ import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
+ import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
+@@ -88,6 +90,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final DailyRegistrationLimitValidator dailyRegistrationLimitValidator;
+ 
++    private final BusinessDayAdjuster businessDayAdjuster;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -99,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  HouseholdDuplicateValidator householdDuplicateValidator,
+                                  HouseholdAssigner householdAssigner,
+                                  CityCapacityValidator cityCapacityValidator,
+-                                 DailyRegistrationLimitValidator dailyRegistrationLimitValidator) {
++                                 DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
++                                 BusinessDayAdjuster businessDayAdjuster) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -112,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.householdAssigner = householdAssigner;
+         this.cityCapacityValidator = cityCapacityValidator;
+         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
++        this.businessDayAdjuster = businessDayAdjuster;
+     }
+ 
+     /**
+@@ -154,11 +160,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
++        LocalDate registrationDate = owner.getRegistrationDate() != null
++            ? owner.getRegistrationDate() : LocalDate.now();
++        owner.setRegistrationDate(businessDayAdjuster.toBusinessDay(registrationDate));
+         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
+         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
+             throw new DuplicateTelephoneException(telephone);
+         }
+-        dailyRegistrationLimitValidator.validate();
++        dailyRegistrationLimitValidator.validate(owner.getRegistrationDate());
+         cityCapacityValidator.validate(owner);
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             householdAssigner.assignSharedHousehold(owner);
