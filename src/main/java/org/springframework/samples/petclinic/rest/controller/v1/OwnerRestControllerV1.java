@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDetector;
 import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
@@ -88,6 +89,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final IdentityDuplicateValidator identityDuplicateValidator;
 
+    private final PossibleDuplicateDetector possibleDuplicateDetector;
+
     private final HouseholdAssigner householdAssigner;
 
     private final CityCapacityValidator cityCapacityValidator;
@@ -110,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
                                  IdentityDuplicateValidator identityDuplicateValidator,
+                                 PossibleDuplicateDetector possibleDuplicateDetector,
                                  HouseholdAssigner householdAssigner,
                                  CityCapacityValidator cityCapacityValidator,
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
@@ -126,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.identityDuplicateValidator = identityDuplicateValidator;
+        this.possibleDuplicateDetector = possibleDuplicateDetector;
         this.householdAssigner = householdAssigner;
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
@@ -186,6 +191,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             householdAssigner.assignSharedHousehold(owner);
         }
         identityDuplicateValidator.validate(owner);
+        possibleDuplicateDetector.detect(owner);
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
