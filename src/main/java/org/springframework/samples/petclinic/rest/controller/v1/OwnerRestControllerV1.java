@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateV
 import org.springframework.samples.petclinic.rest.controller.Households;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.controller.OwnerIdempotencyStore;
 import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDetector;
 import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
@@ -106,6 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerAuditLogger ownerAuditLogger;
 
+    private final OwnerIdempotencyStore ownerIdempotencyStore;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -123,7 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
                                  BusinessDayAdjuster businessDayAdjuster,
                                  RegistrationDateValidator registrationDateValidator,
-                                 OwnerAuditLogger ownerAuditLogger) {
+                                 OwnerAuditLogger ownerAuditLogger,
+                                 OwnerIdempotencyStore ownerIdempotencyStore) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -142,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.businessDayAdjuster = businessDayAdjuster;
         this.registrationDateValidator = registrationDateValidator;
         this.ownerAuditLogger = ownerAuditLogger;
+        this.ownerIdempotencyStore = ownerIdempotencyStore;
     }
 
     /**
@@ -180,7 +185,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        ResponseEntity<OwnerDto> replay = replayIdempotentCreate(idempotencyKey);
+        if (replay != null) {
+            return replay;
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         addressResolver.resolve(owner);
@@ -203,10 +212,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.logCreated(owner);
+        ownerIdempotencyStore.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * If {@code idempotencyKey} has already been used to create an owner that still exists, returns
+     * that originally created owner with 200 so the repeated create is a no-op; otherwise returns
+     * {@code null} to let the create proceed normally.
+     */
+    private ResponseEntity<OwnerDto> replayIdempotentCreate(String idempotencyKey) {
+        return ownerIdempotencyStore.find(idempotencyKey)
+            .map(this.clinicService::findOwnerById)
+            .map(owner -> new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK))
+            .orElse(null);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
