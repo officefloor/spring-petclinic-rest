@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.CityRegion;
 import org.springframework.samples.petclinic.model.ContactPreference;
+import org.springframework.samples.petclinic.model.Luhn;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -24,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -38,6 +40,13 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * The Luhn check digit computed over the digits of the owner's customer code.
+     */
+    default int checkDigit(Owner owner) {
+        return Luhn.checkDigit(owner.getCustomerCode());
     }
 
     /**
