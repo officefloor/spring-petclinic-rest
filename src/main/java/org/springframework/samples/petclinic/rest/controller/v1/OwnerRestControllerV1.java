@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
@@ -76,6 +77,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerFieldsValidator ownerFieldsValidator;
 
+    private final PostcodeValidator postcodeValidator;
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -99,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
+                                 PostcodeValidator postcodeValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
@@ -113,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
+        this.postcodeValidator = postcodeValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
@@ -130,7 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     @InitBinder("ownerFieldsDto")
     void initOwnerFieldsBinder(WebDataBinder binder) {
-        binder.addValidators(ownerFieldsValidator);
+        binder.addValidators(ownerFieldsValidator, postcodeValidator);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

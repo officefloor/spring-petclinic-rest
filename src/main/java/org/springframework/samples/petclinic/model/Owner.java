@@ -53,6 +53,9 @@ public class Owner extends Person {
     @Email
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -105,6 +108,14 @@ public class Owner extends Person {
      */
     public boolean hasEmail() {
         return this.email != null && !this.email.isBlank();
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getCustomerCode() {
