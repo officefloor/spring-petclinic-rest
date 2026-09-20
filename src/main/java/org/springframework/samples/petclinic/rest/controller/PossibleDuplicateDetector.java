@@ -17,32 +17,39 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import java.util.Comparator;
-import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Flags soft duplicates on owner creation. Unlike the hard {@link HouseholdDuplicateValidator}
- * (which rejects a second member of an existing household), a soft match never blocks creation:
- * when an existing owner already shares the candidate's last name and postcode but carries a
- * different telephone, the candidate is recorded as a possible duplicate of that owner.
+ * Flags soft duplicates on owner creation. Unlike the hard {@link DuplicateIdentityValidator}
+ * (which rejects an owner that re-registers an existing identity key), a soft match never blocks
+ * creation: when an existing owner has a different identity key but shares the candidate's last-name
+ * sound ({@link Soundex}) and postcode, the candidate is recorded as a possible duplicate of that
+ * owner.
  */
 @Component
 public class PossibleDuplicateDetector {
 
     private final ClinicService clinicService;
 
-    public PossibleDuplicateDetector(ClinicService clinicService) {
+    private final OwnerIdentity ownerIdentity;
+
+    private final Soundex soundex;
+
+    public PossibleDuplicateDetector(ClinicService clinicService, OwnerIdentity ownerIdentity,
+            Soundex soundex) {
         this.clinicService = clinicService;
+        this.ownerIdentity = ownerIdentity;
+        this.soundex = soundex;
     }
 
     /**
      * Record whether {@code candidate} is a possible duplicate of an existing owner. Sets
      * {@code possibleDuplicate} true and {@code possibleDuplicateOf} to the earliest existing owner
-     * that shares the candidate's last name and postcode but has a different telephone; otherwise
-     * sets {@code possibleDuplicate} false and leaves {@code possibleDuplicateOf} unset.
+     * whose identity key differs but whose last-name sound and postcode match the candidate;
+     * otherwise sets {@code possibleDuplicate} false and leaves {@code possibleDuplicateOf} unset.
      *
      * @param candidate the owner about to be created, with its fields already normalized
      */
@@ -58,10 +65,13 @@ public class PossibleDuplicateDetector {
         if (candidate.getPostcode() == null) {
             return null;
         }
-        return clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
+        String identityKey = ownerIdentity.key(candidate);
+        String lastNameSound = soundex.of(candidate.getLastName());
+        return clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .filter(existing -> candidate.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !Objects.equals(candidate.getTelephone(), existing.getTelephone()))
+            .filter(existing -> lastNameSound.equals(soundex.of(existing.getLastName())))
+            .filter(existing -> !identityKey.equals(ownerIdentity.key(existing)))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
     }

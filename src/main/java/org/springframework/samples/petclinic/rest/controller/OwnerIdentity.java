@@ -20,27 +20,37 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
- * Owner identity: the single derived key that consolidates telephone, email and household
- * into one value used for duplicate detection. Two owners are the same identity only when
- * their whole key matches; because the (normalized) telephone is part of the key, two members
- * of one household with different telephones have distinct identities.
+ * Owner identity: the single derived key that consolidates telephone, email and last name into
+ * one value used for duplicate detection. Two owners are the same identity only when their whole
+ * key matches; because the (normalized) telephone is part of the key, two members of one household
+ * with different telephones have distinct identities.
  * <p>
- * The key is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, built
- * from the owner's already-canonical fields (telephone in E.164 form, email trimmed and
- * lower-cased). A {@code null} field contributes an empty segment so distinct fields cannot
- * collide across the {@code '|'} separators.
+ * The key is the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' +
+ * soundex(lastName)}, built from the owner's already-canonical fields (telephone in E.164 form,
+ * email trimmed and lower-cased). A {@code null} field contributes an empty segment so distinct
+ * fields cannot collide across the {@code '|'} separators.
  */
 @Component
 public class OwnerIdentity {
 
+    private final Soundex soundex;
+
+    private final Sha256 sha256;
+
+    public OwnerIdentity(Soundex soundex, Sha256 sha256) {
+        this.soundex = soundex;
+        this.sha256 = sha256;
+    }
+
     /**
-     * The identity key for {@code owner}, derived from its normalized telephone, email and
-     * household identifier.
+     * The identity key for {@code owner}: the SHA-256 hex of its normalized telephone, lower-cased
+     * email and the Soundex code of its last name.
      */
     public String key(Owner owner) {
-        return segment(owner.getTelephone())
+        String raw = segment(owner.getTelephone())
             + "|" + segment(owner.getEmail())
-            + "|" + segment(owner.getHouseholdId());
+            + "|" + soundex.of(owner.getLastName());
+        return sha256.hex(raw);
     }
 
     private String segment(String value) {

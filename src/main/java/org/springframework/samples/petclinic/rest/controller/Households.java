@@ -16,10 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 
@@ -43,8 +39,11 @@ public class Households {
 
     private final ClinicService clinicService;
 
-    public Households(ClinicService clinicService) {
+    private final Sha256 sha256;
+
+    public Households(ClinicService clinicService, Sha256 sha256) {
         this.clinicService = clinicService;
+        this.sha256 = sha256;
     }
 
     /**
@@ -68,7 +67,7 @@ public class Households {
      */
     public String householdId(Owner owner) {
         String key = normalize(owner.getLastName()) + "|" + segment(owner.getPostcode());
-        return sha256Hex(key).substring(0, ID_LENGTH);
+        return sha256.hex(key).substring(0, ID_LENGTH);
     }
 
     /**
@@ -85,16 +84,5 @@ public class Households {
 
     private String segment(String value) {
         return value == null ? "" : value;
-    }
-
-    private String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required but unavailable", e);
-        }
     }
 }

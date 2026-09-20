@@ -31,8 +31,8 @@ import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster
 import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
 import org.springframework.samples.petclinic.rest.controller.DisposableEmailDomainValidator;
+import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityValidator;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
-import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.Households;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
@@ -93,7 +93,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final Households households;
 
-    private final HouseholdDuplicateValidator householdDuplicateValidator;
+    private final DuplicateIdentityValidator duplicateIdentityValidator;
 
     private final PossibleDuplicateDetector possibleDuplicateDetector;
 
@@ -120,7 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  EmailNormalizer emailNormalizer,
                                  AddressResolver addressResolver,
                                  Households households,
-                                 HouseholdDuplicateValidator householdDuplicateValidator,
+                                 DuplicateIdentityValidator duplicateIdentityValidator,
                                  PossibleDuplicateDetector possibleDuplicateDetector,
                                  CityCapacityValidator cityCapacityValidator,
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
@@ -139,7 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.emailNormalizer = emailNormalizer;
         this.addressResolver = addressResolver;
         this.households = households;
-        this.householdDuplicateValidator = householdDuplicateValidator;
+        this.duplicateIdentityValidator = duplicateIdentityValidator;
         this.possibleDuplicateDetector = possibleDuplicateDetector;
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
@@ -202,8 +202,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         dailyRegistrationLimitValidator.validate(owner.getRegistrationDate());
         cityCapacityValidator.validate(owner);
         owner.setHouseholdId(households.householdId(owner));
+        duplicateIdentityValidator.validate(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        householdDuplicateValidator.validate(owner, sharesHousehold);
         if (sharesHousehold) {
             // A declared household member is not a suspected duplicate.
             owner.setPossibleDuplicate(false);
