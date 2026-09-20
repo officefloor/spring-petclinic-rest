@@ -19,14 +19,20 @@ package org.springframework.samples.petclinic.service;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
+import java.time.LocalDate;
+
 /**
  * Derives an owner's numeric membership level. The level starts at 1 and gains a
  * point for each qualifying attribute:
  * <ul>
  *   <li>+1 when the owner has an email address on file;</li>
- *   <li>+1 when the owner has no namesakes ({@code namesakeCount} is 0).</li>
+ *   <li>+1 when the owner has no namesakes ({@code namesakeCount} is 0);</li>
+ *   <li>+1 when the owner's tenure exceeds {@value #TENURE_THRESHOLD_DAYS} days.</li>
  * </ul>
- * The result is capped at {@value #MAX_LEVEL}; level 4 is reserved for tenure.
+ * The result is capped at {@value #MAX_LEVEL}. Because a brand-new owner has zero
+ * tenure, only the first two attributes can apply on creation, so a new owner never
+ * exceeds level 3; level 4 is attainable only once tenure passes the threshold.
  */
 @Component
 public class MembershipLevelEvaluator {
@@ -34,8 +40,21 @@ public class MembershipLevelEvaluator {
     /** The level every owner starts at before any qualifying attribute is counted. */
     static final int BASE_LEVEL = 1;
 
-    /** Highest level attainable on creation; level 4 is reserved for tenure. */
-    static final int MAX_LEVEL = 3;
+    /** Highest level attainable. */
+    static final int MAX_LEVEL = 4;
+
+    /** Tenure, in days, that must be exceeded for the tenure attribute to apply. */
+    static final long TENURE_THRESHOLD_DAYS = 365;
+
+    private final Clock clock;
+
+    public MembershipLevelEvaluator() {
+        this(Clock.systemDefaultZone());
+    }
+
+    MembershipLevelEvaluator(Clock clock) {
+        this.clock = clock;
+    }
 
     /**
      * @param owner the owner whose level is evaluated
@@ -52,10 +71,17 @@ public class MembershipLevelEvaluator {
         if (hasNoNamesakes(owner)) {
             level++;
         }
+        if (hasQualifyingTenure(owner)) {
+            level++;
+        }
         return Math.min(level, MAX_LEVEL);
     }
 
     private boolean hasNoNamesakes(Owner owner) {
         return owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+    }
+
+    private boolean hasQualifyingTenure(Owner owner) {
+        return owner.tenureInDays(LocalDate.now(clock)) > TENURE_THRESHOLD_DAYS;
     }
 }
