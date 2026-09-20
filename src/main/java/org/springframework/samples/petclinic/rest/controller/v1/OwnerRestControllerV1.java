@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneE
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
+import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -92,6 +93,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final BusinessDayAdjuster businessDayAdjuster;
 
+    private final OwnerAuditLogger ownerAuditLogger;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -104,7 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdAssigner householdAssigner,
                                  CityCapacityValidator cityCapacityValidator,
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
-                                 BusinessDayAdjuster businessDayAdjuster) {
+                                 BusinessDayAdjuster businessDayAdjuster,
+                                 OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -118,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
         this.businessDayAdjuster = businessDayAdjuster;
+        this.ownerAuditLogger = ownerAuditLogger;
     }
 
     /**
@@ -177,6 +182,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         this.clinicService.saveOwner(owner);
+        ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
