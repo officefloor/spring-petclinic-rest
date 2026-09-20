@@ -100,6 +100,13 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /**
+     * Whether this owner has a non-blank email address on file.
+     */
+    public boolean hasEmail() {
+        return this.email != null && !this.email.isBlank();
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }

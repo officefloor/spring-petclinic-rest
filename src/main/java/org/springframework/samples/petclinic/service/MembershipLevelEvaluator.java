@@ -46,17 +46,13 @@ public class MembershipLevelEvaluator {
             return null;
         }
         int level = BASE_LEVEL;
-        if (hasEmail(owner)) {
+        if (owner.hasEmail()) {
             level++;
         }
         if (hasNoNamesakes(owner)) {
             level++;
         }
         return Math.min(level, MAX_LEVEL);
-    }
-
-    private boolean hasEmail(Owner owner) {
-        return owner.getEmail() != null && !owner.getEmail().isBlank();
     }
 
     private boolean hasNoNamesakes(Owner owner) {
