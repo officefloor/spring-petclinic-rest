@@ -37,6 +37,7 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "identityKey", expression = "java(owner == null ? null : ownerIdentity.key(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+    @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.model.Salutation.forOwner(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.forOwner(owner))")
