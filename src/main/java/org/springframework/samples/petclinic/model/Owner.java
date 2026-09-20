@@ -22,6 +22,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.LuhnCheckDigit;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 import org.springframework.samples.petclinic.util.Sha256;
 import org.springframework.samples.petclinic.util.Soundex;
@@ -401,6 +402,18 @@ public class Owner extends Person {
     public String getLocality() {
         String region = CustomerCode.regionOf(this.customerCode);
         return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
+    }
+
+    /**
+     * The owner's market segment, formatted {@code <TIER>_<AREA>}: the tier is
+     * {@code PREMIUM} when {@link #getMembershipLevel() membership level} is 3 or more,
+     * otherwise {@code STANDARD}; the area is {@code METRO} when {@link #getLocality()
+     * locality} is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}. One of
+     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
+     * {@code STANDARD_REGIONAL}. Derived from stored state, never persisted.
+     */
+    public String getOwnerSegment() {
+        return OwnerSegment.of(getMembershipLevel(), getLocality());
     }
 
     /**
