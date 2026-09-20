@@ -55,6 +55,13 @@ final class Cities {
         return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
 
+    /** Whether {@code city} is over its soft capacity — it holds at least
+     * {@link #CAPACITY_WARNING_THRESHOLD} owners, the point from which it counts as filling up
+     * (whether or not it has since reached the hard limit). */
+    static boolean isOverSoftCapacity(OwnerRepository ownerRepository, String city) {
+        return count(ownerRepository, city) >= CAPACITY_WARNING_THRESHOLD;
+    }
+
     private static String normalize(String city) {
         if (city == null) {
             return "";
