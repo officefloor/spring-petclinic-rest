@@ -1,0 +1,23 @@
+package org.springframework.samples.petclinic.rest.escalation;
+
+import net.officefloor.plugin.section.clazz.Parameter;
+import net.officefloor.web.ObjectResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.function.owner.MissingOwnerFieldsException;
+
+/**
+ * Responds 400 when a create request omits or blanks required owner fields, listing the
+ * offending field names in the {@code errors} property.
+ */
+public class MissingOwnerFieldsExceptionHandler {
+
+    public void handle(@Parameter MissingOwnerFieldsException ex,
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+                "The request is missing one or more required owner fields");
+        detail.setProperty("errors", ex.getFields());
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+    }
+}
