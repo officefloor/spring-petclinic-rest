@@ -20,7 +20,9 @@ public class ValidateOwnerFields {
         List<String> missing = new ArrayList<>();
         requireText(missing, "firstName", request.getFirstName());
         requireText(missing, "lastName", request.getLastName());
-        requireText(missing, "address", request.getAddress());
+        // Address is checked in its normalized form, so a value that is blank only once
+        // whitespace is trimmed and collapsed (see Addresses) is still rejected here.
+        requireText(missing, "address", Addresses.normalize(request.getAddress()));
         requireText(missing, "city", request.getCity());
         requireText(missing, "telephone", request.getTelephone());
         if (!missing.isEmpty()) {

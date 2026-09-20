@@ -7,10 +7,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Rejects a create request that would place a new owner in a household already occupied by
- * an existing owner — one sharing the same last name and address, compared case-insensitively
- * with collapsed whitespace (see {@link Households#normalize(String)}). A request may opt in
- * to a shared household by setting {@code sharesHousehold} true, in which case the check is
- * skipped.
+ * an existing owner — one sharing the same last name and address, compared in their
+ * canonical forms (see {@link Households#matches(org.springframework.samples.petclinic.model.Owner, String, String)}).
+ * A request may opt in to a shared household by setting {@code sharesHousehold} true, in
+ * which case the check is skipped.
  */
 public class EnsureUniqueHousehold {
 

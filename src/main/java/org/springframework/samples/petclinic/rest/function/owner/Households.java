@@ -9,10 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Shared household matching: canonicalizes the free-text fields that identify a household
- * (last name and address) so values that differ only in letter case or in the amount of
- * surrounding/internal whitespace compare equal. Used to detect when a new owner shares a
- * household with an existing one, and to derive the stable identifier that owners in the
- * same household share.
+ * (last name and address) so values that differ only in letter case, in the amount of
+ * surrounding/internal whitespace, or (for the address) in common street-type
+ * abbreviations compare equal. Used to detect when a new owner shares a household with an
+ * existing one, and to derive the stable identifier that owners in the same household share.
  */
 final class Households {
 
@@ -20,24 +20,35 @@ final class Households {
     }
 
     /**
-     * Canonicalizes {@code value} for case-insensitive, whitespace-insensitive comparison:
+     * Canonicalizes a last name for case-insensitive, whitespace-insensitive comparison:
      * trims the ends, collapses every run of whitespace to a single space and lower-cases
-     * the result. Returns an empty string when {@code value} is {@code null}.
+     * the result. Returns an empty string when {@code lastName} is {@code null}.
      */
-    static String normalize(String value) {
-        if (value == null) {
+    private static String normalizeName(String lastName) {
+        if (lastName == null) {
             return "";
         }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return lastName.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Canonicalizes an address using the same normalization applied when an owner is created
+     * (see {@link Addresses#normalize(String)}), so household comparisons see the stored,
+     * abbreviation-expanded form. Returns an empty string when {@code address} is
+     * {@code null}.
+     */
+    private static String normalizeAddress(String address) {
+        String normalized = Addresses.normalize(address);
+        return normalized == null ? "" : normalized;
     }
 
     /**
      * Whether {@code owner} belongs to the household identified by {@code lastName} and
-     * {@code address}, comparing both fields canonically (see {@link #normalize(String)}).
+     * {@code address}, comparing the last name and the address in their canonical forms.
      */
     static boolean matches(Owner owner, String lastName, String address) {
-        return normalize(lastName).equals(normalize(owner.getLastName()))
-                && normalize(address).equals(normalize(owner.getAddress()));
+        return normalizeName(lastName).equals(normalizeName(owner.getLastName()))
+                && normalizeAddress(address).equals(normalizeAddress(owner.getAddress()));
     }
 
     /**
@@ -46,7 +57,7 @@ final class Households {
      * so the same household always yields the same id without any coordination.
      */
     static String id(String lastName, String address) {
-        String key = normalize(lastName) + "\n" + normalize(address);
+        String key = normalizeName(lastName) + "\n" + normalizeAddress(address);
         return "H-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 
