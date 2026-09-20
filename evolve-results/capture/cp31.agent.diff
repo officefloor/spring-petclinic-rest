@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 15da49f01..5bea348a2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.CityRegion;
+ import org.springframework.samples.petclinic.model.ContactPreference;
++import org.springframework.samples.petclinic.model.Luhn;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -24,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+@@ -40,6 +42,13 @@ public interface OwnerMapper {
+             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+     }
+ 
++    /**
++     * The Luhn check digit computed over the digits of the owner's customer code.
++     */
++    default int checkDigit(Owner owner) {
++        return Luhn.checkDigit(owner.getCustomerCode());
++    }
++
+     /**
+      * The owner's membership number, formatted as {@code <customerCode>-M<YY>} where
+      * {@code YY} is the last two digits of the registration date year, e.g.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Luhn.java b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+new file mode 100644
+index 000000000..094c0ae2a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/Luhn.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The Luhn check-digit algorithm. Non-digit characters are ignored, so the digit is
++ * computed over the digits contained in the given string.
++ */
++public final class Luhn {
++
++    private Luhn() {
++    }
++
++    /**
++     * The Luhn check digit (0-9) over the digits contained in {@code value}, computed by
++     * doubling every second digit from the right (subtracting 9 when the result exceeds 9),
++     * summing, and taking the amount needed to reach the next multiple of ten.
++     */
++    public static int checkDigit(String value) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a57608487..c557ae316 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2102,6 +2102,15 @@ components:
+               type: string
+               example: 'LON-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn check digit (0-9) computed over the digits contained in the customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted as '<customerCode>-M<YY>' where YY is the last two digits of the registration date year.
