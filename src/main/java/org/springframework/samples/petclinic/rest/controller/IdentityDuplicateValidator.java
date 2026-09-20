@@ -21,38 +21,38 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Guards owner creation against duplicate emails: an email is unique across owners once
- * compared in its canonical (trimmed, lower-cased) form. Owners without an email are never
- * in conflict.
+ * Guards owner creation against duplicate identities: telephone, email and household are
+ * consolidated into a single {@link OwnerIdentity#key(Owner) identity key}, and a candidate is
+ * rejected only when its whole key equals an existing owner's. Owners that differ in any
+ * segment (for example two household members with different telephones) are distinct and both
+ * allowed.
  */
 @Component
-public class EmailUniquenessValidator {
+public class IdentityDuplicateValidator {
 
     private final ClinicService clinicService;
 
-    private final EmailNormalizer emailNormalizer;
+    private final OwnerIdentity ownerIdentity;
 
-    public EmailUniquenessValidator(ClinicService clinicService, EmailNormalizer emailNormalizer) {
+    public IdentityDuplicateValidator(ClinicService clinicService, OwnerIdentity ownerIdentity) {
         this.clinicService = clinicService;
-        this.emailNormalizer = emailNormalizer;
+        this.ownerIdentity = ownerIdentity;
     }
 
     /**
-     * Reject {@code candidate} when its canonical email already belongs to another owner.
+     * Reject {@code candidate} when its identity key already belongs to another owner.
      *
-     * @param candidate the owner about to be created
-     * @throws DuplicateEmailException if another owner already uses the candidate's email
+     * @param candidate the owner about to be created, with its telephone, email and household
+     * identifier already normalized
+     * @throws DuplicateIdentityException if another owner shares the candidate's whole identity key
      */
     public void validate(Owner candidate) {
-        String email = emailNormalizer.normalize(candidate.getEmail());
-        if (email == null) {
-            return;
-        }
+        String key = ownerIdentity.key(candidate);
         boolean taken = clinicService.findAllOwners().stream()
-            .map(existing -> emailNormalizer.normalize(existing.getEmail()))
-            .anyMatch(email::equals);
+            .map(ownerIdentity::key)
+            .anyMatch(key::equals);
         if (taken) {
-            throw new DuplicateEmailException(email);
+            throw new DuplicateIdentityException(key);
         }
     }
 }

@@ -17,14 +17,12 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Thrown when creating an owner whose last name and address (compared case-insensitively
- * with collapsed whitespace) already belong to another owner, without the request opting
- * into a shared household. Handled as {@code 409 Conflict}.
+ * Thrown when creating an owner whose whole identity key (normalized telephone, email and
+ * household identifier) already belongs to another owner. Handled as {@code 409 Conflict}.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("an owner with the same last name and address already exists (lastName: "
-            + lastName + ", address: " + address + ")");
+    public DuplicateIdentityException(String identityKey) {
+        super("an owner with the same identity already exists (identityKey: " + identityKey + ")");
     }
 }
