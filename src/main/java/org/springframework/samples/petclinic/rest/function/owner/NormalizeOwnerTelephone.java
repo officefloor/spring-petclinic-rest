@@ -15,7 +15,7 @@ public class NormalizeOwnerTelephone {
 
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
         String telephone = request.getTelephone();
-        String digits = telephone.replaceAll("\\D", "");
+        String digits = Telephones.normalize(telephone);
         if (digits.length() != REQUIRED_DIGITS) {
             throw new InvalidTelephoneException(telephone);
         }
