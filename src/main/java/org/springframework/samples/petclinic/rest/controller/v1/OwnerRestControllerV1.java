@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
+import org.springframework.samples.petclinic.rest.controller.DisposableEmailDomainValidator;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.Households;
@@ -81,6 +82,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final PostcodeValidator postcodeValidator;
 
+    private final DisposableEmailDomainValidator disposableEmailDomainValidator;
+
     private final TelephoneNormalizer telephoneNormalizer;
 
     private final EmailNormalizer emailNormalizer;
@@ -109,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  PostcodeValidator postcodeValidator,
+                                 DisposableEmailDomainValidator disposableEmailDomainValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
@@ -126,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.postcodeValidator = postcodeValidator;
+        this.disposableEmailDomainValidator = disposableEmailDomainValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
@@ -145,7 +150,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     @InitBinder("ownerFieldsDto")
     void initOwnerFieldsBinder(WebDataBinder binder) {
-        binder.addValidators(ownerFieldsValidator, postcodeValidator);
+        binder.addValidators(ownerFieldsValidator, postcodeValidator, disposableEmailDomainValidator);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
