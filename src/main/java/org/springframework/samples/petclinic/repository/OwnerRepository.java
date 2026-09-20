@@ -56,6 +56,15 @@ public interface OwnerRepository {
      */
     Owner findById(int id) throws DataAccessException;
 
+    /**
+     * Retrieve <code>Owner</code>s from the data store by their (already normalized) telephone.
+     *
+     * @param telephone the normalized telephone to search for
+     * @return a <code>Collection</code> of owners holding that telephone (or an empty
+     * <code>Collection</code> if none found)
+     */
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.
