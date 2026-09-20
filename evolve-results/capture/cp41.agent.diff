@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 0fa091e81..5d5e2852f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -1,19 +1,31 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.HashSet;
++import java.util.Set;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.CityRegion;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns a new owner's customer code before it is saved. The code is {@code <REGION>-<HASH8>}
+  * (see {@link CustomerCode}): the region derived from the owner's postcode plus a hash of the
+  * owner's normalized telephone and last name. Runs after the telephone has been normalized, so
+- * {@link Owner#getTelephone()} already holds the canonical form the hash is taken over.
++ * {@link Owner#getTelephone()} already holds the canonical form the hash is taken over. Should
++ * that code collide with an existing owner's, it is de-duplicated with a {@code -<n>} suffix.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = CityRegion.localityOf(owner.getPostcode(), owner.getCity());
+-        owner.setCustomerCode(CustomerCode.format(region, owner.getTelephone(), owner.getLastName()));
++        String code = CustomerCode.format(region, owner.getTelephone(), owner.getLastName());
++        Set<String> taken = new HashSet<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (existing.getCustomerCode() != null) {
++                taken.add(existing.getCustomerCode());
++            }
++        }
++        owner.setCustomerCode(CustomerCode.deduplicate(code, taken));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+index 4a382bd0a..476c51cd8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Set;
++
+ /**
+  * Formats and reads an owner's customer code as {@code <REGION>-<HASH8>}, where
+  * {@code REGION} is the region code derived from the owner's postcode (see
+@@ -26,6 +28,23 @@ public final class CustomerCode {
+         return region + "-" + Hashes.upperHexPrefix(telephone + last, HASH_LENGTH);
+     }
+ 
++    /**
++     * De-duplicates {@code code} against the codes already {@code taken}. Returns {@code code}
++     * unchanged when it is free; otherwise appends {@code -<n>} with the smallest {@code n} of 2
++     * or more that yields a code not in {@code taken} (e.g. {@code NSW-1A2B3C4D-2}).
++     */
++    public static String deduplicate(String code, Set<String> taken) {
++        if (!taken.contains(code)) {
++            return code;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = code + "-" + n;
++            if (!taken.contains(candidate)) {
++                return candidate;
++            }
++        }
++    }
++
+     /**
+      * The {@code REGION} segment of a customer code — everything before the first {@code -}
+      * separator, i.e. the region the code was minted in.
