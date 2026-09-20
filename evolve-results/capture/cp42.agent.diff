@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 86c432407..fad277b94 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -102,6 +103,16 @@ public interface OwnerMapper {
+             .region(customerCode);
+     }
+ 
++    /**
++     * The owner's IANA timezone, derived from their {@link #locality(Owner) locality} via
++     * the pinned region-to-timezone table (NSW -> Australia/Sydney, VIC ->
++     * Australia/Melbourne, QLD -> Australia/Brisbane), or {@code null} when the locality
++     * resolves to no known region.
++     */
++    default String timezone(Owner owner) {
++        return CityRegion.timezoneOf(locality(owner));
++    }
++
+     /**
+      * How the owner prefers to be contacted: {@code EMAIL} when an email address is
+      * present, otherwise {@code PHONE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java b/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
+index 3709b27b6..b6173d1f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
+@@ -28,6 +28,12 @@ public final class CityRegion {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONES = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     private CityRegion() {
+     }
+ 
+@@ -68,6 +74,15 @@ public final class CityRegion {
+         return null;
+     }
+ 
++    /**
++     * The IANA timezone name pinned to {@code region} (NSW -> Australia/Sydney, VIC ->
++     * Australia/Melbourne, QLD -> Australia/Brisbane), or {@code null} when the region has
++     * no pinned timezone (including {@link #UNKNOWN} and a {@code null} region).
++     */
++    public static String timezoneOf(String region) {
++        return REGION_TIMEZONES.get(region);
++    }
++
+     /**
+      * The inclusive {low, high} four-digit postcode range pinned to {@code region}, or
+      * {@code null} when the region has no pinned range.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 803a57d92..d849e3625 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2155,6 +2155,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The IANA timezone name derived from the locality via the pinned region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or absent when the locality resolves to no known region.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by owners in the same household, computed deterministically as the first 12 hex characters of SHA-256 over 'normalizedLastName|postcode'. Owners with the same last name and postcode share it automatically.
