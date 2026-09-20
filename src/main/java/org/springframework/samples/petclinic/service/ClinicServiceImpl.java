@@ -305,6 +305,18 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
+    /**
+     * Count how many existing owners belong to the given household, matched by their
+     * {@code householdId}. Used to derive the membership tier that rewards larger households.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersInHousehold(String householdId) throws DataAccessException {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+    }
+
     private <T> T findEntityById(Supplier<T> supplier) {
         try {
             return supplier.get();
