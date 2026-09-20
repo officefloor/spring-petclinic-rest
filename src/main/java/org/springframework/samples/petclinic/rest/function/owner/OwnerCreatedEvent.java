@@ -3,16 +3,15 @@ package org.springframework.samples.petclinic.rest.function.owner;
 /**
  * Immutable structured audit event marking a successful owner creation, serialized to the
  * canonical JSON object
- * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+ * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
  *
- * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em>
- * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}): the
- * customer code today, and whatever unifies it later (e.g. a member id) with no change here.
+ * <p>The {@code memberId} field carries the owner's <em>current primary identifier</em>
+ * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}).
  *
  * <p>Emitted by {@link AuditOwnerCreated}; {@code seq} comes from {@link OwnerCreatedEventSequence}
  * and increases monotonically across creates.
  */
-public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel) {
+public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel) {
 
     /** The event marker every serialized event carries. */
     public static final String EVENT = "OWNER_CREATED";
@@ -22,7 +21,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int 
         return "{"
                 + "\"seq\":" + this.seq + ","
                 + "\"ownerId\":" + this.ownerId + ","
-                + "\"customerCode\":" + quote(this.customerCode) + ","
+                + "\"memberId\":" + quote(this.memberId) + ","
                 + "\"membershipLevel\":" + this.membershipLevel + ","
                 + "\"event\":" + quote(EVENT)
                 + "}";

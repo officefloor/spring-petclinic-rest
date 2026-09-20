@@ -8,19 +8,19 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits, to the dedicated {@code AUDIT} logger, two records for a successfully created owner:
- * the human-readable audit line (owner id, {@code customerCode}, {@code registrationDate},
- * {@code membershipLevel}, {@code membershipNumber}) and an immutable structured
- * {@link OwnerCreatedEvent} serialized as JSON. Runs after {@link SaveOwner} (so the generated
- * id exists) and before {@link RespondWithOwnerCreated} responds.
+ * the human-readable audit line (owner id, {@code memberId}, {@code registrationDate},
+ * {@code membershipLevel}) and an immutable structured {@link OwnerCreatedEvent} serialized as
+ * JSON. Runs after {@link SaveOwner} (so the generated id exists) and before
+ * {@link RespondWithOwnerCreated} responds.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner, OwnerCreatedEventSequence sequence) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(sequence.next(), owner.getId(),
                 owner.getPrimaryIdentifier(), owner.getMembershipLevel());
         AUDIT.info(event.toJson());

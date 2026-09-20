@@ -18,10 +18,9 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CityLocality;
-import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.FiscalYear;
-import org.springframework.samples.petclinic.util.LuhnCheckDigit;
+import org.springframework.samples.petclinic.util.MemberId;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 import org.springframework.samples.petclinic.util.Sha256;
@@ -79,8 +78,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -90,9 +89,6 @@ public class Owner extends Person {
 
     @Column(name = "household_size")
     private Integer householdSize;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "membership_level_cap")
     private Integer membershipLevelCap;
@@ -249,23 +245,29 @@ public class Owner extends Person {
         return AgeBand.of(this.birthDate, this.registrationDate);
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member-id, formatted {@code <REGION><FY><HASH8><CHK>}: the canonical region,
+     * the two-digit fiscal year of the registration date, the first eight upper-case hex
+     * characters of the SHA-256 of the normalized telephone concatenated with the last name,
+     * and a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g.
+     * {@code NSW261A2B3C4D7}). Assigned at creation.
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier: the {@link #getCustomerCode() customer code} today.
-     * The single source of truth for "which field identifies this owner", so a consumer such as the
-     * {@code OWNER_CREATED} audit event always carries the right value; when the customer code is
-     * later unified into a member id, this method returns that instead and every consumer follows
-     * automatically. Derived from stored state, never persisted.
+     * The owner's current primary identifier: the {@link #getMemberId() member-id}. The single
+     * source of truth for "which field identifies this owner", so a consumer such as the
+     * {@code OWNER_CREATED} audit event always carries the right value. Derived from stored
+     * state, never persisted.
      */
     public String getPrimaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     /**
@@ -296,14 +298,6 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     /**
@@ -390,17 +384,16 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region carried in the {@code <REGION>-<HASH8>}
-     * customer code, i.e. the same region-and-hash identity used everywhere else. That
-     * region was derived at creation by preferring the postcode range (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099), falling back to the fixed city-to-region table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no
-     * known range, or {@code "UNKNOWN"} otherwise. For an owner with no customer code the
-     * region is derived directly from the stored postcode and city. Derived from stored
-     * state, never persisted.
+     * The owner's locality: the canonical region carried in the {@code <REGION><FY><HASH8><CHK>}
+     * member-id, i.e. the same region-and-hash identity used everywhere else. That region was
+     * derived at creation by preferring the postcode range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), falling back to the fixed city-to-region table (Sydney->NSW,
+     * Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range, or
+     * {@code "UNKNOWN"} otherwise. For an owner with no member-id the region is derived directly
+     * from the stored postcode and city. Derived from stored state, never persisted.
      */
     public String getLocality() {
-        String region = CustomerCode.regionOf(this.customerCode);
+        String region = MemberId.regionOf(this.memberId);
         return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
     }
 
@@ -497,14 +490,6 @@ public class Owner extends Person {
             return 0;
         }
         return FiscalYear.elapsed(this.registrationDate, LocalDate.now());
-    }
-
-    /**
-     * The owner's check digit: a single Luhn check digit (0-9) computed over the digits of
-     * the {@code customerCode}. Derived from stored state, never persisted.
-     */
-    public int getCheckDigit() {
-        return LuhnCheckDigit.of(this.customerCode);
     }
 
     /**
