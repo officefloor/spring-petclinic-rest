@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.forOwner(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
