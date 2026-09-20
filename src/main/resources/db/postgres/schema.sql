@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       membership_number TEXT,
                                       membership_level_cap INTEGER,
                                       bulk_signup_warning BOOLEAN NOT NULL DEFAULT FALSE,
+                                      capacity_warning BOOLEAN NOT NULL DEFAULT FALSE,
                                       possible_duplicate BOOLEAN NOT NULL DEFAULT FALSE,
                                       possible_duplicate_of INTEGER,
                                       deleted BOOLEAN NOT NULL DEFAULT FALSE
