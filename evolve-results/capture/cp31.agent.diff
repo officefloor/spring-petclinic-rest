@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a9455ed04..08340ed25 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.forOwner(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java
+new file mode 100644
+index 000000000..dd73a08f3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/CheckDigit.java
+@@ -0,0 +1,63 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Computes an owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
++ * contained in the owner's {@code customerCode}. Non-digit characters are ignored, so the
++ * digit depends only on the numeric content of the code.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /**
++     * Returns the Luhn check digit over the digits of the owner's customer code, or
++     * {@code null} when the owner is {@code null} or has no customer code assigned yet.
++     */
++    public static Integer forOwner(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null) {
++            return null;
++        }
++        return luhn(owner.getCustomerCode());
++    }
++
++    /**
++     * Computes the Luhn check digit (0-9) over the decimal digits contained in {@code value},
++     * ignoring any non-digit characters.
++     */
++    public static int luhn(String value) {
++        int sum = 0;
++        boolean doubling = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubling) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubling = !doubling;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dcc85cb80..421eb8552 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,6 +2119,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the
++                customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
