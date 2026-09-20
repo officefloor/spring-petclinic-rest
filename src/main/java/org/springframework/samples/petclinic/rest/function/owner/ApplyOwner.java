@@ -13,6 +13,7 @@ public class ApplyOwner {
                 request.getAddressLine2(), request.getAddress()));
         owner.setCity(request.getCity());
         owner.setPostcode(request.getPostcode());
+        owner.setTitle(request.getTitle());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
         owner.setTelephone(request.getTelephone());

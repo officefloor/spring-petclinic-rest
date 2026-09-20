@@ -36,6 +36,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address_line1")
     private String addressLine1;
 
@@ -88,6 +91,14 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
     public String getAddressLine1() {
         return this.addressLine1;
@@ -282,6 +293,7 @@ public class Owner extends Person {
             .append("new", this.isNew())
             .append("lastName", this.getLastName())
             .append("firstName", this.getFirstName())
+            .append("title", this.title)
             .append("addressLine1", this.addressLine1)
             .append("addressLine2", this.addressLine2)
             .append("address", this.address)

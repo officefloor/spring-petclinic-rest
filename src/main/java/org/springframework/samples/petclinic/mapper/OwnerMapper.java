@@ -26,6 +26,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -38,6 +39,18 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * How to address the owner: their {@link Owner#getTitle() title} followed by a space
+     * and the last name (e.g. {@code DR Franklin}), or just the last name when no title
+     * was supplied.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        return (title == null || title.isBlank())
+            ? owner.getLastName()
+            : title + " " + owner.getLastName();
+    }
 
     /**
      * The upper-cased first letters of the first and last name, dot-separated with a
