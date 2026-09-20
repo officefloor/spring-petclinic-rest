@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 29b071db9..34dea6119 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,6 +33,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.fromCity(owner.getCity()))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
++    @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java b/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java
+new file mode 100644
+index 000000000..160c0c4e5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Derives an owner's preferred contact channel: {@link #EMAIL} when the owner has an
++ * email address on file, otherwise {@link #PHONE}.
++ */
++public final class ContactPreference {
++
++    /** Preferred channel for owners that have an email address on file. */
++    public static final String EMAIL = "EMAIL";
++
++    /** Preferred channel for owners without an email address. */
++    public static final String PHONE = "PHONE";
++
++    private ContactPreference() {
++    }
++
++    /**
++     * Returns {@link #EMAIL} when the owner has a non-blank email address on file,
++     * otherwise {@link #PHONE} (including when the owner is {@code null}).
++     */
++    public static String forOwner(Owner owner) {
++        return owner != null && owner.hasEmail() ? EMAIL : PHONE;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6c1b76a8a..f226b489e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -100,6 +100,13 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    /**
++     * Whether this owner has a non-blank email address on file.
++     */
++    public boolean hasEmail() {
++        return this.email != null && !this.email.isBlank();
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+index f3aa58b67..72e29400a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+@@ -46,7 +46,7 @@ public class MembershipLevelEvaluator {
+             return null;
+         }
+         int level = BASE_LEVEL;
+-        if (hasEmail(owner)) {
++        if (owner.hasEmail()) {
+             level++;
+         }
+         if (hasNoNamesakes(owner)) {
+@@ -55,10 +55,6 @@ public class MembershipLevelEvaluator {
+         return Math.min(level, MAX_LEVEL);
+     }
+ 
+-    private boolean hasEmail(Owner owner) {
+-        return owner.getEmail() != null && !owner.getEmail().isBlank();
+-    }
+-
+     private boolean hasNoNamesakes(Owner owner) {
+         return owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 013defbe7..07e0f2389 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2171,6 +2171,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            contactPreference:
++              title: Contact preference
++              description: >-
++                The owner's preferred contact channel: 'EMAIL' when an email
++                address is on file, otherwise 'PHONE'.
++              type: string
++              example: 'PHONE'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
