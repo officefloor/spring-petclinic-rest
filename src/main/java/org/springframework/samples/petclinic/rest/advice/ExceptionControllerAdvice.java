@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -120,6 +121,22 @@ public class ExceptionControllerAdvice {
         logger.debug("Data integrity violation stacktrace", e);
         HttpStatus status = HttpStatus.NOT_FOUND;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidTelephoneException} raised when a submitted telephone does not
+     * reduce to exactly ten digits after non-digit characters are stripped.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         return ResponseEntity.status(status).body(detail);
     }
 
