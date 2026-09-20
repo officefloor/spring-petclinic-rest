@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected TelephoneFormatter telephoneFormatter;
 
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     @Mapping(target = "identityKey", expression = "java(owner == null ? null : ownerIdentity.key(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.model.Salutation.forOwner(owner))")
@@ -51,6 +52,17 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds an owner's canonical API path, {@code "/api/owners/<id>"}. Returns
+     * {@code null} for a {@code null} owner or one that has not been assigned an id yet.
+     */
+    protected String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives an owner's fiscal year (starting 1 July) from its business-day-adjusted
