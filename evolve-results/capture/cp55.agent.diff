@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f20997320..8dd5d6474 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.model.Luhn;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.model.OwnerSegment;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -37,6 +38,7 @@ public interface OwnerMapper {
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -137,6 +139,15 @@ public interface OwnerMapper {
+         return CityRegion.timezoneOf(locality(owner));
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted as {@code <TIER>_<AREA>} (see
++     * {@link OwnerSegment}): the tier from the owner's {@link #membershipLevel(Owner)
++     * membership level} and the area from their {@link #locality(Owner) locality}.
++     */
++    default String ownerSegment(Owner owner) {
++        return OwnerSegment.of(membershipLevel(owner), locality(owner));
++    }
++
+     /**
+      * How the owner prefers to be contacted: {@code EMAIL} when an email address is
+      * present, otherwise {@code PHONE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java b/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
+index b6173d1f0..7f5c3b64a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CityRegion.java
+@@ -74,6 +74,14 @@ public final class CityRegion {
+         return null;
+     }
+ 
++    /**
++     * Whether {@code region} is one of the pinned known regions (NSW, VIC or QLD), as
++     * opposed to {@link #UNKNOWN}, a {@code null} region, or any other value.
++     */
++    public static boolean isKnownRegion(String region) {
++        return REGION_RANGES.containsKey(region);
++    }
++
+     /**
+      * The IANA timezone name pinned to {@code region} (NSW -> Australia/Sydney, VIC ->
+      * Australia/Melbourne, QLD -> Australia/Brisbane), or {@code null} when the region has
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+new file mode 100644
+index 000000000..7c558b83e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerSegment.java
+@@ -0,0 +1,54 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The owner's marketing segment, formatted as {@code <TIER>_<AREA>}, one of
++ * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++ * {@code STANDARD_REGIONAL}. It composes two independent axes derived at read time:
++ *
++ * <ul>
++ *   <li>{@link Tier} — {@link Tier#PREMIUM} at {@link #PREMIUM_MIN_LEVEL membership level 3}
++ *   or more, otherwise {@link Tier#STANDARD}.</li>
++ *   <li>{@link Area} — {@link Area#METRO} when the locality is a
++ *   {@link CityRegion#isKnownRegion(String) known region} (NSW, VIC or QLD), otherwise
++ *   {@link Area#REGIONAL}.</li>
++ * </ul>
++ */
++public final class OwnerSegment {
++
++    /** The membership level at or above which the owner is {@link Tier#PREMIUM}. */
++    public static final int PREMIUM_MIN_LEVEL = 3;
++
++    /** The membership pricing tier axis of the segment. */
++    public enum Tier {
++        PREMIUM, STANDARD;
++
++        /** The tier for the given membership level: {@link #PREMIUM} at
++         *  {@link #PREMIUM_MIN_LEVEL} or more, otherwise {@link #STANDARD}. */
++        public static Tier of(int membershipLevel) {
++            return membershipLevel >= PREMIUM_MIN_LEVEL ? PREMIUM : STANDARD;
++        }
++    }
++
++    /** The geographic area axis of the segment. */
++    public enum Area {
++        METRO, REGIONAL;
++
++        /** The area for the given locality: {@link #METRO} for a
++         *  {@link CityRegion#isKnownRegion(String) known region}, otherwise
++         *  {@link #REGIONAL}. */
++        public static Area of(String locality) {
++            return CityRegion.isKnownRegion(locality) ? METRO : REGIONAL;
++        }
++    }
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * The segment for the given membership level and locality, formatted as
++     * {@code <TIER>_<AREA>}.
++     */
++    public static String of(int membershipLevel, String locality) {
++        return Tier.of(membershipLevel) + "_" + Area.of(locality);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7198a2548..cdca8eb7f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2208,6 +2208,12 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: The owner's marketing segment, formatted as '<TIER>_<AREA>' - one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' at membershipLevel 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by owners in the same household, computed deterministically as the first 12 hex characters of SHA-256 over 'normalizedLastName|postcode'. Owners with the same last name and postcode share it automatically.
