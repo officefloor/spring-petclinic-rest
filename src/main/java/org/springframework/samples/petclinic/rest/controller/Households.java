@@ -17,9 +17,11 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -27,12 +29,17 @@ import org.springframework.stereotype.Component;
 
 /**
  * Household identity for owners: two owners belong to the same household when their last name
- * and address match once compared case-insensitively and with runs of whitespace collapsed to
- * a single space. Provides the shared lookup and stable-identifier logic reused by the
- * duplicate guard and the shared-household assignment.
+ * (compared case-insensitively, with runs of whitespace collapsed) and postcode match. The
+ * {@code householdId} is derived deterministically from those two fields, so owners with the
+ * same last name and postcode share it automatically without any explicit linking. Provides the
+ * shared lookup and identifier logic reused by the duplicate guard and by the household-size
+ * queries that key off {@code householdId}.
  */
 @Component
 public class Households {
+
+    /** Number of leading SHA-256 hex characters that make up a household identifier. */
+    private static final int ID_LENGTH = 12;
 
     private final ClinicService clinicService;
 
@@ -41,35 +48,29 @@ public class Households {
     }
 
     /**
-     * Existing owners that share {@code candidate}'s household (same normalized last name and
-     * address). Intended for a not-yet-persisted candidate, so the candidate never appears in
-     * the result.
+     * Existing owners that share {@code candidate}'s household (same {@link #householdId(Owner)
+     * household identifier}). Intended for a not-yet-persisted candidate, so the candidate never
+     * appears in the result.
      */
     public List<Owner> findMembers(Owner candidate) {
-        String key = key(candidate);
+        String householdId = householdId(candidate);
         return clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
-            .filter(existing -> key.equals(key(existing)))
+            .filter(existing -> householdId.equals(householdId(existing)))
             .toList();
     }
 
     /**
-     * The stable identifier every owner in {@code owner}'s household shares. Derived
-     * deterministically from the household key, so the same household always yields the same id.
+     * The stable identifier every owner in {@code owner}'s household shares: the first
+     * {@value #ID_LENGTH} hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)}.
+     * The same last name and postcode always yield the same id.
      */
-    public String stableId(Owner owner) {
-        return UUID.nameUUIDFromBytes(key(owner).getBytes(StandardCharsets.UTF_8)).toString();
+    public String householdId(Owner owner) {
+        String key = normalize(owner.getLastName()) + "|" + segment(owner.getPostcode());
+        return sha256Hex(key).substring(0, ID_LENGTH);
     }
 
     /**
-     * Canonical household key: the normalized last name and address joined so that distinct
-     * fields cannot collide.
-     */
-    private String key(Owner owner) {
-        return normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
-    }
-
-    /**
-     * Canonicalize a value for household comparison: {@code null} becomes empty, surrounding
+     * Canonicalize the last name for household comparison: {@code null} becomes empty, surrounding
      * whitespace is trimmed, internal whitespace runs collapse to a single space, and the result
      * is lower-cased.
      */
@@ -78,5 +79,20 @@ public class Households {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private String segment(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 }

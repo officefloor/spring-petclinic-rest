@@ -17,12 +17,13 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Thrown when creating an owner whose whole identity key (normalized telephone, email and
- * household identifier) already belongs to another owner. Handled as {@code 409 Conflict}.
+ * Thrown when creating an owner that would be a second member of an existing household (same
+ * last name and postcode) without declaring itself a shared-household member. Handled as
+ * {@code 409 Conflict}.
  */
-public class DuplicateIdentityException extends RuntimeException {
+public class HouseholdDuplicateException extends RuntimeException {
 
-    public DuplicateIdentityException(String identityKey) {
-        super("an owner with the same identity already exists (identityKey: " + identityKey + ")");
+    public HouseholdDuplicateException(String householdId) {
+        super("an owner already exists in this household (householdId: " + householdId + ")");
     }
 }

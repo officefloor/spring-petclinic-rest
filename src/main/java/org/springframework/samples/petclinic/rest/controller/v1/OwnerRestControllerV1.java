@@ -31,8 +31,8 @@ import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster
 import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
-import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
-import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateValidator;
+import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
+import org.springframework.samples.petclinic.rest.controller.Households;
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDetector;
@@ -87,11 +87,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final AddressNormalizer addressNormalizer;
 
-    private final IdentityDuplicateValidator identityDuplicateValidator;
+    private final Households households;
+
+    private final HouseholdDuplicateValidator householdDuplicateValidator;
 
     private final PossibleDuplicateDetector possibleDuplicateDetector;
-
-    private final HouseholdAssigner householdAssigner;
 
     private final CityCapacityValidator cityCapacityValidator;
 
@@ -112,9 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 IdentityDuplicateValidator identityDuplicateValidator,
+                                 Households households,
+                                 HouseholdDuplicateValidator householdDuplicateValidator,
                                  PossibleDuplicateDetector possibleDuplicateDetector,
-                                 HouseholdAssigner householdAssigner,
                                  CityCapacityValidator cityCapacityValidator,
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
                                  BusinessDayAdjuster businessDayAdjuster,
@@ -129,9 +129,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.addressNormalizer = addressNormalizer;
-        this.identityDuplicateValidator = identityDuplicateValidator;
+        this.households = households;
+        this.householdDuplicateValidator = householdDuplicateValidator;
         this.possibleDuplicateDetector = possibleDuplicateDetector;
-        this.householdAssigner = householdAssigner;
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
         this.businessDayAdjuster = businessDayAdjuster;
@@ -187,11 +187,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         dailyRegistrationLimitValidator.validate(owner.getRegistrationDate());
         cityCapacityValidator.validate(owner);
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            householdAssigner.assignSharedHousehold(owner);
+        owner.setHouseholdId(households.householdId(owner));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        householdDuplicateValidator.validate(owner, sharesHousehold);
+        if (sharesHousehold) {
+            // A declared household member is not a suspected duplicate.
+            owner.setPossibleDuplicate(false);
+        } else {
+            possibleDuplicateDetector.detect(owner);
         }
-        identityDuplicateValidator.validate(owner);
-        possibleDuplicateDetector.detect(owner);
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.logCreated(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

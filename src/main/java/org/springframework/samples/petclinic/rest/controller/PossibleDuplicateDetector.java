@@ -24,10 +24,10 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
- * Flags soft duplicates on owner creation. Unlike the hard {@link IdentityDuplicateValidator}
- * (which rejects an exact identity match), a soft match never blocks creation: when an existing
- * owner already shares the candidate's last name and postcode but carries a different telephone,
- * the candidate is recorded as a possible duplicate of that owner.
+ * Flags soft duplicates on owner creation. Unlike the hard {@link HouseholdDuplicateValidator}
+ * (which rejects a second member of an existing household), a soft match never blocks creation:
+ * when an existing owner already shares the candidate's last name and postcode but carries a
+ * different telephone, the candidate is recorded as a possible duplicate of that owner.
  */
 @Component
 public class PossibleDuplicateDetector {
