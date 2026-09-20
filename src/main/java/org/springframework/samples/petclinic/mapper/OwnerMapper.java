@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -70,6 +71,13 @@ public interface OwnerMapper {
     default String membershipNumber(Owner owner) {
         String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
         return owner.getCustomerCode() + "-M" + yy;
+    }
+
+    /**
+     * The owner's membership points, as defined by {@link MembershipLevel}.
+     */
+    default int membershipPoints(Owner owner) {
+        return MembershipLevel.points(owner);
     }
 
     /**
