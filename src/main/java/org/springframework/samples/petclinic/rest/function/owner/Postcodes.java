@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
-
 import org.springframework.samples.petclinic.model.CityRegion;
 
 /**
@@ -11,12 +9,6 @@ import org.springframework.samples.petclinic.model.CityRegion;
  * four-digit postcode.
  */
 final class Postcodes {
-
-    /** Region -> inclusive {low, high} 4-digit postcode range. */
-    private static final Map<String, int[]> REGION_RANGES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
 
     private Postcodes() {
     }
@@ -30,7 +22,7 @@ final class Postcodes {
         if (postcode == null || !postcode.matches("\\d{4}")) {
             return false;
         }
-        int[] range = REGION_RANGES.get(CityRegion.localityOf(city));
+        int[] range = CityRegion.rangeOf(CityRegion.localityOf(city));
         if (range == null) {
             return true;
         }

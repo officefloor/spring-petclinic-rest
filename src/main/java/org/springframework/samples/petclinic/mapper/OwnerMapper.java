@@ -58,11 +58,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * The canonical region derived from the owner's city via the pinned city-to-region
-     * table, or {@code UNKNOWN} when the city is not in the table.
+     * The canonical region derived by postcode first — the region whose pinned range
+     * contains the owner's postcode — falling back to the city-to-region table when the
+     * postcode is absent or in no known range, or {@code UNKNOWN} when neither resolves.
      */
     default String locality(Owner owner) {
-        return CityRegion.localityOf(owner.getCity());
+        return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
     }
 
     /**
