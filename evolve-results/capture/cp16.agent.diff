@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index be1f3d7d0..b00db564d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -5,13 +5,23 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns a new owner's customer code before it is saved. The sequence is global: one
+- * more than the current number of owners.
++ * Assigns a new owner's customer code before it is saved. The sequence is per-city: one
++ * more than the number of owners already in this owner's city (see {@link Cities#matches}).
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        int sequence = ownerRepository.count() + 1;
+-        owner.setCustomerCode(CustomerCode.format(owner.getLastName(), sequence));
++        int sequence = countInCity(owner, ownerRepository) + 1;
++        owner.setCustomerCode(CustomerCode.format(owner.getCity(), owner.getLastName(), sequence));
++    }
++
++    private static int countInCity(Owner owner, OwnerRepository ownerRepository) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (Cities.matches(existing, owner.getCity())) {
++                count++;
++            }
++        }
++        return count;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Cities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Cities.java
+new file mode 100644
+index 000000000..d4afa59c2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Cities.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * City matching: two owners are in the same city when their city names are equal, compared
++ * case-insensitively (and ignoring surrounding/internal whitespace). Used to count how many
++ * existing owners already live in a new owner's city.
++ */
++final class Cities {
++
++    private Cities() {
++    }
++
++    /**
++     * Whether {@code owner} lives in the given city, comparing both in their canonical
++     * (trimmed, whitespace-collapsed, lower-cased) forms.
++     */
++    static boolean matches(Owner owner, String city) {
++        return normalize(city).equals(normalize(owner.getCity()));
++    }
++
++    private static String normalize(String city) {
++        if (city == null) {
++            return "";
++        }
++        return city.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+index 11edacd2f..8efce3566 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -3,17 +3,21 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.util.Locale;
+ 
+ /**
+- * Formats an owner's customer code as {@code <LAST3>-<NNNN>}, where {@code LAST3} is the
+- * upper-cased first three letters of the last name and {@code NNNN} is a 4-digit
+- * zero-padded sequence number (e.g. {@code SMI-0007}).
++ * Formats an owner's customer code as {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3}
++ * is the upper-cased first three letters of the city, {@code LAST3} the upper-cased first
++ * three letters of the last name and {@code NNNN} a 4-digit zero-padded sequence number
++ * (e.g. {@code LON-SMI-0007}).
+  */
+ final class CustomerCode {
+ 
+     private CustomerCode() {
+     }
+ 
+-    static String format(String lastName, int sequence) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        return String.format("%s-%04d", prefix, sequence);
++    static String format(String city, String lastName, int sequence) {
++        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
++    }
++
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 228609b93..b120c90c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2089,15 +2089,15 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: The owner's customer code, formatted as '<LAST3>-<NNNN>' where LAST3 is the upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded sequence.
++              description: The owner's customer code, formatted as '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the last name and NNNN a per-city 4-digit zero-padded sequence (one more than the owners already in that city).
+               type: string
+-              example: 'SMI-0007'
++              example: 'LON-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted as '<customerCode>-M<YY>' where YY is the last two digits of the registration date year.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'LON-SMI-0007-M26'
+               readOnly: true
+             membershipTier:
+               title: Membership tier
