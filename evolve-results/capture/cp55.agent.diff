@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f326d56f6..9036eaceb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.E164PhoneNumber;
+ import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.samples.petclinic.util.LuhnCheckDigit;
++import org.springframework.samples.petclinic.util.OwnerSegment;
+ import org.springframework.samples.petclinic.util.RegionTimezone;
+ import org.springframework.samples.petclinic.util.Sha256;
+ import org.springframework.samples.petclinic.util.Soundex;
+@@ -403,6 +404,18 @@ public class Owner extends Person {
+         return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
+     }
+ 
++    /**
++     * The owner's market segment, formatted {@code <TIER>_<AREA>}: the tier is
++     * {@code PREMIUM} when {@link #getMembershipLevel() membership level} is 3 or more,
++     * otherwise {@code STANDARD}; the area is {@code METRO} when {@link #getLocality()
++     * locality} is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}. One of
++     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++     * {@code STANDARD_REGIONAL}. Derived from stored state, never persisted.
++     */
++    public String getOwnerSegment() {
++        return OwnerSegment.of(getMembershipLevel(), getLocality());
++    }
++
+     /**
+      * The owner's timezone: the IANA name for this owner's {@link #getLocality() locality}
+      * via the fixed region-to-timezone table (NSW->Australia/Sydney,
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 000000000..6b7022b91
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Set;
++
++/**
++ * Classifies an owner into a market segment formatted {@code <TIER>_<AREA>}, one of
++ * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++ * {@code STANDARD_REGIONAL}.
++ *
++ * <p>The tier is {@code PREMIUM} when the membership level is 3 or more, otherwise
++ * {@code STANDARD}. The area is {@code METRO} when the locality is a known region
++ * (NSW, VIC or QLD), otherwise {@code REGIONAL}. This class owns only that
++ * classification, keeping it separate from how the membership level and locality are
++ * derived (see {@link CityLocality}).
++ */
++public final class OwnerSegment {
++
++    /** Membership level at or above which an owner is {@code PREMIUM} rather than {@code STANDARD}. */
++    private static final int PREMIUM_MIN_LEVEL = 3;
++
++    /** Localities treated as {@code METRO}; any other locality is {@code REGIONAL}. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * @param membershipLevel the owner's membership level
++     * @param locality        the owner's locality, as resolved by {@link CityLocality}
++     * @return the {@code <TIER>_<AREA>} segment
++     */
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4f5b923b3..e844f1401 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2206,6 +2206,17 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's market segment, formatted '<TIER>_<AREA>': the tier is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'; the area is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'. Derived from stored state, never persisted."
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: "Whether this owner was part of a bulk signup: true when more than 80 owners had already been created on this owner's registration date at the moment it was created, false otherwise."
