@@ -1,0 +1,179 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c4a4514e9..925e80706 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,11 +3,13 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -16,14 +18,18 @@ import java.util.List;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    @Autowired
++    protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+ 
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.fromCity(owner.getCity()))")
+-    OwnerDto toOwnerDto(Owner owner);
++    @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
+@@ -31,7 +37,7 @@ public interface OwnerMapper {
+      * (e.g. {@code "LON-SMI-0007-M26"}). Returns {@code null} until both the customer code
+      * and registration date have been assigned.
+      */
+-    default String formatMembershipNumber(Owner owner) {
++    protected String formatMembershipNumber(Owner owner) {
+         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+             return null;
+         }
+@@ -43,7 +49,7 @@ public interface OwnerMapper {
+      * namesakes ({@code namesakeCount} is 0) and an email address on file, otherwise
+      * {@code "BRONZE"}.
+      */
+-    default String formatMembershipTier(Owner owner) {
++    protected String formatMembershipTier(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+@@ -55,7 +61,7 @@ public interface OwnerMapper {
+     /**
+      * Formats an owner's stored names as {@code "LastName, FirstName"} for display.
+      */
+-    default String formatDisplayName(Owner owner) {
++    protected String formatDisplayName(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+@@ -66,7 +72,7 @@ public interface OwnerMapper {
+      * Builds an owner's initials as the upper-cased first letters of the first and last
+      * name, dot-separated with a trailing dot (e.g. {@code "J.S."}).
+      */
+-    default String formatInitials(Owner owner) {
++    protected String formatInitials(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+@@ -77,20 +83,20 @@ public interface OwnerMapper {
+         return Character.toUpperCase(name.charAt(0)) + ".";
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/BulkSignupWarningEvaluator.java b/src/main/java/org/springframework/samples/petclinic/service/BulkSignupWarningEvaluator.java
+new file mode 100644
+index 000000000..af210f17c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/BulkSignupWarningEvaluator.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Decides whether an owner should carry a bulk-signup warning: the flag is raised once more
++ * than {@value #BULK_SIGNUP_THRESHOLD} owners share the owner's registration date, signalling
++ * an unusually high volume of same-day registrations. It reads the same per-day registration
++ * count the daily-limit rule uses, only with a lower threshold.
++ */
++@Component
++public class BulkSignupWarningEvaluator {
++
++    /** Number of same-day registrations above which the warning is raised. */
++    static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    private final ClinicService clinicService;
++
++    public BulkSignupWarningEvaluator(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    /**
++     * @param owner the owner whose registration date is checked
++     * @return {@code true} when more than {@value #BULK_SIGNUP_THRESHOLD} owners are registered
++     *         on the owner's registration date, {@code false} otherwise (including when the owner
++     *         or its registration date is not yet known)
++     */
++    public boolean isWarranted(Owner owner) {
++        if (owner == null || owner.getRegistrationDate() == null) {
++            return false;
++        }
++        return clinicService.countOwnersRegisteredOn(owner.getRegistrationDate()) > BULK_SIGNUP_THRESHOLD;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f313f93c0..ad131f423 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2158,6 +2158,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners have already been created for this
++                owner's registration date, flagging an unusually high volume of
++                same-day registrations; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
