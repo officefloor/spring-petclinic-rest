@@ -83,6 +83,9 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -212,6 +215,21 @@ public class Owner extends Person {
         this.householdMemberCount = householdMemberCount;
     }
 
+    /**
+     * The ceiling on this owner's membership level, fixed at creation as one above the
+     * highest membership level then present among their household members (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel}).
+     * {@code null} when the owner had no existing household member, in which case no cap
+     * applies.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
     }
@@ -320,6 +338,7 @@ public class Owner extends Person {
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
             .append("householdMemberCount", this.householdMemberCount)
+            .append("membershipLevelCap", this.membershipLevelCap)
             .append("possibleDuplicate", this.possibleDuplicate)
             .append("possibleDuplicateOf", this.possibleDuplicateOf)
             .append("deleted", this.deleted)

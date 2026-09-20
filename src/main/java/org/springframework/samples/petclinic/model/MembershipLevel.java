@@ -95,10 +95,13 @@ public final class MembershipLevel {
 
     /**
      * The membership level for the given owner as of {@code asOf}: {@link #points(Owner,
-     * LocalDate)} mapped to a level by {@link #level(int)}.
+     * LocalDate)} mapped to a level by {@link #level(int)}, then held at or below the
+     * owner's {@link Owner#getMembershipLevelCap() household ceiling} when one applies.
      */
     public static int of(Owner owner, LocalDate asOf) {
-        return level(points(owner, asOf));
+        int level = level(points(owner, asOf));
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
     }
 
     /**

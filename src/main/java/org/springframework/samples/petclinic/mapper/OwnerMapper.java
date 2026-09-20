@@ -163,6 +163,7 @@ public interface OwnerMapper {
     }
 
     @Mapping(target = "householdMemberCount", ignore = true)
+    @Mapping(target = "membershipLevelCap", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
@@ -171,6 +172,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdMemberCount", ignore = true)
+    @Mapping(target = "membershipLevelCap", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
