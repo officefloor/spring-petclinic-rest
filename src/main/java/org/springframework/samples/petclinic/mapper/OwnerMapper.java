@@ -47,11 +47,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: {@code SILVER} when the owner has no namesakes
-     * ({@code namesakeCount} is 0) and an email address is present, otherwise
-     * {@code BRONZE}.
+     * The owner's membership tier: {@code GOLD} when the owner's household (owners sharing
+     * the same {@code householdId}) has 3 or more members; otherwise {@code SILVER} when the
+     * owner has no namesakes ({@code namesakeCount} is 0) and an email address is present,
+     * otherwise {@code BRONZE}.
      */
     default String membershipTier(Owner owner) {
+        Integer householdMembers = owner.getHouseholdMemberCount();
+        if (householdMembers != null && householdMembers >= 3) {
+            return "GOLD";
+        }
         boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
@@ -65,6 +70,7 @@ public interface OwnerMapper {
         return CityRegion.localityOf(owner.getCity());
     }
 
+    @Mapping(target = "householdMemberCount", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
@@ -72,6 +78,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdMemberCount", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
