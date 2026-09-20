@@ -18,22 +18,26 @@ package org.springframework.samples.petclinic.service;
 import org.springframework.stereotype.Component;
 
 /**
- * Formats an owner's {@code customerCode} as {@code '<LAST3>-<NNNN>'}, where {@code LAST3}
- * is the upper-cased first three letters of the last name and {@code NNNN} is a zero-padded
- * 4-digit sequence number (e.g. {@code 'SMI-0007'}).
+ * Formats an owner's {@code customerCode} as {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3}
+ * and {@code LAST3} are the upper-cased first three letters of the city and last name and
+ * {@code NNNN} is a zero-padded, per-city 4-digit sequence number (e.g. {@code 'LON-SMI-0007'}).
  */
 @Component
 public class CustomerCodeGenerator {
 
     /**
-     * Build the customer code for the given last name and global sequence number.
+     * Build the customer code for the given city, last name and per-city sequence number.
      *
-     * @param lastName the owner's last name (its first three letters, upper-cased, form the prefix)
-     * @param sequence the 4-digit global sequence number
+     * @param city     the owner's city (its first three letters, upper-cased, form the leading prefix)
+     * @param lastName the owner's last name (its first three letters, upper-cased, form the middle segment)
+     * @param sequence the 4-digit per-city sequence number
      * @return the formatted customer code
      */
-    public String generate(String lastName, long sequence) {
-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        return String.format("%s-%04d", prefix, sequence);
+    public String generate(String city, String lastName, long sequence) {
+        return String.format("%s-%s-%04d", prefix(city), prefix(lastName), sequence);
+    }
+
+    private String prefix(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }

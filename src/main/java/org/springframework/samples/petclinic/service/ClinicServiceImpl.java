@@ -239,8 +239,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            long sequence = ownerRepository.findAll().size() + 1L;
-            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), sequence));
+            long sequence = countOwnersInCity(owner.getCity()) + 1L;
+            owner.setCustomerCode(customerCodeGenerator.generate(owner.getCity(), owner.getLastName(), sequence));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             Collection<Owner> sameLastName = ownerRepository.findByLastNameIgnoreCase(owner.getLastName());
@@ -277,6 +277,16 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public List<Specialty> findSpecialtiesByNameIn(Set<String> names) {
         return findEntityById(() -> specialtyRepository.findSpecialtiesByNameIn(names));
+    }
+
+    /**
+     * Count how many existing owners are already registered in the given city, comparing
+     * city names case-insensitively. Used to derive the per-city customer-code sequence.
+     */
+    private long countOwnersInCity(String city) {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
     }
 
     private <T> T findEntityById(Supplier<T> supplier) {
