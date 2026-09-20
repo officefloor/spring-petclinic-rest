@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -22,7 +23,19 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "selfLink",
         expression = "java(\"/api/owners/\" + owner.getId())")
+    @Mapping(target = "apiVersion",
+        expression = "java(org.springframework.samples.petclinic.util.OwnerIdentityVersion.API_VERSION)")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentityDto(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Groups the owner's version-2 identifiers into the response's nested identity object. */
+    default OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

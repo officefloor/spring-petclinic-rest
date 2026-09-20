@@ -7,9 +7,10 @@ import java.util.Collection;
  * {@link CityLocality}), the two-digit {@link FiscalYear fiscal year}, the first eight
  * upper-case hex characters of a SHA-256 fingerprint, and a single {@link LuhnCheckDigit
  * Luhn check digit} computed over the digits of {@code <REGION><FY><HASH8>} (e.g.
- * {@code NSW261A2B3C4D7}). This class owns the format so the two concerns that depend on
- * it — composing the member-id at creation and reading the region back out for locality —
- * stay in step.
+ * {@code V2NSW261A2B3C4D7}). This class owns the format so member-id composition at creation
+ * has a single home. The {@code <REGION>} component is the version-2 region code (see
+ * {@link OwnerIdentityVersion#regionCode(String)}); the user-facing region is derived
+ * independently from the stored postcode and city, so the version tag never leaks into it.
  */
 public final class MemberId {
 
@@ -48,23 +49,5 @@ public final class MemberId {
             candidate = memberId + DEDUP_SEPARATOR + n;
         }
         return candidate;
-    }
-
-    /**
-     * The region component of a member-id, i.e. the leading letters before the fiscal-year
-     * digits. Robust to the {@code -<n>} de-duplication suffix, which sits after the region.
-     *
-     * @param memberId a member-id, or {@code null}
-     * @return the region, or {@code null} when the id is absent or has no region part
-     */
-    public static String regionOf(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int end = 0;
-        while (end < memberId.length() && !Character.isDigit(memberId.charAt(end))) {
-            end++;
-        }
-        return end > 0 ? memberId.substring(0, end) : null;
     }
 }

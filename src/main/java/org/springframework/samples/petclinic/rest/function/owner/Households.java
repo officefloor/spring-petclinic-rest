@@ -8,6 +8,7 @@ import java.util.OptionalInt;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 
 /**
  * Shared household logic. An owner belongs to a household identified by their last name
@@ -51,15 +52,17 @@ final class Households {
 
     /**
      * The stable identifier shared by every owner at the given last name and postcode: the
-     * first twelve hex characters of the SHA-256 of {@code normalizedLastName + '|' +
-     * postcode}. Returns {@code null} when no postcode is supplied, since an owner without a
-     * postcode has no household.
+     * first twelve hex characters of the SHA-256 of {@code <V2> + '|' + normalizedLastName +
+     * '|' + postcode}, where {@code <V2>} is the fixed {@link OwnerIdentityVersion#TAG} version
+     * tag mixed in so the version-2 id differs from its version-1 form. Returns {@code null}
+     * when no postcode is supplied, since an owner without a postcode has no household.
      */
     static String idFor(String lastName, String postcode) {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        return sha256Hex(normalizeName(lastName) + "|" + postcode).substring(0, 12).toUpperCase();
+        return sha256Hex(OwnerIdentityVersion.TAG + "|" + normalizeName(lastName) + "|" + postcode)
+                .substring(0, 12).toUpperCase();
     }
 
     private static String normalizeName(String value) {

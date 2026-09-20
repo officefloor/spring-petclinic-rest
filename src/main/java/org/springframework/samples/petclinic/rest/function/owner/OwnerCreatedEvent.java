@@ -1,12 +1,15 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
+
 /**
  * Immutable structured audit event marking a successful owner creation, serialized to the
- * canonical JSON object
- * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+ * canonical schema-version-2 JSON object
+ * {@code {"schemaVersion":2,"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
  *
  * <p>The {@code memberId} field carries the owner's <em>current primary identifier</em>
- * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}).
+ * (see {@link org.springframework.samples.petclinic.model.Owner#getPrimaryIdentifier()}), which
+ * under version 2 is the version-2 member-id.
  *
  * <p>Emitted by {@link AuditOwnerCreated}; {@code seq} comes from {@link OwnerCreatedEventSequence}
  * and increases monotonically across creates.
@@ -19,6 +22,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int memb
     /** This event as its canonical JSON object, keys in the documented order. */
     public String toJson() {
         return "{"
+                + "\"schemaVersion\":" + OwnerIdentityVersion.AUDIT_SCHEMA_VERSION + ","
                 + "\"seq\":" + this.seq + ","
                 + "\"ownerId\":" + this.ownerId + ","
                 + "\"memberId\":" + quote(this.memberId) + ","

@@ -21,7 +21,7 @@ import org.springframework.samples.petclinic.util.CityLocality;
 import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.FiscalYear;
-import org.springframework.samples.petclinic.util.MemberId;
+import org.springframework.samples.petclinic.util.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.util.OwnerSegment;
 import org.springframework.samples.petclinic.util.RegionTimezone;
 import org.springframework.samples.petclinic.util.Sha256;
@@ -247,11 +247,12 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's member-id, formatted {@code <REGION><FY><HASH8><CHK>}: the canonical region,
+     * The owner's member-id, formatted {@code <REGION><FY><HASH8><CHK>}: the version-2 region
+     * code (the canonical region with the fixed {@link OwnerIdentityVersion#TAG} tag mixed in),
      * the two-digit fiscal year of the registration date, the first eight upper-case hex
      * characters of the SHA-256 of the normalized telephone concatenated with the last name,
      * and a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g.
-     * {@code NSW261A2B3C4D7}). Assigned at creation.
+     * {@code V2NSW261A2B3C4D7}). Assigned at creation.
      */
     public String getMemberId() {
         return this.memberId;
@@ -273,9 +274,9 @@ public class Owner extends Person {
 
     /**
      * The stable identifier of the household this owner belongs to: the first twelve hex
-     * characters of the SHA-256 of the normalized last name and postcode, so every owner
-     * sharing a last name and postcode resolves to the same value. Null when the owner has
-     * no postcode. Assigned at creation.
+     * characters of the SHA-256 of the fixed {@link OwnerIdentityVersion#TAG version-2 tag},
+     * the normalized last name and the postcode, so every owner sharing a last name and postcode
+     * resolves to the same value. Null when the owner has no postcode. Assigned at creation.
      */
     public String getHouseholdId() {
         return this.householdId;
@@ -385,17 +386,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the canonical region carried in the {@code <REGION><FY><HASH8><CHK>}
-     * member-id, i.e. the same region-and-hash identity used everywhere else. That region was
-     * derived at creation by preferring the postcode range (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099), falling back to the fixed city-to-region table (Sydney->NSW,
-     * Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range, or
-     * {@code "UNKNOWN"} otherwise. For an owner with no member-id the region is derived directly
-     * from the stored postcode and city. Derived from stored state, never persisted.
+     * The owner's locality: the plain canonical region, derived by preferring the postcode range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to the fixed city-to-region
+     * table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no
+     * known range, or {@code "UNKNOWN"} otherwise. This is the same region the version-2
+     * identifiers are built from, but without the version tag those identifiers mix in: the
+     * locality is user-facing, not an identifier. Derived from stored state, never persisted.
      */
     public String getLocality() {
-        String region = MemberId.regionOf(this.memberId);
-        return region != null ? region : CityLocality.forPostcodeOrCity(this.postcode, this.city);
+        return CityLocality.forPostcodeOrCity(this.postcode, this.city);
     }
 
     /**
@@ -515,18 +514,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: the 64-character lower-case SHA-256 hex of the normalized
-     * telephone, the lower-cased email (or empty when absent) and the {@link Soundex Soundex}
-     * code of the last name, joined by {@code '|'}. Two owners collide on this key only when
-     * they share a telephone, an email and a phonetically-equal surname, so it is the single
-     * fingerprint the create endpoint's duplicate check keys off. Derived from stored state,
-     * never persisted.
+     * The owner's identity key: the 64-character lower-case SHA-256 hex of the fixed
+     * {@link OwnerIdentityVersion#TAG version-2 tag}, the normalized telephone, the lower-cased
+     * email (or empty when absent) and the {@link Soundex Soundex} code of the last name, joined
+     * by {@code '|'}. The tag makes the version-2 key differ from its version-1 form. Two owners
+     * collide on this key only when they share a telephone, an email and a phonetically-equal
+     * surname, so it is the single fingerprint the create endpoint's duplicate check keys off.
+     * Derived from stored state, never persisted.
      */
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = hasEmail() ? this.email.toLowerCase(Locale.ROOT) : "";
         String namePart = Soundex.of(getLastName());
-        return Sha256.lowerHex(telephonePart + "|" + emailPart + "|" + namePart);
+        return Sha256.lowerHex(OwnerIdentityVersion.TAG + "|" + telephonePart + "|" + emailPart + "|" + namePart);
     }
 
     private boolean hasEmail() {
