@@ -7,12 +7,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Flags the new owner as a possible duplicate of an existing one. A <em>possible</em> duplicate
- * shares an existing owner's household (same last name and postcode) but was given a different
- * telephone (see {@link PossibleDuplicates}). The matching owner's id is recorded so the
- * response can point at it; otherwise the owner is flagged as no duplicate.
+ * has a last name that sounds alike (same Soundex) and a matching postcode, yet a different
+ * {@link IdentityKeys identity key} (see {@link PossibleDuplicates}). The matching owner's id is
+ * recorded so the response can point at it; otherwise the owner is flagged as no duplicate.
  *
  * <p>An owner that declared {@code sharesHousehold} is a <em>declared</em> household member, not
- * a suspected duplicate, so it is never flagged even though it shares the household.
+ * a suspected duplicate, so it is never flagged even though it resembles one.
  */
 public class DetectPossibleDuplicate {
 

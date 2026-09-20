@@ -7,12 +7,21 @@ import java.util.Locale;
 
 /**
  * Shared SHA-256 hashing used to derive stable identifiers from an owner's own fields
- * (the customer code and the household id). Both take a fixed-length upper-case hex prefix
- * of the digest, so the derivation lives here once rather than being copied per caller.
+ * (the customer code, the household id and the identity key). Callers take either the full
+ * lower-case hex digest or a fixed-length upper-case prefix, so the derivation lives here once
+ * rather than being copied per caller.
  */
 final class Hashes {
 
     private Hashes() {
+    }
+
+    /**
+     * The full SHA-256 digest of {@code value} rendered as lower-case hex over the UTF-8 bytes
+     * of the input (64 hex characters).
+     */
+    static String lowerHex(String value) {
+        return hex(value);
     }
 
     /**
