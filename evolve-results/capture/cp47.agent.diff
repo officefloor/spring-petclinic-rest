@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+index 161049aaa..3ea004eec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+@@ -2,24 +2,39 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ /**
+- * Business-day helper. A registration date must fall on a business day, so a Saturday or
+- * Sunday rolls forward to the following Monday.
++ * Business-day helper. A registration date must fall on a business day, so a weekend day or a
++ * listed {@link #PUBLIC_HOLIDAYS public holiday} rolls forward to the next business day.
+  */
+ final class BusinessDays {
+ 
++    /** Fixed public-holiday calendar; a date landing on one of these is not a business day. */
++    static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++            LocalDate.of(2026, 1, 1),
++            LocalDate.of(2026, 1, 26),
++            LocalDate.of(2026, 4, 25),
++            LocalDate.of(2026, 12, 25),
++            LocalDate.of(2026, 12, 28));
++
+     private BusinessDays() {
+     }
+ 
+     /**
+-     * Rolls {@code date} forward onto a business day: a weekend day moves to the following
+-     * Monday, any weekday is returned unchanged.
++     * Rolls {@code date} forward onto a business day: a weekend day or a public holiday moves to
++     * the next non-weekend, non-holiday day; a business day is returned unchanged.
+      */
+     static LocalDate rollForward(LocalDate date) {
+-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++        while (!isBusinessDay(date)) {
+             date = date.plusDays(1);
+         }
+         return date;
+     }
++
++    private static boolean isBusinessDay(LocalDate date) {
++        return date.getDayOfWeek() != DayOfWeek.SATURDAY
++                && date.getDayOfWeek() != DayOfWeek.SUNDAY
++                && !PUBLIC_HOLIDAYS.contains(date);
++    }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDaysTest.java b/src/test/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDaysTest.java
+new file mode 100644
+index 000000000..14ca595cb
+--- /dev/null
++++ b/src/test/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDaysTest.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++
++import java.time.LocalDate;
++
++import org.junit.jupiter.api.Test;
++
++class BusinessDaysTest {
++
++	@Test
++	void weekdayUnchanged() {
++		LocalDate tuesday = LocalDate.of(2026, 3, 10);
++		assertEquals(tuesday, BusinessDays.rollForward(tuesday));
++	}
++
++	@Test
++	void weekendRollsToMonday() {
++		assertEquals(LocalDate.of(2026, 3, 16), BusinessDays.rollForward(LocalDate.of(2026, 3, 14)));
++		assertEquals(LocalDate.of(2026, 3, 16), BusinessDays.rollForward(LocalDate.of(2026, 3, 15)));
++	}
++
++	@Test
++	void weekdayHolidayRollsToNextBusinessDay() {
++		// 2026-01-01 is a Thursday holiday; the next business day is Friday the 2nd.
++		assertEquals(LocalDate.of(2026, 1, 2), BusinessDays.rollForward(LocalDate.of(2026, 1, 1)));
++		// 2026-01-26 is a Monday holiday; the next business day is Tuesday the 27th.
++		assertEquals(LocalDate.of(2026, 1, 27), BusinessDays.rollForward(LocalDate.of(2026, 1, 26)));
++	}
++
++	@Test
++	void holidayFallingOnWeekendRollsPastBoth() {
++		// 2026-04-25 is a Saturday holiday; roll past the weekend to Monday the 27th.
++		assertEquals(LocalDate.of(2026, 4, 27), BusinessDays.rollForward(LocalDate.of(2026, 4, 25)));
++	}
++
++	@Test
++	void chainsPastConsecutiveWeekendAndHolidays() {
++		// 2026-12-25 Fri holiday -> weekend -> 2026-12-28 Mon holiday -> Tue the 29th.
++		assertEquals(LocalDate.of(2026, 12, 29), BusinessDays.rollForward(LocalDate.of(2026, 12, 25)));
++	}
++}
