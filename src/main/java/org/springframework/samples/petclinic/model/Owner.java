@@ -132,17 +132,6 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
-    /**
-     * Defaults the registration date to the server's current date when none was
-     * supplied, so every newly created owner is registered as of today.
-     */
-    @PrePersist
-    protected void defaultRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
-    }
-
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

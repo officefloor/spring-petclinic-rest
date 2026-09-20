@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -26,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
 import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
@@ -88,6 +90,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final DailyRegistrationLimitValidator dailyRegistrationLimitValidator;
 
+    private final BusinessDayAdjuster businessDayAdjuster;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -99,7 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  HouseholdAssigner householdAssigner,
                                  CityCapacityValidator cityCapacityValidator,
-                                 DailyRegistrationLimitValidator dailyRegistrationLimitValidator) {
+                                 DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
+                                 BusinessDayAdjuster businessDayAdjuster) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -112,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.householdAssigner = householdAssigner;
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
+        this.businessDayAdjuster = businessDayAdjuster;
     }
 
     /**
@@ -154,11 +160,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        LocalDate registrationDate = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : LocalDate.now();
+        owner.setRegistrationDate(businessDayAdjuster.toBusinessDay(registrationDate));
         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
         }
-        dailyRegistrationLimitValidator.validate();
+        dailyRegistrationLimitValidator.validate(owner.getRegistrationDate());
         cityCapacityValidator.validate(owner);
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             householdAssigner.assignSharedHousehold(owner);

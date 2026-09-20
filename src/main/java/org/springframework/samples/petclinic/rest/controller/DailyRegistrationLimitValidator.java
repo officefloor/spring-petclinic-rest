@@ -39,12 +39,14 @@ public class DailyRegistrationLimitValidator {
     }
 
     /**
-     * Reject owner creation when today's registrations have already reached the daily limit.
+     * Reject owner creation when the registrations already booked for the given business day
+     * have reached the daily limit.
      *
+     * @param registrationDate the (business-day adjusted) date the new owner would be registered on
      * @throws DailyRegistrationLimitExceededException if the daily limit has been reached
      */
-    public void validate() {
-        if (clinicService.countOwnersRegisteredOn(LocalDate.now()) >= MAX_OWNERS_PER_DAY) {
+    public void validate(LocalDate registrationDate) {
+        if (clinicService.countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             throw new DailyRegistrationLimitExceededException(MAX_OWNERS_PER_DAY);
         }
     }
