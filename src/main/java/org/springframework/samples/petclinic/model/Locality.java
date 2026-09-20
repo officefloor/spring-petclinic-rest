@@ -18,8 +18,10 @@ package org.springframework.samples.petclinic.model;
 import java.util.Map;
 
 /**
- * Derives an owner's locality — the canonical region — from a city name using a
- * fixed city-to-region table. Cities absent from the table resolve to {@link #UNKNOWN}.
+ * Derives an owner's locality — the canonical region. The postcode range is preferred
+ * (see {@link RegionPostcodes#regionForPostcode(String)}); only when the postcode is
+ * absent or in no known range does a fixed city-to-region table decide. Owners that
+ * resolve by neither route yield {@link #UNKNOWN}.
  */
 public final class Locality {
 
@@ -32,6 +34,19 @@ public final class Locality {
         "Brisbane", "QLD");
 
     private Locality() {
+    }
+
+    /**
+     * Derives the region for an owner, preferring the postcode range and falling back to
+     * the city-to-region table. Returns {@link #UNKNOWN} for a {@code null} owner or when
+     * neither route resolves a region.
+     */
+    public static String forOwner(Owner owner) {
+        if (owner == null) {
+            return UNKNOWN;
+        }
+        String byPostcode = RegionPostcodes.regionForPostcode(owner.getPostcode());
+        return byPostcode != null ? byPostcode : fromCity(owner.getCity());
     }
 
     /**
