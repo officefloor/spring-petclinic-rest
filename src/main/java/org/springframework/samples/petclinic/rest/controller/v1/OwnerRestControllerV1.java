@@ -26,6 +26,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -70,18 +71,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final EmailNormalizer emailNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 EmailNormalizer emailNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.emailNormalizer = emailNormalizer;
     }
 
     /**
@@ -128,6 +133,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(telephone);
         }
         owner.setTelephone(telephone);
+        owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -147,6 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(emailNormalizer.normalize(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
