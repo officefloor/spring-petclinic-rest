@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -29,7 +30,9 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
+    @Mapping(target = "apiVersion",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityVersion.NUMBER)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -37,7 +40,6 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -96,18 +98,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The region the owner's member id was minted in — its {@code <REGION>} segment
-     * (see {@link org.springframework.samples.petclinic.rest.function.owner.MemberId}).
-     * Owners without a member id (e.g. legacy records) fall back to deriving the region
-     * from the postcode and city directly.
+     * The owner's plain region, derived by postcode first and then city (see
+     * {@link CityRegion#localityOf(String, String)}). This is the user-facing region code
+     * (e.g. {@code NSW}); it deliberately never carries the version tag that the member id
+     * embeds in its own region segment.
      */
     default String locality(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId == null || memberId.isBlank()) {
-            return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
-        }
-        return org.springframework.samples.petclinic.rest.function.owner.MemberId
-            .region(memberId);
+        return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -126,7 +123,7 @@ public interface OwnerMapper {
      * membership level} and the area from their {@link #locality(Owner) locality}.
      */
     default String ownerSegment(Owner owner) {
-        return OwnerSegment.of(membershipLevel(owner), locality(owner));
+        return OwnerSegment.of(owner);
     }
 
     /**
@@ -154,6 +151,21 @@ public interface OwnerMapper {
         return org.springframework.samples.petclinic.rest.function.owner.IdentityKeys.of(owner);
     }
 
+    /**
+     * The owner's grouped version-2 identifiers — its {@link Owner#getMemberId() member id},
+     * {@link Owner#getHouseholdId() household id} and {@link #identityKey(Owner) identity key} —
+     * assembled into the nested {@code identity} object of the response.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
+
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     @Mapping(target = "householdMemberCount", ignore = true)
     @Mapping(target = "membershipLevelCap", ignore = true)
     Owner toOwner(OwnerDto ownerDto);

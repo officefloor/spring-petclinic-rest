@@ -31,6 +31,7 @@ public final class IdentityKeys {
                 : Telephones.toE164(telephone).orElse(telephone);
         String lowerEmail = email == null || email.isBlank() ? "" : Emails.normalize(email);
         String soundex = Soundex.encode(lastName);
-        return Hashes.lowerHex(normalizedTelephone + "|" + lowerEmail + "|" + soundex);
+        return Hashes.lowerHex(
+                IdentityVersion.stamp(normalizedTelephone + "|" + lowerEmail + "|" + soundex));
     }
 }

@@ -31,11 +31,12 @@ final class Households {
     /**
      * The stable household id shared by every owner with the same last name and postcode: the
      * first 12 hex characters of the SHA-256 digest of {@code normalizedLastName + "|" +
-     * postcode}. A {@code null} postcode contributes an empty segment.
+     * postcode}, with the {@link IdentityVersion identity version} tag mixed in. A {@code null}
+     * postcode contributes an empty segment.
      */
     static String id(String lastName, String postcode) {
         String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode);
-        return Hashes.upperHexPrefix(key, 12);
+        return Hashes.upperHexPrefix(IdentityVersion.stamp(key), 12);
     }
 
     /** The household id a create request resolves to, from its last name and postcode. */

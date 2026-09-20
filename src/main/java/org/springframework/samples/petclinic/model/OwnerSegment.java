@@ -51,4 +51,14 @@ public final class OwnerSegment {
     public static String of(int membershipLevel, String locality) {
         return Tier.of(membershipLevel) + "_" + Area.of(locality);
     }
+
+    /**
+     * The segment for {@code owner}, from its {@link MembershipLevel membership level} and its
+     * plain-region {@link CityRegion#localityOf(String, String) locality}. The locality is the
+     * plain region code, so the segment never reflects an identifier's version tag.
+     */
+    public static String of(Owner owner) {
+        return of(MembershipLevel.of(owner),
+                CityRegion.localityOf(owner.getPostcode(), owner.getCity()));
+    }
 }
