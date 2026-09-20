@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.AgeBand;
 import org.springframework.samples.petclinic.util.CityLocality;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.E164PhoneNumber;
 import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.MemberId;
@@ -498,6 +499,19 @@ public class Owner extends Person {
      */
     public String getContactPreference() {
         return hasEmail() ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Whether this owner warrants a closer look: {@code true} when any risk signal holds —
+     * it is a {@link #isPossibleDuplicate() possible duplicate}, its email domain is
+     * {@link DisposableEmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or
+     * its city was {@link #isCapacityWarning() over its soft capacity} at creation — and
+     * {@code false} otherwise. Derived from stored state, never persisted.
+     */
+    public boolean getRiskFlag() {
+        return isPossibleDuplicate()
+            || DisposableEmailDomains.isDisposableAdjacent(this.email)
+            || isCapacityWarning();
     }
 
     /**
