@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateVa
 import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
+import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
@@ -95,6 +96,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final BusinessDayAdjuster businessDayAdjuster;
 
+    private final RegistrationDateValidator registrationDateValidator;
+
     private final OwnerAuditLogger ownerAuditLogger;
 
     public OwnerRestControllerV1(ClinicService clinicService,
@@ -111,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  CityCapacityValidator cityCapacityValidator,
                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
                                  BusinessDayAdjuster businessDayAdjuster,
+                                 RegistrationDateValidator registrationDateValidator,
                                  OwnerAuditLogger ownerAuditLogger) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
@@ -126,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.cityCapacityValidator = cityCapacityValidator;
         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
         this.businessDayAdjuster = businessDayAdjuster;
+        this.registrationDateValidator = registrationDateValidator;
         this.ownerAuditLogger = ownerAuditLogger;
     }
 
@@ -169,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
+        registrationDateValidator.validate(owner.getRegistrationDate());
         LocalDate registrationDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(businessDayAdjuster.toBusinessDay(registrationDate));
