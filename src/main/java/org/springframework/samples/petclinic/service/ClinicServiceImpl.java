@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -289,6 +290,18 @@ public class ClinicServiceImpl implements ClinicService {
     public long countOwnersInCity(String city) throws DataAccessException {
         return ownerRepository.findAll().stream()
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+    }
+
+    /**
+     * Count how many existing owners were registered on the given date. Used to enforce the
+     * per-day cap on owner creation.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersRegisteredOn(LocalDate date) throws DataAccessException {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
 
