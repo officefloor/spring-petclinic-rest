@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.controller.CityCapacityWarningEvaluator;
 import org.springframework.samples.petclinic.rest.controller.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.controller.TelephoneFormatter;
 import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
@@ -30,6 +31,9 @@ public abstract class OwnerMapper {
     protected MembershipLevelEvaluator membershipLevelEvaluator;
 
     @Autowired
+    protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
+
+    @Autowired
     protected OwnerIdentity ownerIdentity;
 
     @Autowired
@@ -49,6 +53,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(cityCapacityWarningEvaluator.isWarranted(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
