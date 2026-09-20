@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -70,6 +71,14 @@ public interface OwnerMapper {
      */
     default String contactPreference(Owner owner) {
         return ContactPreference.of(owner).name();
+    }
+
+    /**
+     * The owner's derived identity key used for duplicate detection (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.IdentityKeys}).
+     */
+    default String identityKey(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.IdentityKeys.of(owner);
     }
 
     @Mapping(target = "householdMemberCount", ignore = true)

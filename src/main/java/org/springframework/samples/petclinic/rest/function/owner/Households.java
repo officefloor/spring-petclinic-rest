@@ -6,6 +6,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Shared household matching: canonicalizes the free-text fields that identify a household
@@ -59,6 +61,24 @@ final class Households {
     static String id(String lastName, String address) {
         String key = normalizeName(lastName) + "\n" + normalizeAddress(address);
         return "H-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * The household id a create request resolves to: the shared id of the household it joins
+     * when it opts in ({@code sharesHousehold} true) and an existing owner already lives at
+     * the same address under the same last name, otherwise an empty string. Mirrors the
+     * assignment performed by {@link AssignHousehold}.
+     */
+    static String resolveHouseholdId(OwnerFieldsDto request, OwnerRepository ownerRepository) {
+        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return "";
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            if (matches(existing, request.getLastName(), request.getAddress())) {
+                return id(request.getLastName(), request.getAddress());
+            }
+        }
+        return "";
     }
 
     private static String sha256Hex(String value) {
