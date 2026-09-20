@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.CityRegion;
+import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -26,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -60,6 +62,14 @@ public interface OwnerMapper {
      */
     default String locality(Owner owner) {
         return CityRegion.localityOf(owner.getCity());
+    }
+
+    /**
+     * How the owner prefers to be contacted: {@code EMAIL} when an email address is
+     * present, otherwise {@code PHONE}.
+     */
+    default String contactPreference(Owner owner) {
+        return ContactPreference.of(owner).name();
     }
 
     @Mapping(target = "householdMemberCount", ignore = true)

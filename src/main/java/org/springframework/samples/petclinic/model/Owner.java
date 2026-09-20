@@ -103,6 +103,11 @@ public class Owner extends Person {
         this.email = email;
     }
 
+    /** Whether this owner has a non-blank email address. */
+    public boolean hasEmail() {
+        return this.email != null && !this.email.isBlank();
+    }
+
     public LocalDate getRegistrationDate() {
         return this.registrationDate;
     }
