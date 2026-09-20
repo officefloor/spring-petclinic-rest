@@ -10,8 +10,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Rejects a create request that is missing or blank in any required field
  * (firstName, lastName, address, city, telephone) before {@link BuildOwner} maps the
- * body, reporting every offending field at once. Publishes the body for later steps so
- * the request is bound only here.
+ * body, reporting every offending field at once. An address may be supplied in either
+ * form — a non-blank structured {@code addressLine1} or the flat {@code address} — and
+ * the request is accepted when at least one is present, keeping earlier minimal owners
+ * backward-compatible. Publishes the body for later steps so the request is bound only
+ * here.
  */
 public class ValidateOwnerFields {
 
@@ -20,9 +23,10 @@ public class ValidateOwnerFields {
         List<String> missing = new ArrayList<>();
         requireText(missing, "firstName", request.getFirstName());
         requireText(missing, "lastName", request.getLastName());
-        // Address is checked in its normalized form, so a value that is blank only once
-        // whitespace is trimmed and collapsed (see Addresses) is still rejected here.
-        requireText(missing, "address", Addresses.normalize(request.getAddress()));
+        // Accept an address in either form; the canonical value is blank only when neither
+        // the structured addressLine1 nor the flat address supplies one (see Addresses).
+        requireText(missing, "address", Addresses.canonical(request.getAddressLine1(),
+                request.getAddressLine2(), request.getAddress()));
         requireText(missing, "city", request.getCity());
         requireText(missing, "telephone", request.getTelephone());
         if (!missing.isEmpty()) {

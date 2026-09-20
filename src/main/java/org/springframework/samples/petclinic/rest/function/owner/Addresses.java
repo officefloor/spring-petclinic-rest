@@ -44,4 +44,23 @@ final class Addresses {
         }
         return result.toString();
     }
+
+    /**
+     * The canonical single-line address, preferring the structured lines when present:
+     * the {@link #normalize normalized} {@code addressLine1}, with a single space and the
+     * normalized {@code addressLine2} appended when {@code addressLine2} is present. Falls
+     * back to the normalized flat {@code address} when no structured {@code addressLine1}
+     * is supplied. Returns {@code null} when neither form supplies an address.
+     */
+    static String canonical(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (line1 == null || line1.isEmpty()) {
+            return normalize(address);
+        }
+        String line2 = normalize(addressLine2);
+        if (line2 == null || line2.isEmpty()) {
+            return line1;
+        }
+        return line1 + " " + line2;
+    }
 }
