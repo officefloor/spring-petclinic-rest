@@ -73,7 +73,7 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership level from 1 to 3, as defined by {@link MembershipLevel}.
+     * The owner's membership level from 1 to 4, as defined by {@link MembershipLevel}.
      */
     default int membershipLevel(Owner owner) {
         return MembershipLevel.of(owner);
