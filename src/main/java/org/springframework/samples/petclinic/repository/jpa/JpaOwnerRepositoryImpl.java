@@ -118,6 +118,12 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
         return new PageImpl<>(owners, pageable, total);
     }
 
+    @Override
+    public int count() throws DataAccessException {
+        Query countQuery = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner");
+        return ((Number) countQuery.getSingleResult()).intValue();
+    }
+
 	@Override
 	public void delete(Owner owner) throws DataAccessException {
 		this.em.remove(this.em.contains(owner) ? owner : this.em.merge(owner));

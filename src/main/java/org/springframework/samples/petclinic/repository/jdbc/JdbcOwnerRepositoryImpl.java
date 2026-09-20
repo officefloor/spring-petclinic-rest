@@ -210,6 +210,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
         return new PageImpl<>(owners, pageable, total == null ? 0 : total);
     }
 
+    @Override
+    public int count() throws DataAccessException {
+        Integer total = this.namedParameterJdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM owners",
+            new HashMap<String, Object>(),
+            Integer.class);
+        return total == null ? 0 : total;
+    }
+
 	@Override
 	@Transactional
 	public void delete(Owner owner) throws DataAccessException {
