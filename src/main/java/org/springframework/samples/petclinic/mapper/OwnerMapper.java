@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.CityRegion;
 import org.springframework.samples.petclinic.model.ContactPreference;
 import org.springframework.samples.petclinic.model.Luhn;
 import org.springframework.samples.petclinic.model.MembershipLevel;
+import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -70,8 +71,7 @@ public interface OwnerMapper {
      * {@code SMI-0007-M26}.
      */
     default String membershipNumber(Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
-        return owner.getCustomerCode() + "-M" + yy;
+        return MembershipNumber.of(owner);
     }
 
     /**
