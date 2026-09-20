@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -42,6 +43,16 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * The owner's stored E.164 telephone number formatted for humans as the country code, a
+     * space, then the national digits grouped in threes (e.g. {@code +61 412 345 678}). The
+     * raw {@code telephone} field stays in E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.Telephones
+            .toDisplay(owner.getTelephone());
     }
 
     /**

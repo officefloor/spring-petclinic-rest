@@ -9,7 +9,7 @@ import java.util.Optional;
  * to normalize a create request before it is persisted and to compare it against existing
  * owners' stored numbers.
  */
-final class Telephones {
+public final class Telephones {
 
     /** Country code assumed when the input carries no explicit '+' prefix (Australia). */
     private static final String DEFAULT_COUNTRY_CODE = "61";
@@ -53,11 +53,54 @@ final class Telephones {
     }
 
     /**
+     * Formats a stored E.164 number for humans as the country code, a space, then the national
+     * digits grouped in threes, e.g. {@code +61412345678} becomes {@code +61 412 345 678}.
+     * Returns the input unchanged when it is not in E.164 form (null, or not a '+' followed by
+     * digits); its country code splits off the recognised prefix, falling back to grouping all
+     * digits when the code is not one we know.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.matches("\\+[0-9]+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        String countryCode = longestCountryCode(digits);
+        if (countryCode == null) {
+            return "+" + groupInThrees(digits);
+        }
+        return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+    }
+
+    /** Groups {@code digits} into space-separated runs of three, counting from the left. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
+    /**
      * Checks the national-number length of {@code digits} (the E.164 digits without the '+')
      * against its country code, using the longest recognised code the number starts with.
      * Unrecognised country codes pass, having already cleared the generic 8-15 digit range.
      */
     private static boolean hasValidNationalNumberLength(String digits) {
+        String countryCode = longestCountryCode(digits);
+        if (countryCode == null) {
+            return true;
+        }
+        return digits.length() - countryCode.length() == NATIONAL_NUMBER_LENGTHS.get(countryCode);
+    }
+
+    /**
+     * The longest recognised country code (a key of {@link #NATIONAL_NUMBER_LENGTHS}) that
+     * {@code digits} starts with, or {@code null} when it starts with none of them.
+     */
+    private static String longestCountryCode(String digits) {
         String countryCode = null;
         for (String candidate : NATIONAL_NUMBER_LENGTHS.keySet()) {
             if (digits.startsWith(candidate)
@@ -65,9 +108,6 @@ final class Telephones {
                 countryCode = candidate;
             }
         }
-        if (countryCode == null) {
-            return true;
-        }
-        return digits.length() - countryCode.length() == NATIONAL_NUMBER_LENGTHS.get(countryCode);
+        return countryCode;
     }
 }
