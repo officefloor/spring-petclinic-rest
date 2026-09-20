@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.MembershipLevel;
-import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -20,10 +19,9 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, AuditSequence sequence) {
         AUDIT.info(
-                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} "
-                        + "membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner), MembershipNumber.of(owner));
+                "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                MembershipLevel.of(owner));
         AUDIT.info(OwnerCreatedEvent.of(sequence.next(), owner).toJson());
     }
 }

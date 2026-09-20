@@ -7,12 +7,11 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * An immutable structured audit event for a created owner. Serialized to the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}} (field order preserved),
- * where {@code event} is always {@link #EVENT_NAME} and {@code customerCode} carries the
- * owner's {@link Owner#getPrimaryIdentifier() current primary identifier} — so when that
- * identifier becomes the member id, this event carries the member id without further change.
+ * {@code {seq, ownerId, memberId, membershipLevel, event}} (field order preserved),
+ * where {@code event} is always {@link #EVENT_NAME} and {@code memberId} carries the
+ * owner's {@link Owner#getPrimaryIdentifier() primary identifier}.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         int membershipLevel, String event) {
 
     /** The fixed event marker for a created owner. */

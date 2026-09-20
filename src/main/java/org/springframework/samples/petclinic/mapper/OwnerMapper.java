@@ -7,9 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CityRegion;
 import org.springframework.samples.petclinic.model.ContactPreference;
-import org.springframework.samples.petclinic.model.Luhn;
 import org.springframework.samples.petclinic.model.MembershipLevel;
-import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -31,8 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -76,22 +73,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * The Luhn check digit computed over the digits of the owner's customer code.
-     */
-    default int checkDigit(Owner owner) {
-        return Luhn.checkDigit(owner.getCustomerCode());
-    }
-
-    /**
-     * The owner's membership number, formatted as {@code <customerCode>-M<YY>} where
-     * {@code YY} is the last two digits of the fiscal year of the registration date, e.g.
-     * {@code SMI-0007-M26}.
-     */
-    default String membershipNumber(Owner owner) {
-        return MembershipNumber.of(owner);
-    }
-
-    /**
      * The fiscal year of the owner's (business-day-adjusted) registration date, formatted as
      * {@code FY<YY>} (see {@link org.springframework.samples.petclinic.model.FiscalYear}).
      */
@@ -115,18 +96,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * The region the owner's customer code was minted in — its {@code <REGION>} segment
-     * (see {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode}).
-     * Owners without a customer code (e.g. legacy records) fall back to deriving the region
+     * The region the owner's member id was minted in — its {@code <REGION>} segment
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.MemberId}).
+     * Owners without a member id (e.g. legacy records) fall back to deriving the region
      * from the postcode and city directly.
      */
     default String locality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null || customerCode.isBlank()) {
+        String memberId = owner.getMemberId();
+        if (memberId == null || memberId.isBlank()) {
             return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
         }
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
-            .region(customerCode);
+        return org.springframework.samples.petclinic.rest.function.owner.MemberId
+            .region(memberId);
     }
 
     /**
@@ -179,7 +160,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdMemberCount", ignore = true)

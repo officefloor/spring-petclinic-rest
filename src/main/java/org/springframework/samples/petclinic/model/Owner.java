@@ -71,8 +71,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -183,22 +183,21 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier — today the {@link #getCustomerCode() customer
-     * code}. This is the single point that decides which field identifies an owner: when the
-     * customer code is unified into the membership number, this returns the member id instead
-     * and every caller (such as the created-owner audit event) follows without further change.
+     * The owner's primary identifier — the {@link #getMemberId() member id}. This is the single
+     * point that decides which field identifies an owner, so every caller (such as the
+     * created-owner audit event) follows it without further change.
      */
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {
@@ -344,7 +343,7 @@ public class Owner extends Person {
             .append("email", this.email)
             .append("registrationDate", this.registrationDate)
             .append("birthDate", this.birthDate)
-            .append("customerCode", this.customerCode)
+            .append("memberId", this.memberId)
             .append("householdId", this.householdId)
             .append("namesakeCount", this.namesakeCount)
             .append("householdMemberCount", this.householdMemberCount)

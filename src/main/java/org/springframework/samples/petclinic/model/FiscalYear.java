@@ -6,9 +6,9 @@ import java.time.Month;
 /**
  * The fiscal year a date falls in. The fiscal year starts on 1 July and is named by the
  * calendar year in which it ends, so 1 July 2025 - 30 June 2026 is fiscal year 2026. This is
- * the single source of the fiscal-year basis shared by the membership number's year segment
- * ({@link MembershipNumber}), the tenure count ({@link MembershipLevel}) and the owner's
- * {@code fiscalYear} field.
+ * the single source of the fiscal-year basis shared by the member id's fiscal-year segment
+ * (see {@link org.springframework.samples.petclinic.rest.function.owner.MemberId}), the tenure
+ * count ({@link MembershipLevel}) and the owner's {@code fiscalYear} field.
  */
 public final class FiscalYear {
 
