@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bd8a4d2cd..fd11294a2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -73,7 +73,7 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's membership level from 1 to 3, as defined by {@link MembershipLevel}.
++     * The owner's membership level from 1 to 4, as defined by {@link MembershipLevel}.
+      */
+     default int membershipLevel(Owner owner) {
+         return MembershipLevel.of(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index ecfa2c684..b0da5f659 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -1,27 +1,48 @@
+ package org.springframework.samples.petclinic.model;
+ 
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
+ /**
+- * The owner's membership level: a number from 1 to 3 fixed at creation. It starts at
+- * {@link #BASE}, gains a level when an email address is present and another when the owner
+- * has no namesakes ({@code namesakeCount} is 0), and is capped at {@link #MAX}. Level 4 is
+- * reserved for tenure.
++ * The owner's membership level, from 1 to 4. It starts at {@link #BASE}, gains a level when
++ * an email address is present and another when the owner has no namesakes
++ * ({@code namesakeCount} is 0); those factors are capped at {@link #MAX}. The top level,
++ * {@link #TENURE_MAX}, is reserved for tenure: it is reached only once the owner has been
++ * registered for more than {@link #TENURE_DAYS} days. A newly created owner has zero tenure,
++ * so a new owner never exceeds {@link #MAX}.
+  */
+ public final class MembershipLevel {
+ 
+     /** The starting level, before any bonuses. */
+     public static final int BASE = 1;
+ 
+-    /** The highest level attainable at creation; level 4 is reserved for tenure. */
++    /** The highest level attainable before tenure; level 4 is reserved for tenure. */
+     public static final int MAX = 3;
+ 
++    /** The highest level attainable, reached only with tenure over {@link #TENURE_DAYS}. */
++    public static final int TENURE_MAX = 4;
++
++    /** The tenure, in days, that must be exceeded to reach {@link #TENURE_MAX}. */
++    public static final int TENURE_DAYS = 365;
++
+     private MembershipLevel() {
+     }
+ 
+     /**
+-     * The membership level for the given owner: {@link #BASE}, plus one when an email
+-     * address is present and one when the owner has no namesakes, capped at {@link #MAX}.
++     * The membership level for the given owner as of today (see
++     * {@link #of(Owner, LocalDate)}).
+      */
+     public static int of(Owner owner) {
++        return of(owner, LocalDate.now());
++    }
++
++    /**
++     * The membership level for the given owner as of {@code asOf}: {@link #BASE}, plus one
++     * when an email address is present and one when the owner has no namesakes (together
++     * capped at {@link #MAX}), plus one more — reaching {@link #TENURE_MAX} — once the
++     * owner's tenure exceeds {@link #TENURE_DAYS} days.
++     */
++    public static int of(Owner owner, LocalDate asOf) {
+         int level = BASE;
+         if (owner.hasEmail()) {
+             level++;
+@@ -29,6 +50,17 @@ public final class MembershipLevel {
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+             level++;
+         }
+-        return Math.min(level, MAX);
++        level = Math.min(level, MAX);
++        if (hasTenure(owner, asOf)) {
++            level++;
++        }
++        return level;
++    }
++
++    /** Whether the owner's tenure at {@code asOf} exceeds {@link #TENURE_DAYS} days. */
++    private static boolean hasTenure(Owner owner, LocalDate asOf) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        return registrationDate != null
++            && ChronoUnit.DAYS.between(registrationDate, asOf) > TENURE_DAYS;
+     }
+ }
