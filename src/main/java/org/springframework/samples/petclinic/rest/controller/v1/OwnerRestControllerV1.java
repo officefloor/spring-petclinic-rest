@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
@@ -76,6 +77,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
+    private final HouseholdAssigner householdAssigner;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -83,7 +86,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
-                                 HouseholdDuplicateValidator householdDuplicateValidator) {
+                                 HouseholdDuplicateValidator householdDuplicateValidator,
+                                 HouseholdAssigner householdAssigner) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -92,6 +96,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
         this.householdDuplicateValidator = householdDuplicateValidator;
+        this.householdAssigner = householdAssigner;
     }
 
     /**
@@ -137,7 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            householdAssigner.assignSharedHousehold(owner);
+        } else {
             householdDuplicateValidator.validate(owner);
         }
         owner.setTelephone(telephone);

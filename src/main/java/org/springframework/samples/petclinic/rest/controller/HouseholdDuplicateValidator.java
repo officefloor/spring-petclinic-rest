@@ -16,10 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Locale;
-
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,10 +27,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class HouseholdDuplicateValidator {
 
-    private final ClinicService clinicService;
+    private final Households households;
 
-    public HouseholdDuplicateValidator(ClinicService clinicService) {
-        this.clinicService = clinicService;
+    public HouseholdDuplicateValidator(Households households) {
+        this.households = households;
     }
 
     /**
@@ -44,25 +41,8 @@ public class HouseholdDuplicateValidator {
      * address
      */
     public void validate(Owner candidate) {
-        String lastNameKey = normalize(candidate.getLastName());
-        String addressKey = normalize(candidate.getAddress());
-        boolean duplicate = clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
-            .anyMatch(existing -> lastNameKey.equals(normalize(existing.getLastName()))
-                && addressKey.equals(normalize(existing.getAddress())));
-        if (duplicate) {
+        if (!households.findMembers(candidate).isEmpty()) {
             throw new DuplicateHouseholdException(candidate.getLastName(), candidate.getAddress());
         }
-    }
-
-    /**
-     * Canonicalize a value for household comparison: {@code null} becomes empty, surrounding
-     * whitespace is trimmed, internal whitespace runs collapse to a single space, and the result
-     * is lower-cased.
-     */
-    private String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
