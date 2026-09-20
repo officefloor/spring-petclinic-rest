@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 449d3f296..7076572e6 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -51,6 +51,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "customerCode", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 24215b227..03d7aada9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -53,6 +53,9 @@ public class Owner extends Person {
+     @Email
+     private String email;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -91,6 +94,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index ec731b019..6e7acc7d4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -46,6 +46,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private final VisitRepository visitRepository;
+     private final SpecialtyRepository specialtyRepository;
+     private final PetTypeRepository petTypeRepository;
++    private final CustomerCodeGenerator customerCodeGenerator;
+ 
+     public ClinicServiceImpl(
+         PetRepository petRepository,
+@@ -53,13 +54,15 @@ public class ClinicServiceImpl implements ClinicService {
+         OwnerRepository ownerRepository,
+         VisitRepository visitRepository,
+         SpecialtyRepository specialtyRepository,
+-        PetTypeRepository petTypeRepository) {
++        PetTypeRepository petTypeRepository,
++        CustomerCodeGenerator customerCodeGenerator) {
+         this.petRepository = petRepository;
+         this.vetRepository = vetRepository;
+         this.ownerRepository = ownerRepository;
+         this.visitRepository = visitRepository;
+         this.specialtyRepository = specialtyRepository;
+         this.petTypeRepository = petTypeRepository;
++        this.customerCodeGenerator = customerCodeGenerator;
+     }
+ 
+     @Override
+@@ -232,8 +235,11 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        if (owner.isNew() && owner.getCustomerCode() == null) {
++            long sequence = ownerRepository.findAll().size() + 1L;
++            owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), sequence));
++        }
+         ownerRepository.save(owner);
+-
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+new file mode 100644
+index 000000000..3c5b2efd1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/CustomerCodeGenerator.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Formats an owner's {@code customerCode} as {@code '<LAST3>-<NNNN>'}, where {@code LAST3}
++ * is the upper-cased first three letters of the last name and {@code NNNN} is a zero-padded
++ * 4-digit sequence number (e.g. {@code 'SMI-0007'}).
++ */
++@Component
++public class CustomerCodeGenerator {
++
++    /**
++     * Build the customer code for the given last name and global sequence number.
++     *
++     * @param lastName the owner's last name (its first three letters, upper-cased, form the prefix)
++     * @param sequence the 4-digit global sequence number
++     * @return the formatted customer code
++     */
++    public String generate(String lastName, long sequence) {
++        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
++        return String.format("%s-%04d", prefix, sequence);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 77bb1228b..8296e57fd 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  customer_code VARCHAR(20),
+   registration_date DATE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4a767727f..d5fab68f4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  customer_code VARCHAR(20),
+   registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4e5bc62e3..5dbe9e38a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  customer_code VARCHAR(20),
+   registration_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a363d7467..43f9c5e37 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      customer_code TEXT,
+                                       registration_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index eb68f1139..5391b7565 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2089,6 +2089,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: >-
++                The owner's customer code, formatted '<LAST3>-<NNNN>': the
++                upper-cased first three letters of the last name, a hyphen, and a
++                zero-padded 4-digit global sequence number assigned on create.
++              type: string
++              example: 'SMI-0007'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
