@@ -15,6 +15,7 @@ public class RespondWithOwnerUpdated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(DailyRegistrations.isBulkSignup(ownerRepository, owner.getRegistrationDate()));
+        dto.setCapacityWarning(Cities.isApproachingCapacity(ownerRepository, owner.getCity()));
         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
     }
 }
