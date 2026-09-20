@@ -46,8 +46,6 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.forOwner(owner))")
-    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipLevelEvaluator.pointsFor(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -85,15 +83,15 @@ public abstract class OwnerMapper {
 
     /**
      * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}
-     * segment of the assigned {@code customerCode}. Owners without a code yet fall back to
+     * segment of the assigned {@code memberId}. Owners without a member id yet fall back to
      * deriving the region straight from their own fields.
      */
     protected String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        if (owner.getCustomerCode() != null) {
-            return org.springframework.samples.petclinic.model.Locality.fromCustomerCode(owner.getCustomerCode());
+        if (owner.getMemberId() != null) {
+            return org.springframework.samples.petclinic.model.Locality.fromMemberId(owner.getMemberId());
         }
         return org.springframework.samples.petclinic.model.Locality.forOwner(owner);
     }
@@ -151,7 +149,7 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)

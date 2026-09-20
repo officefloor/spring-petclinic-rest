@@ -46,7 +46,7 @@ CREATE TABLE owners (
   city       VARCHAR(80),
   telephone  VARCHAR(20),
   email      VARCHAR(255),
-  customer_code VARCHAR(20),
+  member_id VARCHAR(32),
   registration_date DATE,
   birth_date DATE,
   household_id VARCHAR(64),

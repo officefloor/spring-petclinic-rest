@@ -48,8 +48,8 @@ public class ClinicServiceImpl implements ClinicService {
     private final VisitRepository visitRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
-    private final CustomerCodeGenerator customerCodeGenerator;
-    private final CustomerCodeDeduplicator customerCodeDeduplicator;
+    private final MemberIdGenerator memberIdGenerator;
+    private final MemberIdDeduplicator memberIdDeduplicator;
     private final NamesakeCounter namesakeCounter;
 
     public ClinicServiceImpl(
@@ -59,8 +59,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator,
-        CustomerCodeDeduplicator customerCodeDeduplicator,
+        MemberIdGenerator memberIdGenerator,
+        MemberIdDeduplicator memberIdDeduplicator,
         NamesakeCounter namesakeCounter) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
@@ -68,8 +68,8 @@ public class ClinicServiceImpl implements ClinicService {
         this.visitRepository = visitRepository;
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
-        this.customerCodeGenerator = customerCodeGenerator;
-        this.customerCodeDeduplicator = customerCodeDeduplicator;
+        this.memberIdGenerator = memberIdGenerator;
+        this.memberIdDeduplicator = memberIdDeduplicator;
         this.namesakeCounter = namesakeCounter;
     }
 
@@ -248,14 +248,15 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
+        if (owner.isNew() && owner.getMemberId() == null) {
             String region = Locality.forOwner(owner);
-            String baseCode = customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
-            List<String> existingCodes = ownerRepository.findAll().stream()
-                .map(Owner::getCustomerCode)
+            int fiscalYear = FiscalYear.containing(owner.getRegistrationDate()).shortYear();
+            String baseId = memberIdGenerator.generate(region, fiscalYear, owner.getTelephone(), owner.getLastName());
+            List<String> existingIds = ownerRepository.findAll().stream()
+                .map(Owner::getMemberId)
                 .filter(Objects::nonNull)
                 .toList();
-            owner.setCustomerCode(customerCodeDeduplicator.deDuplicate(baseCode, existingCodes));
+            owner.setMemberId(memberIdDeduplicator.deDuplicate(baseId, existingIds));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             Collection<Owner> sameLastName = ownerRepository.findByLastNameIgnoreCase(owner.getLastName());

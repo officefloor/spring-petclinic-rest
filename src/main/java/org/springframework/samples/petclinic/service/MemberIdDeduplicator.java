@@ -22,28 +22,28 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Ensures a freshly generated {@code customerCode} does not collide with one an existing owner
- * already holds. When the base code is free it is returned unchanged; otherwise {@code '-<n>'} is
- * appended, using the smallest {@code n} of 2 or more that yields a code no existing owner holds.
+ * Ensures a freshly generated {@code memberId} does not collide with one an existing owner
+ * already holds. When the base id is free it is returned unchanged; otherwise {@code '-<n>'} is
+ * appended, using the smallest {@code n} of 2 or more that yields an id no existing owner holds.
  */
 @Component
-public class CustomerCodeDeduplicator {
+public class MemberIdDeduplicator {
 
     /**
-     * De-duplicate {@code baseCode} against the codes already in use.
+     * De-duplicate {@code baseId} against the ids already in use.
      *
-     * @param baseCode      the freshly generated customer code
-     * @param existingCodes the customer codes already held by existing owners
-     * @return {@code baseCode} when it is free, otherwise {@code '<baseCode>-<n>'} with the smallest
+     * @param baseId      the freshly generated member id
+     * @param existingIds the member ids already held by existing owners
+     * @return {@code baseId} when it is free, otherwise {@code '<baseId>-<n>'} with the smallest
      * {@code n} of 2 or more that is not already taken
      */
-    public String deDuplicate(String baseCode, Collection<String> existingCodes) {
-        Set<String> taken = new HashSet<>(existingCodes);
-        if (!taken.contains(baseCode)) {
-            return baseCode;
+    public String deDuplicate(String baseId, Collection<String> existingIds) {
+        Set<String> taken = new HashSet<>(existingIds);
+        if (!taken.contains(baseId)) {
+            return baseId;
         }
         for (int n = 2; ; n++) {
-            String candidate = baseCode + "-" + n;
+            String candidate = baseId + "-" + n;
             if (!taken.contains(candidate)) {
                 return candidate;
             }

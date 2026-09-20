@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
 import org.springframework.stereotype.Component;
@@ -31,8 +30,8 @@ import tools.jackson.databind.ObjectMapper;
  * created. Two entries are produced per create:
  * <ul>
  *   <li>a human-readable line carrying the persisted owner's id, its generated
- *       {@code customerCode}, its {@code registrationDate} and its derived
- *       {@code membershipLevel} and {@code membershipNumber}; and</li>
+ *       {@code memberId}, its {@code registrationDate} and its derived
+ *       {@code membershipLevel}; and</li>
  *   <li>an immutable structured {@link OwnerCreatedEvent} serialized as JSON, so the create
  *       can be reconciled against the audit log without depending on any
  *       implementation-specific hook.</li>
@@ -57,13 +56,12 @@ public class OwnerAuditLogger {
     /**
      * Record the successful creation of an owner.
      *
-     * @param owner the persisted owner (id, customerCode and registrationDate populated)
+     * @param owner the persisted owner (id, memberId and registrationDate populated)
      */
     public void logCreated(Owner owner) {
         Integer membershipLevel = membershipLevelEvaluator.levelFor(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, MembershipNumber.forOwner(owner));
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.incrementAndGet(), owner, membershipLevel);
         AUDIT.info(objectMapper.writeValueAsString(event));
     }

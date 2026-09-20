@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       city       TEXT,
                                       telephone  TEXT,
                                       email      TEXT,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       registration_date DATE,
                                       birth_date DATE,
                                       household_id TEXT,

@@ -20,20 +20,19 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured audit event recorded when an owner is created. Serialized to JSON it
- * yields {@code {seq, ownerId, customerCode, membershipLevel, event:"OWNER_CREATED"}}.
+ * yields {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}.
  *
  * <p>The event carries the owner's <em>current primary identifier</em> under
- * {@code customerCode}. That identifier is resolved in a single place
- * ({@link #primaryIdentifier(Owner)}); when the primary identifier is later unified into the
- * memberId, changing that method is all that is needed for the event to carry the memberId.
+ * {@code memberId}. That identifier is resolved in a single place
+ * ({@link #primaryIdentifier(Owner)}).
  *
  * @param seq             monotonically increasing sequence number across creates
  * @param ownerId         the persisted owner's id
- * @param customerCode    the owner's current primary identifier
+ * @param memberId        the owner's current primary identifier
  * @param membershipLevel the owner's derived membership level
  * @param event           the event type discriminator, always {@link #EVENT_TYPE}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
                                 String event) {
 
     /** The event type discriminator carried by every owner-created event. */
@@ -51,10 +50,9 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
     }
 
     /**
-     * Resolves the owner's current primary identifier. This is the single seam through which
-     * the primary identifier will later switch from the customer code to the memberId.
+     * Resolves the owner's current primary identifier: the unified {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

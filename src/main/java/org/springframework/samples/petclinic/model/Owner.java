@@ -65,8 +65,8 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
@@ -163,12 +163,12 @@ public class Owner extends Person {
         this.postcode = postcode;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public LocalDate getRegistrationDate() {

@@ -16,31 +16,19 @@
 package org.springframework.samples.petclinic.model;
 
 /**
- * Computes an owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
- * contained in the owner's {@code customerCode}. Non-digit characters are ignored, so the
- * digit depends only on the numeric content of the code.
+ * Computes the Luhn check digit (0-9) over the decimal digits contained in a value. Non-digit
+ * characters are ignored, so the digit depends only on the numeric content of the value.
  */
-public final class CheckDigit {
+public final class Luhn {
 
-    private CheckDigit() {
-    }
-
-    /**
-     * Returns the Luhn check digit over the digits of the owner's customer code, or
-     * {@code null} when the owner is {@code null} or has no customer code assigned yet.
-     */
-    public static Integer forOwner(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        return luhn(owner.getCustomerCode());
+    private Luhn() {
     }
 
     /**
      * Computes the Luhn check digit (0-9) over the decimal digits contained in {@code value},
      * ignoring any non-digit characters.
      */
-    public static int luhn(String value) {
+    public static int checkDigit(String value) {
         int sum = 0;
         boolean doubling = true;
         for (int i = value.length() - 1; i >= 0; i--) {
