@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.CityRegion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -23,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -53,6 +55,14 @@ public interface OwnerMapper {
         boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * The canonical region derived from the owner's city via the pinned city-to-region
+     * table, or {@code UNKNOWN} when the city is not in the table.
+     */
+    default String locality(Owner owner) {
+        return CityRegion.localityOf(owner.getCity());
     }
 
     Owner toOwner(OwnerDto ownerDto);
