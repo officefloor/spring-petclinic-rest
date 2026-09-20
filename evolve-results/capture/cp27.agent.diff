@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 760dffccb..dde43a8ec 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.CityRegion;
++import org.springframework.samples.petclinic.model.ContactPreference;
+ import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -26,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -62,6 +64,14 @@ public interface OwnerMapper {
+         return CityRegion.localityOf(owner.getCity());
+     }
+ 
++    /**
++     * How the owner prefers to be contacted: {@code EMAIL} when an email address is
++     * present, otherwise {@code PHONE}.
++     */
++    default String contactPreference(Owner owner) {
++        return ContactPreference.of(owner).name();
++    }
++
+     @Mapping(target = "householdMemberCount", ignore = true)
+     Owner toOwner(OwnerDto ownerDto);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java b/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java
+new file mode 100644
+index 000000000..c72cf32e9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/ContactPreference.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * How an owner prefers to be contacted: {@link #EMAIL} when an email address is present,
++ * otherwise {@link #PHONE}. Derived at read time from the owner's fields.
++ */
++public enum ContactPreference {
++
++    /** The owner has an email address, so email is preferred. */
++    EMAIL,
++
++    /** The owner has no email address, so phone is preferred. */
++    PHONE;
++
++    /**
++     * The contact preference for the given owner: {@link #EMAIL} when an email address is
++     * present, otherwise {@link #PHONE}.
++     */
++    public static ContactPreference of(Owner owner) {
++        return owner.hasEmail() ? EMAIL : PHONE;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index 2589748c1..ecfa2c684 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -23,8 +23,7 @@ public final class MembershipLevel {
+      */
+     public static int of(Owner owner) {
+         int level = BASE;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        if (hasEmail) {
++        if (owner.hasEmail()) {
+             level++;
+         }
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 77ebd0aad..b8f536d9e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -103,6 +103,11 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    /** Whether this owner has a non-blank email address. */
++    public boolean hasEmail() {
++        return this.email != null && !this.email.isBlank();
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index efecf8d60..69cf5b95c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,6 +2134,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            contactPreference:
++              title: Contact preference
++              description: How the owner prefers to be contacted, 'EMAIL' when an email address is present, otherwise 'PHONE'.
++              type: string
++              example: 'PHONE'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
