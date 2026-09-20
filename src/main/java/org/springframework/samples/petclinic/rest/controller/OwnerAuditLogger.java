@@ -16,19 +16,27 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
- * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever an owner is
- * successfully created. The line carries the persisted owner's id, its generated
- * {@code customerCode}, its {@code registrationDate} and its derived {@code membershipLevel}
- * and {@code membershipNumber}, so the create can be reconciled against the audit log
- * without depending on any implementation-specific hook.
+ * Emits audit output to the dedicated {@code AUDIT} logger whenever an owner is successfully
+ * created. Two entries are produced per create:
+ * <ul>
+ *   <li>a human-readable line carrying the persisted owner's id, its generated
+ *       {@code customerCode}, its {@code registrationDate} and its derived
+ *       {@code membershipLevel} and {@code membershipNumber}; and</li>
+ *   <li>an immutable structured {@link OwnerCreatedEvent} serialized as JSON, so the create
+ *       can be reconciled against the audit log without depending on any
+ *       implementation-specific hook.</li>
+ * </ul>
  */
 @Component
 public class OwnerAuditLogger {
@@ -36,6 +44,11 @@ public class OwnerAuditLogger {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final MembershipLevelEvaluator membershipLevelEvaluator;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Assigns each created owner a monotonically increasing sequence number. */
+    private final AtomicLong sequence = new AtomicLong();
 
     public OwnerAuditLogger(MembershipLevelEvaluator membershipLevelEvaluator) {
         this.membershipLevelEvaluator = membershipLevelEvaluator;
@@ -47,8 +60,11 @@ public class OwnerAuditLogger {
      * @param owner the persisted owner (id, customerCode and registrationDate populated)
      */
     public void logCreated(Owner owner) {
+        Integer membershipLevel = membershipLevelEvaluator.levelFor(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevelEvaluator.levelFor(owner), MembershipNumber.forOwner(owner));
+            membershipLevel, MembershipNumber.forOwner(owner));
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.incrementAndGet(), owner, membershipLevel);
+        AUDIT.info(objectMapper.writeValueAsString(event));
     }
 }
