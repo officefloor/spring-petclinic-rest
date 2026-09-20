@@ -75,6 +75,14 @@ public final class CityRegion {
     }
 
     /**
+     * Whether {@code region} is one of the pinned known regions (NSW, VIC or QLD), as
+     * opposed to {@link #UNKNOWN}, a {@code null} region, or any other value.
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_RANGES.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name pinned to {@code region} (NSW -> Australia/Sydney, VIC ->
      * Australia/Melbourne, QLD -> Australia/Brisbane), or {@code null} when the region has
      * no pinned timezone (including {@link #UNKNOWN} and a {@code null} region).

@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.model.Luhn;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -37,6 +38,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -135,6 +137,15 @@ public interface OwnerMapper {
      */
     default String timezone(Owner owner) {
         return CityRegion.timezoneOf(locality(owner));
+    }
+
+    /**
+     * The owner's marketing segment, formatted as {@code <TIER>_<AREA>} (see
+     * {@link OwnerSegment}): the tier from the owner's {@link #membershipLevel(Owner)
+     * membership level} and the area from their {@link #locality(Owner) locality}.
+     */
+    default String ownerSegment(Owner owner) {
+        return OwnerSegment.of(membershipLevel(owner), locality(owner));
     }
 
     /**
