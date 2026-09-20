@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.OptionalInt;
 
 /**
  * Scores an owner's membership and maps that score to a numeric level. Points start at 0
@@ -97,11 +98,33 @@ public class MembershipLevelEvaluator {
 
     /**
      * @param owner the owner whose level is evaluated
-     * @return the owner's membership level, or {@code null} when the owner is not known
+     * @return the owner's membership level capped at one above the highest level among the
+     *     owner's existing household members, or {@code null} when the owner is not known
      */
     public Integer levelFor(Owner owner) {
         Integer points = pointsFor(owner);
-        return points == null ? null : levelForPoints(points);
+        return points == null ? null : capToHousehold(owner, levelForPoints(points));
+    }
+
+    /**
+     * Caps {@code level} at one above the highest level among the owner's existing household
+     * members. Member levels are evaluated uncapped to avoid recursion; the owner itself and
+     * soft-deleted owners are excluded. With no household members no cap applies.
+     */
+    private int capToHousehold(Owner owner, int level) {
+        if (owner.getHouseholdId() == null) {
+            return level;
+        }
+        OptionalInt maxMemberLevel = clinicService.findOwnersInHousehold(owner.getHouseholdId()).stream()
+            .filter(member -> !member.isDeleted())
+            .filter(member -> !isSameOwner(member, owner))
+            .mapToInt(member -> levelForPoints(pointsFor(member)))
+            .max();
+        return maxMemberLevel.isPresent() ? Math.min(level, maxMemberLevel.getAsInt() + 1) : level;
+    }
+
+    private boolean isSameOwner(Owner member, Owner owner) {
+        return owner.getId() != null && owner.getId().equals(member.getId());
     }
 
     /**

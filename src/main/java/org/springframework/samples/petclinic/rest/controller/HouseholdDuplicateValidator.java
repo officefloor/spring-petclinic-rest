@@ -16,15 +16,19 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.Objects;
+
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
- * Guards owner creation against household duplicates. Because a household is keyed on last name
- * and postcode, an owner whose {@link Households#householdId(Owner) household identifier} already
- * belongs to an existing owner is a second member of that household and is rejected. Setting
- * {@code sharesHousehold} declares the owner an intentional household member and bypasses the
- * block.
+ * Guards owner creation against exact household duplicates. A household is keyed on last name and
+ * postcode, but sharing a household is not by itself a duplicate: distinct people in the same
+ * household are told apart by their telephone. Only a candidate that matches an existing household
+ * member on telephone as well is a true re-registration and is rejected; a household member with a
+ * different telephone is a legitimate new member, left to {@link PossibleDuplicateDetector} to flag
+ * softly. Setting {@code sharesHousehold} declares the owner an intentional household member and
+ * bypasses the block.
  */
 @Component
 public class HouseholdDuplicateValidator {
@@ -36,19 +40,23 @@ public class HouseholdDuplicateValidator {
     }
 
     /**
-     * Reject {@code candidate} when it is a second member of an existing household, unless it
-     * declares itself a shared-household member.
+     * Reject {@code candidate} when an existing member of its household already carries the same
+     * telephone (a true re-registration), unless it declares itself a shared-household member.
+     * Household members with a different telephone are legitimate new members and are not rejected.
      *
-     * @param candidate       the owner about to be created, with its {@code householdId} already set
+     * @param candidate       the owner about to be created, with its {@code householdId} and
+     *                        normalized telephone already set
      * @param sharesHousehold whether the owner opted into a shared household, bypassing the block
-     * @throws HouseholdDuplicateException if another owner already belongs to the candidate's
-     * household and {@code sharesHousehold} is {@code false}
+     * @throws HouseholdDuplicateException if a household member shares the candidate's telephone and
+     * {@code sharesHousehold} is {@code false}
      */
     public void validate(Owner candidate, boolean sharesHousehold) {
         if (sharesHousehold) {
             return;
         }
-        if (!households.findMembers(candidate).isEmpty()) {
+        boolean exactDuplicate = households.findMembers(candidate).stream()
+            .anyMatch(member -> Objects.equals(member.getTelephone(), candidate.getTelephone()));
+        if (exactDuplicate) {
             throw new HouseholdDuplicateException(candidate.getHouseholdId());
         }
     }

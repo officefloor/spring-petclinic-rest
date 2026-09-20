@@ -326,9 +326,19 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public long countOwnersInHousehold(String householdId) throws DataAccessException {
+        return findOwnersInHousehold(householdId).size();
+    }
+
+    /**
+     * All existing owners that belong to the given household, matched by their
+     * {@code householdId}. Used to derive household-aware membership rules.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Owner> findOwnersInHousehold(String householdId) throws DataAccessException {
         return ownerRepository.findAll().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
+            .toList();
     }
 
     private <T> T findEntityById(Supplier<T> supplier) {
