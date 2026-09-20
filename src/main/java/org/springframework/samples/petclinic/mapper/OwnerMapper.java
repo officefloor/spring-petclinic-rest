@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.controller.OwnerIdentity;
+import org.springframework.samples.petclinic.rest.controller.TelephoneFormatter;
 import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
 
@@ -31,9 +32,13 @@ public abstract class OwnerMapper {
     @Autowired
     protected OwnerIdentity ownerIdentity;
 
+    @Autowired
+    protected TelephoneFormatter telephoneFormatter;
+
     @Mapping(target = "identityKey", expression = "java(owner == null ? null : ownerIdentity.key(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")

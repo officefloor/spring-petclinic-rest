@@ -64,4 +64,19 @@ public class E164CountryRules {
             }
         }
     }
+
+    /**
+     * Identify the country calling code that begins an E.164 digit string.
+     *
+     * @param e164Digits the digits following the {@code '+'} (calling code plus national number)
+     * @return the longest recognised calling code the digits start with, or {@code null} when none is known
+     */
+    public String callingCodeOf(String e164Digits) {
+        for (String code : CALLING_CODES) {
+            if (e164Digits.startsWith(code)) {
+                return code;
+            }
+        }
+        return null;
+    }
 }
