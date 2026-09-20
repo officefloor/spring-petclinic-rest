@@ -17,9 +17,9 @@ package org.springframework.samples.petclinic.model;
 
 /**
  * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
- * {@code YY} is the last two digits of the registration date's year
- * (e.g. {@code "NSW-A1B2C3D4-M26"}). The number is undefined until both the customer code
- * and registration date have been assigned.
+ * {@code YY} is the last two digits of the fiscal year (starting 1 July) that contains the
+ * business-day-adjusted registration date (e.g. {@code "NSW-A1B2C3D4-M26"}). The number is
+ * undefined until both the customer code and registration date have been assigned.
  */
 public final class MembershipNumber {
 
@@ -34,6 +34,7 @@ public final class MembershipNumber {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        int fiscalYear = FiscalYear.containing(owner.getRegistrationDate()).shortYear();
+        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear);
     }
 }

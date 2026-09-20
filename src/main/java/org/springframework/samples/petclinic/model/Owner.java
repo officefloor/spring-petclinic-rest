@@ -23,7 +23,6 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -181,15 +180,17 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure, in whole days elapsed from its registration date up to
-     * {@code asOf}. Returns 0 when the registration date is absent (as for a brand-new
-     * owner) or has not yet elapsed.
+     * The owner's tenure, in whole fiscal years (starting 1 July) elapsed from its
+     * registration date's fiscal year up to the fiscal year containing {@code asOf}.
+     * Returns 0 when the registration date is absent (as for a brand-new owner) or when
+     * {@code asOf} falls in an earlier fiscal year than the registration date.
      */
-    public long tenureInDays(LocalDate asOf) {
+    public long tenureInFiscalYears(LocalDate asOf) {
         if (this.registrationDate == null || asOf == null) {
             return 0;
         }
-        return Math.max(0, ChronoUnit.DAYS.between(this.registrationDate, asOf));
+        int elapsed = FiscalYear.containing(this.registrationDate).yearsUntil(FiscalYear.containing(asOf));
+        return Math.max(0, elapsed);
     }
 
     public LocalDate getBirthDate() {

@@ -40,6 +40,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.model.Salutation.forOwner(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
+    @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.forOwner(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipLevelEvaluator.pointsFor(owner))")
@@ -50,6 +51,19 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's fiscal year (starting 1 July) from its business-day-adjusted
+     * registration date, formatted {@code "FY<YY>"}. Returns {@code null} for a {@code null}
+     * owner or one whose registration date has not been assigned yet.
+     */
+    protected String formatFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.model.FiscalYear
+            .containing(owner.getRegistrationDate()).label();
+    }
 
     /**
      * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}

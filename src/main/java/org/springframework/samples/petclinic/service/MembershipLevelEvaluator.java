@@ -31,7 +31,8 @@ import java.time.LocalDate;
  *   <li>+{@value #NO_NAMESAKE_POINTS} when the owner has no namesakes ({@code namesakeCount} is 0);</li>
  *   <li>+{@value #LARGE_HOUSEHOLD_POINTS} when the owner's household has {@value #LARGE_HOUSEHOLD_SIZE}
  *       or more members;</li>
- *   <li>+{@value #TENURE_POINTS} when the owner's tenure exceeds {@value #TENURE_THRESHOLD_DAYS} days.</li>
+ *   <li>+{@value #TENURE_POINTS} when the owner's tenure exceeds {@value #TENURE_THRESHOLD_FISCAL_YEARS}
+ *       fiscal year(s).</li>
  * </ul>
  * The point total maps to a level as 1 (0-1 points), 2 (2-3), 3 (4-5) and 4 (6 or more).
  */
@@ -47,14 +48,14 @@ public class MembershipLevelEvaluator {
     /** Points gained when the owner belongs to a large household. */
     static final int LARGE_HOUSEHOLD_POINTS = 2;
 
-    /** Points gained when tenure exceeds {@value #TENURE_THRESHOLD_DAYS} days. */
+    /** Points gained when tenure exceeds {@value #TENURE_THRESHOLD_FISCAL_YEARS} fiscal year(s). */
     static final int TENURE_POINTS = 3;
 
     /** Household size at or above which {@link #LARGE_HOUSEHOLD_POINTS} apply. */
     static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Tenure, in days, that must be exceeded for the tenure points to apply. */
-    static final long TENURE_THRESHOLD_DAYS = 365;
+    /** Tenure, in whole fiscal years, that must be exceeded for the tenure points to apply. */
+    static final long TENURE_THRESHOLD_FISCAL_YEARS = 1;
 
     private final ClinicService clinicService;
 
@@ -129,6 +130,6 @@ public class MembershipLevelEvaluator {
     }
 
     private boolean hasQualifyingTenure(Owner owner) {
-        return owner.tenureInDays(LocalDate.now(clock)) > TENURE_THRESHOLD_DAYS;
+        return owner.tenureInFiscalYears(LocalDate.now(clock)) > TENURE_THRESHOLD_FISCAL_YEARS;
     }
 }
