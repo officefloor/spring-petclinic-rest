@@ -32,6 +32,12 @@ import org.springframework.validation.Validator;
 @Component
 public class OwnerFieldsValidator implements Validator {
 
+    private final AddressNormalizer addressNormalizer;
+
+    public OwnerFieldsValidator(AddressNormalizer addressNormalizer) {
+        this.addressNormalizer = addressNormalizer;
+    }
+
     @Override
     public boolean supports(Class<?> clazz) {
         return OwnerFieldsDto.class.isAssignableFrom(clazz);
@@ -42,7 +48,7 @@ public class OwnerFieldsValidator implements Validator {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
         rejectIfBlank(errors, "firstName", owner.getFirstName());
         rejectIfBlank(errors, "lastName", owner.getLastName());
-        rejectIfBlank(errors, "address", owner.getAddress());
+        rejectIfBlank(errors, "address", addressNormalizer.normalize(owner.getAddress()));
         rejectIfBlank(errors, "city", owner.getCity());
         rejectIfBlank(errors, "telephone", owner.getTelephone());
     }

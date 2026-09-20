@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
@@ -75,6 +76,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     private final HouseholdDuplicateValidator householdDuplicateValidator;
 
     private final HouseholdAssigner householdAssigner;
@@ -86,6 +89,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  TelephoneNormalizer telephoneNormalizer,
                                  EmailNormalizer emailNormalizer,
+                                 AddressNormalizer addressNormalizer,
                                  HouseholdDuplicateValidator householdDuplicateValidator,
                                  HouseholdAssigner householdAssigner) {
         this.clinicService = clinicService;
@@ -95,6 +99,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.addressNormalizer = addressNormalizer;
         this.householdDuplicateValidator = householdDuplicateValidator;
         this.householdAssigner = householdAssigner;
     }
@@ -138,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setAddress(addressNormalizer.normalize(owner.getAddress()));
         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
