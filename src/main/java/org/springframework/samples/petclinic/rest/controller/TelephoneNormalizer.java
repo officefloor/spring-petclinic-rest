@@ -27,9 +27,10 @@ import org.springframework.stereotype.Component;
  * leading {@code '+'} its country code is kept as supplied; otherwise the default
  * country code {@link #DEFAULT_COUNTRY_CODE} is assumed and a single leading
  * {@code '0'} is dropped from the national digits. The digits following the
- * {@code '+'} must number between {@link #MIN_DIGITS} and {@link #MAX_DIGITS};
- * anything else is rejected with an {@link InvalidTelephoneException} (surfaced as
- * {@code 400 Bad Request}).
+ * {@code '+'} must number between {@link #MIN_DIGITS} and {@link #MAX_DIGITS}, and the
+ * national number must also match the length its country calling code requires (see
+ * {@link E164CountryRules}); anything else is rejected with an
+ * {@link InvalidTelephoneException} (surfaced as {@code 400 Bad Request}).
  */
 @Component
 public class TelephoneNormalizer {
@@ -41,6 +42,12 @@ public class TelephoneNormalizer {
     /** Matches the digits that must follow the '+' once the country code is resolved. */
     private static final Pattern E164_DIGITS =
         Pattern.compile("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}");
+
+    private final E164CountryRules countryRules;
+
+    public TelephoneNormalizer(E164CountryRules countryRules) {
+        this.countryRules = countryRules;
+    }
 
     /**
      * Convert {@code rawTelephone} into its E.164 representation.
@@ -59,8 +66,9 @@ public class TelephoneNormalizer {
             digits = DEFAULT_COUNTRY_CODE + national;
         }
         if (!E164_DIGITS.matcher(digits).matches()) {
-            throw new InvalidTelephoneException(rawTelephone);
+            throw InvalidTelephoneException.notE164(rawTelephone);
         }
+        countryRules.validateNationalLength(digits, rawTelephone);
         return "+" + digits;
     }
 }
