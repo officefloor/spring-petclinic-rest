@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+new file mode 100644
+index 000000000..161049aaa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDays.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Business-day helper. A registration date must fall on a business day, so a Saturday or
++ * Sunday rolls forward to the following Monday.
++ */
++final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /**
++     * Rolls {@code date} forward onto a business day: a weekend day moves to the following
++     * Monday, any weekday is returned unchanged.
++     */
++    static LocalDate rollForward(LocalDate date) {
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+index 8b1742874..332d47263 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+@@ -2,30 +2,32 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Rejects a create request once {@link #MAX_OWNERS_PER_DAY} owners have already been registered on
+- * the current day. Existing owners are counted by their {@link Owner#getRegistrationDate()
+- * registrationDate}, matching the date a new owner defaults to (see {@link DefaultRegistrationDate}),
+- * so a full day cannot grow further.
++ * the new owner's registration day. Both the new owner (see
++ * {@link RollRegistrationDateToBusinessDay}) and existing owners carry a business-day
++ * {@link Owner#getRegistrationDate() registrationDate}, so the count is per business day and a full
++ * day cannot grow further.
+  */
+ public class EnsureDailyLimit {
+ 
+     /** Maximum number of owners allowed per day; the next create once reached is rejected. */
+     static final int MAX_OWNERS_PER_DAY = 100;
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyLimitReachedException {
+-        LocalDate today = LocalDate.now();
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyLimitReachedException {
++        LocalDate day = owner.getRegistrationDate();
+         int count = 0;
+-        for (Owner owner : ownerRepository.findAll()) {
+-            if (today.equals(owner.getRegistrationDate())) {
++        for (Owner existing : ownerRepository.findAll()) {
++            if (day.equals(existing.getRegistrationDate())) {
+                 count++;
+             }
+         }
+         if (count >= MAX_OWNERS_PER_DAY) {
+-            throw new DailyLimitReachedException(today);
++            throw new DailyLimitReachedException(day);
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java
+new file mode 100644
+index 000000000..e4cabc10a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RollRegistrationDateToBusinessDay.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Rolls a new owner's effective registration date onto a business day: a Saturday or Sunday
++ * moves forward to the following Monday. Runs after {@link DefaultRegistrationDate}, so it
++ * adjusts a client-supplied weekend date and the server-defaulted date alike. Later steps —
++ * the daily create-limit and the membership number's year segment — then see the adjusted date.
++ */
++public class RollRegistrationDateToBusinessDay {
++
++    public void service(@Val Owner owner) {
++        owner.setRegistrationDate(BusinessDays.rollForward(owner.getRegistrationDate()));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index c1edaf5ef..3a0beb555 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -34,11 +34,6 @@ ensureUniqueHousehold:
+ ensureCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureCityCapacity
+   govern: [ transaction ]
+-  next: ensureDailyLimit
+-
+-ensureDailyLimit:
+-  class: org.springframework.samples.petclinic.rest.function.owner.EnsureDailyLimit
+-  govern: [ transaction ]
+   next: build
+ 
+ build:
+@@ -54,6 +49,18 @@ assignHousehold:
+ defaultRegistrationDate:
+   class: org.springframework.samples.petclinic.rest.function.owner.DefaultRegistrationDate
+   govern: [ transaction ]
++  next: rollRegistrationDate
++
++# Roll the effective date (supplied or defaulted) onto a business day before it drives the
++# daily-limit count and the membership number's year segment.
++rollRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.RollRegistrationDateToBusinessDay
++  govern: [ transaction ]
++  next: ensureDailyLimit
++
++ensureDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureDailyLimit
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
