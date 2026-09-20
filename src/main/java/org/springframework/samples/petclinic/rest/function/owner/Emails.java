@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -15,6 +16,10 @@ final class Emails {
                     + "@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
                     + "(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$");
 
+    /** Throw-away email providers whose addresses must not be accepted. */
+    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
+            "mailinator.com", "tempmail.com", "guerrillamail.com");
+
     private Emails() {
     }
 
@@ -26,5 +31,15 @@ final class Emails {
     /** Returns {@code email} lower-cased: its canonical stored form. */
     static String normalize(String email) {
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /** The domain part of {@code email} (after the last {@code @}), lower-cased. */
+    static String domainOf(String email) {
+        return email.substring(email.lastIndexOf('@') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /** Whether {@code email}'s domain is a known disposable-email provider. */
+    static boolean isDisposableDomain(String email) {
+        return DISPOSABLE_DOMAINS.contains(domainOf(email));
     }
 }
