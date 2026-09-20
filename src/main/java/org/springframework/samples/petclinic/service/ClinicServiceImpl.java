@@ -47,6 +47,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final NamesakeCounter namesakeCounter;
 
     public ClinicServiceImpl(
         PetRepository petRepository,
@@ -55,7 +56,8 @@ public class ClinicServiceImpl implements ClinicService {
         VisitRepository visitRepository,
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
-        CustomerCodeGenerator customerCodeGenerator) {
+        CustomerCodeGenerator customerCodeGenerator,
+        NamesakeCounter namesakeCounter) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
         this.ownerRepository = ownerRepository;
@@ -63,6 +65,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.namesakeCounter = namesakeCounter;
     }
 
     @Override
@@ -238,6 +241,10 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getCustomerCode() == null) {
             long sequence = ownerRepository.findAll().size() + 1L;
             owner.setCustomerCode(customerCodeGenerator.generate(owner.getLastName(), sequence));
+        }
+        if (owner.isNew() && owner.getNamesakeCount() == null) {
+            Collection<Owner> sameLastName = ownerRepository.findByLastNameIgnoreCase(owner.getLastName());
+            owner.setNamesakeCount(namesakeCounter.count(owner, sameLastName));
         }
         ownerRepository.save(owner);
     }
