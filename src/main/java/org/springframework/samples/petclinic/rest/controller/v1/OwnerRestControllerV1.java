@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -37,7 +38,9 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -61,14 +64,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final OwnerFieldsValidator ownerFieldsValidator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 OwnerFieldsValidator ownerFieldsValidator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.ownerFieldsValidator = ownerFieldsValidator;
+    }
+
+    /**
+     * Registers the {@link OwnerFieldsValidator} so incoming owner payloads are checked for
+     * missing or blank mandatory fields as part of the standard {@code @Valid} pass.
+     */
+    @InitBinder("ownerFieldsDto")
+    void initOwnerFieldsBinder(WebDataBinder binder) {
+        binder.addValidators(ownerFieldsValidator);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
