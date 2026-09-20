@@ -32,10 +32,10 @@ import org.springframework.validation.Validator;
 @Component
 public class OwnerFieldsValidator implements Validator {
 
-    private final AddressNormalizer addressNormalizer;
+    private final AddressResolver addressResolver;
 
-    public OwnerFieldsValidator(AddressNormalizer addressNormalizer) {
-        this.addressNormalizer = addressNormalizer;
+    public OwnerFieldsValidator(AddressResolver addressResolver) {
+        this.addressResolver = addressResolver;
     }
 
     @Override
@@ -48,9 +48,21 @@ public class OwnerFieldsValidator implements Validator {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
         rejectIfBlank(errors, "firstName", owner.getFirstName());
         rejectIfBlank(errors, "lastName", owner.getLastName());
-        rejectIfBlank(errors, "address", addressNormalizer.normalize(owner.getAddress()));
+        rejectIfMissingAddress(errors, owner);
         rejectIfBlank(errors, "city", owner.getCity());
         rejectIfBlank(errors, "telephone", owner.getTelephone());
+    }
+
+    /**
+     * Requires an address in either accepted form: a non-blank structured {@code addressLine1}
+     * or the flat {@code address}. The rejection is reported against {@code addressLine1}, the
+     * preferred field, when neither is supplied.
+     */
+    private void rejectIfMissingAddress(Errors errors, OwnerFieldsDto owner) {
+        if (!addressResolver.hasStructuredAddress(owner.getAddressLine1())
+            && !addressResolver.hasFlatAddress(owner.getAddress())) {
+            errors.rejectValue("addressLine1", "required", "must not be blank");
+        }
     }
 
     private void rejectIfBlank(Errors errors, String field, String value) {
