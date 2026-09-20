@@ -19,11 +19,8 @@ public class EnsureUniqueHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = Households.normalize(request.getLastName());
-        String address = Households.normalize(request.getAddress());
         for (Owner owner : ownerRepository.findAll()) {
-            if (lastName.equals(Households.normalize(owner.getLastName()))
-                    && address.equals(Households.normalize(owner.getAddress()))) {
+            if (Households.matches(owner, request.getLastName(), request.getAddress())) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
