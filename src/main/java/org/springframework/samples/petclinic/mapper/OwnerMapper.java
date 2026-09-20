@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.CityRegion;
+import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -23,7 +24,7 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -47,19 +48,10 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: {@code GOLD} when the owner's household (owners sharing
-     * the same {@code householdId}) has 3 or more members; otherwise {@code SILVER} when the
-     * owner has no namesakes ({@code namesakeCount} is 0) and an email address is present,
-     * otherwise {@code BRONZE}.
+     * The owner's membership level from 1 to 3, as defined by {@link MembershipLevel}.
      */
-    default String membershipTier(Owner owner) {
-        Integer householdMembers = owner.getHouseholdMemberCount();
-        if (householdMembers != null && householdMembers >= 3) {
-            return "GOLD";
-        }
-        boolean noNamesakes = Integer.valueOf(0).equals(owner.getNamesakeCount());
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    default int membershipLevel(Owner owner) {
+        return MembershipLevel.of(owner);
     }
 
     /**
