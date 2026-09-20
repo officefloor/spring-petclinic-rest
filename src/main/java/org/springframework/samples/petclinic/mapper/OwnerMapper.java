@@ -20,7 +20,21 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
+     * {@code YY} is the last two digits of the registration date's year
+     * (e.g. {@code "SMI-0007-M26"}). Returns {@code null} until both the customer code
+     * and registration date have been assigned.
+     */
+    default String formatMembershipNumber(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
 
     /**
      * Formats an owner's stored names as {@code "LastName, FirstName"} for display.
