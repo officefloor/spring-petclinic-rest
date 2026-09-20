@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
+index 7e3bf437a..8b603dbe9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
+@@ -16,19 +16,27 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
+ import org.springframework.stereotype.Component;
++import tools.jackson.databind.ObjectMapper;
+ 
+ /**
+- * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever an owner is
+- * successfully created. The line carries the persisted owner's id, its generated
+- * {@code customerCode}, its {@code registrationDate} and its derived {@code membershipLevel}
+- * and {@code membershipNumber}, so the create can be reconciled against the audit log
+- * without depending on any implementation-specific hook.
++ * Emits audit output to the dedicated {@code AUDIT} logger whenever an owner is successfully
++ * created. Two entries are produced per create:
++ * <ul>
++ *   <li>a human-readable line carrying the persisted owner's id, its generated
++ *       {@code customerCode}, its {@code registrationDate} and its derived
++ *       {@code membershipLevel} and {@code membershipNumber}; and</li>
++ *   <li>an immutable structured {@link OwnerCreatedEvent} serialized as JSON, so the create
++ *       can be reconciled against the audit log without depending on any
++ *       implementation-specific hook.</li>
++ * </ul>
+  */
+ @Component
+ public class OwnerAuditLogger {
+@@ -37,6 +45,11 @@ public class OwnerAuditLogger {
+ 
+     private final MembershipLevelEvaluator membershipLevelEvaluator;
+ 
++    private final ObjectMapper objectMapper = new ObjectMapper();
++
++    /** Assigns each created owner a monotonically increasing sequence number. */
++    private final AtomicLong sequence = new AtomicLong();
++
+     public OwnerAuditLogger(MembershipLevelEvaluator membershipLevelEvaluator) {
+         this.membershipLevelEvaluator = membershipLevelEvaluator;
+     }
+@@ -47,8 +60,11 @@ public class OwnerAuditLogger {
+      * @param owner the persisted owner (id, customerCode and registrationDate populated)
+      */
+     public void logCreated(Owner owner) {
++        Integer membershipLevel = membershipLevelEvaluator.levelFor(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            membershipLevelEvaluator.levelFor(owner), MembershipNumber.forOwner(owner));
++            membershipLevel, MembershipNumber.forOwner(owner));
++        OwnerCreatedEvent event = OwnerCreatedEvent.of(sequence.incrementAndGet(), owner, membershipLevel);
++        AUDIT.info(objectMapper.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..16a479fa9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerCreatedEvent.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured audit event recorded when an owner is created. Serialized to JSON it
++ * yields {@code {seq, ownerId, customerCode, membershipLevel, event:"OWNER_CREATED"}}.
++ *
++ * <p>The event carries the owner's <em>current primary identifier</em> under
++ * {@code customerCode}. That identifier is resolved in a single place
++ * ({@link #primaryIdentifier(Owner)}); when the primary identifier is later unified into the
++ * memberId, changing that method is all that is needed for the event to carry the memberId.
++ *
++ * @param seq             monotonically increasing sequence number across creates
++ * @param ownerId         the persisted owner's id
++ * @param customerCode    the owner's current primary identifier
++ * @param membershipLevel the owner's derived membership level
++ * @param event           the event type discriminator, always {@link #EVENT_TYPE}
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++                                String event) {
++
++    /** The event type discriminator carried by every owner-created event. */
++    public static final String EVENT_TYPE = "OWNER_CREATED";
++
++    /**
++     * Builds an event for a freshly created owner.
++     *
++     * @param seq             the sequence number assigned to this create
++     * @param owner           the persisted owner (id and primary identifier populated)
++     * @param membershipLevel the owner's derived membership level
++     */
++    public static OwnerCreatedEvent of(long seq, Owner owner, Integer membershipLevel) {
++        return new OwnerCreatedEvent(seq, owner.getId(), primaryIdentifier(owner), membershipLevel, EVENT_TYPE);
++    }
++
++    /**
++     * Resolves the owner's current primary identifier. This is the single seam through which
++     * the primary identifier will later switch from the customer code to the memberId.
++     */
++    private static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++}
