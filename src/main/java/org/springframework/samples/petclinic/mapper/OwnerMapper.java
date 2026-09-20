@@ -44,6 +44,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipLevelEvaluator.pointsFor(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
@@ -75,6 +76,18 @@ public abstract class OwnerMapper {
             return org.springframework.samples.petclinic.model.Locality.fromCustomerCode(owner.getCustomerCode());
         }
         return org.springframework.samples.petclinic.model.Locality.forOwner(owner);
+    }
+
+    /**
+     * Derives an owner's IANA timezone from its locality region using the fixed
+     * region-to-timezone table. Returns {@code null} for a {@code null} owner or when
+     * the region has no known timezone.
+     */
+    protected String formatTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.model.RegionTimezone.forRegion(formatLocality(owner));
     }
 
     /**
