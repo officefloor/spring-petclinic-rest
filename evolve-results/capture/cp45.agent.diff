@@ -1,0 +1,162 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e9cbb9f25..f0e34c139 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
++    @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+@@ -39,6 +40,18 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * How to address the owner: their {@link Owner#getTitle() title} followed by a space
++     * and the last name (e.g. {@code DR Franklin}), or just the last name when no title
++     * was supplied.
++     */
++    default String salutation(Owner owner) {
++        String title = owner.getTitle();
++        return (title == null || title.isBlank())
++            ? owner.getLastName()
++            : title + " " + owner.getLastName();
++    }
++
+     /**
+      * The upper-cased first letters of the first and last name, dot-separated with a
+      * trailing dot, e.g. {@code J.S.}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3a3fcb33f..582f16709 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -36,6 +36,9 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "address_line1")
+     private String addressLine1;
+ 
+@@ -89,6 +92,14 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getAddressLine1() {
+         return this.addressLine1;
+     }
+@@ -282,6 +293,7 @@ public class Owner extends Person {
+             .append("new", this.isNew())
+             .append("lastName", this.getLastName())
+             .append("firstName", this.getFirstName())
++            .append("title", this.title)
+             .append("addressLine1", this.addressLine1)
+             .append("addressLine2", this.addressLine2)
+             .append("address", this.address)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index 84c7b450e..7284ce148 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -13,6 +13,7 @@ public class ApplyOwner {
+                 request.getAddressLine2(), request.getAddress()));
+         owner.setCity(request.getCity());
+         owner.setPostcode(request.getPostcode());
++        owner.setTitle(request.getTitle());
+         owner.setFirstName(request.getFirstName());
+         owner.setLastName(request.getLastName());
+         owner.setTelephone(request.getTelephone());
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index eb6653663..1e65b6211 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
++  title VARCHAR(3),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+   address VARCHAR(255) NOT NULL,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index f0b412ab3..b9e2de79e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE owners (
+   id         INTEGER IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
++  title      VARCHAR(3),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+   address    VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d6ef568ae..cd4c38fd4 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
++  title VARCHAR(3),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+   address VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 22dae027c..3fcb2ae85 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                                       first_name TEXT,
+                                       last_name  TEXT,
++                                      title      TEXT,
+                                       address_line1 TEXT,
+                                       address_line2 TEXT,
+                                       address    TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 268f0369e..c25d0816b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,14 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            An optional honorific for the pet owner (MR, MRS, MS or DR). When supplied it
++            prefixes the derived 'salutation'.
++          type: string
++          maxLength: 3
++          example: DR
+         addressLine1:
+           title: Address line 1
+           description: >-
+@@ -2118,6 +2126,14 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                How to address the pet owner - the title followed by a space and the last
++                name (e.g. 'DR Franklin'), or just the last name when no title was supplied.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             initials:
+               title: Initials
+               description: The upper-cased first letters of the first and last name, dot-separated with a trailing dot.
