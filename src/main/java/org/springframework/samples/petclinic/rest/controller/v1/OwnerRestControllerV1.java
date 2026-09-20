@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
 import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.model.Owner;
@@ -73,13 +74,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final EmailNormalizer emailNormalizer;
 
+    private final HouseholdDuplicateValidator householdDuplicateValidator;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  OwnerFieldsValidator ownerFieldsValidator,
                                  TelephoneNormalizer telephoneNormalizer,
-                                 EmailNormalizer emailNormalizer) {
+                                 EmailNormalizer emailNormalizer,
+                                 HouseholdDuplicateValidator householdDuplicateValidator) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -87,6 +91,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.ownerFieldsValidator = ownerFieldsValidator;
         this.telephoneNormalizer = telephoneNormalizer;
         this.emailNormalizer = emailNormalizer;
+        this.householdDuplicateValidator = householdDuplicateValidator;
     }
 
     /**
@@ -131,6 +136,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (!this.clinicService.findOwnerByTelephone(telephone).isEmpty()) {
             throw new DuplicateTelephoneException(telephone);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            householdDuplicateValidator.validate(owner);
         }
         owner.setTelephone(telephone);
         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));

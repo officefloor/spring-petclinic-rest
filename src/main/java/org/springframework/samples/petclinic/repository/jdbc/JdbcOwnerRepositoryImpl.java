@@ -162,6 +162,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public Collection<Owner> findByLastNameIgnoreCase(String lastName) throws DataAccessException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("lastName", lastName);
+        List<Owner> owners = this.namedParameterJdbcTemplate.query(
+            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE LOWER(last_name) = LOWER(:lastName)",
+            params,
+            BeanPropertyRowMapper.newInstance(Owner.class)
+        );
+        loadOwnersPetsAndVisits(owners);
+        return owners;
+    }
+
+    @Override
     public void save(Owner owner) throws DataAccessException {
         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
         if (owner.isNew()) {
