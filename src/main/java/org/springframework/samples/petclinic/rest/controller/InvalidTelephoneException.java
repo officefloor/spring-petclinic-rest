@@ -17,13 +17,13 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Thrown when a submitted telephone does not reduce to exactly ten digits once every
- * non-digit character has been stripped. Handled as {@code 400 Bad Request}.
+ * Thrown when a submitted telephone cannot be reduced to a valid E.164 number (a leading
+ * {@code '+'} followed by 8 to 15 digits). Handled as {@code 400 Bad Request}.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     public InvalidTelephoneException(String rejectedValue) {
-        super("telephone must contain exactly 10 digits after removing non-digit characters (rejected value: "
+        super("telephone must form a valid E.164 number with 8 to 15 digits after the '+' (rejected value: "
             + rejectedValue + ")");
     }
 }

@@ -16,33 +16,51 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Component;
 
 /**
- * Normalizes a raw telephone input into its canonical, storable form.
+ * Normalizes a raw telephone input into canonical E.164 form.
  * <p>
- * Every non-digit character is stripped and the result must then be exactly
- * {@link #REQUIRED_DIGITS} digits; anything else is rejected with an
- * {@link InvalidTelephoneException} (surfaced as {@code 400 Bad Request}).
+ * Spaces, dashes and brackets are stripped. When the remaining value carries a
+ * leading {@code '+'} its country code is kept as supplied; otherwise the default
+ * country code {@link #DEFAULT_COUNTRY_CODE} is assumed and a single leading
+ * {@code '0'} is dropped from the national digits. The digits following the
+ * {@code '+'} must number between {@link #MIN_DIGITS} and {@link #MAX_DIGITS};
+ * anything else is rejected with an {@link InvalidTelephoneException} (surfaced as
+ * {@code 400 Bad Request}).
  */
 @Component
 public class TelephoneNormalizer {
 
-    private static final int REQUIRED_DIGITS = 10;
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+    private static final int MIN_DIGITS = 8;
+    private static final int MAX_DIGITS = 15;
+
+    /** Matches the digits that must follow the '+' once the country code is resolved. */
+    private static final Pattern E164_DIGITS =
+        Pattern.compile("\\d{" + MIN_DIGITS + "," + MAX_DIGITS + "}");
 
     /**
-     * Strip every non-digit character from {@code rawTelephone} and require the
-     * remaining value to be exactly ten digits.
+     * Convert {@code rawTelephone} into its E.164 representation.
      *
      * @param rawTelephone the telephone as supplied by the client (may contain formatting)
-     * @return the ten-digit telephone to store and return
-     * @throws InvalidTelephoneException if fewer or more than ten digits remain after stripping
+     * @return the E.164 telephone (a leading {@code '+'} followed by 8-15 digits) to store and return
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     public String normalize(String rawTelephone) {
-        String digits = rawTelephone == null ? "" : rawTelephone.replaceAll("\\D", "");
-        if (digits.length() != REQUIRED_DIGITS) {
+        String cleaned = rawTelephone == null ? "" : rawTelephone.replaceAll("[\\s()-]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = DEFAULT_COUNTRY_CODE + national;
+        }
+        if (!E164_DIGITS.matcher(digits).matches()) {
             throw new InvalidTelephoneException(rawTelephone);
         }
-        return digits;
+        return "+" + digits;
     }
 }
