@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -48,6 +49,7 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
     private final CustomerCodeGenerator customerCodeGenerator;
+    private final CustomerCodeDeduplicator customerCodeDeduplicator;
     private final NamesakeCounter namesakeCounter;
 
     public ClinicServiceImpl(
@@ -58,6 +60,7 @@ public class ClinicServiceImpl implements ClinicService {
         SpecialtyRepository specialtyRepository,
         PetTypeRepository petTypeRepository,
         CustomerCodeGenerator customerCodeGenerator,
+        CustomerCodeDeduplicator customerCodeDeduplicator,
         NamesakeCounter namesakeCounter) {
         this.petRepository = petRepository;
         this.vetRepository = vetRepository;
@@ -66,6 +69,7 @@ public class ClinicServiceImpl implements ClinicService {
         this.specialtyRepository = specialtyRepository;
         this.petTypeRepository = petTypeRepository;
         this.customerCodeGenerator = customerCodeGenerator;
+        this.customerCodeDeduplicator = customerCodeDeduplicator;
         this.namesakeCounter = namesakeCounter;
     }
 
@@ -241,7 +245,12 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
             String region = Locality.forOwner(owner);
-            owner.setCustomerCode(customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
+            String baseCode = customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName());
+            List<String> existingCodes = ownerRepository.findAll().stream()
+                .map(Owner::getCustomerCode)
+                .filter(Objects::nonNull)
+                .toList();
+            owner.setCustomerCode(customerCodeDeduplicator.deDuplicate(baseCode, existingCodes));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             Collection<Owner> sameLastName = ownerRepository.findByLastNameIgnoreCase(owner.getLastName());
