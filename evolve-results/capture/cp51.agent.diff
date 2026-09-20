@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java
+index 6cd5e079f..c4c19a2c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java
+@@ -16,15 +16,19 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller;
+ 
++import java.util.Objects;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Guards owner creation against household duplicates. Because a household is keyed on last name
+- * and postcode, an owner whose {@link Households#householdId(Owner) household identifier} already
+- * belongs to an existing owner is a second member of that household and is rejected. Setting
+- * {@code sharesHousehold} declares the owner an intentional household member and bypasses the
+- * block.
++ * Guards owner creation against exact household duplicates. A household is keyed on last name and
++ * postcode, but sharing a household is not by itself a duplicate: distinct people in the same
++ * household are told apart by their telephone. Only a candidate that matches an existing household
++ * member on telephone as well is a true re-registration and is rejected; a household member with a
++ * different telephone is a legitimate new member, left to {@link PossibleDuplicateDetector} to flag
++ * softly. Setting {@code sharesHousehold} declares the owner an intentional household member and
++ * bypasses the block.
+  */
+ @Component
+ public class HouseholdDuplicateValidator {
+@@ -36,19 +40,23 @@ public class HouseholdDuplicateValidator {
+     }
+ 
+     /**
+-     * Reject {@code candidate} when it is a second member of an existing household, unless it
+-     * declares itself a shared-household member.
++     * Reject {@code candidate} when an existing member of its household already carries the same
++     * telephone (a true re-registration), unless it declares itself a shared-household member.
++     * Household members with a different telephone are legitimate new members and are not rejected.
+      *
+-     * @param candidate       the owner about to be created, with its {@code householdId} already set
++     * @param candidate       the owner about to be created, with its {@code householdId} and
++     *                        normalized telephone already set
+      * @param sharesHousehold whether the owner opted into a shared household, bypassing the block
+-     * @throws HouseholdDuplicateException if another owner already belongs to the candidate's
+-     * household and {@code sharesHousehold} is {@code false}
++     * @throws HouseholdDuplicateException if a household member shares the candidate's telephone and
++     * {@code sharesHousehold} is {@code false}
+      */
+     public void validate(Owner candidate, boolean sharesHousehold) {
+         if (sharesHousehold) {
+             return;
+         }
+-        if (!households.findMembers(candidate).isEmpty()) {
++        boolean exactDuplicate = households.findMembers(candidate).stream()
++            .anyMatch(member -> Objects.equals(member.getTelephone(), candidate.getTelephone()));
++        if (exactDuplicate) {
+             throw new HouseholdDuplicateException(candidate.getHouseholdId());
+         }
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 90b205b99..5b6345fe2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -65,6 +65,7 @@ public interface ClinicService {
+ 	long countOwnersInCity(String city) throws DataAccessException;
+ 	long countOwnersRegisteredOn(LocalDate date) throws DataAccessException;
+ 	long countOwnersInHousehold(String householdId) throws DataAccessException;
++	List<Owner> findOwnersInHousehold(String householdId) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index f6330c3d9..a488aa9b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -326,9 +326,19 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional(readOnly = true)
+     public long countOwnersInHousehold(String householdId) throws DataAccessException {
++        return findOwnersInHousehold(householdId).size();
++    }
++
++    /**
++     * All existing owners that belong to the given household, matched by their
++     * {@code householdId}. Used to derive household-aware membership rules.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public List<Owner> findOwnersInHousehold(String householdId) throws DataAccessException {
+         return ownerRepository.findAll().stream()
+             .filter(existing -> householdId.equals(existing.getHouseholdId()))
+-            .count();
++            .toList();
+     }
+ 
+     private <T> T findEntityById(Supplier<T> supplier) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+index b2b8baf9f..a43264527 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
+ 
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.util.OptionalInt;
+ 
+ /**
+  * Scores an owner's membership and maps that score to a numeric level. Points start at 0
+@@ -97,11 +98,33 @@ public class MembershipLevelEvaluator {
+ 
+     /**
+      * @param owner the owner whose level is evaluated
+-     * @return the owner's membership level, or {@code null} when the owner is not known
++     * @return the owner's membership level capped at one above the highest level among the
++     *     owner's existing household members, or {@code null} when the owner is not known
+      */
+     public Integer levelFor(Owner owner) {
+         Integer points = pointsFor(owner);
+-        return points == null ? null : levelForPoints(points);
++        return points == null ? null : capToHousehold(owner, levelForPoints(points));
++    }
++
++    /**
++     * Caps {@code level} at one above the highest level among the owner's existing household
++     * members. Member levels are evaluated uncapped to avoid recursion; the owner itself and
++     * soft-deleted owners are excluded. With no household members no cap applies.
++     */
++    private int capToHousehold(Owner owner, int level) {
++        if (owner.getHouseholdId() == null) {
++            return level;
++        }
++        OptionalInt maxMemberLevel = clinicService.findOwnersInHousehold(owner.getHouseholdId()).stream()
++            .filter(member -> !member.isDeleted())
++            .filter(member -> !isSameOwner(member, owner))
++            .mapToInt(member -> levelForPoints(pointsFor(member)))
++            .max();
++        return maxMemberLevel.isPresent() ? Math.min(level, maxMemberLevel.getAsInt() + 1) : level;
++    }
++
++    private boolean isSameOwner(Owner member, Owner owner) {
++        return owner.getId() != null && owner.getId().equals(member.getId());
+     }
+ 
+     /**
