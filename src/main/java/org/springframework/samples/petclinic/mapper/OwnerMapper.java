@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
-import org.springframework.samples.petclinic.service.MembershipTierEvaluator;
+import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,12 +25,12 @@ public abstract class OwnerMapper {
     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
 
     @Autowired
-    protected MembershipTierEvaluator membershipTierEvaluator;
+    protected MembershipLevelEvaluator membershipLevelEvaluator;
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTierEvaluator.tierFor(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.fromCity(owner.getCity()))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
