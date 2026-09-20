@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDe
 import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
 import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
+import org.springframework.samples.petclinic.rest.controller.WelcomeNotifier;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
@@ -109,6 +110,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final OwnerIdempotencyStore ownerIdempotencyStore;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
@@ -127,7 +130,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                  BusinessDayAdjuster businessDayAdjuster,
                                  RegistrationDateValidator registrationDateValidator,
                                  OwnerAuditLogger ownerAuditLogger,
-                                 OwnerIdempotencyStore ownerIdempotencyStore) {
+                                 OwnerIdempotencyStore ownerIdempotencyStore,
+                                 WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -147,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.registrationDateValidator = registrationDateValidator;
         this.ownerAuditLogger = ownerAuditLogger;
         this.ownerIdempotencyStore = ownerIdempotencyStore;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     /**
@@ -212,6 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         this.clinicService.saveOwner(owner);
         ownerAuditLogger.logCreated(owner);
+        welcomeNotifier.enqueueWelcome(owner);
         ownerIdempotencyStore.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
