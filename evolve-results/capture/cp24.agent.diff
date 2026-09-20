@@ -1,0 +1,202 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b9c19f692..29b071db9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
+-import org.springframework.samples.petclinic.service.MembershipTierEvaluator;
++import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -25,12 +25,12 @@ public abstract class OwnerMapper {
+     protected BulkSignupWarningEvaluator bulkSignupWarningEvaluator;
+ 
+     @Autowired
+-    protected MembershipTierEvaluator membershipTierEvaluator;
++    protected MembershipLevelEvaluator membershipLevelEvaluator;
+ 
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTierEvaluator.tierFor(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.fromCity(owner.getCity()))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+new file mode 100644
+index 000000000..f3aa58b67
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/MembershipLevelEvaluator.java
+@@ -0,0 +1,65 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Derives an owner's numeric membership level. The level starts at 1 and gains a
++ * point for each qualifying attribute:
++ * <ul>
++ *   <li>+1 when the owner has an email address on file;</li>
++ *   <li>+1 when the owner has no namesakes ({@code namesakeCount} is 0).</li>
++ * </ul>
++ * The result is capped at {@value #MAX_LEVEL}; level 4 is reserved for tenure.
++ */
++@Component
++public class MembershipLevelEvaluator {
++
++    /** The level every owner starts at before any qualifying attribute is counted. */
++    static final int BASE_LEVEL = 1;
++
++    /** Highest level attainable on creation; level 4 is reserved for tenure. */
++    static final int MAX_LEVEL = 3;
++
++    /**
++     * @param owner the owner whose level is evaluated
++     * @return the owner's membership level, or {@code null} when the owner is not known
++     */
++    public Integer levelFor(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        int level = BASE_LEVEL;
++        if (hasEmail(owner)) {
++            level++;
++        }
++        if (hasNoNamesakes(owner)) {
++            level++;
++        }
++        return Math.min(level, MAX_LEVEL);
++    }
++
++    private boolean hasEmail(Owner owner) {
++        return owner.getEmail() != null && !owner.getEmail().isBlank();
++    }
++
++    private boolean hasNoNamesakes(Owner owner) {
++        return owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/MembershipTierEvaluator.java b/src/main/java/org/springframework/samples/petclinic/service/MembershipTierEvaluator.java
+deleted file mode 100644
+index 4509b767f..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/service/MembershipTierEvaluator.java
++++ /dev/null
+@@ -1,67 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.service;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.stereotype.Component;
+-
+-/**
+- * Derives an owner's membership tier:
+- * <ul>
+- *   <li>{@code "GOLD"} when the owner's household (owners sharing the same
+- *       {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE} or more members;</li>
+- *   <li>otherwise {@code "SILVER"} when the owner has no namesakes
+- *       ({@code namesakeCount} is 0) and an email address on file;</li>
+- *   <li>otherwise {@code "BRONZE"}.</li>
+- * </ul>
+- */
+-@Component
+-public class MembershipTierEvaluator {
+-
+-    /** Number of household members at or above which the owner qualifies for GOLD. */
+-    static final int GOLD_HOUSEHOLD_SIZE = 3;
+-
+-    private final ClinicService clinicService;
+-
+-    public MembershipTierEvaluator(ClinicService clinicService) {
+-        this.clinicService = clinicService;
+-    }
+-
+-    /**
+-     * @param owner the owner whose tier is evaluated
+-     * @return the owner's membership tier, or {@code null} when the owner is not known
+-     */
+-    public String tierFor(Owner owner) {
+-        if (owner == null) {
+-            return null;
+-        }
+-        if (isGoldHousehold(owner)) {
+-            return "GOLD";
+-        }
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        boolean hasNoNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        return hasNoNamesakes && hasEmail ? "SILVER" : "BRONZE";
+-    }
+-
+-    private boolean isGoldHousehold(Owner owner) {
+-        String householdId = owner.getHouseholdId();
+-        if (householdId == null || householdId.isBlank()) {
+-            return false;
+-        }
+-        return clinicService.countOwnersInHousehold(householdId) >= GOLD_HOUSEHOLD_SIZE;
+-    }
+-}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ad131f423..013defbe7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2139,14 +2139,18 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address on file,
+-                otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned on create. Starts
++                at 1, gains 1 when an email address is on file, gains 1 when the
++                owner has no namesakes (namesakeCount is 0), and is capped at 3
++                (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 4
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
