@@ -281,9 +281,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Count how many existing owners are already registered in the given city, comparing
-     * city names case-insensitively. Used to derive the per-city customer-code sequence.
+     * city names case-insensitively. Used to derive the per-city customer-code sequence and
+     * to enforce the per-city capacity limit on owner creation.
      */
-    private long countOwnersInCity(String city) {
+    @Override
+    @Transactional(readOnly = true)
+    public long countOwnersInCity(String city) throws DataAccessException {
         return ownerRepository.findAll().stream()
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
