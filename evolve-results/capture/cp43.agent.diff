@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2c6c19817..29024d5b9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -39,7 +39,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
+-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
++    @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.forOwner(owner))")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipLevelEvaluator.pointsFor(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
+@@ -50,19 +50,6 @@ public abstract class OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+-    /**
+-     * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
+-     * {@code YY} is the last two digits of the registration date's year
+-     * (e.g. {@code "NSW-A1B2C3D4-M26"}). Returns {@code null} until both the customer code
+-     * and registration date have been assigned.
+-     */
+-    protected String formatMembershipNumber(Owner owner) {
+-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+-            return null;
+-        }
+-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+-    }
+-
+     /**
+      * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}
+      * segment of the assigned {@code customerCode}. Owners without a code yet fall back to
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+new file mode 100644
+index 000000000..91276e158
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipNumber.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
++ * {@code YY} is the last two digits of the registration date's year
++ * (e.g. {@code "NSW-A1B2C3D4-M26"}). The number is undefined until both the customer code
++ * and registration date have been assigned.
++ */
++public final class MembershipNumber {
++
++    private MembershipNumber() {
++    }
++
++    /**
++     * Returns the formatted membership number for the owner, or {@code null} when the owner
++     * is {@code null} or its customer code or registration date has not been assigned yet.
++     */
++    public static String forOwner(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
++            return null;
++        }
++        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
+index 1fb9bdda8..7e3bf437a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerAuditLogger.java
+@@ -18,27 +18,37 @@ package org.springframework.samples.petclinic.rest.controller;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.MembershipNumber;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever an owner is
+  * successfully created. The line carries the persisted owner's id, its generated
+- * {@code customerCode} and its {@code registrationDate}, so the create can be reconciled
+- * against the audit log without depending on any implementation-specific hook.
++ * {@code customerCode}, its {@code registrationDate} and its derived {@code membershipLevel}
++ * and {@code membershipNumber}, so the create can be reconciled against the audit log
++ * without depending on any implementation-specific hook.
+  */
+ @Component
+ public class OwnerAuditLogger {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private final MembershipLevelEvaluator membershipLevelEvaluator;
++
++    public OwnerAuditLogger(MembershipLevelEvaluator membershipLevelEvaluator) {
++        this.membershipLevelEvaluator = membershipLevelEvaluator;
++    }
++
+     /**
+      * Record the successful creation of an owner.
+      *
+      * @param owner the persisted owner (id, customerCode and registrationDate populated)
+      */
+     public void logCreated(Owner owner) {
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            membershipLevelEvaluator.levelFor(owner), MembershipNumber.forOwner(owner));
+     }
+ }
