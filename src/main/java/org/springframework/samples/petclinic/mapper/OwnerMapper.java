@@ -37,7 +37,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.forOwner(owner))")
+    @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
@@ -45,7 +45,7 @@ public abstract class OwnerMapper {
     /**
      * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
      * {@code YY} is the last two digits of the registration date's year
-     * (e.g. {@code "LON-SMI-0007-M26"}). Returns {@code null} until both the customer code
+     * (e.g. {@code "NSW-A1B2C3D4-M26"}). Returns {@code null} until both the customer code
      * and registration date have been assigned.
      */
     protected String formatMembershipNumber(Owner owner) {
@@ -53,6 +53,21 @@ public abstract class OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}
+     * segment of the assigned {@code customerCode}. Owners without a code yet fall back to
+     * deriving the region straight from their own fields.
+     */
+    protected String formatLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        if (owner.getCustomerCode() != null) {
+            return org.springframework.samples.petclinic.model.Locality.fromCustomerCode(owner.getCustomerCode());
+        }
+        return org.springframework.samples.petclinic.model.Locality.forOwner(owner);
     }
 
     /**

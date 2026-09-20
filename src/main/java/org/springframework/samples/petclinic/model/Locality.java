@@ -50,6 +50,19 @@ public final class Locality {
     }
 
     /**
+     * Returns the locality recorded in an owner's {@code customerCode}, i.e. the leading
+     * {@code <REGION>} segment of the {@code '<REGION>-<HASH8>'} identity. Returns
+     * {@link #UNKNOWN} when the code is {@code null} or carries no region segment.
+     */
+    public static String fromCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return UNKNOWN;
+        }
+        int separator = customerCode.indexOf('-');
+        return separator <= 0 ? UNKNOWN : customerCode.substring(0, separator);
+    }
+
+    /**
      * Returns the canonical region for the given city, or {@link #UNKNOWN} when the
      * city is {@code null} or not present in the table.
      */

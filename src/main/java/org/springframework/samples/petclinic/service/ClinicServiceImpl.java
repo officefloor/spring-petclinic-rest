@@ -240,8 +240,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            long sequence = countOwnersInCity(owner.getCity()) + 1L;
-            owner.setCustomerCode(customerCodeGenerator.generate(owner.getCity(), owner.getLastName(), sequence));
+            String region = Locality.forOwner(owner);
+            owner.setCustomerCode(customerCodeGenerator.generate(region, owner.getTelephone(), owner.getLastName()));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             Collection<Owner> sameLastName = ownerRepository.findByLastNameIgnoreCase(owner.getLastName());
