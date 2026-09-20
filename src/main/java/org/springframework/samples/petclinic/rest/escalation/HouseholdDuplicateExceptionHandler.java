@@ -5,18 +5,18 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.samples.petclinic.rest.function.owner.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.function.owner.HouseholdDuplicateException;
 
 /**
- * Responds 409 when a create request's identity key (telephone, email and household combined)
- * already belongs to an existing owner.
+ * Responds 409 when a create request would join an existing owner's household (same last name
+ * and postcode) without declaring {@code sharesHousehold}.
  */
-public class DuplicateIdentityExceptionHandler {
+public class HouseholdDuplicateExceptionHandler {
 
-    public void handle(@Parameter DuplicateIdentityException ex,
+    public void handle(@Parameter HouseholdDuplicateException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "An owner with the same identity already exists");
+                "An owner in the same household already exists");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }

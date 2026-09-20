@@ -2,14 +2,14 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Shared household matching: canonicalizes the free-text fields that identify a household
- * (last name and address) so values that differ only in letter case, in the amount of
- * surrounding/internal whitespace, or (for the address) in common street-type
- * abbreviations compare equal. Used to detect when a new owner shares a household with an
- * existing one, and to derive the stable identifier that owners in the same household share.
+ * Shared household identity. A household is keyed on an owner's last name and postcode: every
+ * owner whose (normalized) last name and postcode match belongs to the same household and
+ * shares one stable {@link #id household id}, derived purely from that key. The id is therefore
+ * deterministic — two owners in the same household compute the same id independently, with no
+ * coordination — so it drives both duplicate detection and the household-size count off a single
+ * source of truth.
  */
 final class Households {
 
@@ -29,50 +29,27 @@ final class Households {
     }
 
     /**
-     * Canonicalizes an address using the same normalization applied when an owner is created
-     * (see {@link Addresses#normalize(String)}), so household comparisons see the stored,
-     * abbreviation-expanded form. Returns an empty string when {@code address} is
-     * {@code null}.
+     * The stable household id shared by every owner with the same last name and postcode: the
+     * first 12 hex characters of the SHA-256 digest of {@code normalizedLastName + "|" +
+     * postcode}. A {@code null} postcode contributes an empty segment.
      */
-    private static String normalizeAddress(String address) {
-        String normalized = Addresses.normalize(address);
-        return normalized == null ? "" : normalized;
+    static String id(String lastName, String postcode) {
+        String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode);
+        return Hashes.upperHexPrefix(key, 12);
     }
 
-    /**
-     * Whether {@code owner} belongs to the household identified by {@code lastName} and
-     * {@code address}, comparing the last name and the address in their canonical forms.
-     */
-    static boolean matches(Owner owner, String lastName, String address) {
-        return normalizeName(lastName).equals(normalizeName(owner.getLastName()))
-                && normalizeAddress(address).equals(normalizeAddress(owner.getAddress()));
+    /** The household id a create request resolves to, from its last name and postcode. */
+    static String id(OwnerFieldsDto request) {
+        return id(request.getLastName(), request.getPostcode());
     }
 
-    /**
-     * The stable identifier shared by every owner in the household identified by
-     * {@code lastName} and {@code address}. Derived purely from the canonical household key,
-     * so the same household always yields the same id without any coordination.
-     */
-    static String id(String lastName, String address) {
-        String key = normalizeName(lastName) + "\n" + normalizeAddress(address);
-        return "H-" + Hashes.upperHexPrefix(key, 12);
+    /** The household id of an existing owner, from its stored last name and postcode. */
+    static String id(Owner owner) {
+        return id(owner.getLastName(), owner.getPostcode());
     }
 
-    /**
-     * The household id a create request resolves to: the shared id of the household it joins
-     * when it opts in ({@code sharesHousehold} true) and an existing owner already lives at
-     * the same address under the same last name, otherwise an empty string. Mirrors the
-     * assignment performed by {@link AssignHousehold}.
-     */
-    static String resolveHouseholdId(OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return "";
-        }
-        for (Owner existing : ownerRepository.findAll()) {
-            if (matches(existing, request.getLastName(), request.getAddress())) {
-                return id(request.getLastName(), request.getAddress());
-            }
-        }
-        return "";
+    /** Whether the two owners belong to the same household (identical household id). */
+    static boolean sameHousehold(Owner a, Owner b) {
+        return id(a).equals(id(b));
     }
 }

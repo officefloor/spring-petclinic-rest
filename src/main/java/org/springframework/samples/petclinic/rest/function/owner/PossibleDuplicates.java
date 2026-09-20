@@ -7,13 +7,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Soft duplicate matching: a new owner is a <em>possible</em> duplicate of an existing owner
- * when they share the same last name (compared case-insensitively, ignoring surrounding and
- * internal whitespace) and the same postcode, yet were given a different telephone number.
+ * when they belong to the same {@link Households household} (same last name and postcode) yet
+ * were given a different telephone number.
  *
- * <p>Unlike a hard identity duplicate (see {@link IdentityKeys}), which is rejected outright,
- * a possible duplicate is still created and merely flagged with the id of the owner it
- * resembles. The differing telephone is what keeps it from being a hard duplicate in the first
- * place.
+ * <p>Unlike a household duplicate (see {@link EnsureUniqueHousehold}), which is rejected
+ * outright, a possible duplicate that reaches this point has declared {@code sharesHousehold};
+ * it is still created and merely flagged with the id of the owner it resembles. The differing
+ * telephone is what distinguishes it from an exact re-registration.
  */
 final class PossibleDuplicates {
 
@@ -21,8 +21,8 @@ final class PossibleDuplicates {
     }
 
     /**
-     * The id of the earliest existing owner the given owner possibly duplicates — same last
-     * name and postcode, different telephone — or empty when there is no such owner.
+     * The id of the earliest existing owner the given owner possibly duplicates — same
+     * household, different telephone — or empty when there is no such owner.
      */
     static Optional<Integer> matchFor(Owner owner, OwnerRepository ownerRepository) {
         Owner match = null;
@@ -35,27 +35,11 @@ final class PossibleDuplicates {
     }
 
     private static boolean matches(Owner owner, Owner existing) {
-        return samePostcode(owner.getPostcode(), existing.getPostcode())
-                && sameLastName(owner.getLastName(), existing.getLastName())
+        return Households.sameHousehold(owner, existing)
                 && !sameTelephone(owner.getTelephone(), existing.getTelephone());
-    }
-
-    private static boolean samePostcode(String a, String b) {
-        return a != null && b != null && a.trim().equals(b.trim());
-    }
-
-    private static boolean sameLastName(String a, String b) {
-        return normalizeName(a).equals(normalizeName(b)) && !normalizeName(a).isEmpty();
     }
 
     private static boolean sameTelephone(String a, String b) {
         return a != null && a.equals(b);
-    }
-
-    private static String normalizeName(String name) {
-        if (name == null) {
-            return "";
-        }
-        return name.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
