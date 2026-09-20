@@ -18,19 +18,28 @@ package org.springframework.samples.petclinic.rest.controller;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.samples.petclinic.model.MembershipNumber;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
 import org.springframework.stereotype.Component;
 
 /**
  * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever an owner is
  * successfully created. The line carries the persisted owner's id, its generated
- * {@code customerCode} and its {@code registrationDate}, so the create can be reconciled
- * against the audit log without depending on any implementation-specific hook.
+ * {@code customerCode}, its {@code registrationDate} and its derived {@code membershipLevel}
+ * and {@code membershipNumber}, so the create can be reconciled against the audit log
+ * without depending on any implementation-specific hook.
  */
 @Component
 public class OwnerAuditLogger {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    private final MembershipLevelEvaluator membershipLevelEvaluator;
+
+    public OwnerAuditLogger(MembershipLevelEvaluator membershipLevelEvaluator) {
+        this.membershipLevelEvaluator = membershipLevelEvaluator;
+    }
 
     /**
      * Record the successful creation of an owner.
@@ -38,7 +47,8 @@ public class OwnerAuditLogger {
      * @param owner the persisted owner (id, customerCode and registrationDate populated)
      */
     public void logCreated(Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            membershipLevelEvaluator.levelFor(owner), MembershipNumber.forOwner(owner));
     }
 }

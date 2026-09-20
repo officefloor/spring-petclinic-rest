@@ -39,7 +39,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(owner == null ? null : telephoneFormatter.format(owner.getTelephone()))")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.model.MembershipNumber.forOwner(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.model.CheckDigit.forOwner(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipLevelEvaluator.pointsFor(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevelEvaluator.levelFor(owner))")
@@ -49,19 +49,6 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
-
-    /**
-     * Formats an owner's membership number as {@code "<customerCode>-M<YY>"}, where
-     * {@code YY} is the last two digits of the registration date's year
-     * (e.g. {@code "NSW-A1B2C3D4-M26"}). Returns {@code null} until both the customer code
-     * and registration date have been assigned.
-     */
-    protected String formatMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
-    }
 
     /**
      * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}
