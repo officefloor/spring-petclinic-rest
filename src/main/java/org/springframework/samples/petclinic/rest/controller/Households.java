@@ -50,11 +50,13 @@ public class Households {
     /**
      * Existing owners that share {@code candidate}'s household (same {@link #householdId(Owner)
      * household identifier}). Intended for a not-yet-persisted candidate, so the candidate never
-     * appears in the result.
+     * appears in the result. Soft-deleted owners are excluded: they no longer count as household
+     * members for duplicate detection.
      */
     public List<Owner> findMembers(Owner candidate) {
         String householdId = householdId(candidate);
         return clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(householdId(existing)))
             .toList();
     }

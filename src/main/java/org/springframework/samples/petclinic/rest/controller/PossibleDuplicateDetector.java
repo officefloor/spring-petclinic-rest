@@ -59,6 +59,7 @@ public class PossibleDuplicateDetector {
             return null;
         }
         return clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> candidate.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !Objects.equals(candidate.getTelephone(), existing.getTelephone()))
             .min(Comparator.comparing(Owner::getId))

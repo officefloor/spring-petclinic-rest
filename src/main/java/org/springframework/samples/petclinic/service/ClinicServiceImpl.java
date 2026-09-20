@@ -148,10 +148,15 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll(pageable);
     }
 
+    /**
+     * Soft-delete an owner: flag it deleted and persist, retaining the row so it remains
+     * readable while being ignored by the create endpoint's duplicate and identity checks.
+     */
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override

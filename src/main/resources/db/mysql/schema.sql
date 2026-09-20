@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INT(4) UNSIGNED,
+  deleted BOOLEAN NOT NULL DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;
 

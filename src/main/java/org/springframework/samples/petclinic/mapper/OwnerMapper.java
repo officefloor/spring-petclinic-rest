@@ -112,6 +112,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     public abstract Owner toOwner(OwnerFieldsDto ownerDto);
 
     public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
