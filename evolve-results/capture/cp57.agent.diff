@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/WelcomeNotifier.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/WelcomeNotifier.java
+new file mode 100644
+index 000000000..42c759ef8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/WelcomeNotifier.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Enqueues a welcome notification whenever an owner is successfully created by emitting a
++ * line to the dedicated {@code NOTIFY} logger carrying the persisted owner's id and its
++ * generated {@code memberId}.
++ */
++@Component
++public class WelcomeNotifier {
++
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
++    /**
++     * Enqueue the welcome notification for a freshly created owner.
++     *
++     * @param owner the persisted owner (id and memberId populated)
++     */
++    public void enqueueWelcome(Owner owner) {
++        NOTIFY.info("Welcome notification enqueued: ownerId={} memberId={}",
++            owner.getId(), owner.getMemberId());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 65d93b6a7..3d72044fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDe
+ import org.springframework.samples.petclinic.rest.controller.PostcodeValidator;
+ import org.springframework.samples.petclinic.rest.controller.RegistrationDateValidator;
+ import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
++import org.springframework.samples.petclinic.rest.controller.WelcomeNotifier;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+@@ -109,6 +110,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final OwnerIdempotencyStore ownerIdempotencyStore;
+ 
++    private final WelcomeNotifier welcomeNotifier;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -127,7 +130,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  BusinessDayAdjuster businessDayAdjuster,
+                                  RegistrationDateValidator registrationDateValidator,
+                                  OwnerAuditLogger ownerAuditLogger,
+-                                 OwnerIdempotencyStore ownerIdempotencyStore) {
++                                 OwnerIdempotencyStore ownerIdempotencyStore,
++                                 WelcomeNotifier welcomeNotifier) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+@@ -147,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.registrationDateValidator = registrationDateValidator;
+         this.ownerAuditLogger = ownerAuditLogger;
+         this.ownerIdempotencyStore = ownerIdempotencyStore;
++        this.welcomeNotifier = welcomeNotifier;
+     }
+ 
+     /**
+@@ -212,6 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         this.clinicService.saveOwner(owner);
+         ownerAuditLogger.logCreated(owner);
++        welcomeNotifier.enqueueWelcome(owner);
+         ownerIdempotencyStore.record(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
