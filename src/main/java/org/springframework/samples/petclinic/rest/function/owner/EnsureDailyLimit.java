@@ -20,13 +20,7 @@ public class EnsureDailyLimit {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyLimitReachedException {
         LocalDate day = owner.getRegistrationDate();
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (day.equals(existing.getRegistrationDate())) {
-                count++;
-            }
-        }
-        if (count >= MAX_OWNERS_PER_DAY) {
+        if (DailyRegistrations.countOn(ownerRepository, day) >= MAX_OWNERS_PER_DAY) {
             throw new DailyLimitReachedException(day);
         }
     }
