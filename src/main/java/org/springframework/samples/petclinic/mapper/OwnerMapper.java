@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -34,6 +35,20 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Determines an owner's membership tier: {@code "SILVER"} when the owner has no
+     * namesakes ({@code namesakeCount} is 0) and an email address on file, otherwise
+     * {@code "BRONZE"}.
+     */
+    default String formatMembershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        boolean hasNoNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        return hasNoNamesakes && hasEmail ? "SILVER" : "BRONZE";
     }
 
     /**
