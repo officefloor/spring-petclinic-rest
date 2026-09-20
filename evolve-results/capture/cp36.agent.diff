@@ -1,0 +1,468 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a6577bb92..6b60d6bb9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,7 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.controller.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitExceededException;
+-import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
++import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateException;
+ import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+@@ -58,7 +58,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+-    private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the same identity already exists";
++    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner already exists in this household";
+     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners for today has already been reached";
+     private static final String ERROR_FUTURE_REGISTRATION_DATE = "The registration date must not be later than the server date";
+@@ -149,19 +149,19 @@ public class ExceptionControllerAdvice {
+     }
+ 
+     /**
+-     * Handles {@link DuplicateIdentityException} raised when an owner is created whose whole
+-     * identity key (normalized telephone, email and household identifier) already belongs to
+-     * another owner.
++     * Handles {@link HouseholdDuplicateException} raised when an owner is created that would be a
++     * second member of an existing household (same last name and postcode) without declaring
++     * itself a shared-household member.
+      *
+-     * @param e The {@link DuplicateIdentityException} to be handled
++     * @param e The {@link HouseholdDuplicateException} to be handled
+      * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+      */
+-    @ExceptionHandler(DuplicateIdentityException.class)
++    @ExceptionHandler(HouseholdDuplicateException.class)
+     @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
++    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
+         HttpStatus status = HttpStatus.CONFLICT;
+-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java
+deleted file mode 100644
+index da326f296..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdAssigner.java
++++ /dev/null
+@@ -1,62 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.controller;
+-
+-import java.util.List;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.service.ClinicService;
+-import org.springframework.stereotype.Component;
+-
+-/**
+- * Joins an owner that opts into a shared household into the household of any existing owner at
+- * the same address, giving every member the same stable {@code householdId}.
+- */
+-@Component
+-public class HouseholdAssigner {
+-
+-    private final Households households;
+-
+-    private final ClinicService clinicService;
+-
+-    public HouseholdAssigner(Households households, ClinicService clinicService) {
+-        this.households = households;
+-        this.clinicService = clinicService;
+-    }
+-
+-    /**
+-     * Assign {@code candidate} the household identifier it shares with any existing same-household
+-     * owners, back-filling that identifier onto members that do not yet carry it. A no-op when no
+-     * existing owner shares the candidate's household.
+-     *
+-     * @param candidate the owner about to be created; its {@code householdId} is set in place
+-     */
+-    public void assignSharedHousehold(Owner candidate) {
+-        List<Owner> members = households.findMembers(candidate);
+-        if (members.isEmpty()) {
+-            return;
+-        }
+-        String householdId = households.stableId(candidate);
+-        candidate.setHouseholdId(householdId);
+-        for (Owner member : members) {
+-            if (!householdId.equals(member.getHouseholdId())) {
+-                member.setHouseholdId(householdId);
+-                clinicService.saveOwner(member);
+-            }
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateException.java
+similarity index 61%
+rename from src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateIdentityException.java
+rename to src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateException.java
+index ce116d685..1db5e0dd2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/DuplicateIdentityException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateException.java
+@@ -17,12 +17,13 @@
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+ /**
+- * Thrown when creating an owner whose whole identity key (normalized telephone, email and
+- * household identifier) already belongs to another owner. Handled as {@code 409 Conflict}.
++ * Thrown when creating an owner that would be a second member of an existing household (same
++ * last name and postcode) without declaring itself a shared-household member. Handled as
++ * {@code 409 Conflict}.
+  */
+-public class DuplicateIdentityException extends RuntimeException {
++public class HouseholdDuplicateException extends RuntimeException {
+ 
+-    public DuplicateIdentityException(String identityKey) {
+-        super("an owner with the same identity already exists (identityKey: " + identityKey + ")");
++    public HouseholdDuplicateException(String householdId) {
++        super("an owner already exists in this household (householdId: " + householdId + ")");
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java
+new file mode 100644
+index 000000000..6cd5e079f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/HouseholdDuplicateValidator.java
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Guards owner creation against household duplicates. Because a household is keyed on last name
++ * and postcode, an owner whose {@link Households#householdId(Owner) household identifier} already
++ * belongs to an existing owner is a second member of that household and is rejected. Setting
++ * {@code sharesHousehold} declares the owner an intentional household member and bypasses the
++ * block.
++ */
++@Component
++public class HouseholdDuplicateValidator {
++
++    private final Households households;
++
++    public HouseholdDuplicateValidator(Households households) {
++        this.households = households;
++    }
++
++    /**
++     * Reject {@code candidate} when it is a second member of an existing household, unless it
++     * declares itself a shared-household member.
++     *
++     * @param candidate       the owner about to be created, with its {@code householdId} already set
++     * @param sharesHousehold whether the owner opted into a shared household, bypassing the block
++     * @throws HouseholdDuplicateException if another owner already belongs to the candidate's
++     * household and {@code sharesHousehold} is {@code false}
++     */
++    public void validate(Owner candidate, boolean sharesHousehold) {
++        if (sharesHousehold) {
++            return;
++        }
++        if (!households.findMembers(candidate).isEmpty()) {
++            throw new HouseholdDuplicateException(candidate.getHouseholdId());
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/Households.java
+index 802a9b576..f690f403a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/Households.java
+@@ -17,9 +17,11 @@
+ package org.springframework.samples.petclinic.rest.controller;
+ 
+ import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.HexFormat;
+ import java.util.List;
+ import java.util.Locale;
+-import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.service.ClinicService;
+@@ -27,13 +29,18 @@ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Household identity for owners: two owners belong to the same household when their last name
+- * and address match once compared case-insensitively and with runs of whitespace collapsed to
+- * a single space. Provides the shared lookup and stable-identifier logic reused by the
+- * duplicate guard and the shared-household assignment.
++ * (compared case-insensitively, with runs of whitespace collapsed) and postcode match. The
++ * {@code householdId} is derived deterministically from those two fields, so owners with the
++ * same last name and postcode share it automatically without any explicit linking. Provides the
++ * shared lookup and identifier logic reused by the duplicate guard and by the household-size
++ * queries that key off {@code householdId}.
+  */
+ @Component
+ public class Households {
+ 
++    /** Number of leading SHA-256 hex characters that make up a household identifier. */
++    private static final int ID_LENGTH = 12;
++
+     private final ClinicService clinicService;
+ 
+     public Households(ClinicService clinicService) {
+@@ -41,35 +48,29 @@ public class Households {
+     }
+ 
+     /**
+-     * Existing owners that share {@code candidate}'s household (same normalized last name and
+-     * address). Intended for a not-yet-persisted candidate, so the candidate never appears in
+-     * the result.
++     * Existing owners that share {@code candidate}'s household (same {@link #householdId(Owner)
++     * household identifier}). Intended for a not-yet-persisted candidate, so the candidate never
++     * appears in the result.
+      */
+     public List<Owner> findMembers(Owner candidate) {
+-        String key = key(candidate);
++        String householdId = householdId(candidate);
+         return clinicService.findOwnerByLastNameIgnoreCase(candidate.getLastName()).stream()
+-            .filter(existing -> key.equals(key(existing)))
++            .filter(existing -> householdId.equals(householdId(existing)))
+             .toList();
+     }
+ 
+     /**
+-     * The stable identifier every owner in {@code owner}'s household shares. Derived
+-     * deterministically from the household key, so the same household always yields the same id.
+-     */
+-    public String stableId(Owner owner) {
+-        return UUID.nameUUIDFromBytes(key(owner).getBytes(StandardCharsets.UTF_8)).toString();
+-    }
+-
+-    /**
+-     * Canonical household key: the normalized last name and address joined so that distinct
+-     * fields cannot collide.
++     * The stable identifier every owner in {@code owner}'s household shares: the first
++     * {@value #ID_LENGTH} hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)}.
++     * The same last name and postcode always yield the same id.
+      */
+-    private String key(Owner owner) {
+-        return normalize(owner.getLastName()) + "\n" + normalize(owner.getAddress());
++    public String householdId(Owner owner) {
++        String key = normalize(owner.getLastName()) + "|" + segment(owner.getPostcode());
++        return sha256Hex(key).substring(0, ID_LENGTH);
+     }
+ 
+     /**
+-     * Canonicalize a value for household comparison: {@code null} becomes empty, surrounding
++     * Canonicalize the last name for household comparison: {@code null} becomes empty, surrounding
+      * whitespace is trimmed, internal whitespace runs collapse to a single space, and the result
+      * is lower-cased.
+      */
+@@ -79,4 +80,19 @@ public class Households {
+         }
+         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
++
++    private String segment(String value) {
++        return value == null ? "" : value;
++    }
++
++    private String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(value.getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest);
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 is required but unavailable", e);
++        }
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/IdentityDuplicateValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/IdentityDuplicateValidator.java
+deleted file mode 100644
+index a7fc4e09b..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/IdentityDuplicateValidator.java
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.controller;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.service.ClinicService;
+-import org.springframework.stereotype.Component;
+-
+-/**
+- * Guards owner creation against duplicate identities: telephone, email and household are
+- * consolidated into a single {@link OwnerIdentity#key(Owner) identity key}, and a candidate is
+- * rejected only when its whole key equals an existing owner's. Owners that differ in any
+- * segment (for example two household members with different telephones) are distinct and both
+- * allowed.
+- */
+-@Component
+-public class IdentityDuplicateValidator {
+-
+-    private final ClinicService clinicService;
+-
+-    private final OwnerIdentity ownerIdentity;
+-
+-    public IdentityDuplicateValidator(ClinicService clinicService, OwnerIdentity ownerIdentity) {
+-        this.clinicService = clinicService;
+-        this.ownerIdentity = ownerIdentity;
+-    }
+-
+-    /**
+-     * Reject {@code candidate} when its identity key already belongs to another owner.
+-     *
+-     * @param candidate the owner about to be created, with its telephone, email and household
+-     * identifier already normalized
+-     * @throws DuplicateIdentityException if another owner shares the candidate's whole identity key
+-     */
+-    public void validate(Owner candidate) {
+-        String key = ownerIdentity.key(candidate);
+-        boolean taken = clinicService.findAllOwners().stream()
+-            .map(ownerIdentity::key)
+-            .anyMatch(key::equals);
+-        if (taken) {
+-            throw new DuplicateIdentityException(key);
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateDetector.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateDetector.java
+index edea3eaae..78cb04bc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateDetector.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/PossibleDuplicateDetector.java
+@@ -24,10 +24,10 @@ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Flags soft duplicates on owner creation. Unlike the hard {@link IdentityDuplicateValidator}
+- * (which rejects an exact identity match), a soft match never blocks creation: when an existing
+- * owner already shares the candidate's last name and postcode but carries a different telephone,
+- * the candidate is recorded as a possible duplicate of that owner.
++ * Flags soft duplicates on owner creation. Unlike the hard {@link HouseholdDuplicateValidator}
++ * (which rejects a second member of an existing household), a soft match never blocks creation:
++ * when an existing owner already shares the candidate's last name and postcode but carries a
++ * different telephone, the candidate is recorded as a possible duplicate of that owner.
+  */
+ @Component
+ public class PossibleDuplicateDetector {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index aa2c7d44b..4e63b0b57 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,8 +31,8 @@ import org.springframework.samples.petclinic.rest.controller.BusinessDayAdjuster
+ import org.springframework.samples.petclinic.rest.controller.CityCapacityValidator;
+ import org.springframework.samples.petclinic.rest.controller.DailyRegistrationLimitValidator;
+ import org.springframework.samples.petclinic.rest.controller.EmailNormalizer;
+-import org.springframework.samples.petclinic.rest.controller.HouseholdAssigner;
+-import org.springframework.samples.petclinic.rest.controller.IdentityDuplicateValidator;
++import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateValidator;
++import org.springframework.samples.petclinic.rest.controller.Households;
+ import org.springframework.samples.petclinic.rest.controller.OwnerAuditLogger;
+ import org.springframework.samples.petclinic.rest.controller.OwnerFieldsValidator;
+ import org.springframework.samples.petclinic.rest.controller.PossibleDuplicateDetector;
+@@ -87,11 +87,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final AddressNormalizer addressNormalizer;
+ 
+-    private final IdentityDuplicateValidator identityDuplicateValidator;
++    private final Households households;
+ 
+-    private final PossibleDuplicateDetector possibleDuplicateDetector;
++    private final HouseholdDuplicateValidator householdDuplicateValidator;
+ 
+-    private final HouseholdAssigner householdAssigner;
++    private final PossibleDuplicateDetector possibleDuplicateDetector;
+ 
+     private final CityCapacityValidator cityCapacityValidator;
+ 
+@@ -112,9 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                                  TelephoneNormalizer telephoneNormalizer,
+                                  EmailNormalizer emailNormalizer,
+                                  AddressNormalizer addressNormalizer,
+-                                 IdentityDuplicateValidator identityDuplicateValidator,
++                                 Households households,
++                                 HouseholdDuplicateValidator householdDuplicateValidator,
+                                  PossibleDuplicateDetector possibleDuplicateDetector,
+-                                 HouseholdAssigner householdAssigner,
+                                  CityCapacityValidator cityCapacityValidator,
+                                  DailyRegistrationLimitValidator dailyRegistrationLimitValidator,
+                                  BusinessDayAdjuster businessDayAdjuster,
+@@ -129,9 +129,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.telephoneNormalizer = telephoneNormalizer;
+         this.emailNormalizer = emailNormalizer;
+         this.addressNormalizer = addressNormalizer;
+-        this.identityDuplicateValidator = identityDuplicateValidator;
++        this.households = households;
++        this.householdDuplicateValidator = householdDuplicateValidator;
+         this.possibleDuplicateDetector = possibleDuplicateDetector;
+-        this.householdAssigner = householdAssigner;
+         this.cityCapacityValidator = cityCapacityValidator;
+         this.dailyRegistrationLimitValidator = dailyRegistrationLimitValidator;
+         this.businessDayAdjuster = businessDayAdjuster;
+@@ -187,11 +187,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setEmail(emailNormalizer.normalize(owner.getEmail()));
+         dailyRegistrationLimitValidator.validate(owner.getRegistrationDate());
+         cityCapacityValidator.validate(owner);
+-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+-            householdAssigner.assignSharedHousehold(owner);
++        owner.setHouseholdId(households.householdId(owner));
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        householdDuplicateValidator.validate(owner, sharesHousehold);
++        if (sharesHousehold) {
++            // A declared household member is not a suspected duplicate.
++            owner.setPossibleDuplicate(false);
++        } else {
++            possibleDuplicateDetector.detect(owner);
+         }
+-        identityDuplicateValidator.validate(owner);
+-        possibleDuplicateDetector.detect(owner);
+         this.clinicService.saveOwner(owner);
+         ownerAuditLogger.logCreated(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
