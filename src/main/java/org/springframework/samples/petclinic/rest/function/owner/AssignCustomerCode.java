@@ -1,27 +1,19 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.CityRegion;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns a new owner's customer code before it is saved. The sequence is per-city: one
- * more than the number of owners already in this owner's city (see {@link Cities#matches}).
+ * Assigns a new owner's customer code before it is saved. The code is {@code <REGION>-<HASH8>}
+ * (see {@link CustomerCode}): the region derived from the owner's postcode plus a hash of the
+ * owner's normalized telephone and last name. Runs after the telephone has been normalized, so
+ * {@link Owner#getTelephone()} already holds the canonical form the hash is taken over.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        int sequence = countInCity(owner, ownerRepository) + 1;
-        owner.setCustomerCode(CustomerCode.format(owner.getCity(), owner.getLastName(), sequence));
-    }
-
-    private static int countInCity(Owner owner, OwnerRepository ownerRepository) {
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (Cities.matches(existing, owner.getCity())) {
-                count++;
-            }
-        }
-        return count;
+    public void service(@Val Owner owner) {
+        String region = CityRegion.localityOf(owner.getPostcode(), owner.getCity());
+        owner.setCustomerCode(CustomerCode.format(region, owner.getTelephone(), owner.getLastName()));
     }
 }

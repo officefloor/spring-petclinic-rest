@@ -67,12 +67,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * The canonical region derived by postcode first — the region whose pinned range
-     * contains the owner's postcode — falling back to the city-to-region table when the
-     * postcode is absent or in no known range, or {@code UNKNOWN} when neither resolves.
+     * The region the owner's customer code was minted in — its {@code <REGION>} segment
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode}).
+     * Owners without a customer code (e.g. legacy records) fall back to deriving the region
+     * from the postcode and city directly.
      */
     default String locality(Owner owner) {
-        return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null || customerCode.isBlank()) {
+            return CityRegion.localityOf(owner.getPostcode(), owner.getCity());
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
+            .region(customerCode);
     }
 
     /**
