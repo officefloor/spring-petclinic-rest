@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+index eeb80ef30..40c41a59b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneExceptionHandler.java
+@@ -15,7 +15,9 @@ public class InvalidTelephoneExceptionHandler {
+     public void handle(@Parameter InvalidTelephoneException ex,
+             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+-                "The telephone number must form a valid E.164 number (8 to 15 digits)");
++                "The telephone number must form a valid E.164 number (8 to 15 digits) with the "
++                        + "correct national-number length for its country code "
++                        + "('+61' requires 9 national digits, '+1' requires 10)");
+         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidTelephoneException.java
+index 0f05bccc4..2f9c8b939 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/InvalidTelephoneException.java
+@@ -2,9 +2,10 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ /**
+  * Thrown by {@link NormalizeOwnerTelephone} when a create request's telephone cannot be
+- * converted to valid E.164 form (8 to 15 digits after the '+'). Carries the rejected (raw)
+- * value for the handler's message. Checked so it appears in the function's {@code throws}
+- * clause and routes to an escalation.
++ * converted to valid E.164 form: non-digits remain, the digit count is outside 8 to 15, or
++ * the national number is the wrong length for its country code (see {@link Telephones}).
++ * Carries the rejected (raw) value for the handler's message. Checked so it appears in the
++ * function's {@code throws} clause and routes to an escalation.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+index 245dcaeda..5e57c21d1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Telephones.java
+@@ -1,5 +1,6 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Map;
+ import java.util.Optional;
+ 
+ /**
+@@ -13,6 +14,13 @@ final class Telephones {
+     /** Country code assumed when the input carries no explicit '+' prefix (Australia). */
+     private static final String DEFAULT_COUNTRY_CODE = "61";
+ 
++    /**
++     * Required national-number length (the digits after the country code) for each country
++     * code we recognise: '+61' (Australia) takes 9, '+1' (NANP) takes 10. A number whose
++     * country code is not listed is accepted on the generic 8-15 digit range alone.
++     */
++    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of("61", 9, "1", 10);
++
+     private Telephones() {
+     }
+ 
+@@ -22,7 +30,8 @@ final class Telephones {
+      * <p>Spaces, dashes and brackets are stripped. When the number keeps a leading '+' its
+      * country code is preserved; otherwise {@code +61} is assumed and a single leading '0'
+      * is dropped from the national digits. Returns empty when the result cannot form valid
+-     * E.164 (non-digits remain, or the digit count is out of range).
++     * E.164 (non-digits remain, the digit count is out of range, or the national number is
++     * the wrong length for a recognised country code).
+      */
+     static Optional<String> toE164(String telephone) {
+         if (telephone == null) {
+@@ -37,9 +46,28 @@ final class Telephones {
+             String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+             digits = DEFAULT_COUNTRY_CODE + national;
+         }
+-        if (!digits.matches("[0-9]{8,15}")) {
++        if (!digits.matches("[0-9]{8,15}") || !hasValidNationalNumberLength(digits)) {
+             return Optional.empty();
+         }
+         return Optional.of("+" + digits);
+     }
++
++    /**
++     * Checks the national-number length of {@code digits} (the E.164 digits without the '+')
++     * against its country code, using the longest recognised code the number starts with.
++     * Unrecognised country codes pass, having already cleared the generic 8-15 digit range.
++     */
++    private static boolean hasValidNationalNumberLength(String digits) {
++        String countryCode = null;
++        for (String candidate : NATIONAL_NUMBER_LENGTHS.keySet()) {
++            if (digits.startsWith(candidate)
++                    && (countryCode == null || candidate.length() > countryCode.length())) {
++                countryCode = candidate;
++            }
++        }
++        if (countryCode == null) {
++            return true;
++        }
++        return digits.length() - countryCode.length() == NATIONAL_NUMBER_LENGTHS.get(countryCode);
++    }
+ }
