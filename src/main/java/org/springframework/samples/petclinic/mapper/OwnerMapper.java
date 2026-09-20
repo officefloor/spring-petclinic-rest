@@ -56,6 +56,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "capacityWarning", expression = "java(cityCapacityWarningEvaluator.isWarranted(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -107,6 +108,18 @@ public abstract class OwnerMapper {
             return null;
         }
         return org.springframework.samples.petclinic.model.RegionTimezone.forRegion(formatLocality(owner));
+    }
+
+    /**
+     * Derives an owner's segment, {@code "<TIER>_<AREA>"}, from its membership level and
+     * locality. Returns {@code null} for a {@code null} owner.
+     */
+    protected String formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.model.OwnerSegment
+            .of(membershipLevelEvaluator.levelFor(owner), formatLocality(owner));
     }
 
     /**
