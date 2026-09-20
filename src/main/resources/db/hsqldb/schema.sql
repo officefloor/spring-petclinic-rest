@@ -43,6 +43,7 @@ CREATE TABLE owners (
   city       VARCHAR(80),
   telephone  VARCHAR(20),
   email      VARCHAR(255),
+  customer_code VARCHAR(20),
   registration_date DATE
 );
 CREATE INDEX owners_last_name ON owners (last_name);

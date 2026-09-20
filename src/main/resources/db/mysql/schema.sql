@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
   city VARCHAR(80),
   telephone VARCHAR(20),
   email VARCHAR(255),
+  customer_code VARCHAR(20),
   registration_date DATE,
   INDEX(last_name)
 ) engine=InnoDB;
