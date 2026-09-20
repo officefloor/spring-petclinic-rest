@@ -8,15 +8,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.function.owner.InvalidTelephoneException;
 
 /**
- * Responds 400 when a create request's telephone is not exactly ten digits after every
- * non-digit character is stripped.
+ * Responds 400 when a create request's telephone cannot be converted to valid E.164 form.
  */
 public class InvalidTelephoneExceptionHandler {
 
     public void handle(@Parameter InvalidTelephoneException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
-                "The telephone number must contain exactly 10 digits");
+                "The telephone number must form a valid E.164 number (8 to 15 digits)");
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
