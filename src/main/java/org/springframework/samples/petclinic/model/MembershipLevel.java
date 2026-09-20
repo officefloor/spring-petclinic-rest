@@ -1,16 +1,15 @@
 package org.springframework.samples.petclinic.model;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * The owner's membership scoring. Points start at 0 and accrue independently:
  * {@link #EMAIL_POINTS} when an email address is present, {@link #NO_NAMESAKE_POINTS} when
  * the owner has no namesakes ({@code namesakeCount} is 0), {@link #HOUSEHOLD_POINTS} for a
  * household of {@link #HOUSEHOLD_MIN} or more, and {@link #TENURE_POINTS} once the owner's
- * tenure exceeds {@link #TENURE_DAYS} days. Those points map to a level from 1 to 4 (see
- * {@link #level(int)}). A newly created owner has zero tenure, so tenure points never apply
- * at creation.
+ * tenure reaches at least {@link #TENURE_FISCAL_YEARS} elapsed {@link FiscalYear fiscal
+ * year}. Those points map to a level from 1 to 4 (see {@link #level(int)}). A newly created
+ * owner has zero elapsed fiscal years, so tenure points never apply at creation.
  */
 public final class MembershipLevel {
 
@@ -26,11 +25,12 @@ public final class MembershipLevel {
     /** The household size at or above which {@link #HOUSEHOLD_POINTS} is awarded. */
     public static final int HOUSEHOLD_MIN = 3;
 
-    /** Points awarded once the owner's tenure exceeds {@link #TENURE_DAYS} days. */
+    /** Points awarded once the owner's tenure reaches {@link #TENURE_FISCAL_YEARS} elapsed
+     *  fiscal years. */
     public static final int TENURE_POINTS = 3;
 
-    /** The tenure, in days, that must be exceeded to earn {@link #TENURE_POINTS}. */
-    public static final int TENURE_DAYS = 365;
+    /** The number of elapsed fiscal years the tenure must reach to earn {@link #TENURE_POINTS}. */
+    public static final int TENURE_FISCAL_YEARS = 1;
 
     private MembershipLevel() {
     }
@@ -48,7 +48,7 @@ public final class MembershipLevel {
      * {@link #EMAIL_POINTS} when an email address is present, {@link #NO_NAMESAKE_POINTS}
      * when the owner has no namesakes, {@link #HOUSEHOLD_POINTS} for a household of
      * {@link #HOUSEHOLD_MIN} or more, and {@link #TENURE_POINTS} once the owner's tenure
-     * exceeds {@link #TENURE_DAYS} days.
+     * reaches at least {@link #TENURE_FISCAL_YEARS} elapsed fiscal years.
      */
     public static int points(Owner owner, LocalDate asOf) {
         int points = 0;
@@ -101,10 +101,13 @@ public final class MembershipLevel {
         return level(points(owner, asOf));
     }
 
-    /** Whether the owner's tenure at {@code asOf} exceeds {@link #TENURE_DAYS} days. */
+    /**
+     * Whether the owner's tenure at {@code asOf} reaches at least
+     * {@link #TENURE_FISCAL_YEARS} elapsed fiscal years since registration.
+     */
     private static boolean hasTenure(Owner owner, LocalDate asOf) {
         LocalDate registrationDate = owner.getRegistrationDate();
         return registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, asOf) > TENURE_DAYS;
+            && FiscalYear.elapsed(registrationDate, asOf) >= TENURE_FISCAL_YEARS;
     }
 }

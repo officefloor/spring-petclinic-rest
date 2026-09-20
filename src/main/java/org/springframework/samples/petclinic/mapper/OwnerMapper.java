@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -80,11 +81,20 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted as {@code <customerCode>-M<YY>} where
-     * {@code YY} is the last two digits of the registration date year, e.g.
+     * {@code YY} is the last two digits of the fiscal year of the registration date, e.g.
      * {@code SMI-0007-M26}.
      */
     default String membershipNumber(Owner owner) {
         return MembershipNumber.of(owner);
+    }
+
+    /**
+     * The fiscal year of the owner's (business-day-adjusted) registration date, formatted as
+     * {@code FY<YY>} (see {@link org.springframework.samples.petclinic.model.FiscalYear}).
+     */
+    default String fiscalYear(Owner owner) {
+        return org.springframework.samples.petclinic.model.FiscalYear
+            .label(owner.getRegistrationDate());
     }
 
     /**
