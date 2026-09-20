@@ -13,7 +13,7 @@ public class CountNamesakes {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ownerRepository.findAllActive()) {
             if (Namesakes.matches(existing, owner.getFirstName(), owner.getLastName())) {
                 count++;
             }

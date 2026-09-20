@@ -26,7 +26,7 @@ final class PossibleDuplicates {
      */
     static Optional<Integer> matchFor(Owner owner, OwnerRepository ownerRepository) {
         Owner match = null;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ownerRepository.findAllActive()) {
             if (matches(owner, existing) && (match == null || existing.getId() < match.getId())) {
                 match = existing;
             }

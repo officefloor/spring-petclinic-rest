@@ -21,7 +21,7 @@ public class AssignCustomerCode {
         String region = CityRegion.localityOf(owner.getPostcode(), owner.getCity());
         String code = CustomerCode.format(region, owner.getTelephone(), owner.getLastName());
         Set<String> taken = new HashSet<>();
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ownerRepository.findAllActive()) {
             if (existing.getCustomerCode() != null) {
                 taken.add(existing.getCustomerCode());
             }

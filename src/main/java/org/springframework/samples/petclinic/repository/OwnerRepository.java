@@ -73,6 +73,18 @@ public interface OwnerRepository {
      */
 	Collection<Owner> findAll() throws DataAccessException;
 
+    /**
+     * Retrieve the <code>Owner</code>s that have not been soft-deleted. This is the view the
+     * create endpoint's duplicate and identity checks work against, so a soft-deleted owner no
+     * longer blocks or influences a new registration.
+     *
+     * @return a <code>Collection</code> of the non-deleted <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none found)
+     */
+    default Collection<Owner> findAllActive() throws DataAccessException {
+        return findAll().stream().filter(owner -> !owner.isDeleted()).toList();
+    }
+
     Page<Owner> findAll(Pageable pageable) throws DataAccessException;
 
     /**

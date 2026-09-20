@@ -15,7 +15,7 @@ public class CountHouseholdMembers {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         int count = 1;
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ownerRepository.findAllActive()) {
             if (Households.sameHousehold(owner, existing)) {
                 count++;
             }

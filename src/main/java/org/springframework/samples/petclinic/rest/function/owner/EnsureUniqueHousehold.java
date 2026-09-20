@@ -21,7 +21,7 @@ public class EnsureUniqueHousehold {
             return;
         }
         String householdId = Households.id(request);
-        for (Owner existing : ownerRepository.findAll()) {
+        for (Owner existing : ownerRepository.findAllActive()) {
             if (householdId.equals(Households.id(existing))) {
                 throw new HouseholdDuplicateException(householdId);
             }
