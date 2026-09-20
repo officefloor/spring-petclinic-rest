@@ -249,7 +249,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getMemberId() == null) {
-            String region = Locality.forOwner(owner);
+            String region = Locality.forOwner(owner) + OwnerIdentityVersion.TAG;
             int fiscalYear = FiscalYear.containing(owner.getRegistrationDate()).shortYear();
             String baseId = memberIdGenerator.generate(region, fiscalYear, owner.getTelephone(), owner.getLastName());
             List<String> existingIds = ownerRepository.findAll().stream()

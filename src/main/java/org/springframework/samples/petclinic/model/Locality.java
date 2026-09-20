@@ -62,23 +62,6 @@ public final class Locality {
     }
 
     /**
-     * Returns the locality recorded in an owner's {@code memberId}, i.e. the leading
-     * {@code <REGION>} segment of the {@code '<REGION><FY><HASH8><CHK>'} identity. The region
-     * is the run of leading letters before the two-digit fiscal year. Returns {@link #UNKNOWN}
-     * when the id is {@code null} or carries no region segment.
-     */
-    public static String fromMemberId(String memberId) {
-        if (memberId == null) {
-            return UNKNOWN;
-        }
-        int end = 0;
-        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
-            end++;
-        }
-        return end == 0 ? UNKNOWN : memberId.substring(0, end);
-    }
-
-    /**
      * Returns the canonical region for the given city, or {@link #UNKNOWN} when the
      * city is {@code null} or not present in the table.
      */

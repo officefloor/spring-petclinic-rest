@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityWarningEvaluator;
 import org.springframework.samples.petclinic.rest.controller.OwnerIdentity;
@@ -44,7 +45,8 @@ public abstract class OwnerMapper {
     protected TelephoneFormatter telephoneFormatter;
 
     @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
-    @Mapping(target = "identityKey", expression = "java(owner == null ? null : ownerIdentity.key(owner))")
+    @Mapping(target = "apiVersion", expression = "java(owner == null ? null : org.springframework.samples.petclinic.model.OwnerIdentityVersion.CURRENT)")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.model.Salutation.forOwner(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
@@ -87,18 +89,31 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality from its region-and-hash identity: the {@code <REGION>}
-     * segment of the assigned {@code memberId}. Owners without a member id yet fall back to
-     * deriving the region straight from their own fields.
+     * Derives an owner's locality: the plain canonical region derived from its own fields. This is
+     * a user-facing value, not an identifier, so it never carries the identity version tag that the
+     * {@code memberId} region embeds.
      */
     protected String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        if (owner.getMemberId() != null) {
-            return org.springframework.samples.petclinic.model.Locality.fromMemberId(owner.getMemberId());
-        }
         return org.springframework.samples.petclinic.model.Locality.forOwner(owner);
+    }
+
+    /**
+     * Groups the owner's version-2 derived identifiers — {@code memberId}, {@code householdId} and
+     * {@code identityKey} — under the response's nested {@code identity} object. Returns
+     * {@code null} for a {@code null} owner.
+     */
+    protected OwnerIdentityDto toIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(ownerIdentity.key(owner));
+        return identity;
     }
 
     /**

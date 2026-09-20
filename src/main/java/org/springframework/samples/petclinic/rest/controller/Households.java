@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentityVersion;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
@@ -62,11 +63,13 @@ public class Households {
 
     /**
      * The stable identifier every owner in {@code owner}'s household shares: the first
-     * {@value #ID_LENGTH} hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)}.
-     * The same last name and postcode always yield the same id.
+     * {@value #ID_LENGTH} hex characters of {@code SHA-256(V2 + '|' + normalizedLastName + '|' +
+     * postcode)}, with the {@link OwnerIdentityVersion#TAG version tag} mixed in as the leading
+     * segment. The same last name and postcode always yield the same id.
      */
     public String householdId(Owner owner) {
-        String key = normalize(owner.getLastName()) + "|" + segment(owner.getPostcode());
+        String key = OwnerIdentityVersion.TAG + "|" + normalize(owner.getLastName())
+            + "|" + segment(owner.getPostcode());
         return sha256.hex(key).substring(0, ID_LENGTH);
     }
 

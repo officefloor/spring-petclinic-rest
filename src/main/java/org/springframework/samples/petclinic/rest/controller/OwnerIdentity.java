@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentityVersion;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,10 +26,11 @@ import org.springframework.stereotype.Component;
  * key matches; because the (normalized) telephone is part of the key, two members of one household
  * with different telephones have distinct identities.
  * <p>
- * The key is the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' +
- * soundex(lastName)}, built from the owner's already-canonical fields (telephone in E.164 form,
- * email trimmed and lower-cased). A {@code null} field contributes an empty segment so distinct
- * fields cannot collide across the {@code '|'} separators.
+ * The key is the SHA-256 hex digest of {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail +
+ * '|' + soundex(lastName)}, built from the owner's already-canonical fields (telephone in E.164
+ * form, email trimmed and lower-cased) with the {@link OwnerIdentityVersion#TAG version tag} mixed
+ * in as the leading segment. A {@code null} field contributes an empty segment so distinct fields
+ * cannot collide across the {@code '|'} separators.
  */
 @Component
 public class OwnerIdentity {
@@ -43,11 +45,13 @@ public class OwnerIdentity {
     }
 
     /**
-     * The identity key for {@code owner}: the SHA-256 hex of its normalized telephone, lower-cased
-     * email and the Soundex code of its last name.
+     * The identity key for {@code owner}: the SHA-256 hex of the {@link OwnerIdentityVersion#TAG
+     * version tag}, its normalized telephone, lower-cased email and the Soundex code of its last
+     * name.
      */
     public String key(Owner owner) {
-        String raw = segment(owner.getTelephone())
+        String raw = OwnerIdentityVersion.TAG
+            + "|" + segment(owner.getTelephone())
             + "|" + segment(owner.getEmail())
             + "|" + soundex.of(owner.getLastName());
         return sha256.hex(raw);
