@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.controller.CityCapacityWarningEvaluator;
 import org.springframework.samples.petclinic.rest.controller.OwnerIdentity;
+import org.springframework.samples.petclinic.rest.controller.RiskFlagEvaluator;
 import org.springframework.samples.petclinic.rest.controller.TelephoneFormatter;
 import org.springframework.samples.petclinic.service.BulkSignupWarningEvaluator;
 import org.springframework.samples.petclinic.service.MembershipLevelEvaluator;
@@ -34,6 +35,9 @@ public abstract class OwnerMapper {
     protected CityCapacityWarningEvaluator cityCapacityWarningEvaluator;
 
     @Autowired
+    protected RiskFlagEvaluator riskFlagEvaluator;
+
+    @Autowired
     protected OwnerIdentity ownerIdentity;
 
     @Autowired
@@ -52,6 +56,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarningEvaluator.isWarranted(owner))")
     @Mapping(target = "capacityWarning", expression = "java(cityCapacityWarningEvaluator.isWarranted(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlagEvaluator.isRisk(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.model.ContactPreference.forOwner(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.forOwner(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")

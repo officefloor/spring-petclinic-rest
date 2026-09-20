@@ -16,12 +16,8 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
-import java.util.Locale;
-import java.util.Set;
-
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
@@ -36,10 +32,11 @@ import org.springframework.validation.Validator;
 @Component
 public class DisposableEmailDomainValidator implements Validator {
 
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-        "mailinator.com",
-        "tempmail.com",
-        "guerrillamail.com");
+    private final DisposableEmailDomains disposableEmailDomains;
+
+    public DisposableEmailDomainValidator(DisposableEmailDomains disposableEmailDomains) {
+        this.disposableEmailDomains = disposableEmailDomains;
+    }
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -49,24 +46,10 @@ public class DisposableEmailDomainValidator implements Validator {
     @Override
     public void validate(Object target, Errors errors) {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
-        String domain = domainOf(owner.getEmail());
-        if (domain != null && DISPOSABLE_DOMAINS.contains(domain)) {
+        String domain = disposableEmailDomains.domainOf(owner.getEmail());
+        if (disposableEmailDomains.isDisposable(domain)) {
             errors.rejectValue("email", "email.disposableDomain",
                 "email domain is not accepted");
         }
-    }
-
-    /**
-     * Extract the lower-cased domain from an email address, or {@code null} when none is present.
-     */
-    private String domainOf(String email) {
-        if (!StringUtils.hasText(email)) {
-            return null;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0 || at == email.length() - 1) {
-            return null;
-        }
-        return email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
     }
 }
