@@ -1,0 +1,254 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index be1c3beb9..b42e8d6b2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
++    @Mapping(target = "customerCode", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 295c02f35..b98299d07 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -56,6 +56,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -99,6 +102,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+@@ -172,6 +183,7 @@ public class Owner extends Person {
+             .append("telephone", this.telephone)
+             .append("email", this.email)
+             .append("registrationDate", this.registrationDate)
++            .append("customerCode", this.customerCode)
+             .toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index b4348ab40..14630443b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -74,7 +74,14 @@ public interface OwnerRepository {
+ 	Collection<Owner> findAll() throws DataAccessException;
+ 
+     Page<Owner> findAll(Pageable pageable) throws DataAccessException;
+-	
++
++    /**
++     * Count the total number of <code>Owner</code>s in the data store.
++     *
++     * @return the number of owners
++     */
++    int count() throws DataAccessException;
++
+     /**
+      * Delete an <code>Owner</code> to the data store by <code>Owner</code>.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a3faf618d..a11211a31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -210,6 +210,15 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total == null ? 0 : total);
+     }
+ 
++    @Override
++    public int count() throws DataAccessException {
++        Integer total = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners",
++            new HashMap<String, Object>(),
++            Integer.class);
++        return total == null ? 0 : total;
++    }
++
+ 	@Override
+ 	@Transactional
+ 	public void delete(Owner owner) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index db2757657..cc13be3ed 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -118,6 +118,12 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total);
+     }
+ 
++    @Override
++    public int count() throws DataAccessException {
++        Query countQuery = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner");
++        return ((Number) countQuery.getSingleResult()).intValue();
++    }
++
+ 	@Override
+ 	public void delete(Owner owner) throws DataAccessException {
+ 		this.em.remove(this.em.contains(owner) ? owner : this.em.merge(owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index ef05a53c3..705898124 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -55,4 +55,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id")
+     Owner findById(@Param("id") int id);
++
++    @Override
++    @Query("SELECT COUNT(owner) FROM Owner owner")
++    int count();
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+new file mode 100644
+index 000000000..be1f3d7d0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Assigns a new owner's customer code before it is saved. The sequence is global: one
++ * more than the current number of owners.
++ */
++public class AssignCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        int sequence = ownerRepository.count() + 1;
++        owner.setCustomerCode(CustomerCode.format(owner.getLastName(), sequence));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+new file mode 100644
+index 000000000..11edacd2f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCode.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * Formats an owner's customer code as {@code <LAST3>-<NNNN>}, where {@code LAST3} is the
++ * upper-cased first three letters of the last name and {@code NNNN} is a 4-digit
++ * zero-padded sequence number (e.g. {@code SMI-0007}).
++ */
++final class CustomerCode {
++
++    private CustomerCode() {
++    }
++
++    static String format(String lastName, int sequence) {
++        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
++        return String.format("%s-%04d", prefix, sequence);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 77bb1228b..9ba24c192 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4a767727f..70fd8db41 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4e5bc62e3..6e7c1871a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  customer_code VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a363d7467..98b796581 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+-                                      registration_date DATE
++                                      registration_date DATE,
++                                      customer_code TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a29d8454a..bea1e387f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -29,6 +29,11 @@ build:
+ defaultRegistrationDate:
+   class: org.springframework.samples.petclinic.rest.function.owner.DefaultRegistrationDate
+   govern: [ transaction ]
++  next: assignCustomerCode
++
++assignCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e02530f82..b876dc552 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2078,6 +2078,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: The owner's customer code, formatted as '<LAST3>-<NNNN>' where LAST3 is the upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded sequence.
++              type: string
++              example: 'SMI-0007'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
