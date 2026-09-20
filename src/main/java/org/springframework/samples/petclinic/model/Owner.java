@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -53,6 +54,9 @@ public class Owner extends Person {
     @Column(name = "email")
     @Email
     private String email;
+
+    @Column(name = "registration_date")
+    private LocalDate registrationDate;
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
@@ -87,6 +91,25 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public LocalDate getRegistrationDate() {
+        return this.registrationDate;
+    }
+
+    public void setRegistrationDate(LocalDate registrationDate) {
+        this.registrationDate = registrationDate;
+    }
+
+    /**
+     * Defaults the registration date to the server's current date when none was
+     * supplied, so every newly created owner is registered as of today.
+     */
+    @PrePersist
+    protected void defaultRegistrationDate() {
+        if (this.registrationDate == null) {
+            this.registrationDate = LocalDate.now();
+        }
     }
 
     protected Set<Pet> getPetsInternal() {
