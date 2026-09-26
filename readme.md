@@ -1,6 +1,8 @@
 ## The paper these branches back
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22967550.svg)](https://doi.org/10.5281/zenodo.22967550)
+Conserved amount, negotiable placement: prompting moves one architecture's complexity distribution and not the other's
+
+Available: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22967550.svg)](https://doi.org/10.5281/zenodo.22967550)
 
 Every branch named `evolve/<run>/<strategy>/<arm>/chain<n>` is one chain of the
 experiment reported in that paper. Each commit on it carries that checkpoint's
