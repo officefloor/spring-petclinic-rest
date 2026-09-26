@@ -1,3 +1,16 @@
+## The paper these branches back
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22967550.svg)](https://doi.org/10.5281/zenodo.22967550)
+
+Every branch named `evolve/<run>/<strategy>/<arm>/chain<n>` is one chain of the
+experiment reported in that paper. Each commit on it carries that checkpoint's
+own raw capture. The harness and analysis code are in
+[spring-petclinic-rest-long-degradation-test](https://github.com/officefloor/spring-petclinic-rest-long-degradation-test).
+
+
+----
+----
+
 # REST version of Spring PetClinic Sample Application (spring-framework-petclinic extension)
 
 [![Java Build Status](https://github.com/spring-petclinic/spring-petclinic-rest/actions/workflows/maven-build-master.yml/badge.svg)](https://github.com/spring-petclinic/spring-petclinic-rest/actions/workflows/maven-build-master.yml)
