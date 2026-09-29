@@ -30,15 +30,20 @@ import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -53,6 +58,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     /** Dedicated audit trail logger for owner-lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Serializes structured audit events to compact JSON. */
+    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
+
+    /** Monotonically increasing sequence number stamped on each structured owner-create event. */
+    private static final AtomicLong OWNER_CREATED_SEQ = new AtomicLong();
 
     private final PetRepository petRepository;
     private final VetRepository vetRepository;
@@ -357,7 +368,37 @@ public class ClinicServiceImpl implements ClinicService {
                 "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
                 owner.getMembershipLevel(), owner.getMembershipNumber());
+            AUDIT.info(ownerCreatedEvent(owner));
         }
+    }
+
+    /**
+     * Builds the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object
+     * {@code {seq, ownerId, customerCode, membershipLevel, event}}. The {@code seq} is a
+     * process-wide, monotonically increasing integer stamped once per created owner.
+     *
+     * <p>The identifier field carries the owner's <em>current primary identifier</em>, sourced
+     * through {@link #primaryIdentifier(Owner)}; today that is the {@code customerCode}. When the
+     * primary identifier is later unified into the {@code memberId}, that single helper changes and
+     * the event automatically carries the new identifier.
+     */
+    private String ownerCreatedEvent(Owner owner) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("seq", OWNER_CREATED_SEQ.incrementAndGet());
+        event.put("ownerId", owner.getId());
+        event.put("customerCode", primaryIdentifier(owner));
+        event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("event", "OWNER_CREATED");
+        return AUDIT_MAPPER.writeValueAsString(event);
+    }
+
+    /**
+     * The owner's current primary identifier. Today this is the {@code customerCode}; when the
+     * customerCode is later unified into the {@code memberId}, this is the single place to switch
+     * so every consumer (notably the structured audit event) follows.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
