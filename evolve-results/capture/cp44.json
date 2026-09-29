@@ -1,0 +1,577 @@
+{
+  "checkpoint": 44,
+  "checkpoint_id": "address-structured",
+  "phase": "Late",
+  "type": "mutative",
+  "mutates": [
+    1,
+    12,
+    29,
+    30,
+    36
+  ],
+  "request": {
+    "spec": "Add a structured address form: the request may provide 'addressLine1', an optional 'addressLine2', 'city' and 'postcode'. Prefer the structured fields when present; the flat 'address' input remains accepted for backward compatibility. An owner is valid when it supplies an address in EITHER form (a non-blank 'addressLine1', or the flat 'address'), plus city; the request contract stays backward-compatible so earlier minimal owners are still accepted. This changes existing behaviour: normalization applies to whichever address fields are supplied, and everything that reads the address (the household hash, postcode validation and locality) uses the structured fields when present, falling back to the flat address. Also return a composed 'address' string equal to the normalized addressLine1, with a single space and the normalized addressLine2 appended when addressLine2 is present.",
+    "prompt": "Implement the following change to the application so that it fully satisfies\nthe specification and all existing and new tests pass. Run the test suite and\nmake it green before finishing.\n\nAdd a structured address form: the request may provide 'addressLine1', an optional 'addressLine2', 'city' and 'postcode'. Prefer the structured fields when present; the flat 'address' input remains accepted for backward compatibility. An owner is valid when it supplies an address in EITHER form (a non-blank 'addressLine1', or the flat 'address'), plus city; the request contract stays backward-compatible so earlier minimal owners are still accepted. This changes existing behaviour: normalization applies to whichever address fields are supplied, and everything that reads the address (the household hash, postcode validation and locality) uses the structured fields when present, falling back to the flat address. Also return a composed 'address' string equal to the normalized addressLine1, with a single space and the normalized addressLine2 appended when addressLine2 is present.\n"
+  },
+  "commit_sha": "082a98724f614dc24bf187569f5efa0e9a9bb770",
+  "reset_sha": "",
+  "preagent_sha": "6be5e739fc958e64a78f0d1f6bdfffc19d68ba31",
+  "prev_sha": "6be5e739fc958e64a78f0d1f6bdfffc19d68ba31",
+  "base_sha": "ee199b9b0da67ba965aada522e10bb65d063f7c9",
+  "agent": {
+    "ok": true,
+    "cost_usd": 3.2325855,
+    "input_tokens": 14,
+    "output_tokens": 8173,
+    "cache_read_tokens": 629289,
+    "cache_creation_tokens": 11963,
+    "num_turns": 7,
+    "duration_ms": 123939,
+    "duration_api_ms": 446710,
+    "model": "claude-opus-4-8",
+    "session_id": "9aab287f-593a-4847-97c5-e3270f681506",
+    "stop_reason": "success",
+    "result_text": "Green. Here's how I addressed the review.\n\n**Finding 1 (agree) \u2014 `ApplyOwner` open-coded the compose rule.** The reviewer is right that the \"append line2 after a single space when present\" shape lived in two places. The wrinkle they flagged in the Note is real: `ApplyOwner` must *not* normalize (the update pipeline never has), so I couldn't just call the old `compose`, which normalized internally. I resolved both by making `AddressNormalizer.compose` a **pure join** (shape only) and pushing the normalization decision to the callers:\n- `NormalizeOwnerAddress` (create) normalizes each line, then `compose(normalizedLine1, normalizedLine2)`.\n- `ApplyOwner` (update) calls `compose(line1, line2)` on the raw values.\n\nNow the join shape lives in exactly one place, and the create-vs-update difference (normalize-then-compose vs. compose-raw) is explicit at each call site rather than hidden in hand-rolled branches \u2014 which is the \"make the intended difference explicit\" point from the Note.\n\n**Finding 2 (agree) \u2014 the \"structured form supplied?\" predicate was copy-pasted.** Added `AddressNormalizer.hasStructuredAddress(line1)` and routed all three units through it: `NormalizeOwnerAddress`, `ApplyOwner`, and `RequireOwnerFields` (as `!hasStructuredAddress(...) && isBlank(address)`). The \"prefer structured when line1 is non-blank\" decision now has one home.\n\nI updated the `AddressNormalizer` class doc to reflect its widened role (normalize a line, the structured predicate, the compose shape) and rewrote the `compose` Javadoc to state that normalization is the caller's concern.\n\nOne residual `line2 != null && !line2.isBlank()` check remains inside `NormalizeOwnerAddress` \u2014 that's the *line2*-presence question (guarding whether to normalize-and-store line2 as a value vs. `null`), which is distinct from the line1 predicate the findings targeted and appears in only that one spot, so I left it inline rather than over-abstracting.\n\nTests: `Tests run: 2, Failures: 0, Errors: 0` \u2014 `BUILD SUCCESS`. Acceptance behaviour unchanged.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 2.593916,
+        "input_tokens": 90,
+        "output_tokens": 25498,
+        "cache_read_tokens": 2469072,
+        "cache_creation_tokens": 72148,
+        "num_turns": 45,
+        "duration_ms": 464259,
+        "duration_api_ms": 351918,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp44.agent.jsonl",
+  "agent_diff_file": "cp44.agent.diff",
+  "build_log_file": "cp44.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 55,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName": true,
+      "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength": true,
+      "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp43Tests#coreAuditIncludesLevelAndNumber": true,
+      "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsOutOfRangePostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp40Tests#coreReturnsPointsAndLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp38Tests#errorRejectsDisposableDomain": true,
+      "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes": true,
+      "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp39Tests#coreNewOwnerCappedBelowFour": true,
+      "org.springframework.samples.petclinic.acceptance.Cp24Tests#corePointsDriveLevel": true,
+      "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreLocalityFromStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent": true,
+      "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash": true,
+      "org.springframework.samples.petclinic.acceptance.Cp37Tests#coreFormatsTelephoneDisplay": true,
+      "org.springframework.samples.petclinic.acceptance.Cp44Tests#coreNormalizesAndComposesStructuredAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp44Tests#functionalityStillAcceptsFlatAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion": true,
+      "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreHouseholdIdFromStructuredPostcode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged": true,
+      "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected": true,
+      "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelFromPoints": true,
+      "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared": true,
+      "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay": true,
+      "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhenNoAddressAtAll": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesAddressLine": true,
+      "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreMembershipNumberOnRegionHashCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp42Tests#coreReturnsTimezoneForRegion": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreHouseholdAddsPoints": true,
+      "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials": true,
+      "org.springframework.samples.petclinic.acceptance.Cp41Tests#coreCustomerCodesStayUnique": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName",
+        "passed": true,
+        "skipped": false,
+        "time": 0.042,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp26Tests#errorRejectsWrongNationalLength",
+        "passed": true,
+        "skipped": false,
+        "time": 0.007,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp33Tests#errorRejectsFutureDate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.016,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp43Tests#coreAuditIncludesLevelAndNumber",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp25Tests#coreEmailIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.027,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#coreStoresStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.028,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp29Tests#errorRejectsOutOfRangePostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.009,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp40Tests#coreReturnsPointsAndLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.034,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp38Tests#errorRejectsDisposableDomain",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreCustomerCodeIsRegionAndHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp13Tests#coreCountsNamesakes",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp21Tests#coreAuditLineHasRegionHashCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreSameLastNameAndPostcodeRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp39Tests#coreNewOwnerCappedBelowFour",
+        "passed": true,
+        "skipped": false,
+        "time": 0.127,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp24Tests#corePointsDriveLevel",
+        "passed": true,
+        "skipped": false,
+        "time": 0.043,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp30Tests#coreLocalityFromStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.024,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp34Tests#coreDerivesAgeBand",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#functionalityEmailWhenPresent",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp27Tests#corePhoneWhenNoEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.034,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp19Tests#coreRejectsOverDailyLimit",
+        "passed": true,
+        "skipped": false,
+        "time": 1.167,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.031,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.028,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp18Tests#coreRejectsWhenCityAtCapacity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.722,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp22Tests#coreNoBulkWarningUnderThreshold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.022,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp31Tests#coreCheckDigitIsLuhnOfNewCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp32Tests#coreCustomerCodeIsRegionHash",
+        "passed": true,
+        "skipped": false,
+        "time": 0.066,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp37Tests#coreFormatsTelephoneDisplay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp44Tests#coreNormalizesAndComposesStructuredAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.075,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp44Tests#functionalityStillAcceptsFlatAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.052,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp17Tests#coreLocalityStillRegion",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp36Tests#coreHouseholdIdFromStructuredPostcode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.043,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#functionalityDeclaredHouseholdMemberNotFlagged",
+        "passed": true,
+        "skipped": false,
+        "time": 0.029,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp35Tests#coreSharedLastNameAndPostcodeIsHouseholdDuplicate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.018,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreIdentityCollisionRejected",
+        "passed": true,
+        "skipped": false,
+        "time": 0.037,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp15Tests#coreNumericLevelFromPoints",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreComputedHouseholdIdShared",
+        "passed": true,
+        "skipped": false,
+        "time": 0.124,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp16Tests#coreCustomerCodeIsRegionAndHashNotCitySequence",
+        "passed": true,
+        "skipped": false,
+        "time": 0.019,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.007,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp20Tests#coreDefaultDateIsBusinessDay",
+        "passed": true,
+        "skipped": false,
+        "time": 0.021,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp28Tests#coreIdentityCollisionWithComputedHousehold",
+        "passed": true,
+        "skipped": false,
+        "time": 0.047,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityWeekdayKept",
+        "passed": true,
+        "skipped": false,
+        "time": 0.085,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreWeekendRollsToMonday",
+        "passed": true,
+        "skipped": false,
+        "time": 0.065,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhenNoAddressAtAll",
+        "passed": true,
+        "skipped": false,
+        "time": 0.008,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.009,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesAddressLine",
+        "passed": true,
+        "skipped": false,
+        "time": 1.014,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp14Tests#coreMembershipNumberOnRegionHashCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.087,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp42Tests#coreReturnsTimezoneForRegion",
+        "passed": true,
+        "skipped": false,
+        "time": 0.046,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.062,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.027,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.066,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp23Tests#coreHouseholdAddsPoints",
+        "passed": true,
+        "skipped": false,
+        "time": 0.057,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials",
+        "passed": true,
+        "skipped": false,
+        "time": 0.02,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp41Tests#coreCustomerCodesStayUnique",
+        "passed": true,
+        "skipped": false,
+        "time": 0.129,
+        "failure": null
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null,
+  "code_review": {
+    "enabled": true,
+    "rounds": 1,
+    "turns_run": 1,
+    "review_model": "claude-opus-4-8",
+    "review_tools": "Read,Grep,Glob",
+    "review_follow_up": true,
+    "author0_diff_file": "cp44.author0.diff",
+    "final_verdict": "VERDICT: CHANGES REQUESTED\n\nThe address-composition rule is now expressed in two places, and the change deliberately introduced a shared helper for exactly that rule \u2014 then didn't use it in one of the two spots.\n\n**Finding 1 \u2014 `ApplyOwner` duplicates the compose rule instead of reusing `AddressNormalizer.compose`.**\n`AddressNormalizer.compose(line1, line2)` was added specifically to own \"the normalized line1, with a single space and line2 appended when present,\" and its Javadoc even promises the composed value \"cannot drift from the per-line values stored alongside it.\" But `ApplyOwner` re-implements that same shape inline:\n```java\nowner.setAddress(line2 != null && !line2.isBlank() ? line1 + \" \" + line2 : line1);\n```\nSo the \"append line2 after a single space when present\" rule now lives in both `AddressNormalizer.compose` and `ApplyOwner`. This is the exact drift the helper was meant to prevent. `ApplyOwner` should call `AddressNormalizer.compose(line1, line2)` (or whatever the update path's intended semantics are) rather than open-coding the branch. A maintainer changing the composition format later will fix one site and miss the other.\n\n**Finding 2 \u2014 the \"structured line1 present?\" predicate is copy-pasted across three units.**\n`line1 != null && !line1.isBlank()` (and its `isBlank(...)` twin) appears in `NormalizeOwnerAddress`, `ApplyOwner`, and `RequireOwnerFields` to answer the same question (\"did the request supply the structured form?\"). Given `AddressNormalizer` is already the home for address logic, a small shared predicate there (e.g. `hasStructuredAddress(line1)` / reusing it) would keep the \"prefer structured when line1 non-blank\" decision in one place instead of three that must be kept in sync.\n\n**Note on the two pipelines.** `NormalizeOwnerAddress` normalizes both lines and composes via the helper; `ApplyOwner` composes raw values with no normalization. If that divergence is intentional (update path vs. create path), it's easy to miss precisely because the composition is hand-rolled in `ApplyOwner` \u2014 routing both through the shared helper makes the intended difference explicit (normalize-then-compose vs. compose-raw) rather than incidental to which code path you happen to read.\n\nThe model/DTO/schema/OpenAPI additions themselves are clean and land in the natural units; the concern is confined to the composition/preference logic being duplicated rather than centralized in the `AddressNormalizer` helper this change already created.",
+    "review_cost_usd": 0.2051,
+    "fix_cost_usd": 3.2326,
+    "turns": [
+      {
+        "role": "author",
+        "ok": true,
+        "session_id": "9aab287f-593a-4847-97c5-e3270f681506",
+        "cost_usd": 2.593916,
+        "input_tokens": 90,
+        "output_tokens": 25498,
+        "cache_read_tokens": 2469072,
+        "num_turns": 45,
+        "duration_ms": 464259,
+        "duration_api_ms": 351918,
+        "error": ""
+      },
+      {
+        "role": "review1",
+        "ok": true,
+        "session_id": "6ca0b539-e803-4b2e-bd98-3e678a5205ba",
+        "cost_usd": 0.2051235,
+        "input_tokens": 2,
+        "output_tokens": 2508,
+        "cache_read_tokens": 11787,
+        "num_turns": 1,
+        "duration_ms": 33090,
+        "duration_api_ms": 33016,
+        "error": ""
+      },
+      {
+        "role": "fix1",
+        "ok": true,
+        "session_id": "9aab287f-593a-4847-97c5-e3270f681506",
+        "cost_usd": 3.2325855,
+        "input_tokens": 14,
+        "output_tokens": 8173,
+        "cache_read_tokens": 629289,
+        "num_turns": 7,
+        "duration_ms": 123939,
+        "duration_api_ms": 446710,
+        "error": ""
+      }
+    ],
+    "reviews": [
+      {
+        "round": 1,
+        "ok": true,
+        "session_id": "6ca0b539-e803-4b2e-bd98-3e678a5205ba",
+        "resumed": false,
+        "cost_usd": 0.2051235,
+        "findings": "VERDICT: CHANGES REQUESTED\n\nThe address-composition rule is now expressed in two places, and the change deliberately introduced a shared helper for exactly that rule \u2014 then didn't use it in one of the two spots.\n\n**Finding 1 \u2014 `ApplyOwner` duplicates the compose rule instead of reusing `AddressNormalizer.compose`.**\n`AddressNormalizer.compose(line1, line2)` was added specifically to own \"the normalized line1, with a single space and line2 appended when present,\" and its Javadoc even promises the composed value \"cannot drift from the per-line values stored alongside it.\" But `ApplyOwner` re-implements that same shape inline:\n```java\nowner.setAddress(line2 != null && !line2.isBlank() ? line1 + \" \" + line2 : line1);\n```\nSo the \"append line2 after a single space when present\" rule now lives in both `AddressNormalizer.compose` and `ApplyOwner`. This is the exact drift the helper was meant to prevent. `ApplyOwner` should call `AddressNormalizer.compose(line1, line2)` (or whatever the update path's intended semantics are) rather than open-coding the branch. A maintainer changing the composition format later will fix one site and miss the other.\n\n**Finding 2 \u2014 the \"structured line1 present?\" predicate is copy-pasted across three units.**\n`line1 != null && !line1.isBlank()` (and its `isBlank(...)` twin) appears in `NormalizeOwnerAddress`, `ApplyOwner`, and `RequireOwnerFields` to answer the same question (\"did the request supply the structured form?\"). Given `AddressNormalizer` is already the home for address logic, a small shared predicate there (e.g. `hasStructuredAddress(line1)` / reusing it) would keep the \"prefer structured when line1 non-blank\" decision in one place instead of three that must be kept in sync.\n\n**Note on the two pipelines.** `NormalizeOwnerAddress` normalizes both lines and composes via the helper; `ApplyOwner` composes raw values with no normalization. If that divergence is intentional (update path vs. create path), it's easy to miss precisely because the composition is hand-rolled in `ApplyOwner` \u2014 routing both through the shared helper makes the intended difference explicit (normalize-then-compose vs. compose-raw) rather than incidental to which code path you happen to read.\n\nThe model/DTO/schema/OpenAPI additions themselves are clean and land in the natural units; the concern is confined to the composition/preference logic being duplicated rather than centralized in the `AddressNormalizer` helper this change already created."
+      }
+    ]
+  }
+}
