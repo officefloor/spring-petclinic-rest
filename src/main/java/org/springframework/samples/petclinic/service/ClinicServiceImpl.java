@@ -256,7 +256,8 @@ public class ClinicServiceImpl implements ClinicService {
     public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
-        assignHousehold(owner, sharesHousehold);
+        List<Owner> householdMembers = assignHousehold(owner, sharesHousehold);
+        owner.setHouseholdMemberCount(householdMembers.size() + 1);
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(nextCustomerCode(owner));
         }
@@ -297,13 +298,15 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Reconcile the owner's household. Owners are in the same household when their last name and
-     * address match (compared case-insensitively with collapsed whitespace). When another owner
-     * already lives there, the create is rejected with {@link DuplicateHouseholdException} unless
-     * {@code sharesHousehold} is set, in which case the new owner and every existing member are
-     * given the same stable shared {@code householdId}.
+     * Reconcile the owner's household and return its existing members. Owners are in the same
+     * household when their last name and address match (compared case-insensitively with collapsed
+     * whitespace). When another owner already lives there, the create is rejected with
+     * {@link DuplicateHouseholdException} unless {@code sharesHousehold} is set, in which case the
+     * new owner and every existing member are given the same stable shared {@code householdId}.
+     * The returned list is the existing members that make up this owner's household (empty when the
+     * owner lives alone), so callers can derive the household size after this create.
      */
-    private void assignHousehold(Owner owner, boolean sharesHousehold) {
+    private List<Owner> assignHousehold(Owner owner, boolean sharesHousehold) {
         String lastName = IdentityNormalizer.normalize(owner.getLastName());
         String address = AddressNormalizer.canonical(owner.getAddress());
         List<Owner> householdMembers = ownerRepository.findAll().stream()
@@ -311,7 +314,7 @@ public class ClinicServiceImpl implements ClinicService {
                 && address.equals(AddressNormalizer.canonical(existing.getAddress())))
             .toList();
         if (householdMembers.isEmpty()) {
-            return;
+            return householdMembers;
         }
         if (!sharesHousehold) {
             throw new DuplicateHouseholdException(
@@ -329,6 +332,7 @@ public class ClinicServiceImpl implements ClinicService {
                 ownerRepository.save(member);
             }
         }
+        return householdMembers;
     }
 
     /**
