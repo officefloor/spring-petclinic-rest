@@ -23,6 +23,14 @@ public final class CustomerCode {
     }
 
     /**
+     * The de-duplicated form of {@code base} — the base customer code with {@code -<n>} appended —
+     * used to keep otherwise-colliding codes distinct (see {@code DeduplicateOwnerCustomerCode}).
+     */
+    public static String withSuffix(String base, int n) {
+        return base + SEPARATOR + n;
+    }
+
+    /**
      * The region segment of a {@code <REGION>-<HASH8>} customer code — everything before the first
      * {@code '-'} — or {@link Localities#UNKNOWN} when the code is absent or blank.
      */
