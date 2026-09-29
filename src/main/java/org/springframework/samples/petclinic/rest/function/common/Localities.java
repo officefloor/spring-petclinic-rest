@@ -33,6 +33,38 @@ public final class Localities {
         return CITY_REGION.getOrDefault(city, UNKNOWN);
     }
 
+    /**
+     * The canonical region, preferring the {@code postcode}: a postcode falling in a known region's
+     * range wins, disambiguating cities that share a name. When the postcode is absent, blank or in no
+     * known range, falls back to the city-to-region table. Returns the same region for known cities.
+     */
+    public static String of(String city, String postcode) {
+        String byPostcode = regionForPostcode(postcode);
+        return byPostcode != null ? byPostcode : of(city);
+    }
+
+    /** The region whose inclusive range contains {@code postcode}, or {@code null} when the postcode is
+     *  absent, blank, non-numeric or in no known range. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
     /** The inclusive {low, high} postcode range for {@code city}'s region, or {@code null} when the
      *  city has no known region (any 4-digit postcode is then accepted). */
     public static int[] postcodeRange(String city) {
