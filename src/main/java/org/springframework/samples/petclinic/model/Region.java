@@ -37,6 +37,12 @@ public final class Region {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-timezone lookup, as IANA names. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private Region() {
     }
 
@@ -109,6 +115,15 @@ public final class Region {
         }
         int dash = customerCode.indexOf('-');
         return dash <= 0 ? UNKNOWN : customerCode.substring(0, dash);
+    }
+
+    /**
+     * The IANA timezone name for {@code region} via the fixed region-to-timezone table
+     * (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or {@code null}
+     * when the region has no mapped timezone (e.g. {@link #UNKNOWN} or {@code null}).
+     */
+    public static String timezoneForRegion(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /**

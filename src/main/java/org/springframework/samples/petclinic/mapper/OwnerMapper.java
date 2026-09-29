@@ -97,6 +97,17 @@ public interface OwnerMapper {
     }
 
     /**
+     * Fills the presentation-only {@code timezone} as the IANA timezone name derived from the
+     * owner's locality/region (the {@code <REGION>} component of its {@code customerCode}) via the
+     * fixed region-to-timezone table (see {@link Region#timezoneForRegion(String)}), or {@code null}
+     * when the region has no mapped timezone.
+     */
+    @AfterMapping
+    default void addTimezone(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setTimezone(Region.timezoneForRegion(Region.regionOfCustomerCode(owner.getCustomerCode())));
+    }
+
+    /**
      * Fills the {@code ageBand} from the owner's domain-computed {@link Owner#getAgeBand()}
      * (derived from birthDate measured against registrationDate), leaving it null when no
      * birth date is available.
