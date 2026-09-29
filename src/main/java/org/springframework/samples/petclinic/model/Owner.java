@@ -237,34 +237,53 @@ public class Owner extends Person {
         this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
-    /** The highest membership level assignable on creation; level 4 is reserved for tenure. */
-    public static final int MAX_MEMBERSHIP_LEVEL = 3;
+    /** The household size at or above which an owner earns the household membership points. */
+    public static final int MEMBERSHIP_HOUSEHOLD_SIZE = 3;
 
-    /** The number of tenure days beyond which an owner qualifies for the tenure-only level 4. */
+    /** The number of tenure days beyond which an owner earns the tenure membership points. */
     public static final long MEMBERSHIP_TENURE_DAYS = 365;
 
     /**
-     * The owner's numeric membership level, computed from stored fields: it starts at 1, gains 1
-     * when an email is present, gains 1 when {@code namesakeCount} is 0, and is capped at
-     * {@value #MAX_MEMBERSHIP_LEVEL} by these pre-tenure factors. Level 4 is reserved for tenure and
-     * is granted only when the owner's tenure (days elapsed since its {@code registrationDate})
-     * exceeds {@value #MEMBERSHIP_TENURE_DAYS}. Because a newly created owner has zero tenure, a new
-     * owner never exceeds level 3.
+     * The owner's membership points, computed from stored fields: they start at 0, gain 2 when an
+     * email is present, gain 1 when {@code namesakeCount} is 0, gain 2 for a household of
+     * {@value #MEMBERSHIP_HOUSEHOLD_SIZE} or more (see {@link #getHouseholdSize()}), and gain 3 when
+     * the owner's tenure (days elapsed since its {@code registrationDate}) exceeds
+     * {@value #MEMBERSHIP_TENURE_DAYS}.
      */
-    public int getMembershipLevel() {
-        int level = 1;
+    public int getMembershipPoints() {
+        int points = 0;
         if (this.email != null && !this.email.isEmpty()) {
-            level++;
+            points += 2;
         }
         if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        if (this.householdSize >= MEMBERSHIP_HOUSEHOLD_SIZE) {
+            points += 2;
+        }
         if (this.registrationDate != null
                 && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > MEMBERSHIP_TENURE_DAYS) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, mapped from {@link #getMembershipPoints()}: 1 for 0-1
+     * points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     */
+    public int getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     /**

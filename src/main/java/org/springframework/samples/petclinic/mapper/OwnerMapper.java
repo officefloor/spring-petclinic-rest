@@ -66,11 +66,12 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fills the {@code membershipLevel} from the owner's domain-computed
-     * {@link Owner#getMembershipLevel()}.
+     * Fills the {@code membershipPoints} and {@code membershipLevel} from the owner's
+     * domain-computed {@link Owner#getMembershipPoints()} and {@link Owner#getMembershipLevel()}.
      */
     @AfterMapping
     default void addMembershipLevel(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setMembershipPoints(owner.getMembershipPoints());
         ownerDto.setMembershipLevel(owner.getMembershipLevel());
     }
 
