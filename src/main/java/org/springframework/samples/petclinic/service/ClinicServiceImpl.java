@@ -152,7 +152,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -297,10 +298,21 @@ public class ClinicServiceImpl implements ClinicService {
     private int countNamesakes(Owner owner) {
         String firstName = IdentityNormalizer.normalize(owner.getFirstName());
         String lastName = IdentityNormalizer.normalize(owner.getLastName());
-        return (int) ownerRepository.findAll().stream()
+        return (int) findActiveOwners().stream()
             .filter(existing -> firstName.equals(IdentityNormalizer.normalize(existing.getFirstName()))
                 && lastName.equals(IdentityNormalizer.normalize(existing.getLastName())))
             .count();
+    }
+
+    /**
+     * The existing owners that have not been soft-deleted. Duplicate and identity checks run
+     * against this set, so an owner flagged {@code deleted} (see {@link #deleteOwner(Owner)}) is
+     * ignored and no longer blocks a create that would otherwise match it.
+     */
+    private List<Owner> findActiveOwners() {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
+            .toList();
     }
 
     /**
@@ -313,7 +325,7 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
         String householdId = owner.getHouseholdId();
-        return ownerRepository.findAll().stream()
+        return findActiveOwners().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .toList();
     }
@@ -441,7 +453,7 @@ public class ClinicServiceImpl implements ClinicService {
      * owner is persisted, so it reflects the owners present at creation time.
      */
     private String deduplicateCustomerCode(String baseCode) {
-        Set<String> existingCodes = ownerRepository.findAll().stream()
+        Set<String> existingCodes = findActiveOwners().stream()
             .map(Owner::getCustomerCode)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
