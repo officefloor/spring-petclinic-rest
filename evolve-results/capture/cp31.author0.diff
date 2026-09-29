@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b8275b898..df1e99cac 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,8 @@ public interface OwnerMapper {
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.common"
+                     + ".Localities.of(owner.getCity(), owner.getPostcode()))")
++    @Mapping(target = "checkDigit",
++            expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java(owner.getCustomerCode() + \"-M\" "
+                     + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+@@ -45,6 +47,28 @@ public interface OwnerMapper {
+         return owner.getEmail() != null && !owner.getEmail().isBlank();
+     }
+ 
++    /** Luhn check digit (0-9) over the digits contained in {@code s}. */
++    default int luhnCheckDigit(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index aa410eb95..ad4e7f0a5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2127,6 +2127,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits
++                contained in the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
