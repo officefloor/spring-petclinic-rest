@@ -24,12 +24,14 @@ import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -252,6 +254,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
         assignHousehold(owner, sharesHousehold);
         if (owner.getCustomerCode() == null) {
@@ -319,6 +322,33 @@ public class ClinicServiceImpl implements ClinicService {
     private static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
         String key = normalizedLastName + "\n" + normalizedAddress;
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    /** Maximum number of owners that may be created on any single day (by registration date). */
+    private static final long DAILY_OWNER_LIMIT = 100L;
+
+    /**
+     * Reject the create when {@value #DAILY_OWNER_LIMIT} or more owners have already been created
+     * today (compared by {@code registrationDate}). Evaluated before the owner is persisted, so it
+     * reflects the owners present at creation time. The new owner's own registration date, defaulted
+     * to today by the controller, determines which day the limit is checked against.
+     */
+    private void rejectWhenDailyLimitReached(Owner owner) {
+        LocalDate day = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        if (countOwnersRegisteredOn(day) >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitExceededException(
+                DAILY_OWNER_LIMIT + " or more owners have already been created on " + day);
+        }
+    }
+
+    /**
+     * Count the existing owners whose {@code registrationDate} equals the given day. Evaluated
+     * before the owner is persisted, so it reflects the owners present at creation time.
+     */
+    private long countOwnersRegisteredOn(LocalDate day) {
+        return ownerRepository.findAll().stream()
+            .filter(existing -> day.equals(existing.getRegistrationDate()))
+            .count();
     }
 
     /** Maximum number of owners allowed to live in any single city. */
