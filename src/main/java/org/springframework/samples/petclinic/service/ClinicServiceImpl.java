@@ -269,6 +269,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setNamesakeCount(countNamesakes(owner));
         }
         owner.setBulkSignupWarning(exceedsBulkSignupThreshold(owner));
+        owner.setCapacityWarning(approachingCityCapacity(owner));
         ownerRepository.save(owner);
     }
 
@@ -441,6 +442,26 @@ public class ClinicServiceImpl implements ClinicService {
             throw new CityCapacityExceededException(
                 "city " + owner.getCity() + " already contains " + CITY_CAPACITY + " or more owners");
         }
+    }
+
+    /**
+     * Lower bound (inclusive) of the range of existing owners in a city that raises the
+     * capacity warning. Between this and {@code CITY_CAPACITY - 1} the city is approaching its
+     * {@value #CITY_CAPACITY} limit.
+     */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
+    /**
+     * Whether the owner's city already contains between {@value #CITY_CAPACITY_WARNING_THRESHOLD}
+     * and {@code CITY_CAPACITY - 1} owners (approaching, but not at, the {@value #CITY_CAPACITY}
+     * capacity limit), compared case-insensitively with collapsed whitespace. Evaluated before the
+     * owner is persisted, so it reflects the owners present at creation time. The hard rejection at
+     * {@value #CITY_CAPACITY} runs earlier (see {@link #rejectWhenCityAtCapacity(Owner)}), so the
+     * count is always below capacity when this is reached.
+     */
+    private boolean approachingCityCapacity(Owner owner) {
+        long count = countOwnersInCity(owner);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 
     /**
