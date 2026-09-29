@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -44,14 +46,27 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
                     + ".AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "membershipLevel",
-            expression = "java(Math.min(3, 1 "
-                    + "+ (hasEmail(owner) ? 1 : 0) "
-                    + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+            expression = "java(membershipLevel(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Whether the owner has a usable email address. */
     default boolean hasEmail(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isBlank();
+    }
+
+    /**
+     * The owner's numeric membership level. The pre-tenure factors start at 1, gain 1 for a present
+     * email and 1 for having no namesakes (namesakeCount is 0), and are capped at 3. Level 4 is
+     * reserved for tenure: it is awarded only when the owner's tenure exceeds 365 days. A newly
+     * created owner has zero tenure, so it never exceeds level 3.
+     */
+    default int membershipLevel(Owner owner) {
+        int base = Math.min(3, 1
+                + (hasEmail(owner) ? 1 : 0)
+                + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0));
+        long tenureDays = owner.getRegistrationDate() == null ? 0
+                : ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now());
+        return base + (tenureDays > 365 ? 1 : 0);
     }
 
     Owner toOwner(OwnerDto ownerDto);
