@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.mapper;
 
 import org.jspecify.annotations.NonNull;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -19,6 +21,15 @@ import java.util.List;
 public interface OwnerMapper {
 
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Fills the presentation-only {@code displayName} as {@code "LastName, FirstName"}
+     * from the stored names, once MapStruct has mapped the remaining fields.
+     */
+    @AfterMapping
+    default void addDisplayName(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setDisplayName(owner.getLastName() + ", " + owner.getFirstName());
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
