@@ -37,8 +37,10 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -263,7 +265,7 @@ public class ClinicServiceImpl implements ClinicService {
         assignPossibleDuplicate(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
         if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(deriveCustomerCode(owner));
+            owner.setCustomerCode(deduplicateCustomerCode(deriveCustomerCode(owner)));
         }
         if (owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -430,6 +432,27 @@ public class ClinicServiceImpl implements ClinicService {
         String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         return region + "-" + sha256Hex8(telephone + lastName);
+    }
+
+    /**
+     * De-duplicates a computed {@code customerCode} against the existing owners: if no owner already
+     * carries {@code baseCode} it is returned unchanged, otherwise {@code '-<n>'} is appended with the
+     * smallest {@code n} of 2 or more that yields a value no existing owner holds. Evaluated before the
+     * owner is persisted, so it reflects the owners present at creation time.
+     */
+    private String deduplicateCustomerCode(String baseCode) {
+        Set<String> existingCodes = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existingCodes.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (existingCodes.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
