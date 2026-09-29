@@ -331,9 +331,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setEmail(normalizeEmail(owner.getEmail()));
         }
         assertEmailDomainAllowed(owner);
-        if (owner.getAddress() != null) {
-            owner.setAddress(normalizeAddress(owner.getAddress()));
-        }
+        applyAddress(owner);
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(rollToBusinessDay(effectiveDate));
         if (owner.getCustomerCode() == null) {
@@ -519,6 +517,29 @@ public class ClinicServiceImpl implements ClinicService {
 
     private static String normalizeEmail(String email) {
         return email == null ? null : email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Normalizes whichever address fields {@code owner} supplied and derives the effective flat
+     * {@code address} from them. The structured form is preferred: when a non-blank
+     * {@code addressLine1} is present, {@code address} is set to the normalized {@code addressLine1},
+     * with a single space and the normalized {@code addressLine2} appended when {@code addressLine2}
+     * is present. Otherwise the flat {@code address} is normalized in place (backward-compatible). The
+     * structured fields are also stored in their normalized form. Because everything downstream reads
+     * {@link Owner#getAddress()}, the household hash, postcode validation and locality all see the
+     * structured value when present and fall back to the flat address otherwise.
+     */
+    private static void applyAddress(Owner owner) {
+        String line1 = normalizeAddress(owner.getAddressLine1());
+        String line2 = normalizeAddress(owner.getAddressLine2());
+        owner.setAddressLine1(line1);
+        owner.setAddressLine2(line2);
+        if (line1 != null && !line1.isEmpty()) {
+            String composed = (line2 != null && !line2.isEmpty()) ? line1 + " " + line2 : line1;
+            owner.setAddress(composed);
+        } else if (owner.getAddress() != null) {
+            owner.setAddress(normalizeAddress(owner.getAddress()));
+        }
     }
 
     /** Common street-type abbreviations expanded during address normalization. */
