@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -124,6 +125,20 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Derives the owner's preferred contact channel: {@code EMAIL} when an email address is
+     * present, otherwise {@code PHONE}.
+     */
+    default OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String email = owner.getEmail();
+        return (email != null && !email.isEmpty())
+            ? OwnerDto.ContactPreferenceEnum.EMAIL
+            : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     @Mapping(target = "id", ignore = true)
