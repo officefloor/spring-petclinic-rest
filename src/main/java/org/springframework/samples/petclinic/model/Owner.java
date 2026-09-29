@@ -201,6 +201,19 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current <strong>primary identifier</strong> — the stable business key an audit
+     * event or external consumer refers to this owner by. Today that is the
+     * {@link #getCustomerCode() customerCode}; when the customer code is unified into the
+     * {@code memberId}, this returns the memberId instead and every caller follows in a single edit.
+     *
+     * <p>Deliberately not a {@code get*} bean accessor, so it stays a derived domain concept rather
+     * than another mapped/serialized property.
+     */
+    public String primaryIdentifier() {
+        return this.customerCode;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
