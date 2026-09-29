@@ -248,9 +248,41 @@ public class ClinicServiceImpl implements ClinicService {
         return vetRepository.findAll();
     }
 
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Rejects saving {@code owner} when it carries a postcode that is out of range for its city's
+     * region. The postcode is optional: a {@code null} postcode is left untouched. When present it
+     * is assumed to already be four digits (enforced by request validation); if the owner's city has
+     * a known region (see {@link Region}), the postcode must fall within that region's range
+     * ({@link #REGION_POSTCODES}). A city with no known region accepts any 4-digit postcode.
+     *
+     * @throws InvalidPostcodeException if the postcode is out of range for the city's region
+     */
+    private void assertPostcodeValid(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        String region = Region.forCity(owner.getCity());
+        int[] range = region == null ? null : REGION_POSTCODES.get(region);
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(postcode, owner.getCity(), region);
+        }
+    }
+
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        assertPostcodeValid(owner);
         if (owner.getTelephone() != null) {
             owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         }

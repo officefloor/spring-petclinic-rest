@@ -65,6 +65,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     /**
      * Write-only, non-persistent acknowledgement that this owner deliberately shares a
      * household with an existing owner. When {@code true}, creation is allowed even if
@@ -146,6 +149,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     /** The highest membership level assignable on creation; level 4 is reserved for tenure. */
