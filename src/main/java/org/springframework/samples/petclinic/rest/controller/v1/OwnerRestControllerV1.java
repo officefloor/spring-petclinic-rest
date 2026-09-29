@@ -42,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -61,14 +62,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final IdempotencyStore idempotencyStore;
+
+    private final HttpServletRequest request;
+
+    /** Header carrying the client-supplied idempotency token on a create request. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 IdempotencyStore idempotencyStore,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.idempotencyStore = idempotencyStore;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -102,13 +114,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = idempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = this.idempotencyStore.find(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(existing)),
+                        HttpStatus.OK);
+                }
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            this.idempotencyStore.remember(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = withBulkSignupWarning(ownerMapper.toOwnerDto(owner));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The trimmed {@code Idempotency-Key} header of the current request, or {@code null} when it is
+     * absent or blank (an absent key means the create is treated non-idempotently).
+     */
+    private String idempotencyKey() {
+        String key = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
+        if (key == null) {
+            return null;
+        }
+        key = key.trim();
+        return key.isEmpty() ? null : key;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
