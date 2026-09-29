@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -107,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
         owner.setTelephone(telephone);
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> telephone.equals(TelephoneNormalizer.digitsOnly(existing.getTelephone())));
         if (telephoneInUse) {
