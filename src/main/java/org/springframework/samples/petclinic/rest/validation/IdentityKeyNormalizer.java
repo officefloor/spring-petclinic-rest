@@ -16,19 +16,24 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
+
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Utility for deriving an owner's {@code identityKey}, the single value into which all
- * duplicate detection is consolidated. The key is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}: the owner's
- * telephone in {@link TelephoneNormalizer E.164} form, the (already lower-cased) e-mail
- * address or an empty string when absent, and the shared household identifier or an empty
- * string when the owner does not belong to a household.
+ * duplicate detection is consolidated. The key is the lower-case hexadecimal SHA-256 digest of
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}: the owner's telephone
+ * in {@link TelephoneNormalizer E.164} form, the lower-cased e-mail address (or an empty string
+ * when absent), and the {@link Soundex Soundex} code of the last name.
  *
- * <p>Because the telephone is part of the key, two members of the same household (the same
- * {@code householdId}) with different telephones have different identity keys; only an exact
- * whole-key match between a new owner and an existing one is a duplicate.
+ * <p>Because the telephone is part of the key, two owners with the same last name and postcode but
+ * different telephones have different identity keys; only an exact whole-key match between a new
+ * owner and an existing one is a hard duplicate. Owners that merely share the last name's Soundex
+ * code and postcode are surfaced as a soft match instead.
  */
 public final class IdentityKeyNormalizer {
 
@@ -46,8 +51,26 @@ public final class IdentityKeyNormalizer {
             return null;
         }
         String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
+        String soundex = Soundex.encode(owner.getLastName());
+        return sha256Hex(telephone + "|" + email + "|" + soundex);
+    }
+
+    /**
+     * Returns the full lower-case hexadecimal SHA-256 digest of the UTF-8 bytes of {@code value}.
+     */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 }

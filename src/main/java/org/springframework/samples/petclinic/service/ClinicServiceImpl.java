@@ -24,7 +24,10 @@ import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
+import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -253,6 +256,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void createOwner(Owner owner) throws DataAccessException {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
+        rejectWhenDuplicateIdentity(owner);
         owner.setHouseholdId(deriveHouseholdId(owner));
         List<Owner> householdMembers = findHouseholdMembers(owner);
         assignPossibleDuplicate(owner);
@@ -350,14 +354,51 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Set the new owner's soft-duplicate flags. A new owner joining an existing household is no
-     * longer rejected as a duplicate — its membership level is capped instead (see
-     * {@link #membershipLevelCap(List)}) — so the flags are always cleared here, but set explicitly
-     * so the field is always present in the response. Evaluated before the owner is persisted.
+     * Reject the create with a {@code 409 Conflict} when the owner's derived {@code identityKey}
+     * (see {@link IdentityKeyNormalizer}) exactly matches that of an existing, non-deleted owner.
+     * This single key is the whole of duplicate detection: the former separate household-duplicate
+     * block from the computed {@code householdId} no longer applies. Owners flagged {@code deleted}
+     * are ignored (see {@link #findActiveOwners()}); the e-mail-domain blocklist is applied earlier,
+     * before this method runs. Evaluated before the owner is persisted, so it reflects the owners
+     * present at creation time.
+     */
+    private void rejectWhenDuplicateIdentity(Owner owner) {
+        String identityKey = IdentityKeyNormalizer.derive(owner);
+        boolean duplicate = findActiveOwners().stream()
+            .anyMatch(existing -> identityKey.equals(IdentityKeyNormalizer.derive(existing)));
+        if (duplicate) {
+            throw new DuplicateIdentityException(
+                "an owner with the same identity key already exists");
+        }
+    }
+
+    /**
+     * Set the new owner's soft-duplicate flags. Because the telephone is part of the
+     * {@code identityKey}, two owners sharing a last name and postcode but with different telephones
+     * are no longer a hard duplicate; they are surfaced as a soft match instead. The flag is raised
+     * when the owner's {@code identityKey} differs from an existing, non-deleted owner's yet their
+     * last-name {@link Soundex} codes and postcodes match, pointing {@code possibleDuplicateOf} at
+     * that owner; otherwise both flags are cleared so the field is always present in the response.
+     * Evaluated before the owner is persisted, so it reflects the owners present at creation time.
      */
     private void assignPossibleDuplicate(Owner owner) {
-        owner.setPossibleDuplicate(false);
-        owner.setPossibleDuplicateOf(null);
+        String identityKey = IdentityKeyNormalizer.derive(owner);
+        String soundex = Soundex.encode(owner.getLastName());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        Owner match = findActiveOwners().stream()
+            .filter(existing -> !identityKey.equals(IdentityKeyNormalizer.derive(existing)))
+            .filter(existing -> soundex.equals(Soundex.encode(existing.getLastName())))
+            .filter(existing -> postcode.equals(existing.getPostcode() == null ? "" : existing.getPostcode()))
+            .findFirst()
+            .orElse(null);
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
+        }
+        else {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
     }
 
     /** Maximum number of owners that may be created on any single day (by registration date). */

@@ -213,7 +213,7 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateIdentityException} raised when an owner is created whose derived
-     * {@code identityKey} ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId})
+     * {@code identityKey} (SHA-256 hex over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)})
      * exactly matches that of an existing owner, returning a 409 Conflict status. This single key
      * consolidates the former separate telephone, e-mail and household duplicate checks.
      *

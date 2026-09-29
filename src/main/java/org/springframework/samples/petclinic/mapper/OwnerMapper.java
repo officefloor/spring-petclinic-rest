@@ -231,9 +231,9 @@ public interface OwnerMapper {
 
     /**
      * Whether the owner was flagged as a possible (soft) duplicate at creation time — not a hard
-     * duplicate, but sharing an existing owner's last name and postcode with a different telephone.
-     * A {@code null} stored value is treated as {@code false}, so the field is always present in the
-     * response.
+     * duplicate, but sharing an existing owner's last-name Soundex code and postcode while differing
+     * on the identity key (typically a different telephone). A {@code null} stored value is treated
+     * as {@code false}, so the field is always present in the response.
      */
     default Boolean possibleDuplicate(Owner owner) {
         if (owner == null) {
@@ -258,7 +258,8 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's {@code identityKey}, the single value into which duplicate detection is
-     * consolidated: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
+     * consolidated: the SHA-256 hex over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
      */
     default String identityKey(Owner owner) {
         return IdentityKeyNormalizer.derive(owner);
