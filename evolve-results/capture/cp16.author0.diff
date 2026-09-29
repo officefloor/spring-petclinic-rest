@@ -1,0 +1,48 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index df80614ba..5c67bf719 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -253,7 +253,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         if (owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++            owner.setCustomerCode(generateCustomerCode(owner));
+         }
+         if (owner.isNew()) {
+             owner.setNamesakeCount(countNamesakes(owner));
+@@ -266,14 +266,27 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Build a {@code customerCode} formatted {@code '<LAST3>-<NNNN>'} where LAST3 is the
+-     * upper-cased first three letters of {@code lastName} and NNNN is a global 4-digit
+-     * zero-padded sequence equal to one more than the current number of owners.
++     * Build a {@code customerCode} formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is the
++     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three
++     * letters of {@code lastName}, and NNNN is a per-city 4-digit zero-padded sequence equal to
++     * one more than the number of owners already in that city.
+      */
+-    private String generateCustomerCode(String lastName) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        long sequence = ownerRepository.findAll().size() + 1L;
+-        return String.format("%s-%04d", prefix, sequence);
++    private String generateCustomerCode(Owner owner) {
++        String cityPrefix = prefix3(owner.getCity());
++        String lastNamePrefix = prefix3(owner.getLastName());
++        long sequence = countOwnersInCity(owner.getCity()) + 1L;
++        return String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence);
++    }
++
++    private static String prefix3(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
++    }
++
++    private long countOwnersInCity(String city) {
++        String normalized = normalizeHouseholdValue(city);
++        return ownerRepository.findAll().stream()
++                .filter(existing -> normalized.equals(normalizeHouseholdValue(existing.getCity())))
++                .count();
+     }
+ 
+     /**
