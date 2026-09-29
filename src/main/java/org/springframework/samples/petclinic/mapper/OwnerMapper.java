@@ -54,6 +54,8 @@ public interface OwnerMapper {
             expression = "java(membershipLevel(owner))")
     @Mapping(target = "ownerSegment",
             expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag",
+            expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Whether the owner has a usable email address. */
@@ -123,6 +125,22 @@ public interface OwnerMapper {
     default String locality(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.MemberId
                 .regionOf(owner.getMemberId());
+    }
+
+    /**
+     * The owner's read-model risk flag: {@code true} when any soft-risk signal holds — the owner is a
+     * possible duplicate ({@link Owner#getPossibleDuplicate()}), its email domain is disposable-adjacent
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.DisposableEmailDomains
+     * #isDisposableAdjacent(String)}), or its city is over its soft capacity
+     * ({@link Owner#getCapacityWarning()}) — otherwise {@code false}. Derived here rather than persisted
+     * so the create response and later reads always agree.
+     */
+    default boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner
+                .DisposableEmailDomains.isDisposableAdjacent(owner.getEmail());
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
     }
 
     Owner toOwner(OwnerDto ownerDto);
