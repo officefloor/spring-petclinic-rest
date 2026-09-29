@@ -70,6 +70,17 @@ public interface OwnerMapper {
     }
 
     /**
+     * Fills the {@code contactPreference} as {@code EMAIL} when the owner has an email
+     * address, otherwise {@code PHONE}.
+     */
+    @AfterMapping
+    default void addContactPreference(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        ownerDto.setContactPreference(
+            hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE);
+    }
+
+    /**
      * Fills the presentation-only {@code locality} as the canonical region derived from
      * the owner's city via the fixed {@link #CITY_REGION} table, or {@code 'UNKNOWN'}
      * when the city is not in the table.
