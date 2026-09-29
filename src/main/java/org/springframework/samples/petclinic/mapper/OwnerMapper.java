@@ -31,6 +31,17 @@ public interface OwnerMapper {
         ownerDto.setDisplayName(owner.getLastName() + ", " + owner.getFirstName());
     }
 
+    /**
+     * Fills the presentation-only {@code initials} as the upper-cased first letters of
+     * firstName and lastName, dot-separated with a trailing dot (e.g. {@code "J.S."}).
+     */
+    @AfterMapping
+    default void addInitials(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setInitials(
+            Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
+                + Character.toUpperCase(owner.getLastName().charAt(0)) + ".");
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
