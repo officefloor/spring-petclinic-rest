@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
@@ -66,6 +69,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Source of the monotonically increasing {@code seq} carried by each {@link OwnerCreatedAuditEvent}. */
+    private static final AtomicLong AUDIT_SEQ = new AtomicLong();
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -78,18 +84,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final HttpServletRequest request;
 
+    private final ObjectMapper objectMapper;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  IdempotencyStore idempotencyStore,
-                                 HttpServletRequest request) {
+                                 HttpServletRequest request,
+                                 ObjectMapper objectMapper) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.idempotencyStore = idempotencyStore;
         this.request = request;
+        this.objectMapper = objectMapper;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -138,9 +148,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
         this.clinicService.createOwner(owner);
+        Integer membershipLevel = ownerMapper.membershipLevel(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+            membershipLevel, ownerMapper.membershipNumber(owner));
+        OwnerCreatedAuditEvent event = new OwnerCreatedAuditEvent(AUDIT_SEQ.incrementAndGet(),
+            owner.getId(), owner.getCustomerCode(), membershipLevel);
+        AUDIT.info(objectMapper.writeValueAsString(event));
         idempotencyStore.remember(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
