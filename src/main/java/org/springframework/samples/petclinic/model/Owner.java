@@ -329,6 +329,19 @@ public class Owner extends Person {
         return (10 - (sum % 10)) % 10;
     }
 
+    /**
+     * The owner's membership number formatted {@code '<customerCode>-M<YY>'} where YY is the last
+     * two digits of the registration year, or null when either the {@code customerCode} or the
+     * {@code registrationDate} is not set.
+     */
+    public String getMembershipNumber() {
+        if (this.customerCode == null || this.registrationDate == null) {
+            return null;
+        }
+        String yy = String.format("%02d", this.registrationDate.getYear() % 100);
+        return this.customerCode + "-M" + yy;
+    }
+
     public boolean isSharesHousehold() {
         return this.sharesHousehold;
     }

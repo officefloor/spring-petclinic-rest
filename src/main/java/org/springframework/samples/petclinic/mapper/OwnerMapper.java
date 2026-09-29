@@ -59,10 +59,7 @@ public interface OwnerMapper {
      */
     @AfterMapping
     default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        if (owner.getCustomerCode() != null && owner.getRegistrationDate() != null) {
-            String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
-            ownerDto.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
-        }
+        ownerDto.setMembershipNumber(owner.getMembershipNumber());
     }
 
     /**
