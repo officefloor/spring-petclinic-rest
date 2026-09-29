@@ -1,0 +1,301 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d9fb25508..addd03519 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -45,6 +45,8 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
+                     + ".AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
++    @Mapping(target = "membershipPoints",
++            expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(membershipLevel(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -55,18 +57,49 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's numeric membership level. The pre-tenure factors start at 1, gain 1 for a present
+-     * email and 1 for having no namesakes (namesakeCount is 0), and are capped at 3. Level 4 is
+-     * reserved for tenure: it is awarded only when the owner's tenure exceeds 365 days. A newly
+-     * created owner has zero tenure, so it never exceeds level 3.
++     * The owner's membership points. Starting from 0: add 2 when an email address is present, add 1
++     * when the owner has no namesakes (namesakeCount is 0), add 2 for a household of 3 or more
++     * members, and add 3 when the owner's tenure exceeds 365 days.
++     *
++     * <p>The household size is not derived here: it depends on other owners, so it is computed by
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the
++     * owner reaches this mapper and read from the entity, keeping this a pure transformation.
+      */
+-    default int membershipLevel(Owner owner) {
+-        int base = Math.min(3, 1
+-                + (hasEmail(owner) ? 1 : 0)
+-                + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0));
++    default int membershipPoints(Owner owner) {
++        int points = 0;
++        if (hasEmail(owner)) {
++            points += 2;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
++        }
+         long tenureDays = owner.getRegistrationDate() == null ? 0
+                 : ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now());
+-        return base + (tenureDays > 365 ? 1 : 0);
++        if (tenureDays > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The owner's numeric membership level, mapped from {@link #membershipPoints(Owner)}: level 1 for
++     * 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++     */
++    default int membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
+     }
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2ef09d9ac..662bd868b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -69,6 +69,15 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    /**
++     * The number of owners in this owner's household (owners sharing the same {@code householdId},
++     * counting this owner). Not persisted: it is a live, derived count stamped onto the owner by
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the
++     * owner is mapped to a DTO. Null until stamped, treated as a single-member household.
++     */
++    @Transient
++    private Integer householdSize;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -161,6 +170,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+index c9b3a3f1e..684afaf0f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwners.java
+@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
+ public class ListOwners {
+ 
+     public void service(@RequestParam(name = "lastName", required = false) String lastName,
+-            OwnerRepository ownerRepository, OwnerMapper ownerMapper,
++            OwnerRepository ownerRepository, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<List<OwnerDto>>> response) {
+         Collection<Owner> owners = lastName != null
+                 ? ownerRepository.findByLastName(lastName)
+@@ -23,6 +23,6 @@ public class ListOwners {
+             response.send(ResponseEntity.notFound().build());
+             return;
+         }
+-        response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
++        response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(ownerHousehold.stampAll(owners))));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+index 31398909f..bfd512855 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ListOwnersPage.java
+@@ -17,12 +17,13 @@ public class ListOwnersPage {
+             @RequestParam(name = "lastName", required = false) String lastName,
+             @RequestParam(name = "page", required = false) Integer page,
+             @RequestParam(name = "size", required = false) Integer size,
+-            OwnerRepository ownerRepository, OwnerMapper ownerMapper,
++            OwnerRepository ownerRepository, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
+             ObjectResponse<OwnerPageDto> response) {
+         Pageable pageable = PageRequest.of(page == null ? 0 : page, size == null ? 20 : size, Sort.by("id"));
+         Page<Owner> owners = lastName != null
+                 ? ownerRepository.findByLastName(lastName, pageable)
+                 : ownerRepository.findAll(pageable);
++        ownerHousehold.stampAll(owners.getContent());
+         response.send(ownerMapper.toOwnerPageDto(owners));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+new file mode 100644
+index 000000000..2c0eb8687
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+@@ -0,0 +1,61 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Collection;
++import java.util.Map;
++import java.util.stream.Collectors;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.stereotype.Component;
++
++/**
++ * Computes and stamps each owner's household size — the number of owners sharing its
++ * {@code householdId} (see {@link AssignHousehold}), counting the owner itself.
++ *
++ * <p>The size depends on <em>other</em> owners, so it cannot be derived from a single {@link Owner}
++ * inside the mapper. This component owns that repository lookup and writes the result onto the
++ * (transient) {@link Owner#getHouseholdSize()} before the owner is mapped, so {@code OwnerMapper}
++ * stays a pure transformation. An owner with no {@code householdId} is a single-member household.
++ */
++@Component
++public class OwnerHousehold {
++
++    private final OwnerRepository ownerRepository;
++
++    public OwnerHousehold(OwnerRepository ownerRepository) {
++        this.ownerRepository = ownerRepository;
++    }
++
++    /** Stamp a single owner's household size, computed against all current owners. */
++    public Owner stamp(Owner owner) {
++        if (owner != null) {
++            owner.setHouseholdSize(sizeIn(owner, householdCounts()));
++        }
++        return owner;
++    }
++
++    /** Stamp every owner in the collection, reading all owners once for the whole batch. */
++    public <C extends Collection<Owner>> C stampAll(C owners) {
++        if (owners != null && !owners.isEmpty()) {
++            Map<String, Long> counts = householdCounts();
++            owners.forEach(owner -> owner.setHouseholdSize(sizeIn(owner, counts)));
++        }
++        return owners;
++    }
++
++    /** Number of existing owners grouped by household id. */
++    private Map<String, Long> householdCounts() {
++        return ownerRepository.findAll().stream()
++                .filter(existing -> existing.getHouseholdId() != null)
++                .collect(Collectors.groupingBy(Owner::getHouseholdId, Collectors.counting()));
++    }
++
++    /** The owner's household size from pre-computed counts, always at least 1 (the owner itself). */
++    private int sizeIn(Owner owner, Map<String, Long> counts) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return 1;
++        }
++        return (int) Math.max(counts.getOrDefault(householdId, 0L), 1L);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 75c204b47..9115bff60 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner));
++    public void service(@Val Owner owner, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
++            ObjectResponse<OwnerDto> response) {
++        response.send(ownerMapper.toOwnerDto(ownerHousehold.stamp(owner)));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b470813..fe360d041 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -11,9 +11,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        OwnerDto dto = ownerMapper.toOwnerDto(ownerHousehold.stamp(owner));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index e9196eb7c..c9cb22757 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -10,7 +10,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerUpdated {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(ownerMapper.toOwnerDto(owner)));
++    public void service(@Val Owner owner, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
++            ObjectResponse<ResponseEntity<OwnerDto>> response) {
++        response.send(ResponseEntity.status(HttpStatus.NO_CONTENT)
++                .body(ownerMapper.toOwnerDto(ownerHousehold.stamp(owner))));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 04f9ee28b..48c64a8e7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2201,20 +2201,28 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points. Starting from 0, add 2 when an email
++                address is present, add 1 when the owner has no namesakes
++                (namesakeCount is 0), add 2 for a household of 3 or more members, and
++                add 3 when the owner's tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level. The pre-tenure factors start
+-                at 1, gain 1 when an email address is present, and gain 1 when the
+-                owner has no namesakes (namesakeCount is 0), capped at 3. Level 4 is
+-                reserved for tenure: it is awarded only when the owner's tenure
+-                exceeds 365 days. A newly created owner has zero tenure, so it never
+-                exceeds level 3.
++                The owner's numeric membership level, mapped from membershipPoints:
++                level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             contactPreference:
+               title: Contact preference
