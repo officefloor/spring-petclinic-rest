@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 1dd142392..dc029d0ad 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.service.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.service.DailyOwnerLimitException;
++import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
+ import org.springframework.samples.petclinic.service.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.service.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
+@@ -251,6 +252,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DisposableEmailDomainException}, raised when an owner is supplied with an email
++     * whose domain is on the disposable-domain blocklist. Returns a 400 Bad Request status.
++     *
++     * @param e The {@link DisposableEmailDomainException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(DisposableEmailDomainException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
++        logger.warn("Disposable email domain at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 4eefd34ff..5ed677347 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -291,6 +291,33 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /** Email domains rejected as disposable/throwaway addresses. */
++    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /**
++     * Rejects saving {@code owner} when its email's domain is on the disposable-domain blocklist
++     * ({@link #DISPOSABLE_EMAIL_DOMAINS}). The email is optional: a {@code null} email is left
++     * untouched. The comparison is case-insensitive on the part after the last {@code '@'}; the
++     * email has already been lower-cased by {@link #saveOwner(Owner)} before this runs.
++     *
++     * @throws DisposableEmailDomainException if the email domain is blocklisted
++     */
++    private void assertEmailDomainAllowed(Owner owner) {
++        String email = owner.getEmail();
++        if (email == null) {
++            return;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new DisposableEmailDomainException(domain);
++        }
++    }
++
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+@@ -302,6 +329,7 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.getEmail() != null) {
+             owner.setEmail(normalizeEmail(owner.getEmail()));
+         }
++        assertEmailDomainAllowed(owner);
+         if (owner.getAddress() != null) {
+             owner.setAddress(normalizeAddress(owner.getAddress()));
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomainException.java b/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomainException.java
+new file mode 100644
+index 000000000..6d7f44b25
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/DisposableEmailDomainException.java
+@@ -0,0 +1,28 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.service;
++
++/**
++ * Thrown when an {@link org.springframework.samples.petclinic.model.Owner} is supplied with an
++ * email whose domain is on the disposable-domain blocklist (mailinator.com, tempmail.com,
++ * guerrillamail.com). Signals invalid request input, mapped to HTTP 400.
++ */
++public class DisposableEmailDomainException extends RuntimeException {
++
++    public DisposableEmailDomainException(String domain) {
++        super("Email domain '" + domain + "' is not allowed (disposable-domain blocklist)");
++    }
++}
