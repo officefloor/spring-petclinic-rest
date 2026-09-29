@@ -17,15 +17,16 @@
 package org.springframework.samples.petclinic.rest.validation;
 
 /**
- * Thrown when an owner is created whose last name and address (compared
- * case-insensitively with collapsed whitespace) match those of another owner,
- * and the request did not opt in via {@code sharesHousehold}. Handled by the
- * REST {@code ExceptionControllerAdvice}, which translates it into a
- * {@code 409 Conflict} response.
+ * Thrown when an owner is created whose derived {@code identityKey}
+ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) exactly
+ * matches that of an existing owner. This single key consolidates the former separate
+ * telephone, e-mail and household duplicate checks. Handled by the REST
+ * {@code ExceptionControllerAdvice}, which translates it into a {@code 409 Conflict}
+ * response.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    public DuplicateHouseholdException(String message) {
+    public DuplicateIdentityException(String message) {
         super(message);
     }
 }

@@ -39,8 +39,6 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
-import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -120,22 +118,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveRegistrationDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(TelephoneNormalizer.toE164(existing.getTelephone())));
-        if (telephoneInUse) {
-            throw new DuplicateTelephoneException(
-                "telephone " + telephone + " is already used by another owner");
-        }
-        if (email != null) {
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(existing -> existing != null)
-                .anyMatch(existing -> email.equalsIgnoreCase(existing));
-            if (emailInUse) {
-                throw new DuplicateEmailException(
-                    "email " + email + " is already used by another owner");
-            }
-        }
         this.clinicService.createOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),

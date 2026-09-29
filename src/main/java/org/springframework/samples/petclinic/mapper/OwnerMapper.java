@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -26,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -139,6 +141,14 @@ public interface OwnerMapper {
         return (email != null && !email.isEmpty())
             ? OwnerDto.ContactPreferenceEnum.EMAIL
             : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * Derives the owner's {@code identityKey}, the single value into which duplicate detection is
+     * consolidated: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
+     */
+    default String identityKey(Owner owner) {
+        return IdentityKeyNormalizer.derive(owner);
     }
 
     @Mapping(target = "id", ignore = true)

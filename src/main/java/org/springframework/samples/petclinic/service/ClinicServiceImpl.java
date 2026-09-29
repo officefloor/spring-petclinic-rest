@@ -25,7 +25,8 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -257,6 +258,7 @@ public class ClinicServiceImpl implements ClinicService {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
         List<Owner> householdMembers = assignHousehold(owner, sharesHousehold);
+        rejectWhenDuplicateIdentity(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(nextCustomerCode(owner));
@@ -300,13 +302,18 @@ public class ClinicServiceImpl implements ClinicService {
     /**
      * Reconcile the owner's household and return its existing members. Owners are in the same
      * household when their last name and address match (compared case-insensitively with collapsed
-     * whitespace). When another owner already lives there, the create is rejected with
-     * {@link DuplicateHouseholdException} unless {@code sharesHousehold} is set, in which case the
-     * new owner and every existing member are given the same stable shared {@code householdId}.
-     * The returned list is the existing members that make up this owner's household (empty when the
-     * owner lives alone), so callers can derive the household size after this create.
+     * whitespace). When another owner already lives there and {@code sharesHousehold} is set, the
+     * new owner and every existing member are given the same stable shared {@code householdId} so
+     * they form one household; without the opt-in the owner is treated as living alone (no shared
+     * identifier). Duplicate detection no longer happens here: it is consolidated into the derived
+     * {@code identityKey} (see {@link #rejectWhenDuplicateIdentity(Owner)}). The returned list is the
+     * existing members that make up this owner's household (empty when the owner lives alone), so
+     * callers can derive the household size after this create.
      */
     private List<Owner> assignHousehold(Owner owner, boolean sharesHousehold) {
+        if (!sharesHousehold) {
+            return List.of();
+        }
         String lastName = IdentityNormalizer.normalize(owner.getLastName());
         String address = AddressNormalizer.canonical(owner.getAddress());
         List<Owner> householdMembers = ownerRepository.findAll().stream()
@@ -315,10 +322,6 @@ public class ClinicServiceImpl implements ClinicService {
             .toList();
         if (householdMembers.isEmpty()) {
             return householdMembers;
-        }
-        if (!sharesHousehold) {
-            throw new DuplicateHouseholdException(
-                "an owner with last name " + owner.getLastName() + " already lives at " + owner.getAddress());
         }
         String householdId = householdMembers.stream()
             .map(Owner::getHouseholdId)
@@ -342,6 +345,26 @@ public class ClinicServiceImpl implements ClinicService {
     private static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
         String key = normalizedLastName + "\n" + normalizedAddress;
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    /**
+     * Reject the create when the owner's derived {@code identityKey} exactly matches that of an
+     * existing owner. The key —
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} — is the single value
+     * into which the former separate telephone, e-mail and household duplicate checks are
+     * consolidated: only an exact whole-key match is a duplicate, so two members of the same
+     * household with different telephones (hence different keys) are both allowed. Evaluated after
+     * the household has been reconciled (so the {@code householdId} segment is settled) and before
+     * the owner is persisted, so it reflects the owners present at creation time.
+     */
+    private void rejectWhenDuplicateIdentity(Owner owner) {
+        String identityKey = IdentityKeyNormalizer.derive(owner);
+        boolean duplicate = ownerRepository.findAll().stream()
+            .anyMatch(existing -> identityKey.equals(IdentityKeyNormalizer.derive(existing)));
+        if (duplicate) {
+            throw new DuplicateIdentityException(
+                "an owner with identity key " + identityKey + " already exists");
+        }
     }
 
     /** Maximum number of owners that may be created on any single day (by registration date). */
