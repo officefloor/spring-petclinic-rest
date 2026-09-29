@@ -59,6 +59,9 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "household_id")
+    private String householdId;
+
     /**
      * Write-only, non-persistent acknowledgement that this owner deliberately shares a
      * household with an existing owner. When {@code true}, creation is allowed even if
@@ -116,6 +119,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public String getHouseholdId() {
+        return this.householdId;
+    }
+
+    public void setHouseholdId(String householdId) {
+        this.householdId = householdId;
     }
 
     public boolean isSharesHousehold() {

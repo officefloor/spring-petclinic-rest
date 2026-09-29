@@ -26,7 +26,11 @@ import org.springframework.samples.petclinic.util.E164Telephone;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -248,7 +252,9 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         }
         assertTelephoneUnique(owner, owner.getTelephone());
-        assertHouseholdAllowed(owner);
+        List<Owner> household = findHouseholdMembers(owner);
+        assertHouseholdAllowed(owner, household);
+        assignHousehold(owner, household);
         ownerRepository.save(owner);
     }
 
@@ -290,28 +296,96 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Rejects creating an {@code owner} that shares both {@code lastName} and {@code address}
-     * (compared case-insensitively with collapsed whitespace) with an existing owner, unless the
-     * request explicitly acknowledges the shared household via {@link Owner#isSharesHousehold()}.
-     * Only applies to new owners; updates to an existing owner are left untouched.
-     *
-     * @throws DuplicateHouseholdException if another owner already lives at the same household
+     * Returns the existing owners that share both {@code lastName} and {@code address} (compared
+     * case-insensitively with collapsed whitespace) with a new {@code owner} — i.e. the members of
+     * the household it would join. Returns an empty list for an update to an existing owner or when
+     * either household value is blank, so household rules only apply to genuine new members.
      */
-    private void assertHouseholdAllowed(Owner owner) {
-        if (!owner.isNew() || owner.isSharesHousehold()) {
-            return;
+    private List<Owner> findHouseholdMembers(Owner owner) {
+        if (!owner.isNew()) {
+            return List.of();
         }
         String lastName = normalizeHouseholdValue(owner.getLastName());
         String address = normalizeHouseholdValue(owner.getAddress());
         if (lastName.isEmpty() || address.isEmpty()) {
-            return;
+            return List.of();
         }
+        List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (!existing.getId().equals(owner.getId())
                     && lastName.equals(normalizeHouseholdValue(existing.getLastName()))
                     && address.equals(normalizeHouseholdValue(existing.getAddress()))) {
-                throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+                household.add(existing);
             }
+        }
+        return household;
+    }
+
+    /**
+     * Pure guard: rejects creating {@code owner} when it would join a non-empty {@code household}
+     * without acknowledging the shared household via {@link Owner#isSharesHousehold()}. Returns
+     * without side effects otherwise.
+     *
+     * @throws DuplicateHouseholdException if another owner already lives at the same household and
+     *                                     the request does not acknowledge the shared household
+     */
+    private void assertHouseholdAllowed(Owner owner, List<Owner> household) {
+        if (!household.isEmpty() && !owner.isSharesHousehold()) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+    }
+
+    /**
+     * Assigns household membership when {@code owner} joins a non-empty {@code household}: the new
+     * owner and every matching existing member that lacks one are given the same stable
+     * {@code householdId}, and any updated existing members are persisted. No-op when the household
+     * is empty.
+     */
+    private void assignHousehold(Owner owner, List<Owner> household) {
+        if (household.isEmpty()) {
+            return;
+        }
+        String householdId = resolveHouseholdId(owner, household);
+        owner.setHouseholdId(householdId);
+        for (Owner existing : household) {
+            if (existing.getHouseholdId() == null || existing.getHouseholdId().isBlank()) {
+                existing.setHouseholdId(householdId);
+                ownerRepository.save(existing);
+            }
+        }
+    }
+
+    /**
+     * Returns the {@code householdId} shared by a household: the first non-blank identifier already
+     * carried by an existing member, or otherwise a freshly derived stable identifier for the
+     * joining {@code owner}'s normalized lastName and address.
+     */
+    private String resolveHouseholdId(Owner owner, List<Owner> household) {
+        for (Owner existing : household) {
+            if (existing.getHouseholdId() != null && !existing.getHouseholdId().isBlank()) {
+                return existing.getHouseholdId();
+            }
+        }
+        return generateHouseholdId(normalizeHouseholdValue(owner.getLastName()),
+            normalizeHouseholdValue(owner.getAddress()));
+    }
+
+    /**
+     * Derives a stable {@code householdId} formatted {@code 'HH-<12 upper-hex>'} from the SHA-256
+     * digest of the normalized {@code lastName} and {@code address}, so all owners in the same
+     * household deterministically share the same identifier.
+     */
+    private static String generateHouseholdId(String lastName, String address) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((lastName + "\u0000" + address).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02X", hash[i]));
+            }
+            return "HH-" + sb;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 
