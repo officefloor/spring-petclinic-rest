@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 26f6d755c..ce2a962ef 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.service.MembershipLevels;
++import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.Regions;
+ import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
+@@ -42,6 +43,7 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+@@ -288,6 +290,23 @@ public interface OwnerMapper {
+         return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+     }
+ 
++    /**
++     * Whether the owner should be flagged for manual review. True when any one of these holds: the
++     * owner is a possible (soft) duplicate ({@link #possibleDuplicate(Owner)}), the owner's e-mail
++     * domain is disposable-adjacent ({@link EmailNormalizer#isDisposableAdjacent(String)}), or the
++     * owner's city is over its soft capacity ({@link #capacityWarning(Owner)}). Otherwise false.
++     * The result composes those three sub-flags rather than reading a stored value, so it is always
++     * non-null (and thus always present in the response) for a non-null owner.
++     */
++    default Boolean riskFlag(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(possibleDuplicate(owner))
++            || EmailNormalizer.isDisposableAdjacent(owner.getEmail())
++            || Boolean.TRUE.equals(capacityWarning(owner));
++    }
++
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     Owner toOwner(OwnerFieldsDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+index d7e07a840..e366d46f4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailNormalizer.java
+@@ -67,4 +67,58 @@ public final class EmailNormalizer {
+         }
+         return normalized;
+     }
++
++    /**
++     * Whether the supplied e-mail address is <em>disposable-adjacent</em>: a soft signal that its
++     * domain resembles a known throwaway provider without necessarily being on the outright
++     * {@link #DISPOSABLE_DOMAINS blocklist} (blocklisted domains are already rejected at create
++     * time by {@link #normalize(String)}). A domain qualifies when it is, or is a subdomain of, a
++     * blocklisted disposable domain (e.g. {@code mail.mailinator.com}), or when it shares the
++     * registrable second-level label of one but uses a different top-level domain (e.g.
++     * {@code mailinator.net} for the blocklisted {@code mailinator.com}).
++     *
++     * <p>Unlike {@link #normalize(String)} this never throws; a {@code null}, blank or
++     * domain-less value is simply not adjacent.
++     *
++     * @param email the raw or stored e-mail value (may be {@code null})
++     * @return {@code true} when the address's domain is disposable-adjacent
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.indexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        for (String disposable : DISPOSABLE_DOMAINS) {
++            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
++                return true;
++            }
++        }
++        String secondLevel = registrableLabel(domain);
++        if (secondLevel == null) {
++            return false;
++        }
++        for (String disposable : DISPOSABLE_DOMAINS) {
++            if (secondLevel.equals(registrableLabel(disposable))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * The registrable second-level label of a domain — the dot-separated label immediately before
++     * the final (top-level) label, e.g. {@code mailinator} for both {@code mailinator.com} and
++     * {@code mail.mailinator.com}. Returns {@code null} when the domain has no such label.
++     */
++    private static String registrableLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return null;
++        }
++        return labels[labels.length - 2];
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 04bee775d..72cd1dc70 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2367,6 +2367,20 @@ components:
+                 - STANDARD_REGIONAL
+               example: 'STANDARD_METRO'
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual review because any one of
++                these holds: the owner is a possible duplicate
++                ('possibleDuplicate' is true), the owner's e-mail domain is
++                disposable-adjacent (it shares the registrable second-level name
++                of a known disposable provider, e.g. 'mailinator.net' or
++                'mail.mailinator.com', or is one of those domains), or the
++                owner's city is over its soft capacity ('capacityWarning' is
++                true). Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
