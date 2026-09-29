@@ -1,0 +1,174 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 043035e4f..cac039d55 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,10 +29,10 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+             expression = "java(owner.getCustomerCode() + \"-M\" "
+                     + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-            expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
+-                    + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-                    + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++            expression = "java(Math.min(3, 1 "
++                    + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
++                    + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 41f241b9a..35a5b3183 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,9 +63,6 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
+-    @Column(name = "household_size")
+-    private Integer householdSize;
+-
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -136,14 +133,6 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
+-    public Integer getHouseholdSize() {
+-        return this.householdSize;
+-    }
+-
+-    public void setHouseholdSize(Integer householdSize) {
+-        this.householdSize = householdSize;
+-    }
+-
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java
+deleted file mode 100644
+index ad113d7b9..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java
++++ /dev/null
+@@ -1,24 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-
+-/**
+- * Assigns the owner's {@code householdSize} — the number of owners sharing the same
+- * {@code householdId} after this create, counting the new owner. Runs after
+- * {@link AssignHousehold} has assigned the shared {@code householdId} (and backfilled the
+- * existing members) but before the new owner is saved, so it counts the persisted members
+- * plus one for the new owner. Owners without a household have a size of one (themselves).
+- * A household of three or more members makes the owner {@code GOLD}.
+- */
+-public class AssignOwnerHouseholdSize {
+-
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String householdId = owner.getHouseholdId();
+-        long existing = householdId == null ? 0 : ownerRepository.findAll().stream()
+-                .filter(other -> householdId.equals(other.getHouseholdId()))
+-                .count();
+-        owner.setHouseholdSize((int) (existing + 1));
+-    }
+-}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 054140f48..090463bef 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d8ad250fe..b06f46f92 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,6 @@ CREATE TABLE owners (
+   customer_code VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e4f047007..15d41bea1 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER,
+   bulk_signup_warning BOOLEAN DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index a7746d4c5..738a327ab 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 0f0bf8efc..665092bb1 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -59,11 +59,6 @@ build:
+ household-id:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHousehold
+   govern: [ transaction ]
+-  next: household-size
+-
+-household-size:
+-  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHouseholdSize
+-  govern: [ transaction ]
+   next: customerCode
+ 
+ customerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0c42dd0c5..f745a0fb0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2147,16 +2147,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members after
+-                this create; otherwise 'SILVER' when the owner has no namesakes
+-                (namesakeCount is 0) and an email address is present, otherwise
+-                'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, computed on creation. Starts
++                at 1, gains 1 when an email address is present, and gains 1 when the
++                owner has no namesakes (namesakeCount is 0), capped at 3. Level 4 is
++                reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk sign-up warning

@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 043035e4f..cac039d55 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,10 +29,10 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+             expression = "java(owner.getCustomerCode() + \"-M\" "
+                     + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-            expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
+-                    + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-                    + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++            expression = "java(Math.min(3, 1 "
++                    + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
++                    + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java
+index ad113d7b9..a826c2caf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHouseholdSize.java
+@@ -10,7 +10,6 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * {@link AssignHousehold} has assigned the shared {@code householdId} (and backfilled the
+  * existing members) but before the new owner is saved, so it counts the persisted members
+  * plus one for the new owner. Owners without a household have a size of one (themselves).
+- * A household of three or more members makes the owner {@code GOLD}.
+  */
+ public class AssignOwnerHouseholdSize {
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0c42dd0c5..f745a0fb0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2147,16 +2147,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members after
+-                this create; otherwise 'SILVER' when the owner has no namesakes
+-                (namesakeCount is 0) and an email address is present, otherwise
+-                'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, computed on creation. Starts
++                at 1, gains 1 when an email address is present, and gains 1 when the
++                owner has no namesakes (namesakeCount is 0), capped at 3. Level 4 is
++                reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk sign-up warning
