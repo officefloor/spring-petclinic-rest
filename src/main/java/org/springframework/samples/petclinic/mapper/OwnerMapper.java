@@ -55,6 +55,17 @@ public interface OwnerMapper {
         }
     }
 
+    /**
+     * Fills the presentation-only {@code membershipTier}: {@code 'SILVER'} when
+     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
+     */
+    @AfterMapping
+    default void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+            && owner.getEmail() != null && !owner.getEmail().isEmpty();
+        ownerDto.setMembershipTier(silver ? "SILVER" : "BRONZE");
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
