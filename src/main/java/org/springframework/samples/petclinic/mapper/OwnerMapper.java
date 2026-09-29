@@ -31,6 +31,10 @@ public interface OwnerMapper {
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
                     + ".CustomerCode.regionOf(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+            expression = "java(org.springframework.samples.petclinic.rest.function.common"
+                    + ".Localities.timezoneOfRegion(org.springframework.samples.petclinic.rest.function"
+                    + ".owner.CustomerCode.regionOf(owner.getCustomerCode())))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".Luhn.checkDigit(owner.getCustomerCode()))")

@@ -18,6 +18,13 @@ public final class Localities {
     /** Locality returned for any city not in {@link #CITY_REGION}. */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /** Region -> IANA timezone name. Pinned to match the acceptance spec's fixed table; regions absent
+     *  here (UNKNOWN) have no timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     /** Region -> inclusive 4-digit postcode range {low, high}. Regions absent here (UNKNOWN) accept
      *  any 4-digit postcode. Pinned to match the acceptance spec's fixed table. */
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
@@ -63,6 +70,12 @@ public final class Localities {
             }
         }
         return null;
+    }
+
+    /** The IANA timezone name for {@code region}, or {@code null} when the region has no known
+     *  timezone (e.g. "UNKNOWN"). */
+    public static String timezoneOfRegion(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /** The inclusive {low, high} postcode range for {@code city}'s region, or {@code null} when the
