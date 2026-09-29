@@ -59,6 +59,14 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    /**
+     * Write-only, non-persistent acknowledgement that this owner deliberately shares a
+     * household with an existing owner. When {@code true}, creation is allowed even if
+     * another owner already has the same lastName and address.
+     */
+    @Transient
+    private boolean sharesHousehold;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -108,6 +116,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public boolean isSharesHousehold() {
+        return this.sharesHousehold;
+    }
+
+    public void setSharesHousehold(boolean sharesHousehold) {
+        this.sharesHousehold = sharesHousehold;
     }
 
     protected Set<Pet> getPetsInternal() {

@@ -248,6 +248,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         }
         assertTelephoneUnique(owner, owner.getTelephone());
+        assertHouseholdAllowed(owner);
         ownerRepository.save(owner);
     }
 
@@ -286,6 +287,43 @@ public class ClinicServiceImpl implements ClinicService {
                 throw new DuplicateTelephoneException(normalized);
             }
         }
+    }
+
+    /**
+     * Rejects creating an {@code owner} that shares both {@code lastName} and {@code address}
+     * (compared case-insensitively with collapsed whitespace) with an existing owner, unless the
+     * request explicitly acknowledges the shared household via {@link Owner#isSharesHousehold()}.
+     * Only applies to new owners; updates to an existing owner are left untouched.
+     *
+     * @throws DuplicateHouseholdException if another owner already lives at the same household
+     */
+    private void assertHouseholdAllowed(Owner owner) {
+        if (!owner.isNew() || owner.isSharesHousehold()) {
+            return;
+        }
+        String lastName = normalizeHouseholdValue(owner.getLastName());
+        String address = normalizeHouseholdValue(owner.getAddress());
+        if (lastName.isEmpty() || address.isEmpty()) {
+            return;
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!existing.getId().equals(owner.getId())
+                    && lastName.equals(normalizeHouseholdValue(existing.getLastName()))
+                    && address.equals(normalizeHouseholdValue(existing.getAddress()))) {
+                throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+            }
+        }
+    }
+
+    /**
+     * Normalizes a household comparison value by trimming, collapsing runs of whitespace into a
+     * single space and lower-casing, so comparisons ignore case and incidental whitespace.
+     */
+    private static String normalizeHouseholdValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @Override
