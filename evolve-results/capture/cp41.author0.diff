@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 5ed677347..390e158d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -34,6 +34,7 @@ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -371,7 +372,30 @@ public class ClinicServiceImpl implements ClinicService {
+         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+         String hash8 = sha256UpperHex(telephone + lastName, 8);
+-        return region + "-" + hash8;
++        return deduplicateCustomerCode(owner, region + "-" + hash8);
++    }
++
++    /**
++     * Returns {@code base} unchanged when no other owner already holds it; otherwise appends
++     * {@code '-<n>'} with the smallest {@code n} of 2 or more that makes the result unique among the
++     * existing owners' {@code customerCode}s. The {@code owner} being saved is excluded from the
++     * comparison so re-saving it does not treat its own code as a collision.
++     */
++    private String deduplicateCustomerCode(Owner owner, String base) {
++        Set<String> taken = new HashSet<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (!existing.getId().equals(owner.getId()) && existing.getCustomerCode() != null) {
++                taken.add(existing.getCustomerCode());
++            }
++        }
++        if (!taken.contains(base)) {
++            return base;
++        }
++        int n = 2;
++        while (taken.contains(base + "-" + n)) {
++            n++;
++        }
++        return base + "-" + n;
+     }
+ 
+     /**
