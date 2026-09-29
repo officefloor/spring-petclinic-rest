@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9d9a9f513..217e9bdcd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -201,6 +201,19 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * The owner's current <strong>primary identifier</strong> — the stable business key an audit
++     * event or external consumer refers to this owner by. Today that is the
++     * {@link #getCustomerCode() customerCode}; when the customer code is unified into the
++     * {@code memberId}, this returns the memberId instead and every caller follows in a single edit.
++     *
++     * <p>Deliberately not a {@code get*} bean accessor, so it stays a derived domain concept rather
++     * than another mapped/serialized property.
++     */
++    public String primaryIdentifier() {
++        return this.customerCode;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index dfae67d9b..f87d3b063 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,8 +1,12 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
++import tools.jackson.databind.ObjectMapper;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -17,15 +21,29 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+  * <p>The membership fields are derived, not stored. Rather than re-derive them here, this step reads
+  * the {@link OwnerDto} published by {@link MapOwner}, the same DTO {@link RespondWithOwnerCreated}
+  * sends, so the logged values and the response body cannot drift apart.
++ *
++ * <p>In addition to the human-readable line, it emits an immutable structured {@link OwnerCreatedEvent}
++ * as a single JSON object, so audit consumers can parse creates without scraping text. The event's
++ * identifier slot carries the owner's <strong>current primary identifier</strong> via
++ * {@link Owner#primaryIdentifier()} — the customer code today, the memberId once that unification
++ * lands — so the migration is a single edit at the domain level.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+-    public void service(@Val Owner owner, @Val OwnerDto dto) {
++    /** Monotonically increasing sequence across creates, stamped onto each structured event. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
++    public void service(@Val Owner owner, @Val OwnerDto dto, ObjectMapper objectMapper) {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} "
+                 + "membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 dto.getMembershipLevel(), dto.getMembershipNumber());
++
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++                owner.primaryIdentifier(), dto.getMembershipLevel());
++        // Single-argument info(): the JSON braces are logged verbatim, not treated as SLF4J placeholders.
++        AUDIT.info(objectMapper.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..b03783f5b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import com.fasterxml.jackson.annotation.JsonProperty;
++import com.fasterxml.jackson.annotation.JsonPropertyOrder;
++
++/**
++ * Immutable structured audit event emitted on a successful owner create, alongside the plain audit
++ * line. {@link AuditOwnerCreated} serializes it with the project's Jackson {@code ObjectMapper} — the
++ * same serializer the {@code rest/dto} DTOs use — to a single-line JSON object with fields in the
++ * order the spec lists them: {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
++ *
++ * <p>The {@code customerCode} slot carries the owner's <strong>current primary identifier</strong>,
++ * read from {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()}. Today that
++ * is the customer code; when it is unified into the {@code memberId}, the domain accessor returns the
++ * memberId and this event follows with no change here.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates (see {@link AuditOwnerCreated}).
++ */
++@JsonPropertyOrder({ "seq", "ownerId", "customerCode", "membershipLevel", "event" })
++public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, Integer membershipLevel) {
++
++    /** The fixed event marker distinguishing this structured event from other AUDIT lines. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    /** The constant event marker, exposed so it serializes as the {@code event} field. */
++    @JsonProperty("event")
++    public String event() {
++        return EVENT;
++    }
++}

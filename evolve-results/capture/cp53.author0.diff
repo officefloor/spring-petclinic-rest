@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index dfae67d9b..4353ac33d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -17,15 +19,32 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+  * <p>The membership fields are derived, not stored. Rather than re-derive them here, this step reads
+  * the {@link OwnerDto} published by {@link MapOwner}, the same DTO {@link RespondWithOwnerCreated}
+  * sends, so the logged values and the response body cannot drift apart.
++ *
++ * <p>In addition to the human-readable line, it emits an immutable structured {@link OwnerCreatedEvent}
++ * as a single JSON object, so audit consumers can parse creates without scraping text. The event's
++ * identifier slot carries the owner's <strong>current primary identifier</strong> — the customer code
++ * today, sourced from the single call below so that when the customer code is unified into the
++ * {@code memberId} the event follows in one edit.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Monotonically increasing sequence across creates, stamped onto each structured event. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
+     public void service(@Val Owner owner, @Val OwnerDto dto) {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} "
+                 + "membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 dto.getMembershipLevel(), dto.getMembershipNumber());
++
++        // The owner's current primary identifier — the customerCode here; read from one place so the
++        // event carries the memberId once that unification lands.
++        String primaryIdentifier = owner.getCustomerCode();
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++                primaryIdentifier, dto.getMembershipLevel());
++        // Single-argument info(): the JSON braces are logged verbatim, not treated as SLF4J placeholders.
++        AUDIT.info(event.toJson());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..8ad662adc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,59 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Immutable structured audit event emitted on a successful owner create, alongside the plain audit
++ * line. Serialized by {@link #toJson()} to a single-line JSON object with fields in the order the
++ * spec lists them — {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}
++ * — and logged via the dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}.
++ *
++ * <p>The {@code customerCode} slot carries the owner's <strong>current primary identifier</strong>.
++ * Today that identifier is the customer code; when the customer code is unified into the
++ * {@code memberId}, this event carries the memberId instead. {@link AuditOwnerCreated} reads it from
++ * one place so that migration is a single edit and the event and read model cannot drift apart.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates (see {@link AuditOwnerCreated}).
++ */
++public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, Integer membershipLevel) {
++
++    /** The fixed event marker distinguishing this structured event from other AUDIT lines. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    /** This event as a single-line JSON object, fields ordered as the spec lists them. */
++    public String toJson() {
++        return new StringBuilder(96)
++                .append("{\"seq\":").append(this.seq)
++                .append(",\"ownerId\":").append(this.ownerId)
++                .append(",\"customerCode\":").append(quote(this.customerCode))
++                .append(",\"membershipLevel\":").append(this.membershipLevel)
++                .append(",\"event\":").append(quote(EVENT))
++                .append('}')
++                .toString();
++    }
++
++    /** A JSON string literal for {@code s}, or the bare literal {@code null} when absent. */
++    private static String quote(String s) {
++        if (s == null) {
++            return "null";
++        }
++        StringBuilder q = new StringBuilder(s.length() + 2).append('"');
++        for (int i = 0; i < s.length(); i++) {
++            char c = s.charAt(i);
++            switch (c) {
++                case '"' -> q.append("\\\"");
++                case '\\' -> q.append("\\\\");
++                case '\n' -> q.append("\\n");
++                case '\r' -> q.append("\\r");
++                case '\t' -> q.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        q.append(String.format("\\u%04x", (int) c));
++                    }
++                    else {
++                        q.append(c);
++                    }
++                }
++            }
++        }
++        return q.append('"').toString();
++    }
++}
