@@ -29,11 +29,18 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
             expression = "java(owner.getCustomerCode() + \"-M\" "
                     + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "contactPreference",
+            expression = "java(hasEmail(owner) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "membershipLevel",
             expression = "java(Math.min(3, 1 "
-                    + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
+                    + "+ (hasEmail(owner) ? 1 : 0) "
                     + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Whether the owner has a usable email address. */
+    default boolean hasEmail(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
