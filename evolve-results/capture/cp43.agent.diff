@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index c81c39ce8..dfae67d9b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,20 +5,27 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ /**
+  * Emits an audit line via the dedicated {@code AUDIT} logger on successful create, carrying
+- * the persisted owner's id, {@code customerCode} and {@code registrationDate}. Wired after
+- * {@link SaveOwner} so the id is assigned, and after the steps that set the customer code and
+- * business-day registration date, so every value logged matches what {@code GET /owners/{id}}
+- * later returns.
++ * the persisted owner's id, {@code customerCode} and {@code registrationDate}, plus the derived
++ * {@code membershipLevel} and {@code membershipNumber}. Wired after {@link SaveOwner} so the id is
++ * assigned, and after the steps that set the customer code and business-day registration date, so
++ * every value logged matches what {@code GET /owners/{id}} later returns.
++ *
++ * <p>The membership fields are derived, not stored. Rather than re-derive them here, this step reads
++ * the {@link OwnerDto} published by {@link MapOwner}, the same DTO {@link RespondWithOwnerCreated}
++ * sends, so the logged values and the response body cannot drift apart.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+-    public void service(@Val Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    public void service(@Val Owner owner, @Val OwnerDto dto) {
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} "
++                + "membershipNumber={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                dto.getMembershipLevel(), dto.getMembershipNumber());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MapOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MapOwner.java
+new file mode 100644
+index 000000000..4ee811aa6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MapOwner.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Stamps the owner's household size via {@link OwnerHousehold} and maps it to its {@link OwnerDto}
++ * once, publishing the DTO for downstream steps. Both {@link AuditOwnerCreated} and
++ * {@link RespondWithOwnerCreated} read the published DTO rather than re-deriving it, so the audit
++ * line and the response body are guaranteed to agree and the derivation lives in a single place.
++ */
++public class MapOwner {
++
++    public void service(@Val Owner owner, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
++            Out<OwnerDto> dtoOut) {
++        dtoOut.set(ownerMapper.toOwnerDto(ownerHousehold.stamp(owner)));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index fe360d041..43f7ae8fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -5,15 +5,13 @@ import java.net.URI;
+ import net.officefloor.plugin.variable.Val;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.ResponseEntity;
+-import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, @Val OwnerDto dto,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(ownerHousehold.stamp(owner));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4824accfe..46e13b537 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -99,6 +99,11 @@ possibleDuplicate:
+ save:
+   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+   govern: [ transaction ]
++  next: mapOwner
++
++mapOwner:
++  class: org.springframework.samples.petclinic.rest.function.owner.MapOwner
++  govern: [ transaction ]
+   next: audit
+ 
+ audit:
