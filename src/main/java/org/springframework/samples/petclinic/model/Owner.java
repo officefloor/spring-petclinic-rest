@@ -25,6 +25,7 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -239,10 +240,16 @@ public class Owner extends Person {
     /** The highest membership level assignable on creation; level 4 is reserved for tenure. */
     public static final int MAX_MEMBERSHIP_LEVEL = 3;
 
+    /** The number of tenure days beyond which an owner qualifies for the tenure-only level 4. */
+    public static final long MEMBERSHIP_TENURE_DAYS = 365;
+
     /**
      * The owner's numeric membership level, computed from stored fields: it starts at 1, gains 1
      * when an email is present, gains 1 when {@code namesakeCount} is 0, and is capped at
-     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
+     * {@value #MAX_MEMBERSHIP_LEVEL} by these pre-tenure factors. Level 4 is reserved for tenure and
+     * is granted only when the owner's tenure (days elapsed since its {@code registrationDate})
+     * exceeds {@value #MEMBERSHIP_TENURE_DAYS}. Because a newly created owner has zero tenure, a new
+     * owner never exceeds level 3.
      */
     public int getMembershipLevel() {
         int level = 1;
@@ -252,7 +259,12 @@ public class Owner extends Person {
         if (this.namesakeCount != null && this.namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        level = Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        if (this.registrationDate != null
+                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > MEMBERSHIP_TENURE_DAYS) {
+            level++;
+        }
+        return level;
     }
 
     /**
