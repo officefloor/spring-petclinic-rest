@@ -1,0 +1,130 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 000000000..8b977ee01
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * The single definition of the normalized form of an owner address. Shared by
++ * {@link NormalizeOwnerAddress} (which stores the normalized value) and {@link HouseholdKey}
++ * (which compares against it for duplicate detection and the shared household id), so every place
++ * that stores, returns or compares an address applies the same rule and they cannot drift apart.
++ *
++ * <p>The rule: trim, collapse runs of whitespace to a single space, upper-case, and expand the
++ * common street-type abbreviations word-by-word ({@code ST -> STREET}, {@code RD -> ROAD},
++ * {@code AVE -> AVENUE}). A {@code null} or whitespace-only value normalizes to the empty string.
++ *
++ * <p>Kept out of the function classes themselves because OfficeFloor requires each function class to
++ * expose exactly one public method.
++ */
++final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET",
++            "RD", "ROAD",
++            "AVE", "AVENUE");
++
++    /** Returns the normalized form of the given address; {@code null}/blank yields {@code ""}. */
++    static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] words = collapsed.split(" ");
++        for (int i = 0; i < words.length; i++) {
++            String expanded = ABBREVIATIONS.get(words[i]);
++            if (expanded != null) {
++                words[i] = expanded;
++            }
++        }
++        return String.join(" ", words);
++    }
++
++    private AddressNormalizer() {
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
+index 4f123c0a0..57ca621d2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdKey.java
+@@ -6,11 +6,11 @@ import java.util.UUID;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * The single definition of what makes owners share a household: the same last name and the same
+- * address, compared case-insensitively after collapsing runs of whitespace. Shared by
+- * {@link RequireUniqueHousehold} (which rejects an un-flagged duplicate) and {@link AssignHousehold}
+- * (which links a {@code sharesHousehold} owner to the existing members), so both apply the same rule
+- * and cannot drift apart.
++ * The single definition of what makes owners share a household: the same last name (compared
++ * case-insensitively after collapsing runs of whitespace) and the same address in its normalized
++ * form (see {@link AddressNormalizer}). Shared by {@link RequireUniqueHousehold} (which rejects an
++ * un-flagged duplicate) and {@link AssignHousehold} (which links a {@code sharesHousehold} owner to
++ * the existing members), so both apply the same rule and cannot drift apart.
+  *
+  * <p>Also owns the deterministic {@code householdId} derived from that key: joining the same household
+  * always yields the same value and it never changes over time.
+@@ -31,13 +31,13 @@ final class HouseholdKey {
+ 
+     /** The household key for the given last name and address. */
+     static HouseholdKey of(String lastName, String address) {
+-        return new HouseholdKey(normalize(lastName), normalize(address));
++        return new HouseholdKey(normalize(lastName), AddressNormalizer.normalize(address));
+     }
+ 
+     /** True when the existing owner belongs to this household. */
+     boolean matches(Owner owner) {
+         return this.lastName.equals(normalize(owner.getLastName()))
+-                && this.address.equals(normalize(owner.getAddress()));
++                && this.address.equals(AddressNormalizer.normalize(owner.getAddress()));
+     }
+ 
+     /** A stable, shared identifier derived from the normalized last name and address. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+new file mode 100644
+index 000000000..4a3974a16
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Runs early in the create-owner pipeline (before {@link RequireOwnerFields}): normalizes the
++ * {@code address} to its canonical form (see {@link AddressNormalizer}). The normalized value is
++ * written back onto the (shared) {@link OwnerFieldsDto} so {@link RequireOwnerFields} rejects an
++ * address that is blank after normalization, {@link RequireUniqueHousehold}/{@link AssignHousehold}
++ * compare the normalized form, {@link BuildOwner} stores it and {@code GET /owners/{id}} later
++ * returns it.
++ */
++public class NormalizeOwnerAddress {
++
++    public void service(@Val OwnerFieldsDto owner) {
++        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 882b457f9..44a14bce1 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
+   govern: [ transaction ]
++  next: normalizeAddress
++
++normalizeAddress:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
++  govern: [ transaction ]
+   next: require
+ 
+ require:
