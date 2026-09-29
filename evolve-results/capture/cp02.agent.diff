@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+new file mode 100644
+index 000000000..33bfd261c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Validates that a telephone number contains exactly ten digits once every
++ * non-digit character has been stripped out (see {@link TelephoneValidator}).
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = TelephoneValidator.class)
++@Documented
++public @interface TelephoneValidation {
++
++    String message() default "Telephone number must contain exactly 10 digits";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+new file mode 100644
+index 000000000..88c07995f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++/**
++ * Rejects a telephone number that does not contain exactly ten digits after
++ * every non-digit character has been removed. The stripping mirrors the
++ * normalization applied before an {@code Owner} is persisted, so the value the
++ * client is told about matches the value that gets stored.
++ */
++public class TelephoneValidator implements ConstraintValidator<TelephoneValidation, String> {
++
++    @Override
++    public boolean isValid(String telephone, ConstraintValidatorContext context) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        return digits.length() == 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 873eed0f4..20e388461 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -232,8 +232,10 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        if (owner.getTelephone() != null) {
++            owner.setTelephone(owner.getTelephone().replaceAll("\\D", ""));
++        }
+         ownerRepository.save(owner);
+-
+     }
+ 
+     @Override
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f8f4de936..254eaf581 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,12 +2027,15 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. The value is normalized by
++            removing every non-digit character and must contain exactly 10
++            digits afterwards.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.TelephoneValidation"
+       required:
+         - firstName
+         - lastName
