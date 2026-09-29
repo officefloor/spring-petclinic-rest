@@ -21,6 +21,9 @@ import java.util.Map;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    /** Household size (owners sharing a householdId) at or above which the GOLD tier applies. */
+    long GOLD_HOUSEHOLD_SIZE = 3L;
+
     /** Fixed city-to-region lookup used to derive an owner's locality. */
     Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -61,11 +64,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fills the presentation-only {@code membershipTier}: {@code 'SILVER'} when
-     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
+     * Fills the presentation-only {@code membershipTier}: {@code 'GOLD'} when the owner's
+     * household (owners sharing the same {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE}
+     * or more members, as counted by the service into {@link Owner#getHouseholdSize()};
+     * otherwise {@code 'SILVER'} when namesakeCount is 0 and an email is present, and
+     * {@code 'BRONZE'} in all other cases.
      */
     @AfterMapping
     default void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        if (owner.getHouseholdSize() >= GOLD_HOUSEHOLD_SIZE) {
+            ownerDto.setMembershipTier("GOLD");
+            return;
+        }
         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
             && owner.getEmail() != null && !owner.getEmail().isEmpty();
         ownerDto.setMembershipTier(silver ? "SILVER" : "BRONZE");

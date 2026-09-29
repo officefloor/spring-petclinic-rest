@@ -34,6 +34,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -138,16 +139,19 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findAllOwners() throws DataAccessException {
-        return ownerRepository.findAll();
+        Collection<Owner> owners = ownerRepository.findAll();
+        populateHouseholdSizes(owners);
+        return owners;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException {
-        if (lastName != null) {
-            return ownerRepository.findByLastName(lastName, pageable);
-        }
-        return ownerRepository.findAll(pageable);
+        Page<Owner> owners = (lastName != null)
+            ? ownerRepository.findByLastName(lastName, pageable)
+            : ownerRepository.findAll(pageable);
+        populateHouseholdSizes(owners.getContent());
+        return owners;
     }
 
     @Override
@@ -213,7 +217,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Owner findOwnerById(int id) throws DataAccessException {
-        return findEntityById(() -> ownerRepository.findById(id));
+        Owner owner = findEntityById(() -> ownerRepository.findById(id));
+        populateHouseholdSize(owner);
+        return owner;
     }
 
     @Override
@@ -270,6 +276,7 @@ public class ClinicServiceImpl implements ClinicService {
         assertHouseholdAllowed(owner, household);
         assignHousehold(owner, household);
         ownerRepository.save(owner);
+        populateHouseholdSize(owner);
         if (creating) {
             AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -513,6 +520,53 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * Stamps {@code owner} with the number of owners sharing its {@code householdId} (see {@link
+     * Owner#getHouseholdSize()}), so presentation code can derive the membership tier without
+     * reaching into the data store. A {@code null} owner or one without a household id is left at
+     * size 0.
+     */
+    private void populateHouseholdSize(Owner owner) {
+        if (owner == null) {
+            return;
+        }
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            owner.setHouseholdSize(0);
+            return;
+        }
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        owner.setHouseholdSize(count);
+    }
+
+    /**
+     * Stamps every owner in {@code owners} with its household size in a single pass over the data
+     * store, so a list/page of owners is counted without a per-owner query.
+     *
+     * @see #populateHouseholdSize(Owner)
+     */
+    private void populateHouseholdSizes(Collection<Owner> owners) {
+        if (owners.isEmpty()) {
+            return;
+        }
+        Map<String, Integer> sizes = new HashMap<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            String householdId = existing.getHouseholdId();
+            if (householdId != null && !householdId.isBlank()) {
+                sizes.merge(householdId, 1, Integer::sum);
+            }
+        }
+        for (Owner owner : owners) {
+            String householdId = owner.getHouseholdId();
+            owner.setHouseholdSize(householdId == null ? 0 : sizes.getOrDefault(householdId, 0));
+        }
+    }
+
+    /**
      * Returns the {@code householdId} shared by a household: the first non-blank identifier already
      * carried by an existing member, or otherwise a freshly derived stable identifier for the
      * joining {@code owner}'s normalized lastName and address.
@@ -570,7 +624,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
-        return ownerRepository.findByLastName(lastName);
+        Collection<Owner> owners = ownerRepository.findByLastName(lastName);
+        populateHouseholdSizes(owners);
+        return owners;
     }
 
     @Override

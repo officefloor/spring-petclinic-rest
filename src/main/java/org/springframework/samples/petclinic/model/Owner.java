@@ -73,6 +73,14 @@ public class Owner extends Person {
     @Transient
     private boolean sharesHousehold;
 
+    /**
+     * Read-only, non-persistent count of the owners that share this owner's {@code householdId}
+     * (including this owner), populated by the service when an owner is loaded for presentation.
+     * Zero when the owner belongs to no household. Used to derive the membership tier.
+     */
+    @Transient
+    private int householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -146,6 +154,14 @@ public class Owner extends Person {
 
     public void setSharesHousehold(boolean sharesHousehold) {
         this.sharesHousehold = sharesHousehold;
+    }
+
+    public int getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(int householdSize) {
+        this.householdSize = householdSize;
     }
 
     protected Set<Pet> getPetsInternal() {
