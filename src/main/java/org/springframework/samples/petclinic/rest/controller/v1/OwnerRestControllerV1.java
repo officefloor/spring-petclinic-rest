@@ -96,8 +96,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         List<OwnerDto> ownerDtos = ownerMapper.toOwnerDtoCollection(owners);
-        boolean bulkSignupWarning = this.clinicService.isBulkSignupWarningActive();
-        ownerDtos.forEach(ownerDto -> ownerDto.setBulkSignupWarning(bulkSignupWarning));
+        ownerDtos.forEach(this::withDerivedWarnings);
         return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
@@ -108,7 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(owner)), HttpStatus.OK);
+        return new ResponseEntity<>(withDerivedWarnings(ownerMapper.toOwnerDto(owner)), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -120,7 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (existingId != null) {
                 Owner existing = this.clinicService.findOwnerById(existingId);
                 if (existing != null) {
-                    return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(existing)),
+                    return new ResponseEntity<>(withDerivedWarnings(ownerMapper.toOwnerDto(existing)),
                         HttpStatus.OK);
                 }
             }
@@ -131,7 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (idempotencyKey != null) {
             this.idempotencyStore.remember(idempotencyKey, owner.getId());
         }
-        OwnerDto ownerDto = withBulkSignupWarning(ownerMapper.toOwnerDto(owner));
+        OwnerDto ownerDto = withDerivedWarnings(ownerMapper.toOwnerDto(owner));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -167,17 +166,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
-        return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(currentOwner)),
+        return new ResponseEntity<>(withDerivedWarnings(ownerMapper.toOwnerDto(currentOwner)),
             HttpStatus.NO_CONTENT);
     }
 
     /**
-     * Sets the response-level {@code bulkSignupWarning} flag on {@code ownerDto} from the service's
-     * current daily-signup assessment. The warning is a property of the current day's signup volume,
-     * so it is the same for every owner returned in a single response.
+     * Sets the derived warning flags on {@code ownerDto}. {@code bulkSignupWarning} reflects the
+     * current day's signup volume (the same for every owner in a response); {@code capacityWarning}
+     * is city-specific, true when the owner's city is approaching the per-city capacity limit.
      */
-    private OwnerDto withBulkSignupWarning(OwnerDto ownerDto) {
+    private OwnerDto withDerivedWarnings(OwnerDto ownerDto) {
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupWarningActive());
+        ownerDto.setCapacityWarning(this.clinicService.isCityCapacityWarningActive(ownerDto.getCity()));
         return ownerDto;
     }
 

@@ -443,6 +443,25 @@ public class ClinicServiceImpl implements ClinicService {
     /** Maximum number of owners permitted in a single city. */
     private static final long CITY_OWNER_LIMIT = 50L;
 
+    /** A city with at least this many owners (but below {@link #CITY_OWNER_LIMIT}) raises the
+     *  approaching-capacity warning. */
+    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
+
+    /**
+     * Reports whether {@code city} is approaching the per-city capacity limit, i.e. it already holds
+     * between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and {@code CITY_OWNER_LIMIT - 1} owners
+     * (inclusive), reusing the same per-city count as the hard limit ({@link #assertCityCapacity}).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityCapacityWarningActive(String city) throws DataAccessException {
+        if (city == null) {
+            return false;
+        }
+        long count = countOwnersInCity(city);
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_OWNER_LIMIT;
+    }
+
     /**
      * Rejects creating {@code owner} when its city already contains {@link #CITY_OWNER_LIMIT} or
      * more owners, so no city can grow beyond the capacity limit.

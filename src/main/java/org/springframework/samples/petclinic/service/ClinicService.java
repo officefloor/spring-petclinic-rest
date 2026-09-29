@@ -66,6 +66,12 @@ public interface ClinicService {
 	 */
 	boolean isBulkSignupWarningActive() throws DataAccessException;
 
+	/**
+	 * Whether the given city is approaching the per-city capacity limit, i.e. it already holds
+	 * between 40 and 49 owners (inclusive) — one short of the hard limit of 50.
+	 */
+	boolean isCityCapacityWarningActive(String city) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
