@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -235,8 +236,15 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getTelephone() != null) {
             owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         }
+        if (owner.getEmail() != null) {
+            owner.setEmail(normalizeEmail(owner.getEmail()));
+        }
         assertTelephoneUnique(owner, owner.getTelephone());
         ownerRepository.save(owner);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeTelephone(String telephone) {
