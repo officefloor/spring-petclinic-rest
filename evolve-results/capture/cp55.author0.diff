@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 91820e16e..cf83fa1ce 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -124,6 +124,16 @@ public interface OwnerMapper {
+         ownerDto.setTimezone(Region.timezoneForRegion(Region.regionOfCustomerCode(owner.getCustomerCode())));
+     }
+ 
++    /**
++     * Fills the presentation-only {@code ownerSegment} from the owner's domain-computed
++     * {@link Owner#getOwnerSegment()} — {@code '<TIER>_<AREA>'} where TIER reflects the
++     * membershipLevel and AREA reflects whether the locality is a known region.
++     */
++    @AfterMapping
++    default void addOwnerSegment(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        ownerDto.setOwnerSegment(OwnerDto.OwnerSegmentEnum.fromValue(owner.getOwnerSegment()));
++    }
++
+     /**
+      * Fills the {@code ageBand} from the owner's domain-computed {@link Owner#getAgeBand()}
+      * (derived from birthDate measured against registrationDate), leaving it null when no
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8e847324c..7377d318c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -399,6 +399,21 @@ public class Owner extends Person {
+         return 1;
+     }
+ 
++    /**
++     * The owner's marketing segment formatted {@code '<TIER>_<AREA>'}, one of
++     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
++     * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when {@link #getMembershipLevel()} is 3
++     * or more, otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality (the
++     * region of its {@code customerCode}, see {@link Region#regionOfCustomerCode(String)}) is a known
++     * region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
++     */
++    public String getOwnerSegment() {
++        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
++        String area = Region.isKnownRegion(Region.regionOfCustomerCode(this.customerCode))
++                ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     public Integer getMembershipLevelCap() {
+         return this.membershipLevelCap;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Region.java b/src/main/java/org/springframework/samples/petclinic/model/Region.java
+index 5171aa823..e4e117ace 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Region.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Region.java
+@@ -76,6 +76,14 @@ public final class Region {
+         return null;
+     }
+ 
++    /**
++     * Whether {@code region} is one of the known regions (NSW, VIC or QLD). {@code false} for
++     * {@link #UNKNOWN}, {@code null}, or any other value.
++     */
++    public static boolean isKnownRegion(String region) {
++        return REGION_POSTCODES.containsKey(region);
++    }
++
+     /**
+      * The inclusive 4-digit postcode range {@code {low, high}} for {@code region}, or {@code null}
+      * when the region has no defined range. Returns a fresh array so callers cannot mutate the table.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1b21d58b7..23add3652 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2299,6 +2299,21 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'.
++                AREA is 'METRO' when the owner's locality is a known region (NSW,
++                VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
