@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.stereotype.Service;
@@ -251,6 +252,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        rejectWhenCityAtCapacity(owner);
         assignHousehold(owner, sharesHousehold);
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(nextCustomerCode(owner));
@@ -319,6 +321,33 @@ public class ClinicServiceImpl implements ClinicService {
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
+    /** Maximum number of owners allowed to live in any single city. */
+    private static final long CITY_CAPACITY = 50L;
+
+    /**
+     * Reject the create when the owner's city already contains {@value #CITY_CAPACITY} or more
+     * owners (compared case-insensitively with collapsed whitespace). Evaluated before the owner
+     * is persisted, so it reflects the owners present at creation time.
+     */
+    private void rejectWhenCityAtCapacity(Owner owner) {
+        if (countOwnersInCity(owner) >= CITY_CAPACITY) {
+            throw new CityCapacityExceededException(
+                "city " + owner.getCity() + " already contains " + CITY_CAPACITY + " or more owners");
+        }
+    }
+
+    /**
+     * Count the existing owners that already live in this owner's city, compared
+     * case-insensitively (with surrounding/collapsed whitespace ignored). Evaluated before the
+     * owner is persisted, so it reflects the owners present at creation time.
+     */
+    private long countOwnersInCity(Owner owner) {
+        String city = IdentityNormalizer.normalize(owner.getCity());
+        return ownerRepository.findAll().stream()
+            .filter(existing -> city.equals(IdentityNormalizer.normalize(existing.getCity())))
+            .count();
+    }
+
     /**
      * Builds the customer code {@code '<CITY3>-<LAST3>-<NNNN>'}: the upper-cased first
      * three letters of the owner's {@code city}, a hyphen, the upper-cased first three
@@ -329,10 +358,7 @@ public class ClinicServiceImpl implements ClinicService {
     private String nextCustomerCode(Owner owner) {
         String city3 = prefix3(owner.getCity());
         String last3 = prefix3(owner.getLastName());
-        String city = IdentityNormalizer.normalize(owner.getCity());
-        long sequence = ownerRepository.findAll().stream()
-            .filter(existing -> city.equals(IdentityNormalizer.normalize(existing.getCity())))
-            .count() + 1L;
+        long sequence = countOwnersInCity(owner) + 1L;
         return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 

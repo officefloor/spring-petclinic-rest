@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidAddressException;
@@ -220,6 +221,26 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         logger.warn("Duplicate household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityCapacityExceededException} raised when an owner is created in a city
+     * that already contains 50 or more owners, returning a 409 Conflict status.
+     *
+     * @param e The {@link CityCapacityExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityCapacityExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityCapacityExceededException(CityCapacityExceededException e, HttpServletRequest request) {
+        logger.warn("City at capacity at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
