@@ -244,8 +244,22 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (owner.getCustomerCode() == null) {
+            owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        }
         assertTelephoneUnique(owner, owner.getTelephone());
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Build a {@code customerCode} formatted {@code '<LAST3>-<NNNN>'} where LAST3 is the
+     * upper-cased first three letters of {@code lastName} and NNNN is a global 4-digit
+     * zero-padded sequence equal to one more than the current number of owners.
+     */
+    private String generateCustomerCode(String lastName) {
+        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        long sequence = ownerRepository.findAll().size() + 1L;
+        return String.format("%s-%04d", prefix, sequence);
     }
 
     private static String normalizeEmail(String email) {
