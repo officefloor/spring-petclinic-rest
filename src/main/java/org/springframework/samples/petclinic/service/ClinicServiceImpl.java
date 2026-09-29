@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.stereotype.Service;
@@ -266,10 +267,10 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private void assignHousehold(Owner owner, boolean sharesHousehold) {
         String lastName = IdentityNormalizer.normalize(owner.getLastName());
-        String address = IdentityNormalizer.normalize(owner.getAddress());
+        String address = AddressNormalizer.canonical(owner.getAddress());
         List<Owner> householdMembers = ownerRepository.findAll().stream()
             .filter(existing -> lastName.equals(IdentityNormalizer.normalize(existing.getLastName()))
-                && address.equals(IdentityNormalizer.normalize(existing.getAddress())))
+                && address.equals(AddressNormalizer.canonical(existing.getAddress())))
             .toList();
         if (householdMembers.isEmpty()) {
             return;
