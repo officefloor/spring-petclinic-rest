@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.validation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.validation.InvalidAddressException;
 import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.validation.InvalidPostcodeException;
@@ -269,6 +270,27 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getMessage());
         HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when an owner is created with a
+     * supplied {@code registrationDate} that is later than the current server date, returning
+     * a 400 Bad Request status.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        logger.warn("Future registration date at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
