@@ -14,8 +14,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 public class NormalizeOwnerTelephone {
 
     public void service(@Val OwnerFieldsDto owner) throws InvalidTelephoneException {
-        String telephone = owner.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String digits = TelephoneNormalizer.normalize(owner.getTelephone());
         if (digits.length() != 10) {
             throw new InvalidTelephoneException(digits);
         }
