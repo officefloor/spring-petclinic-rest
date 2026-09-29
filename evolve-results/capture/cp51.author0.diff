@@ -1,0 +1,264 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 633a3f5cb..764f69b28 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -99,10 +99,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's numeric membership level, mapped from {@link #membershipPoints(Owner)}: level 1 for
+-     * 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++     * The owner's raw numeric membership level, mapped from {@link #membershipPoints(Owner)}: level 1
++     * for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. This is the level before the
++     * household ceiling in {@link #membershipLevel(Owner)} is applied.
+      */
+-    default int membershipLevel(Owner owner) {
++    default int rawMembershipLevel(Owner owner) {
+         int points = membershipPoints(owner);
+         if (points <= 1) {
+             return 1;
+@@ -116,6 +117,26 @@ public interface OwnerMapper {
+         return 4;
+     }
+ 
++    /**
++     * The owner's numeric membership level: their {@link #rawMembershipLevel(Owner)} capped so it cannot
++     * exceed one above the current maximum membershipLevel among their household members. With no
++     * existing household member no cap applies.
++     *
++     * <p>The ceiling depends on other owners, so — like the household size — it is not derived here: the
++     * maximum level among other household members is computed by
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the owner
++     * reaches this mapper and read from {@link Owner#getHouseholdMaxMembershipLevel()} (null when no
++     * other member exists), keeping this a pure transformation.
++     */
++    default int membershipLevel(Owner owner) {
++        int level = rawMembershipLevel(owner);
++        Integer householdMax = owner.getHouseholdMaxMembershipLevel();
++        if (householdMax != null && level > householdMax + 1) {
++            level = householdMax + 1;
++        }
++        return level;
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2567e3edd..9d9a9f513 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,17 @@ public class Owner extends Person {
+     @Transient
+     private Integer householdSize;
+ 
++    /**
++     * The maximum membershipLevel among this owner's <em>other</em> household members (owners sharing
++     * the same {@code householdId}, excluding this owner). Not persisted: like {@link #householdSize} it
++     * depends on other owners and is stamped onto the owner by
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the owner
++     * is mapped to a DTO. Null when the owner has no {@code householdId} or no other household member —
++     * in which case no membership-level cap applies.
++     */
++    @Transient
++    private Integer householdMaxMembershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -214,6 +225,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getHouseholdMaxMembershipLevel() {
++        return this.householdMaxMembershipLevel;
++    }
++
++    public void setHouseholdMaxMembershipLevel(Integer householdMaxMembershipLevel) {
++        this.householdMaxMembershipLevel = householdMaxMembershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index 5f60202ab..8e3c5859d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -9,9 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
+  * name and postcode compute the same value and therefore share the household automatically, with no
+  * linking or backfilling of existing owners.
+  *
+- * <p>The {@code sharesHousehold} flag no longer creates the link (the id is deterministic regardless);
+- * it only bypasses the duplicate block in {@link RequireUniqueIdentity} so a declared household member
+- * may be created.
++ * <p>Sharing a household never creates a link (the id is deterministic regardless) and is no longer a
++ * duplicate on its own: {@link RequireUniqueIdentity} rejects only an exact {@link IdentityKey} match,
++ * so several distinct members may share one household and the {@code sharesHousehold} flag is not
++ * required to create them.
+  */
+ public class AssignHousehold {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+index 2c0eb8687..9791c1487 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerHousehold.java
+@@ -2,34 +2,45 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.Collection;
+ import java.util.Map;
++import java.util.OptionalInt;
+ import java.util.stream.Collectors;
+ 
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+- * Computes and stamps each owner's household size — the number of owners sharing its
+- * {@code householdId} (see {@link AssignHousehold}), counting the owner itself.
++ * Computes and stamps each owner's household-derived fields — the {@code householdSize} (the number of
++ * owners sharing its {@code householdId}, see {@link AssignHousehold}, counting the owner itself) and
++ * the {@code householdMaxMembershipLevel} (the maximum membershipLevel among the owner's <em>other</em>
++ * household members, or {@code null} when there is none).
+  *
+- * <p>The size depends on <em>other</em> owners, so it cannot be derived from a single {@link Owner}
+- * inside the mapper. This component owns that repository lookup and writes the result onto the
+- * (transient) {@link Owner#getHouseholdSize()} before the owner is mapped, so {@code OwnerMapper}
+- * stays a pure transformation. An owner with no {@code householdId} is a single-member household.
++ * <p>Both values depend on <em>other</em> owners, so they cannot be derived from a single {@link Owner}
++ * inside the mapper. This component owns that repository lookup and writes the results onto the
++ * (transient) {@link Owner#getHouseholdSize()} and {@link Owner#getHouseholdMaxMembershipLevel()} before
++ * the owner is mapped, so {@code OwnerMapper} stays a pure transformation. An owner with no
++ * {@code householdId} is a single-member household with no level ceiling.
+  */
+ @Component
+ public class OwnerHousehold {
+ 
+     private final OwnerRepository ownerRepository;
+ 
+-    public OwnerHousehold(OwnerRepository ownerRepository) {
++    private final OwnerMapper ownerMapper;
++
++    public OwnerHousehold(OwnerRepository ownerRepository, OwnerMapper ownerMapper) {
+         this.ownerRepository = ownerRepository;
++        this.ownerMapper = ownerMapper;
+     }
+ 
+-    /** Stamp a single owner's household size, computed against all current owners. */
++    /** Stamp a single owner's household fields, computed against all current owners. */
+     public Owner stamp(Owner owner) {
+         if (owner != null) {
+-            owner.setHouseholdSize(sizeIn(owner, householdCounts()));
++            Collection<Owner> all = ownerRepository.findAll();
++            Map<String, Long> counts = householdCounts(all);
++            owner.setHouseholdSize(sizeIn(owner, counts));
++            owner.setHouseholdMaxMembershipLevel(maxMemberLevel(owner, all, counts));
+         }
+         return owner;
+     }
+@@ -37,15 +48,19 @@ public class OwnerHousehold {
+     /** Stamp every owner in the collection, reading all owners once for the whole batch. */
+     public <C extends Collection<Owner>> C stampAll(C owners) {
+         if (owners != null && !owners.isEmpty()) {
+-            Map<String, Long> counts = householdCounts();
+-            owners.forEach(owner -> owner.setHouseholdSize(sizeIn(owner, counts)));
++            Collection<Owner> all = ownerRepository.findAll();
++            Map<String, Long> counts = householdCounts(all);
++            owners.forEach(owner -> {
++                owner.setHouseholdSize(sizeIn(owner, counts));
++                owner.setHouseholdMaxMembershipLevel(maxMemberLevel(owner, all, counts));
++            });
+         }
+         return owners;
+     }
+ 
+-    /** Number of existing owners grouped by household id. */
+-    private Map<String, Long> householdCounts() {
+-        return ownerRepository.findAll().stream()
++    /** Number of owners grouped by household id. */
++    private Map<String, Long> householdCounts(Collection<Owner> all) {
++        return all.stream()
+                 .filter(existing -> existing.getHouseholdId() != null)
+                 .collect(Collectors.groupingBy(Owner::getHouseholdId, Collectors.counting()));
+     }
+@@ -58,4 +73,31 @@ public class OwnerHousehold {
+         }
+         return (int) Math.max(counts.getOrDefault(householdId, 0L), 1L);
+     }
++
++    /**
++     * The maximum membershipLevel among the owner's <em>other</em> household members, or {@code null}
++     * when the owner has no {@code householdId} or is the only member. Each other member's level is its
++     * uncapped {@link OwnerMapper#rawMembershipLevel(Owner)} — read uncapped so the ceiling never
++     * depends on itself — computed after stamping that member's own household size.
++     */
++    private Integer maxMemberLevel(Owner owner, Collection<Owner> all, Map<String, Long> counts) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return null;
++        }
++        OptionalInt max = all.stream()
++                .filter(other -> householdId.equals(other.getHouseholdId()))
++                .filter(other -> !isSameOwner(other, owner))
++                .mapToInt(other -> {
++                    other.setHouseholdSize(sizeIn(other, counts));
++                    return ownerMapper.rawMembershipLevel(other);
++                })
++                .max();
++        return max.isPresent() ? max.getAsInt() : null;
++    }
++
++    /** Whether the two references denote the same owner (same instance or same persisted id). */
++    private boolean isSameOwner(Owner a, Owner b) {
++        return a == b || (a.getId() != null && a.getId().equals(b.getId()));
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index 327f92b60..9ccfaf22a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -8,17 +8,14 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
+ 
+ /**
+  * The duplicate block of the create-owner pipeline: rejects the request with a 409 (via
+- * {@code DuplicateIdentityExceptionHandler}) in either of two cases.
++ * {@code DuplicateIdentityExceptionHandler}) on an <b>identity duplicate</b> — an exact match on the
++ * whole {@link IdentityKey} ({@code telephone|email|householdId}) — because that is the same person.
+  *
+- * <ol>
+- * <li><b>Household duplicate.</b> The household is now keyed on {@code (lastName, postcode)} through the
+- * deterministic {@link HouseholdKey#householdId}, so an existing owner with the same household means the
+- * new owner is a second member of it. That is rejected — <em>unless</em> the request sets
+- * {@code sharesHousehold}, which bypasses this block so a declared household member may be created.</li>
+- * <li><b>Identity duplicate.</b> An exact match on the whole {@link IdentityKey}
+- * ({@code telephone|email|householdId}) is always rejected, even for a declared member: it is the same
+- * person, not merely the same household.</li>
+- * </ol>
++ * <p>Sharing a household ({@code (lastName, postcode)} through the deterministic
++ * {@link HouseholdKey#householdId}) is <em>not</em> in itself a duplicate: a household may have several
++ * members, so distinct people ({@link IdentityKey} differs, e.g. a different telephone) in the same
++ * household are all allowed. A new member's membershipLevel is then capped relative to the existing
++ * members by {@link OwnerHousehold}; it is no longer necessary to declare {@code sharesHousehold}.
+  *
+  * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail}, so the candidate's
+  * telephone and email are already normalized. The new owner is not persisted yet, so every match found
+@@ -29,7 +26,6 @@ public class RequireUniqueIdentity {
+     public void service(@Val OwnerFieldsDto owner, OwnerRepository ownerRepository)
+             throws DuplicateIdentityException {
+         String householdId = HouseholdKey.householdId(owner.getLastName(), owner.getPostcode());
+-        boolean sharesHousehold = Boolean.TRUE.equals(owner.getSharesHousehold());
+         String candidate = IdentityKey.of(owner.getTelephone(), owner.getEmail(), householdId);
+         for (Owner existing : ownerRepository.findAll()) {
+             if (!DuplicateCandidates.isCandidate(existing)) {
+@@ -38,9 +34,6 @@ public class RequireUniqueIdentity {
+             if (candidate.equals(IdentityKey.ofOwner(existing))) {
+                 throw new DuplicateIdentityException(candidate);
+             }
+-            if (!sharesHousehold && householdId.equals(HouseholdKey.householdId(existing))) {
+-                throw new DuplicateIdentityException(householdId);
+-            }
+         }
+     }
+ }
