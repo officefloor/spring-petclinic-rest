@@ -39,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -327,6 +328,18 @@ public interface OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Derives the owner's {@code selfLink}, the canonical API path for the owner, formed as
+     * {@code '/api/owners/'} followed by the owner's id. Returns {@code null} until the owner
+     * has an id, so the field is absent from the response.
+     */
+    default String selfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
     }
 
     @Mapping(target = "id", ignore = true)
