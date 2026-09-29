@@ -255,6 +255,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         }
+        if (owner.isNew()) {
+            owner.setNamesakeCount(countNamesakes(owner));
+        }
         assertTelephoneUnique(owner, owner.getTelephone());
         List<Owner> household = findHouseholdMembers(owner);
         assertHouseholdAllowed(owner, household);
@@ -271,6 +274,26 @@ public class ClinicServiceImpl implements ClinicService {
         String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         long sequence = ownerRepository.findAll().size() + 1L;
         return String.format("%s-%04d", prefix, sequence);
+    }
+
+    /**
+     * Counts the existing owners that share both {@code firstName} and {@code lastName} with the
+     * given new {@code owner}, compared case-insensitively (with incidental whitespace collapsed).
+     * The owner being created is not itself persisted yet, so the result is the number of namesakes
+     * that already existed before this create.
+     */
+    private int countNamesakes(Owner owner) {
+        String firstName = normalizeHouseholdValue(owner.getFirstName());
+        String lastName = normalizeHouseholdValue(owner.getLastName());
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!existing.getId().equals(owner.getId())
+                    && firstName.equals(normalizeHouseholdValue(existing.getFirstName()))
+                    && lastName.equals(normalizeHouseholdValue(existing.getLastName()))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static String normalizeEmail(String email) {
