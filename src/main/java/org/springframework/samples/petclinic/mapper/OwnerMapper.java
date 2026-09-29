@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Region;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -21,7 +22,29 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "identity", ignore = true)
+    @Mapping(target = "apiVersion", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner-identity contract version carried by every owner response. */
+    int API_VERSION = 2;
+
+    /**
+     * Groups the owner's version-2 identifiers under the nested {@code identity} object
+     * ({@code memberId}, {@code householdId}, {@code identityKey}) and stamps the top-level
+     * {@code apiVersion} ({@value #API_VERSION}). These three identifiers are no longer exposed at
+     * the top level; the {@code identityKey} is the owner's domain-computed
+     * {@link Owner#getIdentityKey()}.
+     */
+    @AfterMapping
+    default void addIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        ownerDto.setIdentity(identity);
+        ownerDto.setApiVersion(API_VERSION);
+    }
 
     /**
      * Fills the presentation-only {@code displayName} as {@code "LastName, FirstName"}

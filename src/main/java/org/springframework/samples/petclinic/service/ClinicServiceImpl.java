@@ -388,20 +388,28 @@ public class ClinicServiceImpl implements ClinicService {
         }
     }
 
+    /** Schema version of the structured {@code OWNER_CREATED} audit event. */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
+
     /**
      * Builds the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event}}. The {@code seq} is a
-     * process-wide, monotonically increasing integer stamped once per created owner.
+     * {@code {seq, schemaVersion, ownerId, memberId, membershipLevel, ownerSegment, event}}. The
+     * {@code seq} is a process-wide, monotonically increasing integer stamped once per created owner;
+     * {@code schemaVersion} is the version-2 event schema ({@value #AUDIT_SCHEMA_VERSION}).
      *
      * <p>The identifier field carries the owner's <em>current primary identifier</em>, sourced
-     * through {@link #primaryIdentifier(Owner)} — the unified {@code memberId}.
+     * through {@link #primaryIdentifier(Owner)} — the unified version-2 {@code memberId} — and the
+     * {@code ownerSegment} is recomputed from that version-2 identity via
+     * {@link Owner#getOwnerSegment()}.
      */
     private String ownerCreatedEvent(Owner owner) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", OWNER_CREATED_SEQ.incrementAndGet());
+        event.put("schemaVersion", AUDIT_SCHEMA_VERSION);
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("ownerSegment", owner.getOwnerSegment());
         event.put("event", "OWNER_CREATED");
         return AUDIT_MAPPER.writeValueAsString(event);
     }
@@ -415,15 +423,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a {@code memberId} formatted {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region
-     * code derived from the owner's postcode (see {@link Region#regionForPostcode(String)}); FY is
-     * the two-digit fiscal year of the owner's (business-day-adjusted) {@code registrationDate} (see
-     * {@link Owner#fiscalYearOf(LocalDate)}); HASH8 is the first 8 upper-case hex characters of the
-     * SHA-256 digest over the concatenation of the owner's normalized telephone and {@code lastName};
-     * and CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.
-     * The telephone is already normalized and the registration date defaulted by
-     * {@link #saveOwner(Owner)} before this runs. The layout is read back by
-     * {@link Region#regionOfMemberId(String)}; keep the two in sync.
+     * Build a version-2 {@code memberId} formatted {@code '<V2><REGION><FY><HASH8><CHK>'}: the fixed
+     * {@link Region#IDENTITY_VERSION_TAG V2} version tag prefixes the region code, so every
+     * version-2 memberId differs from the value version 1 produced while the plain region code stays
+     * readable behind the tag. REGION is the region code derived from the owner's postcode (see
+     * {@link Region#regionForPostcode(String)}); FY is the two-digit fiscal year of the owner's
+     * (business-day-adjusted) {@code registrationDate} (see {@link Owner#fiscalYearOf(LocalDate)});
+     * HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the concatenation of
+     * the owner's normalized telephone and {@code lastName}; and CHK is a single Luhn check digit
+     * computed over the digits of {@code <V2><REGION><FY><HASH8>}. The telephone is already
+     * normalized and the registration date defaulted by {@link #saveOwner(Owner)} before this runs.
+     * The layout is read back by {@link Region#regionOfMemberId(String)} and
+     * {@link Region#fiscalYearSegmentOf(String)}; keep them in sync.
      */
     private String generateMemberId(Owner owner) {
         String region = Region.regionForPostcode(owner.getPostcode());
@@ -433,7 +444,7 @@ public class ClinicServiceImpl implements ClinicService {
         LocalDate registrationDate = owner.getRegistrationDate();
         String fy = registrationDate == null
             ? "00" : String.format("%02d", Owner.fiscalYearOf(registrationDate) % 100);
-        String base = region + fy + hash8;
+        String base = Region.IDENTITY_VERSION_TAG + region + fy + hash8;
         String memberId = base + luhnCheckDigit(base);
         return deduplicateMemberId(owner, memberId);
     }
@@ -791,10 +802,11 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Assigns {@code owner} its deterministic {@code householdId}: the first 12 upper-case hex
-     * characters of the SHA-256 digest over {@code normalizedLastName + '|' + postcode}, so all
-     * owners that share a normalized {@code lastName} and {@code postcode} automatically share the
-     * same household. Left {@code null} when either the lastName or the postcode is absent, since a
+     * Assigns {@code owner} its deterministic version-2 {@code householdId} (see
+     * {@link #generateHouseholdId(String, String)}): the first 12 upper-case hex characters of the
+     * SHA-256 digest over {@code V2 + '|' + normalizedLastName + '|' + postcode}, so all owners that
+     * share a normalized {@code lastName} and {@code postcode} automatically share the same
+     * household. Left {@code null} when either the lastName or the postcode is absent, since a
      * household is keyed on both.
      */
     private void assignHouseholdId(Owner owner) {
@@ -890,13 +902,15 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Derives the deterministic {@code householdId} from the normalized {@code lastName} and
-     * {@code postcode}: the first 12 upper-case hex characters of SHA-256 over
-     * {@code lastName + '|' + postcode}, so all owners in the same household share the same
-     * identifier.
+     * Derives the deterministic version-2 {@code householdId} from the normalized {@code lastName}
+     * and {@code postcode}: the first 12 upper-case hex characters of SHA-256 over
+     * {@code V2 + '|' + lastName + '|' + postcode}, so all owners in the same household share the
+     * same identifier. The fixed {@link Region#IDENTITY_VERSION_TAG V2} version tag is mixed into the
+     * hash input so every version-2 householdId differs from the value version 1 produced; because
+     * the tag is a constant, owners that shared a household under version 1 still share one.
      */
     private static String generateHouseholdId(String lastName, String postcode) {
-        return Sha256Hex.upperHex(lastName + "|" + postcode, 12);
+        return Sha256Hex.upperHex(Region.IDENTITY_VERSION_TAG + "|" + lastName + "|" + postcode, 12);
     }
 
     /**

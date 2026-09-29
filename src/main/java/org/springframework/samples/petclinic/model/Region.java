@@ -27,6 +27,15 @@ public final class Region {
     /** Locality reported for a city that has no known region. */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * Fixed version tag mixed into the version-2 owner identity. It is baked <em>inside</em> the
+     * derived identifiers (the region code prefixing the {@code memberId}, and the hashed
+     * {@code householdId} and {@code identityKey}) so every version-2 value differs from the value
+     * version 1 produced. It is deliberately kept out of the user-facing {@code locality},
+     * {@code timezone} and the owner segment's derived region, which stay the plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     /** Fixed city-to-region lookup. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -112,22 +121,57 @@ public final class Region {
     }
 
     /**
-     * The {@code <REGION>} prefix of a {@code memberId} formatted
-     * {@code '<REGION><FY><HASH8><CHK>'} — one of the known regions (NSW, VIC, QLD) when the
-     * memberId begins with it, otherwise {@link #UNKNOWN} (which also covers a memberId that is
-     * {@code null}, blank, or begins with the literal {@code UNKNOWN} region). The matching layout
-     * is produced by {@code ClinicServiceImpl.generateMemberId}; keep the two in sync.
+     * The plain {@code <REGION>} code carried by a version-2 {@code memberId} formatted
+     * {@code '<V2><REGION><FY><HASH8><CHK>'} — one of the known regions (NSW, VIC, QLD) when the
+     * memberId carries it after the {@link #IDENTITY_VERSION_TAG} prefix, otherwise {@link #UNKNOWN}
+     * (which also covers a memberId that is {@code null}, blank, or carries the literal
+     * {@code UNKNOWN} region). The leading version tag is stripped before matching, so the returned
+     * region is always the plain code and never carries the {@code V2} tag. The matching layout is
+     * produced by {@code ClinicServiceImpl.generateMemberId} and also read by
+     * {@link #fiscalYearSegmentOf(String)}; keep the three in sync.
      */
     public static String regionOfMemberId(String memberId) {
         if (memberId == null || memberId.isBlank()) {
             return UNKNOWN;
         }
+        String body = memberIdBody(memberId);
         for (String region : REGION_POSTCODES.keySet()) {
-            if (memberId.startsWith(region)) {
+            if (body.startsWith(region)) {
                 return region;
             }
         }
         return UNKNOWN;
+    }
+
+    /**
+     * The two-character fiscal-year (FY) segment of a version-2 {@code memberId} formatted
+     * {@code '<V2><REGION><FY><HASH8><CHK>'} — the two characters following the
+     * {@link #IDENTITY_VERSION_TAG} prefix and the {@code <REGION>} code (see
+     * {@link #regionOfMemberId(String)}) — or {@code null} when the memberId is {@code null}, blank,
+     * or too short to carry an FY segment. This keeps the {@code <V2><REGION><FY>} layout parsing in
+     * one place; callers (e.g. {@code Owner.getFiscalYear}) format it rather than re-deriving the
+     * tag/region offsets themselves.
+     */
+    public static String fiscalYearSegmentOf(String memberId) {
+        if (memberId == null || memberId.isBlank()) {
+            return null;
+        }
+        String body = memberIdBody(memberId);
+        int start = regionOfMemberId(memberId).length();
+        if (body.length() < start + 2) {
+            return null;
+        }
+        return body.substring(start, start + 2);
+    }
+
+    /**
+     * The {@code memberId} with its leading {@link #IDENTITY_VERSION_TAG} version tag stripped (when
+     * present), leaving the {@code <REGION><FY><HASH8><CHK>} body. The single place that knows the
+     * memberId carries the tag as a prefix.
+     */
+    private static String memberIdBody(String memberId) {
+        return memberId.startsWith(IDENTITY_VERSION_TAG)
+            ? memberId.substring(IDENTITY_VERSION_TAG.length()) : memberId;
     }
 
     /**

@@ -332,19 +332,13 @@ public class Owner extends Person {
 
     /**
      * The fiscal year carried by the owner's {@link #getMemberId() memberId}, formatted
-     * {@code 'FY<YY>'} where YY is the two-digit fiscal-year (FY) segment of the memberId — the two
-     * characters following the {@code <REGION>} prefix (see {@link Region#regionOfMemberId(String)}).
-     * Null when no memberId has been assigned.
+     * {@code 'FY<YY>'} where YY is the two-digit fiscal-year (FY) segment of the memberId (see
+     * {@link Region#fiscalYearSegmentOf(String)}, which owns the {@code <V2><REGION><FY>} layout).
+     * Null when no memberId has been assigned (or it is too short to carry an FY segment).
      */
     public String getFiscalYear() {
-        if (this.memberId == null) {
-            return null;
-        }
-        int start = Region.regionOfMemberId(this.memberId).length();
-        if (this.memberId.length() < start + 2) {
-            return null;
-        }
-        return "FY" + this.memberId.substring(start, start + 2);
+        String fiscalYearSegment = Region.fiscalYearSegmentOf(this.memberId);
+        return fiscalYearSegment == null ? null : "FY" + fiscalYearSegment;
     }
 
     /**
@@ -428,18 +422,21 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived identity key used to detect duplicate owners: the lower-case SHA-256 hex digest
-     * over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
-     * telephone is already normalized to E.164 and the email is lower-cased. Two owners are
-     * duplicates only when their whole identity keys are equal. Because the telephone is part of the
-     * key, two owners with the same {@code lastName} and {@code postcode} but different telephones
-     * have different keys and are both allowed (they are instead flagged as a soft match).
+     * The derived version-2 identity key used to detect duplicate owners: the lower-case SHA-256 hex
+     * digest over {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+     * where the telephone is already normalized to E.164 and the email is lower-cased. The fixed
+     * {@link Region#IDENTITY_VERSION_TAG V2} version tag is mixed into the hash input so every
+     * version-2 identity key differs from the value version 1 produced; because the tag is a
+     * constant, owners that collided under version 1 still collide. Two owners are duplicates only
+     * when their whole identity keys are equal. Because the telephone is part of the key, two owners
+     * with the same {@code lastName} and {@code postcode} but different telephones have different keys
+     * and are both allowed (they are instead flagged as a soft match).
      */
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
         String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
         String soundex = Soundex.encode(this.getLastName());
-        return Sha256Hex.lowerHex(tel + "|" + mail + "|" + soundex);
+        return Sha256Hex.lowerHex(Region.IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + soundex);
     }
 
     public boolean isSharesHousehold() {
