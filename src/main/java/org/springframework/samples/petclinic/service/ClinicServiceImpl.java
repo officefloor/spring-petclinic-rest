@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -245,6 +246,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getEmail() != null) {
             owner.setEmail(normalizeEmail(owner.getEmail()));
         }
+        if (owner.getAddress() != null) {
+            owner.setAddress(normalizeAddress(owner.getAddress()));
+        }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -273,6 +277,38 @@ public class ClinicServiceImpl implements ClinicService {
         return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 
+    /** Common street-type abbreviations expanded during address normalization. */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
+    /**
+     * Canonicalizes a postal address: trims and collapses runs of whitespace into a single space,
+     * upper-cases, and expands common street-type abbreviations (ST->STREET, RD->ROAD, AVE->AVENUE)
+     * as whole words. Returns {@code null} for a {@code null} input and an empty string when the
+     * address is blank once whitespace is stripped, so the required-field check sees the normalized
+     * form.
+     */
+    private static String normalizeAddress(String address) {
+        if (address == null) {
+            return null;
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
+    }
+
     private static String normalizeTelephone(String telephone) {
         return telephone == null ? null : E164Telephone.toE164(telephone);
     }
@@ -296,17 +332,18 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Returns the existing owners that share both {@code lastName} and {@code address} (compared
-     * case-insensitively with collapsed whitespace) with a new {@code owner} — i.e. the members of
-     * the household it would join. Returns an empty list for an update to an existing owner or when
-     * either household value is blank, so household rules only apply to genuine new members.
+     * Returns the existing owners that share both {@code lastName} (compared case-insensitively with
+     * collapsed whitespace) and the normalized {@code address} with a new {@code owner} — i.e. the
+     * members of the household it would join. Returns an empty list for an update to an existing
+     * owner or when either household value is blank, so household rules only apply to genuine new
+     * members.
      */
     private List<Owner> findHouseholdMembers(Owner owner) {
         if (!owner.isNew()) {
             return List.of();
         }
         String lastName = normalizeHouseholdValue(owner.getLastName());
-        String address = normalizeHouseholdValue(owner.getAddress());
+        String address = normalizeHouseholdAddress(owner.getAddress());
         if (lastName.isEmpty() || address.isEmpty()) {
             return List.of();
         }
@@ -314,7 +351,7 @@ public class ClinicServiceImpl implements ClinicService {
         for (Owner existing : ownerRepository.findAll()) {
             if (!existing.getId().equals(owner.getId())
                     && lastName.equals(normalizeHouseholdValue(existing.getLastName()))
-                    && address.equals(normalizeHouseholdValue(existing.getAddress()))) {
+                    && address.equals(normalizeHouseholdAddress(existing.getAddress()))) {
                 household.add(existing);
             }
         }
@@ -367,7 +404,7 @@ public class ClinicServiceImpl implements ClinicService {
             }
         }
         return generateHouseholdId(normalizeHouseholdValue(owner.getLastName()),
-            normalizeHouseholdValue(owner.getAddress()));
+            normalizeHouseholdAddress(owner.getAddress()));
     }
 
     /**
@@ -398,6 +435,16 @@ public class ClinicServiceImpl implements ClinicService {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Household comparison value for an address: the canonical {@link #normalizeAddress(String)}
+     * form (never {@code null}), so duplicate detection and the shared household id compare
+     * addresses using the same normalized representation that is stored and returned.
+     */
+    private static String normalizeHouseholdAddress(String address) {
+        String normalized = normalizeAddress(address);
+        return normalized == null ? "" : normalized;
     }
 
     @Override
