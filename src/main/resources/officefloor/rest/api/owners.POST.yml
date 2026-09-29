@@ -1,6 +1,15 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: a repeat carrying an already-seen Idempotency-Key returns the original
+# owner (200) via the 'existing' branch; otherwise the 'create' branch runs the normal pipeline.
+check:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  govern: [ transaction ]
+  outputs:
+    create: validate
+    existing: respondExisting
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
   govern: [ transaction ]
@@ -99,6 +108,11 @@ possibleDuplicate:
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
   govern: [ transaction ]
+  next: recordKey
+
+recordKey:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
+  govern: [ transaction ]
   next: mapOwner
 
 mapOwner:
@@ -112,4 +126,9 @@ audit:
 
 respond:
   class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwnerCreated
+  govern: [ transaction ]
+
+# Idempotent-repeat branch from 'check': respond 200 with the originally created owner.
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
   govern: [ transaction ]
