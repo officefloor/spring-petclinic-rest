@@ -346,8 +346,8 @@ public class ClinicServiceImpl implements ClinicService {
         applyAddress(owner);
         LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(rollToBusinessDay(effectiveDate));
-        if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         boolean creating = owner.isNew();
         if (creating) {
@@ -365,69 +365,99 @@ public class ClinicServiceImpl implements ClinicService {
         populateHouseholdSize(owner);
         if (creating) {
             AUDIT.info(
-                "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+                "owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
             AUDIT.info(ownerCreatedEvent(owner));
         }
     }
 
     /**
      * Builds the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event}}. The {@code seq} is a
+     * {@code {seq, ownerId, memberId, membershipLevel, event}}. The {@code seq} is a
      * process-wide, monotonically increasing integer stamped once per created owner.
      *
      * <p>The identifier field carries the owner's <em>current primary identifier</em>, sourced
-     * through {@link #primaryIdentifier(Owner)}; today that is the {@code customerCode}. When the
-     * primary identifier is later unified into the {@code memberId}, that single helper changes and
-     * the event automatically carries the new identifier.
+     * through {@link #primaryIdentifier(Owner)} — the unified {@code memberId}.
      */
     private String ownerCreatedEvent(Owner owner) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", OWNER_CREATED_SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", primaryIdentifier(owner));
+        event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
         return AUDIT_MAPPER.writeValueAsString(event);
     }
 
     /**
-     * The owner's current primary identifier. Today this is the {@code customerCode}; when the
-     * customerCode is later unified into the {@code memberId}, this is the single place to switch
-     * so every consumer (notably the structured audit event) follows.
+     * The owner's current primary identifier — the unified {@code memberId}. This is the single
+     * place to switch so every consumer (notably the structured audit event) follows.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
-     * Build a {@code customerCode} formatted {@code '<REGION>-<HASH8>'} where REGION is the region
-     * code derived from the owner's postcode (see {@link Region#regionForPostcode(String)}) and
-     * HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the concatenation of
-     * the owner's normalized telephone and {@code lastName}. The telephone is already normalized by
-     * {@link #saveOwner(Owner)} before this runs. The {@code '<REGION>-<HASH8>'} layout is read back
-     * by {@link Region#regionOfCustomerCode(String)}; keep the two in sync.
+     * Build a {@code memberId} formatted {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region
+     * code derived from the owner's postcode (see {@link Region#regionForPostcode(String)}); FY is
+     * the two-digit fiscal year of the owner's (business-day-adjusted) {@code registrationDate} (see
+     * {@link Owner#fiscalYearOf(LocalDate)}); HASH8 is the first 8 upper-case hex characters of the
+     * SHA-256 digest over the concatenation of the owner's normalized telephone and {@code lastName};
+     * and CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.
+     * The telephone is already normalized and the registration date defaulted by
+     * {@link #saveOwner(Owner)} before this runs. The layout is read back by
+     * {@link Region#regionOfMemberId(String)}; keep the two in sync.
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String region = Region.regionForPostcode(owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String hash8 = Sha256Hex.upperHex(telephone + lastName, 8);
-        return deduplicateCustomerCode(owner, region + "-" + hash8);
+        LocalDate registrationDate = owner.getRegistrationDate();
+        String fy = registrationDate == null
+            ? "00" : String.format("%02d", Owner.fiscalYearOf(registrationDate) % 100);
+        String base = region + fy + hash8;
+        String memberId = base + luhnCheckDigit(base);
+        return deduplicateMemberId(owner, memberId);
+    }
+
+    /**
+     * A single Luhn check digit (0-9) computed over the decimal digits contained in {@code value}
+     * (non-digit characters, such as the region letters and hex letters, are ignored).
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
      * Returns {@code base} unchanged when no other owner already holds it; otherwise appends
      * {@code '-<n>'} with the smallest {@code n} of 2 or more that makes the result unique among the
-     * existing owners' {@code customerCode}s. The {@code owner} being saved is excluded from the
-     * comparison so re-saving it does not treat its own code as a collision.
+     * existing owners' {@code memberId}s. The {@code owner} being saved is excluded from the
+     * comparison so re-saving it does not treat its own id as a collision.
      */
-    private String deduplicateCustomerCode(Owner owner, String base) {
+    private String deduplicateMemberId(Owner owner, String base) {
         Set<String> taken = new HashSet<>();
         for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId()) && existing.getCustomerCode() != null) {
-                taken.add(existing.getCustomerCode());
+            if (!existing.getId().equals(owner.getId()) && existing.getMemberId() != null) {
+                taken.add(existing.getMemberId());
             }
         }
         if (!taken.contains(base)) {

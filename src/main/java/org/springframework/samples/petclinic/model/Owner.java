@@ -73,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -253,12 +253,12 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -331,15 +331,20 @@ public class Owner extends Person {
     }
 
     /**
-     * The fiscal year of the owner's (business-day-adjusted) {@code registrationDate}, formatted
-     * {@code 'FY<YY>'} where YY is the last two digits of the fiscal year (see
-     * {@link #fiscalYearOf(LocalDate)}). Null when no registration date is set.
+     * The fiscal year carried by the owner's {@link #getMemberId() memberId}, formatted
+     * {@code 'FY<YY>'} where YY is the two-digit fiscal-year (FY) segment of the memberId — the two
+     * characters following the {@code <REGION>} prefix (see {@link Region#regionOfMemberId(String)}).
+     * Null when no memberId has been assigned.
      */
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        if (this.memberId == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+        int start = Region.regionOfMemberId(this.memberId).length();
+        if (this.memberId.length() < start + 2) {
+            return null;
+        }
+        return "FY" + this.memberId.substring(start, start + 2);
     }
 
     /**
@@ -404,12 +409,12 @@ public class Owner extends Person {
      * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
      * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when {@link #getMembershipLevel()} is 3
      * or more, otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality (the
-     * region of its {@code customerCode}, see {@link Region#regionOfCustomerCode(String)}) is a known
+     * region of its {@code memberId}, see {@link Region#regionOfMemberId(String)}) is a known
      * region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
      */
     public String getOwnerSegment() {
         String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
-        String area = Region.isKnownRegion(Region.regionOfCustomerCode(this.customerCode))
+        String area = Region.isKnownRegion(Region.regionOfMemberId(this.memberId))
                 ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
@@ -435,48 +440,6 @@ public class Owner extends Person {
         String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
         String soundex = Soundex.encode(this.getLastName());
         return Sha256Hex.lowerHex(tel + "|" + mail + "|" + soundex);
-    }
-
-    /**
-     * A single Luhn check digit (0-9) computed over the digits contained in {@code customerCode},
-     * or null when the {@code customerCode} has not been assigned.
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * The owner's membership number formatted {@code '<customerCode>-M<YY>'} where YY is the last
-     * two digits of the fiscal year of the {@code registrationDate} (see
-     * {@link #fiscalYearOf(LocalDate)}), or null when either the {@code customerCode} or the
-     * {@code registrationDate} is not set.
-     */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        String yy = String.format("%02d", fiscalYearOf(this.registrationDate) % 100);
-        return this.customerCode + "-M" + yy;
     }
 
     public boolean isSharesHousehold() {

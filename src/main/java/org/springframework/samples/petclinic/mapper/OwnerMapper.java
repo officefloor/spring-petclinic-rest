@@ -54,25 +54,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fills the {@code checkDigit} from the owner's domain-computed
-     * {@link Owner#getCheckDigit()} (a Luhn check digit over the customerCode's digits).
-     */
-    @AfterMapping
-    default void addCheckDigit(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setCheckDigit(owner.getCheckDigit());
-    }
-
-    /**
-     * Fills the presentation-only {@code membershipNumber} as {@code '<customerCode>-M<YY>'}
-     * where YY is the last two digits of the fiscal year of the registrationDate. Left null when
-     * either source field is missing.
-     */
-    @AfterMapping
-    default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setMembershipNumber(owner.getMembershipNumber());
-    }
-
-    /**
      * Fills the presentation-only {@code fiscalYear} from the owner's domain-computed
      * {@link Owner#getFiscalYear()} — {@code 'FY<YY>'} derived from the business-day-adjusted
      * registrationDate — leaving it null when no registration date is available.
@@ -105,23 +86,23 @@ public interface OwnerMapper {
 
     /**
      * Fills the presentation-only {@code locality} as the {@code <REGION>} component of the owner's
-     * {@code customerCode} (see {@link Region#regionOfCustomerCode(String)}) — the region-and-hash
-     * identity is the single source of truth — or {@code 'UNKNOWN'} when no customerCode is assigned.
+     * {@code memberId} (see {@link Region#regionOfMemberId(String)}) — the region-and-hash
+     * identity is the single source of truth — or {@code 'UNKNOWN'} when no memberId is assigned.
      */
     @AfterMapping
     default void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setLocality(Region.regionOfCustomerCode(owner.getCustomerCode()));
+        ownerDto.setLocality(Region.regionOfMemberId(owner.getMemberId()));
     }
 
     /**
      * Fills the presentation-only {@code timezone} as the IANA timezone name derived from the
-     * owner's locality/region (the {@code <REGION>} component of its {@code customerCode}) via the
+     * owner's locality/region (the {@code <REGION>} component of its {@code memberId}) via the
      * fixed region-to-timezone table (see {@link Region#timezoneForRegion(String)}), or {@code null}
      * when the region has no mapped timezone.
      */
     @AfterMapping
     default void addTimezone(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setTimezone(Region.timezoneForRegion(Region.regionOfCustomerCode(owner.getCustomerCode())));
+        ownerDto.setTimezone(Region.timezoneForRegion(Region.regionOfMemberId(owner.getMemberId())));
     }
 
     /**

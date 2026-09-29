@@ -104,7 +104,7 @@ public final class Region {
     /**
      * The canonical region derived from the given 4-digit {@code postcode} (see
      * {@link #forPostcode(String)}), or {@link #UNKNOWN} when the postcode is absent or falls in no
-     * known range. This is the {@code <REGION>} component of an owner's {@code customerCode}.
+     * known range. This is the {@code <REGION>} component of an owner's {@code memberId}.
      */
     public static String regionForPostcode(String postcode) {
         String region = forPostcode(postcode);
@@ -112,17 +112,22 @@ public final class Region {
     }
 
     /**
-     * The {@code <REGION>} component of a {@code customerCode} formatted {@code '<REGION>-<HASH8>'}
-     * — the text before the first {@code '-'} — or {@link #UNKNOWN} when {@code customerCode} is
-     * {@code null}, blank, or carries no separator. The matching layout is produced by
-     * {@code ClinicServiceImpl.generateCustomerCode}; keep the two in sync.
+     * The {@code <REGION>} prefix of a {@code memberId} formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} — one of the known regions (NSW, VIC, QLD) when the
+     * memberId begins with it, otherwise {@link #UNKNOWN} (which also covers a memberId that is
+     * {@code null}, blank, or begins with the literal {@code UNKNOWN} region). The matching layout
+     * is produced by {@code ClinicServiceImpl.generateMemberId}; keep the two in sync.
      */
-    public static String regionOfCustomerCode(String customerCode) {
-        if (customerCode == null || customerCode.isBlank()) {
+    public static String regionOfMemberId(String memberId) {
+        if (memberId == null || memberId.isBlank()) {
             return UNKNOWN;
         }
-        int dash = customerCode.indexOf('-');
-        return dash <= 0 ? UNKNOWN : customerCode.substring(0, dash);
+        for (String region : REGION_POSTCODES.keySet()) {
+            if (memberId.startsWith(region)) {
+                return region;
+            }
+        }
+        return UNKNOWN;
     }
 
     /**
