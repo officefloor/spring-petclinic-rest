@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index ad0cfa0c9..d798b439f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
++import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidAddressException;
+@@ -209,6 +210,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateEmailException} raised when an owner is created with a
++     * lower-cased e-mail address that is already used by another owner, returning a
++     * 409 Conflict status.
++     *
++     * @param e The {@link DuplicateEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
++        logger.warn("Duplicate email at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateHouseholdException} raised when an owner is created whose last name
+      * and address match those of another owner and the request did not opt in via
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 43264d91f..b1cbf320a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
+@@ -113,7 +114,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
+         owner.setTelephone(telephone);
+-        owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
++        String email = EmailNormalizer.normalize(owner.getEmail());
++        owner.setEmail(email);
+         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+         LocalDate effectiveRegistrationDate =
+             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+@@ -124,6 +126,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new DuplicateTelephoneException(
+                 "telephone " + telephone + " is already used by another owner");
+         }
++        if (email != null) {
++            boolean emailInUse = this.clinicService.findAllOwners().stream()
++                .map(Owner::getEmail)
++                .filter(existing -> existing != null)
++                .anyMatch(existing -> email.equalsIgnoreCase(existing));
++            if (emailInUse) {
++                throw new DuplicateEmailException(
++                    "email " + email + " is already used by another owner");
++            }
++        }
+         this.clinicService.createOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateEmailException.java
+new file mode 100644
+index 000000000..b9ea464da
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateEmailException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner is created with a lower-cased e-mail address that is
++ * already used by another owner. Handled by the REST
++ * {@code ExceptionControllerAdvice}, which translates it into a
++ * {@code 409 Conflict} response.
++ */
++public class DuplicateEmailException extends RuntimeException {
++
++    public DuplicateEmailException(String message) {
++        super(message);
++    }
++}
