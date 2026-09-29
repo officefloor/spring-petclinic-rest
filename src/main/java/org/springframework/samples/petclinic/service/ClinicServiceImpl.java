@@ -59,6 +59,9 @@ public class ClinicServiceImpl implements ClinicService {
     /** Dedicated audit trail logger for owner-lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated logger for enqueued owner notifications (e.g. the welcome notification). */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Serializes structured audit events to compact JSON. */
     private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
 
@@ -369,6 +372,8 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
                 owner.getMembershipLevel());
             AUDIT.info(ownerCreatedEvent(owner));
+            NOTIFY.info("welcome notification enqueued: ownerId={} memberId={}",
+                owner.getId(), owner.getMemberId());
         }
     }
 
