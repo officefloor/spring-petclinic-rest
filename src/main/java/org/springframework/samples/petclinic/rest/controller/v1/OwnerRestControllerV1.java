@@ -137,7 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveRegistrationDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
-        this.clinicService.createOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+        this.clinicService.createOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));

@@ -24,7 +24,6 @@ import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.rest.validation.CityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
@@ -252,19 +251,13 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void createOwner(Owner owner) throws DataAccessException {
-        createOwner(owner, false);
-    }
-
-    @Override
-    @Transactional
-    public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         rejectWhenDailyLimitReached(owner);
         rejectWhenCityAtCapacity(owner);
         owner.setHouseholdId(deriveHouseholdId(owner));
         List<Owner> householdMembers = findHouseholdMembers(owner);
-        rejectWhenHouseholdDuplicate(owner, householdMembers, sharesHousehold);
         assignPossibleDuplicate(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
+        owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(deduplicateCustomerCode(deriveCustomerCode(owner)));
         }
@@ -343,27 +336,24 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Reject the create when another owner already belongs to this owner's household (same
-     * deterministic {@code householdId}, i.e. the same last name and postcode) as a
-     * {@code 409 Conflict}. The single exception to the block is {@code sharesHousehold}: when set
-     * the new owner is accepted as a declared member of the existing household rather than rejected.
-     * Evaluated after the household id has been assigned and before the owner is persisted, so it
-     * reflects the owners present at creation time.
+     * The membership-level ceiling for a new owner joining {@code householdMembers}: one above the
+     * maximum membership level among the existing members. Returns {@code null} when the household
+     * has no existing member, so no cap applies. Evaluated before the owner is persisted, so it
+     * reflects the members (and their levels) present at creation time.
      */
-    private void rejectWhenHouseholdDuplicate(Owner owner, List<Owner> householdMembers, boolean sharesHousehold) {
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
-            throw new DuplicateIdentityException(
-                "an owner already exists in household " + owner.getHouseholdId());
-        }
+    private Integer membershipLevelCap(List<Owner> householdMembers) {
+        return householdMembers.stream()
+            .map(MembershipLevels::level)
+            .max(Integer::compareTo)
+            .map(max -> max + 1)
+            .orElse(null);
     }
 
     /**
-     * Set the new owner's soft-duplicate flags. A declared member of an existing household (reached
-     * only via {@code sharesHousehold}) is explicitly not a suspected duplicate, and an owner that
-     * is the first in its household has nothing to be a duplicate of; any other case would already
-     * have been rejected as a household duplicate. The flags are therefore always cleared here, but
-     * set explicitly so the field is always present in the response. Evaluated after the
-     * household-duplicate check and before the owner is persisted.
+     * Set the new owner's soft-duplicate flags. A new owner joining an existing household is no
+     * longer rejected as a duplicate — its membership level is capped instead (see
+     * {@link #membershipLevelCap(List)}) — so the flags are always cleared here, but set explicitly
+     * so the field is always present in the response. Evaluated before the owner is persisted.
      */
     private void assignPossibleDuplicate(Owner owner) {
         owner.setPossibleDuplicate(false);

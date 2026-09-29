@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.service.MembershipLevels;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -168,60 +169,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes the owner's membership points. Starts at {@code 0}; adds {@code 2} when an email
-     * address is present; adds {@code 1} when the owner has no namesakes (namesakeCount is 0);
-     * adds {@code 2} when the owner belongs to a household of {@code 3} or more members; adds
-     * {@code 3} when the owner's tenure exceeds one fiscal year, where tenure is the number of
-     * elapsed fiscal years (the current fiscal year minus the registration fiscal year).
+     * The owner's membership points; see {@link MembershipLevels#points(Owner)}.
      */
     default Integer membershipPoints(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        int points = 0;
-        String email = owner.getEmail();
-        if (email != null && !email.isEmpty()) {
-            points += 2;
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        if (namesakeCount != null && namesakeCount == 0) {
-            points += 1;
-        }
-        Integer householdMemberCount = owner.getHouseholdMemberCount();
-        if (householdMemberCount != null && householdMemberCount >= 3) {
-            points += 2;
-        }
-        LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate != null) {
-            int tenure = RegistrationDateNormalizer.fiscalYear(LocalDate.now())
-                - RegistrationDateNormalizer.fiscalYear(registrationDate);
-            if (tenure > 1) {
-                points += 3;
-            }
-        }
-        return points;
+        return MembershipLevels.points(owner);
     }
 
     /**
-     * Derives the owner's numeric membership level from {@link #membershipPoints(Owner)}: level
-     * {@code 1} for {@code 0-1} points, level {@code 2} for {@code 2-3} points, level {@code 3}
-     * for {@code 4-5} points, and level {@code 4} for {@code 6} or more points.
+     * The owner's capped numeric membership level; see {@link MembershipLevels#level(Owner)}.
      */
     default Integer membershipLevel(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        int points = membershipPoints(owner);
-        if (points <= 1) {
-            return 1;
-        }
-        if (points <= 3) {
-            return 2;
-        }
-        if (points <= 5) {
-            return 3;
-        }
-        return 4;
+        return MembershipLevels.level(owner);
     }
 
     /**
