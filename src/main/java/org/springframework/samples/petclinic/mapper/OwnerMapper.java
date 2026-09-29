@@ -23,6 +23,9 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "locality",
+            expression = "java(org.springframework.samples.petclinic.rest.function.common"
+                    + ".Localities.of(owner.getCity()))")
     @Mapping(target = "membershipNumber",
             expression = "java(owner.getCustomerCode() + \"-M\" "
                     + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
