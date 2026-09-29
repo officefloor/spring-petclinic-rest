@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 14fad4efb..bf4abd944 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -43,6 +43,36 @@ public interface OwnerMapper {
+                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".");
+     }
+ 
++    /**
++     * Fills the {@code checkDigit} as a single Luhn check digit (0-9) computed over the digits
++     * contained in the owner's {@code customerCode}. Left null when the customerCode is missing.
++     */
++    @AfterMapping
++    default void addCheckDigit(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode == null) {
++            return;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        ownerDto.setCheckDigit((10 - (sum % 10)) % 10);
++    }
++
+     /**
+      * Fills the presentation-only {@code membershipNumber} as {@code '<customerCode>-M<YY>'}
+      * where YY is the last two digits of the registrationDate year. Left null when either
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 951a3d8d8..54832159b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2125,6 +2125,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the
++                customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 7
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
