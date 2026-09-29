@@ -87,6 +87,17 @@ public class Owner extends Person {
     @Transient
     private Integer householdSize;
 
+    /**
+     * The maximum membershipLevel among this owner's <em>other</em> household members (owners sharing
+     * the same {@code householdId}, excluding this owner). Not persisted: like {@link #householdSize} it
+     * depends on other owners and is stamped onto the owner by
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the owner
+     * is mapped to a DTO. Null when the owner has no {@code householdId} or no other household member —
+     * in which case no membership-level cap applies.
+     */
+    @Transient
+    private Integer householdMaxMembershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -212,6 +223,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getHouseholdMaxMembershipLevel() {
+        return this.householdMaxMembershipLevel;
+    }
+
+    public void setHouseholdMaxMembershipLevel(Integer householdMaxMembershipLevel) {
+        this.householdMaxMembershipLevel = householdMaxMembershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {

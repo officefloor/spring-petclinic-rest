@@ -8,9 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
-import org.springframework.samples.petclinic.rest.function.common.FiscalYear;
+import org.springframework.samples.petclinic.rest.function.owner.MembershipLevel;
 
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -66,54 +65,47 @@ public interface OwnerMapper {
 
     /** Whether the owner has a usable email address. */
     default boolean hasEmail(Owner owner) {
-        return owner.getEmail() != null && !owner.getEmail().isBlank();
+        return MembershipLevel.hasEmail(owner);
     }
 
     /**
-     * The owner's membership points. Starting from 0: add 2 when an email address is present, add 1
-     * when the owner has no namesakes (namesakeCount is 0), add 2 for a household of 3 or more
-     * members, and add 3 when the owner's tenure exceeds one fiscal year (more than one elapsed
-     * fiscal year since the registrationDate; the fiscal year starts on 1 July).
+     * The owner's membership points (see {@link MembershipLevel#points(Owner, Integer)} for the rule).
      *
      * <p>The household size is not derived here: it depends on other owners, so it is computed by
      * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the
      * owner reaches this mapper and read from the entity, keeping this a pure transformation.
      */
     default int membershipPoints(Owner owner) {
-        int points = 0;
-        if (hasEmail(owner)) {
-            points += 2;
-        }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            points += 1;
-        }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            points += 2;
-        }
-        long tenureFiscalYears = owner.getRegistrationDate() == null ? 0
-                : FiscalYear.between(owner.getRegistrationDate(), LocalDate.now());
-        if (tenureFiscalYears > 1) {
-            points += 3;
-        }
-        return points;
+        return MembershipLevel.points(owner, owner.getHouseholdSize());
     }
 
     /**
-     * The owner's numeric membership level, mapped from {@link #membershipPoints(Owner)}: level 1 for
-     * 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+     * The owner's raw numeric membership level, mapped from {@link #membershipPoints(Owner)}: level 1
+     * for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. This is the level before the
+     * household ceiling in {@link #membershipLevel(Owner)} is applied.
+     */
+    default int rawMembershipLevel(Owner owner) {
+        return MembershipLevel.level(membershipPoints(owner));
+    }
+
+    /**
+     * The owner's numeric membership level: their {@link #rawMembershipLevel(Owner)} capped so it cannot
+     * exceed one above the current maximum membershipLevel among their household members. With no
+     * existing household member no cap applies.
+     *
+     * <p>The ceiling depends on other owners, so — like the household size — it is not derived here: the
+     * maximum level among other household members is computed by
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the owner
+     * reaches this mapper and read from {@link Owner#getHouseholdMaxMembershipLevel()} (null when no
+     * other member exists), keeping this a pure transformation.
      */
     default int membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
-        if (points <= 1) {
-            return 1;
+        int level = rawMembershipLevel(owner);
+        Integer householdMax = owner.getHouseholdMaxMembershipLevel();
+        if (householdMax != null && level > householdMax + 1) {
+            level = householdMax + 1;
         }
-        if (points <= 3) {
-            return 2;
-        }
-        if (points <= 5) {
-            return 3;
-        }
-        return 4;
+        return level;
     }
 
     Owner toOwner(OwnerDto ownerDto);

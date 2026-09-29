@@ -9,9 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * name and postcode compute the same value and therefore share the household automatically, with no
  * linking or backfilling of existing owners.
  *
- * <p>The {@code sharesHousehold} flag no longer creates the link (the id is deterministic regardless);
- * it only bypasses the duplicate block in {@link RequireUniqueIdentity} so a declared household member
- * may be created.
+ * <p>Sharing a household never creates a link (the id is deterministic regardless) and is no longer a
+ * duplicate on its own: {@link RequireUniqueIdentity} rejects only an exact {@link IdentityKey} match,
+ * so several distinct members may share one household and the {@code sharesHousehold} flag is not
+ * required to create them.
  */
 public class AssignHousehold {
 
