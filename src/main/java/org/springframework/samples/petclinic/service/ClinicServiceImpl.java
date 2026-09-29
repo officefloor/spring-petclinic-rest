@@ -272,6 +272,7 @@ public class ClinicServiceImpl implements ClinicService {
             assertCityCapacity(owner);
         }
         assertTelephoneUnique(owner, owner.getTelephone());
+        assertEmailUnique(owner, owner.getEmail());
         List<Owner> household = findHouseholdMembers(owner);
         assertHouseholdAllowed(owner, household);
         assignHousehold(owner, household);
@@ -455,6 +456,24 @@ public class ClinicServiceImpl implements ClinicService {
             if (!existing.getId().equals(owner.getId())
                     && normalized.equals(normalizeTelephone(existing.getTelephone()))) {
                 throw new DuplicateTelephoneException(normalized);
+            }
+        }
+    }
+
+    /**
+     * Rejects saving {@code owner} when its {@code normalized} (lower-cased) email is already used by
+     * any other owner, so no two owners can share an email address.
+     *
+     * @throws DuplicateEmailException if another owner already has the same normalized email
+     */
+    private void assertEmailUnique(Owner owner, String normalized) {
+        if (normalized == null || normalized.isEmpty()) {
+            return;
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!existing.getId().equals(owner.getId())
+                    && normalized.equals(normalizeEmail(existing.getEmail()))) {
+                throw new DuplicateEmailException(normalized);
             }
         }
     }
