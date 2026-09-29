@@ -3,9 +3,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.Map;
 
 /**
- * The single definition of the E.164 form of a telephone number. Shared by
- * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and {@link IdentityKey}
- * (which folds it into the duplicate-detection key), so both apply the same rule and cannot drift apart.
+ * The single definition of the E.164 form of a telephone number ({@link #toE164}) and its
+ * human-facing display form ({@link #toDisplay}). Shared by {@link NormalizeOwnerTelephone} (which
+ * stores the E.164 value), {@link IdentityKey} (which folds it into the duplicate-detection key) and
+ * the owner mapper (which returns the display form), so all apply the same rule — and the display form
+ * splits the country code from the national digits using the very table the validation uses — and
+ * cannot drift apart.
  *
  * <p>The rule: strip spaces, dashes and brackets. When a leading {@code '+'} is present, keep it and
  * the country code that follows; otherwise assume country code {@code '+61'} and drop a single leading
@@ -18,9 +21,9 @@ import java.util.Map;
  * {@code null} (rejected with a 400). Other country codes keep only the generic 8-to-15 length rule.
  *
  * <p>Kept out of the function classes themselves because OfficeFloor requires each function class to
- * expose exactly one public method.
+ * expose exactly one public method. Public because the mapper lives in another package.
  */
-final class TelephoneNormalizer {
+public final class TelephoneNormalizer {
 
     /**
      * Country code (the digits after the {@code '+'}) to its required national-number length. Country
@@ -62,6 +65,42 @@ final class TelephoneNormalizer {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Returns the stored E.164 telephone formatted for humans as the country code, a space, then the
+     * national digits grouped in threes from the left (e.g. {@code +61412345678} to
+     * {@code "+61 412 345 678"}), or {@code null} when the value cannot form valid E.164. The country
+     * code is taken from {@link #NATIONAL_LENGTH} — the same table the E.164 rule uses — so a known
+     * country's code and national digits are split apart consistently; an unknown country code keeps
+     * the whole number after the {@code '+'} grouped in threes.
+     */
+    public static String toDisplay(String telephone) {
+        String e164 = toE164(telephone);
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)
+                    && digits.length() - countryCode.length() == entry.getValue()) {
+                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+            }
+        }
+        return "+" + groupInThrees(digits);
+    }
+
+    /** Groups the digits in threes from the left, separated by single spaces. */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
     }
 
     private TelephoneNormalizer() {
