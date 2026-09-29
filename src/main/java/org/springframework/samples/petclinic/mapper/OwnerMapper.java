@@ -33,12 +33,10 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
                     + ".TelephoneNormalizer.toDisplay(owner.getTelephone()))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner"
-                    + ".CustomerCode.regionOf(owner.getCustomerCode()))")
+            expression = "java(locality(owner))")
     @Mapping(target = "timezone",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
-                    + ".Localities.timezoneOfRegion(org.springframework.samples.petclinic.rest.function"
-                    + ".owner.CustomerCode.regionOf(owner.getCustomerCode())))")
+                    + ".Localities.timezoneOfRegion(locality(owner)))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".Luhn.checkDigit(owner.getCustomerCode()))")
@@ -61,6 +59,8 @@ public interface OwnerMapper {
             expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment",
+            expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Whether the owner has a usable email address. */
@@ -106,6 +106,30 @@ public interface OwnerMapper {
             level = householdMax + 1;
         }
         return level;
+    }
+
+    /**
+     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
+     * owner's {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}. AREA is
+     * {@code METRO} when the owner's locality (the region segment of the customerCode) is a known region
+     * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default String ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = org.springframework.samples.petclinic.rest.function.common.Localities
+                .isKnownRegion(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
+     * The owner's canonical region ("locality"), read from the region segment of their customerCode via
+     * {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode#regionOf(String)}, or
+     * {@code "UNKNOWN"} when the code maps to no known region. Shared by the {@code locality} and
+     * {@code timezone} mappings and by {@link #ownerSegment(Owner)} so the derivation lives in one place.
+     */
+    default String locality(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
+                .regionOf(owner.getCustomerCode());
     }
 
     Owner toOwner(OwnerDto ownerDto);

@@ -78,6 +78,13 @@ public final class Localities {
         return REGION_TIMEZONE.get(region);
     }
 
+    /** Whether {@code region} is a known canonical region (NSW, VIC or QLD) rather than "UNKNOWN".
+     *  {@link #CITY_REGION} values and the {@link #REGION_TIMEZONE}/{@link #REGION_POSTCODES} key sets
+     *  are all pinned to this same region set; the postcode map is used here as the source of truth. */
+    public static boolean isKnownRegion(String region) {
+        return REGION_POSTCODES.containsKey(region);
+    }
+
     /** The inclusive {low, high} postcode range for {@code city}'s region, or {@code null} when the
      *  city has no known region (any 4-digit postcode is then accepted). */
     public static int[] postcodeRange(String city) {
