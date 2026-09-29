@@ -22,7 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -75,23 +75,24 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier: {@code 'GOLD'} when the owner's household had 3 or more
-     * members after the owner was created; otherwise {@code 'SILVER'} when the owner has no
-     * namesakes (namesakeCount is 0) and an email address is present; otherwise {@code 'BRONZE'}.
+     * Returns the owner's numeric membership level. Starts at {@code 1}; adds {@code 1} when an
+     * email address is present; adds {@code 1} when the owner has no namesakes (namesakeCount is
+     * 0); capped at {@code 3} (level 4 is reserved for tenure).
      */
-    default String membershipTier(Owner owner) {
+    default Integer membershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        Integer householdMemberCount = owner.getHouseholdMemberCount();
-        if (householdMemberCount != null && householdMemberCount >= 3) {
-            return "GOLD";
+        int level = 1;
+        String email = owner.getEmail();
+        if (email != null && !email.isEmpty()) {
+            level++;
         }
         Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean noNamesakes = namesakeCount != null && namesakeCount == 0;
-        boolean hasEmail = email != null && !email.isEmpty();
-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+        if (namesakeCount != null && namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** Fixed city-to-region table used to derive an owner's locality. */
