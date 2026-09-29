@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 70c88a0ff..01ed5f3f4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,9 +44,7 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
+                     + ".AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+-            expression = "java(Math.min(3, 1 "
+-                    + "+ (hasEmail(owner) ? 1 : 0) "
+-                    + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
++            expression = "java(membershipLevel(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Whether the owner has a usable email address. */
+@@ -54,6 +52,22 @@ public interface OwnerMapper {
+         return owner.getEmail() != null && !owner.getEmail().isBlank();
+     }
+ 
++    /**
++     * The owner's numeric membership level. The pre-tenure factors start at 1, gain 1 for a present
++     * email and 1 for having no namesakes (namesakeCount is 0), and are capped at 3. Level 4 is
++     * reserved for tenure: it is awarded only when the owner's tenure exceeds 365 days. A newly
++     * created owner has zero tenure, so it never exceeds level 3.
++     */
++    default int membershipLevel(Owner owner) {
++        int base = Math.min(3, 1
++                + (hasEmail(owner) ? 1 : 0)
++                + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0));
++        long tenureDays = owner.getRegistrationDate() == null ? 0
++                : java.time.temporal.ChronoUnit.DAYS.between(
++                        owner.getRegistrationDate(), java.time.LocalDate.now());
++        return base + (tenureDays > 365 ? 1 : 0);
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f78139658..04f9ee28b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2204,14 +2204,16 @@ components:
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, computed on creation. Starts
+-                at 1, gains 1 when an email address is present, and gains 1 when the
++                The owner's numeric membership level. The pre-tenure factors start
++                at 1, gain 1 when an email address is present, and gain 1 when the
+                 owner has no namesakes (namesakeCount is 0), capped at 3. Level 4 is
+-                reserved for tenure.
++                reserved for tenure: it is awarded only when the owner's tenure
++                exceeds 365 days. A newly created owner has zero tenure, so it never
++                exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             contactPreference:
