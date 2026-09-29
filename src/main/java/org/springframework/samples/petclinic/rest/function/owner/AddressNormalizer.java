@@ -3,10 +3,10 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.Map;
 
 /**
- * The single definition of the normalized form of an owner address. Shared by
- * {@link NormalizeOwnerAddress} (which stores the normalized value) and {@link HouseholdKey}
- * (which compares against it for duplicate detection and the shared household id), so every place
- * that stores, returns or compares an address applies the same rule and they cannot drift apart.
+ * The single definition of the normalized form of an owner address. Used by
+ * {@link NormalizeOwnerAddress} (which stores the normalized value), so every place that stores or
+ * returns an address applies the same rule and they cannot drift apart. (The household id is keyed on
+ * {@code (lastName, postcode)}, not the address — see {@link HouseholdKey}.)
  *
  * <p>The rule: trim, collapse runs of whitespace to a single space, upper-case, and expand the
  * common street-type abbreviations word-by-word ({@code ST -> STREET}, {@code RD -> ROAD},

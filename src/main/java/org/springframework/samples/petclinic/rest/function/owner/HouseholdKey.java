@@ -1,65 +1,48 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.function.common.Hashes;
 
 /**
- * The single definition of what makes owners share a household: the same last name (compared
- * case-insensitively after collapsing runs of whitespace) and the same address in its normalized
- * form (see {@link AddressNormalizer}). Shared by {@link AssignHousehold} (which links a
- * {@code sharesHousehold} owner to the existing members and assigns the shared {@code householdId})
- * and {@link RequireUniqueIdentity} (which derives the candidate's household id for its identity key),
- * so both apply the same rule and cannot drift apart.
+ * The single definition of an owner's {@code householdId}: a deterministic identifier derived from
+ * the owner's last name and postcode, so owners with the same last name and postcode share it
+ * automatically. The value is the first 12 hex characters of SHA-256 over
+ * {@code normalizedLastName + '|' + postcode}, where the last name is compared case-insensitively
+ * after collapsing runs of whitespace.
  *
- * <p>Also owns the deterministic {@code householdId} derived from that key: joining the same household
- * always yields the same value and it never changes over time.
+ * <p>Because it is a pure function of {@code (lastName, postcode)}, every owner computes its own id
+ * independently and members of one household always agree — there is nothing to link or backfill.
+ * Shared by {@link AssignHousehold} (which stamps it onto the new owner), {@link RequireUniqueIdentity}
+ * (duplicate detection) and {@link AssignOwnerPossibleDuplicate} (soft-match), so every place that
+ * keys off the household applies the one rule and they cannot drift apart.
  *
  * <p>Kept out of the function classes themselves because OfficeFloor requires each function class to
  * expose exactly one public method.
  */
 final class HouseholdKey {
 
-    private final String lastName;
+    /** Length of the household id: the first 12 hex characters of the SHA-256 digest. */
+    private static final int ID_LENGTH = 12;
 
-    private final String address;
-
-    private HouseholdKey(String lastName, String address) {
-        this.lastName = lastName;
-        this.address = address;
-    }
-
-    /** The household key for the given last name and address. */
-    static HouseholdKey of(String lastName, String address) {
-        return new HouseholdKey(normalize(lastName), AddressNormalizer.normalize(address));
+    private HouseholdKey() {
     }
 
     /**
-     * The effective {@code householdId} a create request would carry: the deterministic
-     * {@link #householdId()} when the request opts into {@code sharesHousehold}, otherwise
-     * {@code null} (the owner joins no household). The single home of the share-or-not gate, so
-     * {@link RequireUniqueIdentity} (which folds it into the identity key) and {@link AssignHousehold}
-     * (which assigns it) cannot drift apart.
+     * The deterministic {@code householdId} for the given last name and postcode: the first 12 hex
+     * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. A {@code null} postcode
+     * is treated as the empty string.
      */
-    static String candidateHouseholdId(OwnerFieldsDto request) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return null;
-        }
-        return of(request.getLastName(), request.getAddress()).householdId();
+    static String householdId(String lastName, String postcode) {
+        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        return Hashes.sha256Hex(key).substring(0, ID_LENGTH);
     }
 
-    /** True when the existing owner belongs to this household. */
-    boolean matches(Owner owner) {
-        return this.lastName.equals(normalize(owner.getLastName()))
-                && this.address.equals(AddressNormalizer.normalize(owner.getAddress()));
-    }
-
-    /** A stable, shared identifier derived from the normalized last name and address. */
-    String householdId() {
-        String key = this.lastName + "\u0000" + this.address;
-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+    /**
+     * The deterministic {@code householdId} of the given owner — the single home of "which two fields
+     * make a household", mirroring {@link IdentityKey#ofOwner}, so callers never re-pluck the tuple.
+     */
+    static String householdId(Owner owner) {
+        return householdId(owner.getLastName(), owner.getPostcode());
     }
 
     /** Lower-cases and collapses runs of whitespace to a single space for case- and

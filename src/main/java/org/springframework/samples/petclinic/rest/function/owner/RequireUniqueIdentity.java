@@ -7,29 +7,36 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The single duplicate check of the create-owner pipeline: rejects the request with a 409 (via
- * {@code DuplicateIdentityExceptionHandler}) when the new owner's whole {@link IdentityKey} equals an
- * existing owner's. This consolidates the former separate telephone, email and household checks — all
- * three are now expressed through the one key.
+ * The duplicate block of the create-owner pipeline: rejects the request with a 409 (via
+ * {@code DuplicateIdentityExceptionHandler}) in either of two cases.
+ *
+ * <ol>
+ * <li><b>Household duplicate.</b> The household is now keyed on {@code (lastName, postcode)} through the
+ * deterministic {@link HouseholdKey#householdId}, so an existing owner with the same household means the
+ * new owner is a second member of it. That is rejected — <em>unless</em> the request sets
+ * {@code sharesHousehold}, which bypasses this block so a declared household member may be created.</li>
+ * <li><b>Identity duplicate.</b> An exact match on the whole {@link IdentityKey}
+ * ({@code telephone|email|householdId}) is always rejected, even for a declared member: it is the same
+ * person, not merely the same household.</li>
+ * </ol>
  *
  * <p>Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail}, so the candidate's
- * telephone and email are already in their normalized form. The candidate's household id comes from
- * {@link HouseholdKey#candidateHouseholdId} — the same single definition {@link AssignHousehold} uses
- * to assign it — so the key and the assigned id cannot drift apart. Because the telephone is part of
- * the key, two members of the same household with different telephones have different keys and are
- * both allowed.
- *
- * <p>The new owner is not persisted yet, so every match found is another owner.
+ * telephone and email are already normalized. The new owner is not persisted yet, so every match found
+ * is another owner.
  */
 public class RequireUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto owner, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String householdId = HouseholdKey.candidateHouseholdId(owner);
+        String householdId = HouseholdKey.householdId(owner.getLastName(), owner.getPostcode());
+        boolean sharesHousehold = Boolean.TRUE.equals(owner.getSharesHousehold());
         String candidate = IdentityKey.of(owner.getTelephone(), owner.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (candidate.equals(IdentityKey.ofOwner(existing))) {
                 throw new DuplicateIdentityException(candidate);
+            }
+            if (!sharesHousehold && householdId.equals(HouseholdKey.householdId(existing))) {
+                throw new DuplicateIdentityException(householdId);
             }
         }
     }
