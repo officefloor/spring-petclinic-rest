@@ -28,11 +28,15 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -261,7 +265,7 @@ public class ClinicServiceImpl implements ClinicService {
         rejectWhenDuplicateIdentity(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
         if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(nextCustomerCode(owner));
+            owner.setCustomerCode(deriveCustomerCode(owner));
         }
         if (owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -421,27 +425,67 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
+    /** Region-to-inclusive 4-digit postcode range {@code {low, high}}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /** Region code used when the postcode maps to no known region (or is absent). */
+    private static final String UNKNOWN_REGION = "UNKNOWN";
+
     /**
-     * Builds the customer code {@code '<CITY3>-<LAST3>-<NNNN>'}: the upper-cased first
-     * three letters of the owner's {@code city}, a hyphen, the upper-cased first three
-     * letters of {@code lastName}, a hyphen, and a 4-digit zero-padded per-city sequence
-     * equal to one more than the number of owners already in that city (compared
-     * case-insensitively with collapsed whitespace).
+     * Builds the customer code {@code '<REGION>-<HASH8>'}: the region code derived from the
+     * owner's postcode, a hyphen, and the first eight upper-case hexadecimal characters of the
+     * SHA-256 digest over the owner's normalized (E.164) telephone concatenated with the last
+     * name. No sequence number is used; the identity is fully derived from the region and hash.
      */
-    private String nextCustomerCode(Owner owner) {
-        String city3 = prefix3(owner.getCity());
-        String last3 = prefix3(owner.getLastName());
-        long sequence = countOwnersInCity(owner) + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String deriveCustomerCode(Owner owner) {
+        String region = regionForPostcode(owner.getPostcode());
+        String telephone = TelephoneNormalizer.toE164(owner.getTelephone());
+        if (telephone == null) {
+            telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        }
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        return region + "-" + sha256Hex8(telephone + lastName);
     }
 
     /**
-     * Returns the upper-cased first three letters of {@code value}, or fewer when the value
-     * is shorter; a {@code null} value yields an empty string.
+     * Returns the region code whose inclusive postcode range contains {@code postcode}
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), or
+     * {@code "UNKNOWN"} when the postcode is absent, not a 4-digit value, or in no known range.
      */
-    private static String prefix3(String value) {
-        String name = value == null ? "" : value;
-        return name.substring(0, Math.min(3, name.length())).toUpperCase();
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return UNKNOWN_REGION;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return UNKNOWN_REGION;
+    }
+
+    /**
+     * Returns the first eight upper-case hexadecimal characters (the first four bytes) of the
+     * SHA-256 digest of the UTF-8 bytes of {@code value}.
+     */
+    private static String sha256Hex8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 
     @Override
