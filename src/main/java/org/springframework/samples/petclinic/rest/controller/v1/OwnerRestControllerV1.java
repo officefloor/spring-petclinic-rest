@@ -116,7 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         String email = EmailNormalizer.normalize(owner.getEmail());
         owner.setEmail(email);
-        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+        normalizeAddress(owner);
         PostcodeValidator.validate(owner.getPostcode(), owner.getCity());
         RegistrationDateValidator.validate(owner.getRegistrationDate());
         LocalDate effectiveRegistrationDate =
@@ -130,6 +130,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalizes the owner's address, preferring the structured form. When a non-blank
+     * {@code addressLine1} is supplied, both structured lines are normalized and the flat
+     * {@code address} is composed from them: the normalized {@code addressLine1}, and — when
+     * {@code addressLine2} is present — a single space followed by the normalized
+     * {@code addressLine2}. Otherwise the flat {@code address} is normalized on its own,
+     * preserving backward compatibility. Either way a blank address is rejected with a
+     * {@code 400 Bad Request} by {@link AddressNormalizer#normalize(String)}.
+     */
+    private void normalizeAddress(Owner owner) {
+        String addressLine1 = owner.getAddressLine1();
+        if (addressLine1 != null && !addressLine1.isBlank()) {
+            String line1 = AddressNormalizer.normalize(addressLine1);
+            owner.setAddressLine1(line1);
+            String addressLine2 = owner.getAddressLine2();
+            if (addressLine2 != null && !addressLine2.isBlank()) {
+                String line2 = AddressNormalizer.normalize(addressLine2);
+                owner.setAddressLine2(line2);
+                owner.setAddress(line1 + " " + line2);
+            } else {
+                owner.setAddressLine2(null);
+                owner.setAddress(line1);
+            }
+        } else {
+            owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
