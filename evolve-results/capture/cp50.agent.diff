@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyStore.java b/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyStore.java
+new file mode 100644
+index 000000000..b6d27f6e6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/IdempotencyStore.java
+@@ -0,0 +1,50 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest;
++
++import java.util.Map;
++import java.util.Optional;
++import java.util.concurrent.ConcurrentHashMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers the owner created for a given {@code Idempotency-Key}, so that a create
++ * request that repeats with an already-seen key can return the originally created owner
++ * instead of creating a duplicate. Keys are only recorded once the original create has
++ * succeeded, so a failed attempt does not "burn" a key.
++ */
++@Component
++public class IdempotencyStore {
++
++    private final Map<String, Integer> ownerIdsByKey = new ConcurrentHashMap<>();
++
++    /** The id of the owner previously created for {@code key}, if any. */
++    public Optional<Integer> find(String key) {
++        if (key == null || key.isBlank()) {
++            return Optional.empty();
++        }
++        return Optional.ofNullable(ownerIdsByKey.get(key));
++    }
++
++    /** Record the owner created for {@code key}. No-op when the key is blank. */
++    public void remember(String key, Integer ownerId) {
++        if (key != null && !key.isBlank() && ownerId != null) {
++            ownerIdsByKey.putIfAbsent(key, ownerId);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8480df356..2871731f9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.IdempotencyStore;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -51,6 +52,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -72,14 +74,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final IdempotencyStore idempotencyStore;
++
++    private final HttpServletRequest request;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 IdempotencyStore idempotencyStore,
++                                 HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.idempotencyStore = idempotencyStore;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -110,6 +120,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = request.getHeader("Idempotency-Key");
++        ResponseEntity<OwnerDto> replayed = replayIdempotent(idempotencyKey);
++        if (replayed != null) {
++            return replayed;
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
+@@ -126,12 +141,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        idempotencyStore.remember(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * When {@code idempotencyKey} names a create that already succeeded, return the originally
++     * created owner with {@code 200 OK} so the repeat is not persisted as a duplicate. Returns
++     * {@code null} when there is no key or none has been seen, so the caller proceeds with a
++     * normal create.
++     */
++    private ResponseEntity<OwnerDto> replayIdempotent(String idempotencyKey) {
++        return idempotencyStore.find(idempotencyKey)
++            .map(this.clinicService::findOwnerById)
++            .map(owner -> new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK))
++            .orElse(null);
++    }
++
+     /**
+      * Normalizes the owner's address, preferring the structured form. When a non-blank
+      * {@code addressLine1} is supplied, both structured lines are normalized and the flat
