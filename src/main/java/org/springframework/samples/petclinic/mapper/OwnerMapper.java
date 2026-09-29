@@ -33,6 +33,16 @@ public interface OwnerMapper {
     }
 
     /**
+     * Fills the presentation-only {@code salutation} from the owner's domain-computed
+     * {@link Owner#getSalutation()} — the title and lastName separated by a space, or just the
+     * lastName when the owner has no title.
+     */
+    @AfterMapping
+    default void addSalutation(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setSalutation(owner.getSalutation());
+    }
+
+    /**
      * Fills the presentation-only {@code initials} as the upper-cased first letters of
      * firstName and lastName, dot-separated with a trailing dot (e.g. {@code "J.S."}).
      */
