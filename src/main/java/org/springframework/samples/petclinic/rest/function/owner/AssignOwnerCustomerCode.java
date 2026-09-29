@@ -1,32 +1,29 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.function.common.Hashes;
+import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where
- * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} the
- * upper-cased first three letters of the last name, and {@code NNNN} a per-city 4-digit
- * zero-padded sequence equal to one more than the number of owners already in that city
- * (e.g. {@code SYD-SMI-0007}).
+ * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where {@code REGION} is
+ * the region code derived from the owner's postcode (see {@link Localities#ofPostcode(String)}) and
+ * {@code HASH8} is the first 8 upper-case hex characters of SHA-256 over the owner's normalized
+ * telephone concatenated with their last name (e.g. {@code NSW-1A2B3C4D}). There are no sequence
+ * numbers: the code is a pure function of postcode, telephone and last name.
+ *
+ * <p>Wired after {@link NormalizeOwnerTelephone}, so the telephone read here is already in E.164 form
+ * and every value derived from the customer code — the membership number and its check digit, the
+ * create audit line and the read-model locality — reflects this region-and-hash identity.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String cityPrefix = prefix(owner.getCity());
-        String lastPrefix = prefix(owner.getLastName());
-        int sequence = 1 + (int) ownerRepository.findAll().stream()
-                .filter(existing -> owner.getCity() != null
-                        && owner.getCity().equalsIgnoreCase(existing.getCity()))
-                .count();
-        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence));
-    }
+    /** Length of the hash segment: the first 8 upper-case hex characters of the SHA-256 digest. */
+    private static final int HASH_LENGTH = 8;
 
-    private static String prefix(String value) {
-        String s = value == null ? "" : value;
-        return s.substring(0, Math.min(3, s.length())).toUpperCase(Locale.ROOT);
+    public void service(@Val Owner owner) {
+        String region = Localities.ofPostcode(owner.getPostcode());
+        String hash8 = Hashes.sha256UpperHex(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
+        owner.setCustomerCode(CustomerCode.format(region, hash8));
     }
 }

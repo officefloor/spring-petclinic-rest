@@ -34,13 +34,13 @@ public final class Localities {
     }
 
     /**
-     * The canonical region, preferring the {@code postcode}: a postcode falling in a known region's
-     * range wins, disambiguating cities that share a name. When the postcode is absent, blank or in no
-     * known range, falls back to the city-to-region table. Returns the same region for known cities.
+     * The canonical region derived from the {@code postcode} alone — the region whose range contains
+     * it, or "UNKNOWN" when the postcode is absent, blank, non-numeric or in no known range. This is
+     * the region embedded in an owner's {@code customerCode}.
      */
-    public static String of(String city, String postcode) {
+    public static String ofPostcode(String postcode) {
         String byPostcode = regionForPostcode(postcode);
-        return byPostcode != null ? byPostcode : of(city);
+        return byPostcode != null ? byPostcode : UNKNOWN;
     }
 
     /** The region whose inclusive range contains {@code postcode}, or {@code null} when the postcode is

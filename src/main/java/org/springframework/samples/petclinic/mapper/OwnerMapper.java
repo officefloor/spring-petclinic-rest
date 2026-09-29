@@ -24,8 +24,8 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.rest.function.common"
-                    + ".Localities.of(owner.getCity(), owner.getPostcode()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner"
+                    + ".CustomerCode.regionOf(owner.getCustomerCode()))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".Luhn.checkDigit(owner.getCustomerCode()))")
