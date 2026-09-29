@@ -10,6 +10,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -176,6 +179,30 @@ public interface OwnerMapper {
      */
     default String identityKey(Owner owner) {
         return IdentityKeyNormalizer.derive(owner);
+    }
+
+    /**
+     * Derives the owner's {@code ageBand} from {@code birthDate}, measured as of the owner's
+     * {@code registrationDate}: {@code MINOR} when under 18, {@code ADULT} when 18 to 64, and
+     * {@code SENIOR} when 65 or older. Returns {@code null} when no birth date is known (or when
+     * no reference registration date is available), so the field is absent from the response.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        if (owner == null || owner.getBirthDate() == null) {
+            return null;
+        }
+        LocalDate reference = owner.getRegistrationDate();
+        if (reference == null) {
+            reference = LocalDate.now();
+        }
+        int age = Period.between(owner.getBirthDate(), reference).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
     }
 
     @Mapping(target = "id", ignore = true)
