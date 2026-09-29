@@ -117,7 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(
                 "telephone " + telephone + " is already used by another owner");
         }
-        this.clinicService.saveOwner(owner);
+        this.clinicService.createOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
