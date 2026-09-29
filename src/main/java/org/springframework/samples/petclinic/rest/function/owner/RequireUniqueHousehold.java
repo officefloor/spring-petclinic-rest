@@ -20,22 +20,11 @@ public class RequireUniqueHousehold {
         if (Boolean.TRUE.equals(owner.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        HouseholdKey household = HouseholdKey.of(owner.getLastName(), owner.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (household.matches(existing)) {
                 throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
             }
         }
-    }
-
-    /** Lower-cases and collapses runs of whitespace to a single space for case- and
-     *  whitespace-insensitive comparison. */
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
