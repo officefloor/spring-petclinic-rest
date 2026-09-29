@@ -10,6 +10,7 @@ import tools.jackson.databind.ObjectMapper;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
 
 /**
  * Emits an audit line via the dedicated {@code AUDIT} logger on successful create, carrying
@@ -40,7 +41,7 @@ public class AuditOwnerCreated {
                 dto.getMembershipLevel());
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                owner.primaryIdentifier(), dto.getMembershipLevel());
+                owner.primaryIdentifier(), dto.getMembershipLevel(), IdentityVersion.VERSION);
         // Single-argument info(): the JSON braces are logged verbatim, not treated as SLF4J placeholders.
         AUDIT.info(objectMapper.writeValueAsString(event));
     }

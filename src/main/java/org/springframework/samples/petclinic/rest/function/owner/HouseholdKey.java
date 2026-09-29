@@ -2,13 +2,15 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.common.Hashes;
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
 
 /**
  * The single definition of an owner's {@code householdId}: a deterministic identifier derived from
  * the owner's last name and postcode, so owners with the same last name and postcode share it
- * automatically. The value is the first 12 hex characters of SHA-256 over
- * {@code normalizedLastName + '|' + postcode}, where the last name is compared case-insensitively
- * after collapsing runs of whitespace.
+ * automatically. Under identity version 2 the value is the first 12 hex characters of SHA-256 over
+ * {@code V2 + '|' + normalizedLastName + '|' + postcode}, where the last name is compared
+ * case-insensitively after collapsing runs of whitespace and the fixed {@code V2} version tag ensures
+ * no value produced under version 1 is produced again.
  *
  * <p>Because it is a pure function of {@code (lastName, postcode)}, every owner computes its own id
  * independently and members of one household always agree — there is nothing to link or backfill.
@@ -29,12 +31,13 @@ final class HouseholdKey {
     }
 
     /**
-     * The deterministic {@code householdId} for the given last name and postcode: the first 12 hex
-     * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. A {@code null} postcode
-     * is treated as the empty string.
+     * The deterministic version-2 {@code householdId} for the given last name and postcode: the first
+     * 12 hex characters of SHA-256 over {@code V2 + '|' + normalizedLastName + '|' + postcode}, where
+     * the fixed {@link IdentityVersion#TAG} version tag ensures no value produced under version 1 is
+     * produced again. A {@code null} postcode is treated as the empty string.
      */
     static String householdId(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = IdentityVersion.TAG + "|" + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         return Hashes.sha256Hex(key).substring(0, ID_LENGTH);
     }
 

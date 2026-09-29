@@ -1,21 +1,19 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import org.springframework.samples.petclinic.rest.function.common.Localities;
 import org.springframework.samples.petclinic.rest.function.common.Luhn;
 
 /**
  * The single definition of an owner's {@code memberId} format — {@code <REGION><FY><HASH8><CHK>},
- * the region code, the 2-digit fiscal year, the 8-character hash and a single Luhn check digit,
- * concatenated with no separator (e.g. {@code NSW261A2B3C4D7}). Co-locates construction
- * ({@link #format}) and read-back ({@link #regionOf}) so both agree on the layout and cannot drift
- * apart, the same idiom {@link IdentityKey} uses for the identity key.
+ * the identity version-2 region code, the 2-digit fiscal year, the 8-character hash and a single Luhn
+ * check digit, concatenated with no separator (e.g. {@code NSWV2261A2B3C4D7}, where {@code NSWV2} is the
+ * plain {@code NSW} region with the {@code V2} version tag mixed in by {@link AssignOwnerMemberId}).
  *
  * <p>{@code CHK} is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}
  * (the region and hash letters are ignored by {@link Luhn#checkDigit}). It unifies what used to be the
  * separate {@code customerCode}, {@code membershipNumber} and {@code checkDigit}.
  *
- * <p>Shared by {@link AssignOwnerMemberId} (which builds the id) and the owner mapper (which reads the
- * region back out as the owner's locality). Public because the mapper lives in another package.
+ * <p>The user-facing locality is <em>not</em> read back out of the member id — it is derived from the
+ * postcode as the plain region — so the {@code V2} tag embedded here never leaks into that field.
  */
 public final class MemberId {
 
@@ -38,22 +36,6 @@ public final class MemberId {
      */
     public static String withSuffix(String base, int n) {
         return base + SEPARATOR + n;
-    }
-
-    /**
-     * The region segment of a {@code <REGION><FY><HASH8><CHK>} member id — the leading run of letters
-     * before the first digit (the fiscal year) — or {@link Localities#UNKNOWN} when the id is absent,
-     * blank or does not start with a region code.
-     */
-    public static String regionOf(String memberId) {
-        if (memberId == null || memberId.isBlank()) {
-            return Localities.UNKNOWN;
-        }
-        int i = 0;
-        while (i < memberId.length() && !Character.isDigit(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? Localities.UNKNOWN : memberId.substring(0, i);
     }
 
     private MemberId() {

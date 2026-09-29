@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 import org.springframework.samples.petclinic.rest.function.owner.MembershipLevel;
 
 import java.util.Collection;
@@ -40,9 +42,11 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".FiscalYear.label(owner.getRegistrationDate()))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner"
-                    + ".IdentityKey.ofOwner(owner))")
+    @Mapping(target = "apiVersion",
+            expression = "java(org.springframework.samples.petclinic.rest.function.common"
+                    + ".IdentityVersion.VERSION)")
+    @Mapping(target = "identity",
+            expression = "java(identity(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(hasEmail(owner) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
@@ -106,8 +110,9 @@ public interface OwnerMapper {
     /**
      * The owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
      * owner's {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}. AREA is
-     * {@code METRO} when the owner's locality (the region segment of the memberId) is a known region
-     * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     * {@code METRO} when the owner's plain {@link #locality(Owner)} region is a known region (NSW, VIC
+     * or QLD), otherwise {@code REGIONAL}. Recomputed from the version-2 identity via the plain region,
+     * so the {@code V2} tag mixed into the memberId never flips a known region to {@code REGIONAL}.
      */
     default String ownerSegment(Owner owner) {
         String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
@@ -117,14 +122,30 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's canonical region ("locality"), read from the region segment of their memberId via
-     * {@link org.springframework.samples.petclinic.rest.function.owner.MemberId#regionOf(String)}, or
-     * {@code "UNKNOWN"} when the id maps to no known region. Shared by the {@code locality} and
-     * {@code timezone} mappings and by {@link #ownerSegment(Owner)} so the derivation lives in one place.
+     * The owner's canonical region ("locality"), the <em>plain</em> region code derived from their
+     * postcode via {@link org.springframework.samples.petclinic.rest.function.common.Localities
+     * #ofPostcode(String)}, or {@code "UNKNOWN"} when the postcode maps to no known region. This is a
+     * user-facing field, not an identifier, so the identity version-2 tag mixed into the memberId's
+     * region segment never appears here. Shared by the {@code locality} and {@code timezone} mappings
+     * and by {@link #ownerSegment(Owner)} so the plain region derivation lives in one place.
      */
     default String locality(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.MemberId
-                .regionOf(owner.getMemberId());
+        return org.springframework.samples.petclinic.rest.function.common.Localities
+                .ofPostcode(owner.getPostcode());
+    }
+
+    /**
+     * The owner's identity-version-2 identifier group — the {@code memberId}, {@code householdId} and
+     * derived {@code identityKey}, gathered under the nested {@code identity} object. Each carries the
+     * fixed {@code V2} version tag mixed into its derivation, so none repeats a value produced under
+     * version 1.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(IdentityKey.ofOwner(owner));
+        return identity;
     }
 
     /**
