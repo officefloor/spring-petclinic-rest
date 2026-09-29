@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.E164Telephone;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -133,6 +134,15 @@ public class Owner extends Person {
 
     public void setTelephone(String telephone) {
         this.telephone = telephone;
+    }
+
+    /**
+     * The stored E.164 {@link #getTelephone() telephone} formatted for human display: the
+     * country code, a space, then the national digits grouped in threes (e.g.
+     * {@code "+61 412 345 678"}). Null when no telephone is set.
+     */
+    public String getTelephoneDisplay() {
+        return E164Telephone.toDisplay(this.telephone);
     }
 
     public String getEmail() {

@@ -89,6 +89,48 @@ public final class E164Telephone {
     }
 
     /**
+     * Format a stored E.164 telephone number for human display as the country calling code,
+     * a space, then the national digits grouped in threes (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). When the country code is not recognised, the whole set of
+     * digits after the {@code '+'} is grouped in threes. Returns the input unchanged when it is
+     * {@code null} or not a well-formed {@code +<digits>} value.
+     *
+     * @param e164 a telephone number already normalized to E.164 form
+     * @return the human-friendly representation
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d+")) {
+            return e164;
+        }
+        String code = longestMatchingCountryCode(digits);
+        String national = code == null ? digits : digits.substring(code.length());
+        String grouped = groupInThrees(national);
+        if (code == null) {
+            return "+" + grouped;
+        }
+        return "+" + code + (grouped.isEmpty() ? "" : " " + grouped);
+    }
+
+    /**
+     * Group a run of digits into space-separated blocks of three, counting from the left
+     * (e.g. {@code "412345678"} becomes {@code "412 345 678"}).
+     */
+    private static String groupInThrees(String digits) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(digits.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Return the longest known country calling code that {@code digits} starts with, or
      * {@code null} if none is known. Selecting the longest match makes the result
      * independent of {@link #NATIONAL_LENGTH}'s iteration order even when one code is a
