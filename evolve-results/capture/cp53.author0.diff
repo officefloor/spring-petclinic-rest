@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java
+new file mode 100644
+index 000000000..01b7c23b8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java
+@@ -0,0 +1,86 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++/**
++ * Immutable structured audit event emitted via the {@code AUDIT} logger whenever an owner is
++ * created. It serializes to the JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates, so the ordering of events
++ * is recoverable from the log alone. The event carries the owner's <em>current primary
++ * identifier</em>: today that is the {@code customerCode}, and whatever replaces it later — when
++ * the customer code is unified into the member id, this same field will carry the member id — so
++ * downstream consumers always see the identifier that currently identifies the owner.
++ *
++ * <p>The record is immutable; once emitted its fields never change.
++ *
++ * @param seq             monotonically increasing sequence number across creates
++ * @param ownerId         the persisted owner's id
++ * @param customerCode    the owner's current primary identifier
++ * @param membershipLevel the owner's capped numeric membership level (may be {@code null})
++ */
++record OwnerCreatedAuditEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++
++    /** Discriminator value carried in the {@code event} field. */
++    static final String EVENT = "OWNER_CREATED";
++
++    /**
++     * Renders the event as a compact JSON object with a stable key order:
++     * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
++     * Numeric and absent values are emitted as JSON numbers / {@code null}; string values are quoted
++     * and escaped.
++     */
++    String toJson() {
++        return "{"
++            + "\"seq\":" + seq
++            + ",\"ownerId\":" + jsonNumber(ownerId)
++            + ",\"customerCode\":" + jsonString(customerCode)
++            + ",\"membershipLevel\":" + jsonNumber(membershipLevel)
++            + ",\"event\":" + jsonString(EVENT)
++            + "}";
++    }
++
++    private static String jsonNumber(Integer value) {
++        return value == null ? "null" : value.toString();
++    }
++
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2).append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    } else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        return sb.append('"').toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9f898e7d3..4158bf9e8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -66,6 +66,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Source of the monotonically increasing {@code seq} carried by each {@link OwnerCreatedAuditEvent}. */
++    private static final java.util.concurrent.atomic.AtomicLong AUDIT_SEQ = new java.util.concurrent.atomic.AtomicLong();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -141,6 +144,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        OwnerCreatedAuditEvent event = new OwnerCreatedAuditEvent(AUDIT_SEQ.incrementAndGet(),
++            owner.getId(), owner.getCustomerCode(), ownerMapper.membershipLevel(owner));
++        AUDIT.info(event.toJson());
+         idempotencyStore.remember(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()

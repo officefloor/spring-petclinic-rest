@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java
+new file mode 100644
+index 000000000..794b766fd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedAuditEvent.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import com.fasterxml.jackson.annotation.JsonProperty;
++import com.fasterxml.jackson.annotation.JsonPropertyOrder;
++
++/**
++ * Immutable structured audit event emitted via the {@code AUDIT} logger whenever an owner is
++ * created. Serialized with the application's Jackson {@code ObjectMapper} it yields the JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}; the key order is
++ * pinned by {@link JsonPropertyOrder}.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates, so the ordering of events
++ * is recoverable from the log alone. The event carries the owner's <em>current primary
++ * identifier</em>: today that is the {@code customerCode}, and whatever replaces it later — when
++ * the customer code is unified into the member id, this same field will carry the member id — so
++ * downstream consumers always see the identifier that currently identifies the owner.
++ *
++ * <p>The record is immutable; once emitted its fields never change.
++ *
++ * @param seq             monotonically increasing sequence number across creates
++ * @param ownerId         the persisted owner's id
++ * @param customerCode    the owner's current primary identifier
++ * @param membershipLevel the owner's capped numeric membership level (may be {@code null})
++ */
++@JsonPropertyOrder({"seq", "ownerId", "customerCode", "membershipLevel", "event"})
++record OwnerCreatedAuditEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++
++    /** Discriminator value carried in the {@code event} field. */
++    static final String EVENT = "OWNER_CREATED";
++
++    /** Constant discriminator serialized as the {@code event} property. */
++    @JsonProperty("event")
++    String event() {
++        return EVENT;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9f898e7d3..c1ac7db26 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.concurrent.atomic.AtomicLong;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -52,6 +53,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import tools.jackson.databind.ObjectMapper;
++
+ import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.transaction.Transactional;
+ 
+@@ -66,6 +69,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Source of the monotonically increasing {@code seq} carried by each {@link OwnerCreatedAuditEvent}. */
++    private static final AtomicLong AUDIT_SEQ = new AtomicLong();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -78,18 +84,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final HttpServletRequest request;
+ 
++    private final ObjectMapper objectMapper;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+                                  VisitMapper visitMapper,
+                                  IdempotencyStore idempotencyStore,
+-                                 HttpServletRequest request) {
++                                 HttpServletRequest request,
++                                 ObjectMapper objectMapper) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
+         this.idempotencyStore = idempotencyStore;
+         this.request = request;
++        this.objectMapper = objectMapper;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -138,9 +148,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+         owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
+         this.clinicService.createOwner(owner);
++        Integer membershipLevel = ownerMapper.membershipLevel(owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++            membershipLevel, ownerMapper.membershipNumber(owner));
++        OwnerCreatedAuditEvent event = new OwnerCreatedAuditEvent(AUDIT_SEQ.incrementAndGet(),
++            owner.getId(), owner.getCustomerCode(), membershipLevel);
++        AUDIT.info(objectMapper.writeValueAsString(event));
+         idempotencyStore.remember(idempotencyKey, owner.getId());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
