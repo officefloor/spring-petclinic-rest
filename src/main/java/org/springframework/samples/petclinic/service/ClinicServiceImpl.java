@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.E164Telephone;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -252,7 +253,7 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private static String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return telephone == null ? null : E164Telephone.toE164(telephone);
     }
 
     /**

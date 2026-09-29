@@ -5,8 +5,8 @@ import jakarta.validation.Payload;
 import java.lang.annotation.*;
 
 /**
- * Validates that a telephone number contains exactly ten digits once every
- * non-digit character has been stripped out (see {@link TelephoneValidator}).
+ * Validates that a telephone number can be normalized into E.164 form, i.e. a
+ * leading '+' followed by 8 to 15 digits (see {@link TelephoneValidator}).
  */
 @Target({ ElementType.FIELD })
 @Retention(RetentionPolicy.RUNTIME)
@@ -14,7 +14,7 @@ import java.lang.annotation.*;
 @Documented
 public @interface TelephoneValidation {
 
-    String message() default "Telephone number must contain exactly 10 digits";
+    String message() default "Telephone number must be a valid E.164 number (8 to 15 digits)";
 
     Class<?>[] groups() default {};
 
