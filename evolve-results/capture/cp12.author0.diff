@@ -1,0 +1,216 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a58f55b54..44bda47ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.rest.validation.InvalidAddressException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -166,6 +167,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidAddressException} raised when an owner's postal address is blank
++     * once normalized, returning a 400 Bad Request status.
++     *
++     * @param e The {@link InvalidAddressException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidAddressException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidAddressException(InvalidAddressException e, HttpServletRequest request) {
++        logger.warn("Invalid address at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
+      * normalized telephone that is already used by another owner, returning a 409 Conflict status.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f7d906c08..8bcd3913b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+@@ -108,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
+         owner.setTelephone(telephone);
+         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
++        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+new file mode 100644
+index 000000000..8e4ab4439
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+@@ -0,0 +1,90 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Locale;
++import java.util.Map;
++
++/**
++ * Utility for normalizing the postal address submitted when creating an owner. The value is
++ * trimmed, internal whitespace runs are collapsed to a single space, the result is upper-cased,
++ * and common abbreviations are expanded token-by-token ({@code ST -> STREET}, {@code RD -> ROAD},
++ * {@code AVE -> AVENUE}). The normalized value is what gets stored and returned, and it is also
++ * the form used for every address comparison (household-duplicate detection and the shared
++ * household id).
++ *
++ * <p>Because the address is a required field, {@link #normalize(String)} rejects a value that is
++ * blank once normalized by raising an {@link InvalidAddressException} so the request is rejected
++ * with {@code 400 Bad Request}. {@link #canonical(String)} exposes the same transformation without
++ * the required-field check, for comparing addresses that may already be stored in another form.
++ */
++public final class AddressNormalizer {
++
++    /**
++     * Common street-type abbreviations expanded to their full form. Keys are upper-cased so the
++     * lookup happens after the value has itself been upper-cased.
++     */
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Normalize the supplied address for storage.
++     *
++     * @param address the raw address value (may be {@code null})
++     * @return the trimmed, whitespace-collapsed, upper-cased address with common abbreviations expanded
++     * @throws InvalidAddressException if the value is blank once normalized
++     */
++    public static String normalize(String address) {
++        String canonical = canonical(address);
++        if (canonical.isEmpty()) {
++            throw new InvalidAddressException("address must not be blank");
++        }
++        return canonical;
++    }
++
++    /**
++     * Produce the canonical form of the supplied address for equality comparison, applying the same
++     * transformation as {@link #normalize(String)} but returning an empty string (rather than
++     * throwing) when the value is {@code null} or blank once normalized.
++     *
++     * @param address the raw address value (may be {@code null})
++     * @return the normalized address, or an empty string when {@code null} or blank
++     */
++    public static String canonical(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder result = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                result.append(' ');
++            }
++            result.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return result.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidAddressException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidAddressException.java
+new file mode 100644
+index 000000000..31a53b790
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidAddressException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's postal address is blank once normalized (trimmed,
++ * whitespace-collapsed, upper-cased and with common abbreviations expanded).
++ * Handled by the REST {@code ExceptionControllerAdvice}, which translates it
++ * into a {@code 400 Bad Request} response.
++ */
++public class InvalidAddressException extends RuntimeException {
++
++    public InvalidAddressException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index fea1fa263..2cb0cec2b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
+ import org.springframework.stereotype.Service;
+@@ -266,10 +267,10 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     private void assignHousehold(Owner owner, boolean sharesHousehold) {
+         String lastName = IdentityNormalizer.normalize(owner.getLastName());
+-        String address = IdentityNormalizer.normalize(owner.getAddress());
++        String address = AddressNormalizer.canonical(owner.getAddress());
+         List<Owner> householdMembers = ownerRepository.findAll().stream()
+             .filter(existing -> lastName.equals(IdentityNormalizer.normalize(existing.getLastName()))
+-                && address.equals(IdentityNormalizer.normalize(existing.getAddress())))
++                && address.equals(AddressNormalizer.canonical(existing.getAddress())))
+             .toList();
+         if (householdMembers.isEmpty()) {
+             return;
