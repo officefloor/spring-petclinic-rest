@@ -27,7 +27,10 @@ public class RequireOwnerFields {
         if (isBlank(owner.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(owner.getAddress())) {
+        // Valid when an address is supplied in EITHER form: a non-blank structured addressLine1 or the
+        // flat address (kept for backward compatibility). NormalizeOwnerAddress has already composed the
+        // structured lines into address, so a blank address here means neither form was supplied.
+        if (!AddressNormalizer.hasStructuredAddress(owner.getAddressLine1()) && isBlank(owner.getAddress())) {
             missing.add("address");
         }
         if (isBlank(owner.getCity())) {
