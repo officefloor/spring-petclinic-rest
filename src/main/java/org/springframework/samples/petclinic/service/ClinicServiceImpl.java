@@ -311,20 +311,37 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build a {@code customerCode} formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is the
-     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three
-     * letters of {@code lastName}, and NNNN is a per-city 4-digit zero-padded sequence equal to
-     * one more than the number of owners already in that city.
+     * Build a {@code customerCode} formatted {@code '<REGION>-<HASH8>'} where REGION is the region
+     * code derived from the owner's postcode (see {@link Region#regionForPostcode(String)}) and
+     * HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the concatenation of
+     * the owner's normalized telephone and {@code lastName}. The telephone is already normalized by
+     * {@link #saveOwner(Owner)} before this runs. The {@code '<REGION>-<HASH8>'} layout is read back
+     * by {@link Region#regionOfCustomerCode(String)}; keep the two in sync.
      */
     private String generateCustomerCode(Owner owner) {
-        String cityPrefix = prefix3(owner.getCity());
-        String lastNamePrefix = prefix3(owner.getLastName());
-        long sequence = countOwnersInCity(owner.getCity()) + 1L;
-        return String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence);
+        String region = Region.regionForPostcode(owner.getPostcode());
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String hash8 = sha256UpperHex(telephone + lastName, 8);
+        return region + "-" + hash8;
     }
 
-    private static String prefix3(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+    /**
+     * The first {@code chars} upper-case hex characters of the SHA-256 digest of {@code value}'s
+     * UTF-8 bytes.
+     */
+    private static String sha256UpperHex(String value, int chars) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, chars);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /** Maximum number of owners permitted in a single city. */
@@ -600,17 +617,7 @@ public class ClinicServiceImpl implements ClinicService {
      * household deterministically share the same identifier.
      */
     private static String generateHouseholdId(String lastName, String address) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest((lastName + "\u0000" + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", hash[i]));
-            }
-            return "HH-" + sb;
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return "HH-" + sha256UpperHex(lastName + "\u0000" + address, 12);
     }
 
     /**

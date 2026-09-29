@@ -88,6 +88,30 @@ public final class Region {
     }
 
     /**
+     * The canonical region derived from the given 4-digit {@code postcode} (see
+     * {@link #forPostcode(String)}), or {@link #UNKNOWN} when the postcode is absent or falls in no
+     * known range. This is the {@code <REGION>} component of an owner's {@code customerCode}.
+     */
+    public static String regionForPostcode(String postcode) {
+        String region = forPostcode(postcode);
+        return region == null ? UNKNOWN : region;
+    }
+
+    /**
+     * The {@code <REGION>} component of a {@code customerCode} formatted {@code '<REGION>-<HASH8>'}
+     * — the text before the first {@code '-'} — or {@link #UNKNOWN} when {@code customerCode} is
+     * {@code null}, blank, or carries no separator. The matching layout is produced by
+     * {@code ClinicServiceImpl.generateCustomerCode}; keep the two in sync.
+     */
+    public static String regionOfCustomerCode(String customerCode) {
+        if (customerCode == null || customerCode.isBlank()) {
+            return UNKNOWN;
+        }
+        int dash = customerCode.indexOf('-');
+        return dash <= 0 ? UNKNOWN : customerCode.substring(0, dash);
+    }
+
+    /**
      * The canonical region derived by preferring the {@code postcode} range, and only falling back
      * to the city-to-region table when the postcode is absent or in no known range. Returns
      * {@link #UNKNOWN} when neither the postcode nor the city yields a region.
