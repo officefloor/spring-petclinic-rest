@@ -255,7 +255,24 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         }
+        if (owner.getNamesakeCount() == null) {
+            owner.setNamesakeCount(countNamesakes(owner));
+        }
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Count the existing owners that already share this owner's first name and last name,
+     * compared case-insensitively (with surrounding/collapsed whitespace ignored). Evaluated
+     * before the owner is persisted, so it reflects the owners present at creation time.
+     */
+    private int countNamesakes(Owner owner) {
+        String firstName = IdentityNormalizer.normalize(owner.getFirstName());
+        String lastName = IdentityNormalizer.normalize(owner.getLastName());
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> firstName.equals(IdentityNormalizer.normalize(existing.getFirstName()))
+                && lastName.equals(IdentityNormalizer.normalize(existing.getLastName())))
+            .count();
     }
 
     /**

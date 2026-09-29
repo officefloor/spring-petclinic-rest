@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
   email VARCHAR(255),
   registration_date DATE,
   customer_code VARCHAR(20),
-  household_id VARCHAR(64)
+  household_id VARCHAR(64),
+  namesake_count INTEGER
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);
