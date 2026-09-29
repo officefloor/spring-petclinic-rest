@@ -25,12 +25,11 @@ import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
 import org.springframework.samples.petclinic.util.E164Telephone;
+import org.springframework.samples.petclinic.util.Sha256Hex;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -347,6 +346,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         assignHouseholdId(owner);
         assertIdentityUnique(owner);
+        applySoftMatch(owner);
         if (creating) {
             applyMembershipLevelCap(owner);
         }
@@ -372,7 +372,7 @@ public class ClinicServiceImpl implements ClinicService {
         String region = Region.regionForPostcode(owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = sha256UpperHex(telephone + lastName, 8);
+        String hash8 = Sha256Hex.upperHex(telephone + lastName, 8);
         return deduplicateCustomerCode(owner, region + "-" + hash8);
     }
 
@@ -397,24 +397,6 @@ public class ClinicServiceImpl implements ClinicService {
             n++;
         }
         return base + "-" + n;
-    }
-
-    /**
-     * The first {@code chars} upper-case hex characters of the SHA-256 digest of {@code value}'s
-     * UTF-8 bytes.
-     */
-    private static String sha256UpperHex(String value, int chars) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, chars);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     /** Maximum number of owners permitted in a single city. */
@@ -595,10 +577,10 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Rejects saving {@code owner} when its whole {@link Owner#getIdentityKey() identity key} equals
-     * that of another owner. This single check consolidates the former separate telephone, email and
-     * household duplicate rules: because the normalized telephone is part of the key, two members of
-     * the same household (same {@code householdId}) with different telephones have different keys and
-     * are both allowed — only an exact full-key match is a duplicate.
+     * that of another non-deleted owner. The key is the SHA-256 hex over the normalized telephone,
+     * lower-cased email and {@code soundex(lastName)}, so it consolidates the former separate
+     * telephone, email and household duplicate rules into a single check — only an exact full-key
+     * match is a hard duplicate. Owners flagged {@link Owner#isDeleted() deleted} are ignored.
      *
      * @throws DuplicateIdentityException if another owner already has the same identity key
      */
@@ -608,6 +590,39 @@ public class ClinicServiceImpl implements ClinicService {
             if (!existing.getId().equals(owner.getId()) && !existing.isDeleted()
                     && identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
+            }
+        }
+    }
+
+    /**
+     * Flags {@code owner} as a soft match ({@link Owner#isPossibleDuplicate()} /
+     * {@link Owner#getPossibleDuplicateOf()}) when its {@link Owner#getIdentityKey() identity key}
+     * differs from every existing owner's (so it is not a hard duplicate) yet it shares an existing,
+     * non-deleted owner's {@code soundex(lastName)} and {@code postcode}. This is what now admits two
+     * owners with the same {@code lastName} and {@code postcode} but different telephones: they are
+     * created as a soft match rather than rejected. The first matching owner (by store iteration
+     * order) is recorded. Any prior flag is cleared first, and no match is possible when the owner
+     * has no postcode or a last name that yields an empty soundex.
+     */
+    private void applySoftMatch(Owner owner) {
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
+        String soundex = Soundex.encode(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (soundex.isEmpty() || postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String identityKey = owner.getIdentityKey();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.getId().equals(owner.getId()) || existing.isDeleted()) {
+                continue;
+            }
+            if (!identityKey.equals(existing.getIdentityKey())
+                    && soundex.equals(Soundex.encode(existing.getLastName()))
+                    && postcode.equals(existing.getPostcode())) {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(existing.getId());
+                return;
             }
         }
     }
@@ -718,7 +733,7 @@ public class ClinicServiceImpl implements ClinicService {
      * identifier.
      */
     private static String generateHouseholdId(String lastName, String postcode) {
-        return sha256UpperHex(lastName + "|" + postcode, 12);
+        return Sha256Hex.upperHex(lastName + "|" + postcode, 12);
     }
 
     /**

@@ -17,6 +17,8 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.E164Telephone;
+import org.springframework.samples.petclinic.util.Sha256Hex;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -84,21 +86,18 @@ public class Owner extends Person {
     private String postcode;
 
     /**
-     * Whether this owner was flagged as a suspected soft-duplicate of an existing owner. Retained
-     * as part of the API/persistence contract but always {@code false} under the current
-     * household-keyed rule: an owner sharing an existing owner's {@code lastName} and
-     * {@code postcode} is now simply admitted as a member of the same household (its membership
-     * level capped by {@link #getMembershipLevelCap()}), not flagged as a suspected duplicate. No
-     * production code path sets this field.
+     * Whether this owner was flagged as a suspected soft-duplicate of an existing owner. Set
+     * {@code true} at create time when the owner's {@link #getIdentityKey() identity key} differs
+     * from every existing owner's (so it is not a hard 409 duplicate) yet it shares an existing,
+     * non-deleted owner's {@code soundex(lastName)} and {@code postcode}. The matched owner is
+     * recorded in {@link #getPossibleDuplicateOf()}.
      */
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
 
     /**
      * The id of the existing owner this owner soft-matches, set together with
-     * {@link #isPossibleDuplicate()}. Retained for contract compatibility but always {@code null}
-     * under the current household-keyed rule (see {@link #isPossibleDuplicate()}); no production
-     * code path sets it.
+     * {@link #isPossibleDuplicate()} when a soft match is detected; {@code null} otherwise.
      */
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
@@ -409,18 +408,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The derived identity key used to detect duplicate owners: the (already normalized) telephone,
-     * the email or empty, and the {@code householdId} or empty, joined with {@code '|'}. This single
-     * key consolidates the former separate telephone, email and household duplicate rules — two
-     * owners are duplicates only when their whole identity keys are equal. Because the telephone is
-     * part of the key, two members of the same household (same {@code householdId}) with different
-     * telephones have different keys and are both allowed.
+     * The derived identity key used to detect duplicate owners: the lower-case SHA-256 hex digest
+     * over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+     * telephone is already normalized to E.164 and the email is lower-cased. Two owners are
+     * duplicates only when their whole identity keys are equal. Because the telephone is part of the
+     * key, two owners with the same {@code lastName} and {@code postcode} but different telephones
+     * have different keys and are both allowed (they are instead flagged as a soft match).
      */
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
-        String mail = this.email == null ? "" : this.email;
-        String household = this.householdId == null ? "" : this.householdId;
-        return tel + "|" + mail + "|" + household;
+        String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String soundex = Soundex.encode(this.getLastName());
+        return Sha256Hex.lowerHex(tel + "|" + mail + "|" + soundex);
     }
 
     /**
