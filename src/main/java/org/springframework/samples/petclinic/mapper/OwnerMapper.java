@@ -104,17 +104,47 @@ public interface OwnerMapper {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    /** Region-to-inclusive 4-digit postcode range {@code {low, high}}. */
+    Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     /**
-     * Derives the owner's locality (region) from the city using the fixed city-to-region
-     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}).
-     * Returns {@code "UNKNOWN"} when the city is {@code null} or not in the table.
+     * Derives the owner's locality (region), preferring the postcode. The postcode range is
+     * consulted first ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}); only
+     * when the postcode is absent or falls in no known range does it fall back to the fixed
+     * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}).
+     * Returns {@code "UNKNOWN"} when neither the postcode nor the city yields a region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
+        String byPostcode = regionForPostcode(owner.getPostcode());
+        if (byPostcode != null) {
+            return byPostcode;
+        }
         String city = owner.getCity();
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Returns the region whose inclusive postcode range contains {@code postcode}, or {@code null}
+     * when the postcode is absent, not a 4-digit value, or in no known range.
+     */
+    private String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
