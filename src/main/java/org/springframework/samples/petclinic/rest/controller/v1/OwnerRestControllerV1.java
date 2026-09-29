@@ -112,7 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(TelephoneNormalizer.digitsOnly(existing.getTelephone())));
+            .anyMatch(existing -> telephone.equals(TelephoneNormalizer.toE164(existing.getTelephone())));
         if (telephoneInUse) {
             throw new DuplicateTelephoneException(
                 "telephone " + telephone + " is already used by another owner");
