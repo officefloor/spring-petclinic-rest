@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -139,6 +140,26 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getMessage());
         HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
+     * normalized telephone that is already used by another owner, returning a 409 Conflict status.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+        logger.warn("Duplicate telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }

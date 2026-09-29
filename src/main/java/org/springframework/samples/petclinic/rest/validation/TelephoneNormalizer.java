@@ -38,11 +38,23 @@ public final class TelephoneNormalizer {
      * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
      */
     public static String normalize(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String digits = digitsOnly(telephone);
         if (digits.length() != REQUIRED_DIGITS) {
             throw new InvalidTelephoneException(
                 "telephone must contain exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
         }
         return digits;
+    }
+
+    /**
+     * Strip every non-digit character from the supplied telephone without enforcing a
+     * required length. Useful for comparing telephones that may already be stored in a
+     * non-normalized form.
+     *
+     * @param telephone the raw telephone value (may be {@code null})
+     * @return the telephone reduced to its digit characters (possibly empty)
+     */
+    public static String digitsOnly(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
