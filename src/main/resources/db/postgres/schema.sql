@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       namesake_count INTEGER,
                                       postcode TEXT,
                                       possible_duplicate BOOLEAN DEFAULT FALSE,
-                                      possible_duplicate_of INTEGER
+                                      possible_duplicate_of INTEGER,
+                                      deleted BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX ON owners (last_name);
 

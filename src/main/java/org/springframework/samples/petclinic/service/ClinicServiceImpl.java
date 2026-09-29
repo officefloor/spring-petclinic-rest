@@ -157,7 +157,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -590,7 +591,8 @@ public class ClinicServiceImpl implements ClinicService {
     private void assertIdentityUnique(Owner owner) {
         String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId()) && identityKey.equals(existing.getIdentityKey())) {
+            if (!existing.getId().equals(owner.getId()) && !existing.isDeleted()
+                    && identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }
@@ -630,7 +632,8 @@ public class ClinicServiceImpl implements ClinicService {
             return;
         }
         for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId()) && householdId.equals(existing.getHouseholdId())) {
+            if (!existing.getId().equals(owner.getId()) && !existing.isDeleted()
+                    && householdId.equals(existing.getHouseholdId())) {
                 throw new HouseholdDuplicateException(householdId);
             }
         }

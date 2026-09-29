@@ -105,6 +105,14 @@ public class Owner extends Person {
     private Integer possibleDuplicateOf;
 
     /**
+     * Whether this owner has been soft-deleted. A newly created owner is {@code false}; deleting an
+     * owner (DELETE /api/owners/{id}) flags this {@code true} and retains the row instead of removing
+     * it. Deleted owners are ignored by the create endpoint's duplicate and identity checks.
+     */
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    /**
      * Write-only, non-persistent acknowledgement that this owner deliberately shares a
      * household with an existing owner. When {@code true}, creation is allowed even if
      * another owner already has the same lastName and address.
@@ -281,6 +289,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /** The household size at or above which an owner earns the household membership points. */
