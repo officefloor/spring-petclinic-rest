@@ -27,6 +27,7 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
+import org.springframework.samples.petclinic.rest.validation.IdentityVersion;
 import org.springframework.samples.petclinic.rest.validation.Regions;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.Soundex;
@@ -331,14 +332,16 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Derive the owner's deterministic household identifier: the first twelve hexadecimal characters
-     * of the SHA-256 digest over {@code normalizedLastName + '|' + postcode}. Two owners with the
-     * same last name (compared case-insensitively with collapsed whitespace) and postcode therefore
-     * map to the same value automatically, without any opt-in, so they form one household.
+     * of the SHA-256 digest over {@code versionTag + '|' + normalizedLastName + '|' + postcode}. Two
+     * owners with the same last name (compared case-insensitively with collapsed whitespace) and
+     * postcode therefore map to the same value automatically, without any opt-in, so they form one
+     * household. Mixing in the version-2 {@link IdentityVersion#TAG tag} ensures no value produced
+     * under version 1 is produced again.
      */
     private static String deriveHouseholdId(Owner owner) {
         String lastName = IdentityNormalizer.normalize(owner.getLastName());
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        return sha256HexPrefix(lastName + "|" + postcode, 12);
+        return sha256HexPrefix(IdentityVersion.TAG + "|" + lastName + "|" + postcode, 12);
     }
 
     /**
@@ -478,22 +481,23 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds the member id {@code '<REGION><FY><HASH8><CHK>'}: the region code derived from the
-     * owner's postcode, the two-digit fiscal year derived from the (business-day-adjusted)
-     * registrationDate, the first eight upper-case hexadecimal characters of the SHA-256 digest over
-     * the owner's normalized (E.164) telephone concatenated with the last name (the same HASH8 used
-     * by the region-and-hash identity), and a single Luhn check digit computed over the digits of
-     * {@code <REGION><FY><HASH8>}. No sequence number is used; the identity is fully derived from the
-     * region, fiscal year and hash.
+     * Builds the member id {@code '<REGION><FY><HASH8><CHK>'}: the version-2 region code (the
+     * postcode-derived region prefixed with the {@link IdentityVersion#TAG version tag}), the
+     * two-digit fiscal year derived from the (business-day-adjusted) registrationDate, the first
+     * eight upper-case hexadecimal characters of the SHA-256 digest over the version tag concatenated
+     * with the owner's normalized (E.164) telephone and the last name, and a single Luhn check digit
+     * computed over the digits of {@code <REGION><FY><HASH8>}. No sequence number is used; the
+     * identity is fully derived from the region, fiscal year and hash. Mixing the version tag into
+     * both the region prefix and the hash ensures no value produced under version 1 is produced again.
      */
     private String deriveMemberId(Owner owner) {
-        String region = Regions.forPostcode(owner.getPostcode());
+        String region = IdentityVersion.regionCode(Regions.forPostcode(owner.getPostcode()));
         LocalDate registrationDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         String fiscalYear = RegistrationDateNormalizer.fiscalYearYY(registrationDate);
         String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = region + fiscalYear + sha256Hex8(telephone + lastName);
+        String base = region + fiscalYear + sha256Hex8(IdentityVersion.TAG + telephone + lastName);
         return base + luhnCheckDigit(base);
     }
 

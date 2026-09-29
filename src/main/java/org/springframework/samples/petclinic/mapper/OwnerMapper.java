@@ -7,10 +7,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.MembershipLevels;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
+import org.springframework.samples.petclinic.rest.validation.IdentityVersion;
 import org.springframework.samples.petclinic.rest.validation.Regions;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -39,7 +41,8 @@ public interface OwnerMapper {
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -137,25 +140,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the {@code memberId}, whose form is
-     * {@code '<REGION><FY><HASH8><CHK>'}: the locality is the {@code REGION} prefix, matched against
-     * the shared {@link Regions#known() known region codes}. Returns {@link Regions#UNKNOWN} when the
-     * owner has no member id yet, or when the prefix is not a known region.
+     * Derives the owner's user-facing locality (region) directly from the owner's postcode, using
+     * the shared {@link Regions#forPostcode(String)} table. This is the plain region code (e.g.
+     * {@code NSW}); it is deliberately <em>not</em> read back from the {@code memberId}, whose region
+     * component now carries the version-2 tag. Returns {@link Regions#UNKNOWN} when the postcode is
+     * absent or in no known region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String memberId = owner.getMemberId();
-        if (memberId == null) {
-            return Regions.UNKNOWN;
-        }
-        for (String region : Regions.known()) {
-            if (memberId.startsWith(region)) {
-                return region;
-            }
-        }
-        return Regions.UNKNOWN;
+        return Regions.forPostcode(owner.getPostcode());
     }
 
     /**
@@ -228,12 +223,29 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code identityKey}, the single value into which duplicate detection is
-     * consolidated: the SHA-256 hex over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+     * The owner-identity contract version surfaced as the response's {@code apiVersion}; always
+     * {@link IdentityVersion#API_VERSION 2}.
      */
-    default String identityKey(Owner owner) {
-        return IdentityKeyNormalizer.derive(owner);
+    default Integer apiVersion() {
+        return IdentityVersion.API_VERSION;
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers under the nested {@code identity} object: the stored
+     * {@code memberId} and {@code householdId}, and the derived {@code identityKey} (the SHA-256 hex
+     * over {@code versionTag + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)};
+     * see {@link IdentityKeyNormalizer}). Each identifier is rederived with the version-2 algorithm,
+     * so no value produced under version 1 is produced again.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(IdentityKeyNormalizer.derive(owner));
+        return identity;
     }
 
     /**

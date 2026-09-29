@@ -26,9 +26,11 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Utility for deriving an owner's {@code identityKey}, the single value into which all
  * duplicate detection is consolidated. The key is the lower-case hexadecimal SHA-256 digest of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}: the owner's telephone
- * in {@link TelephoneNormalizer E.164} form, the lower-cased e-mail address (or an empty string
- * when absent), and the {@link Soundex Soundex} code of the last name.
+ * {@code versionTag + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}: the
+ * fixed {@link IdentityVersion#TAG version-2 tag}, the owner's telephone in
+ * {@link TelephoneNormalizer E.164} form, the lower-cased e-mail address (or an empty string when
+ * absent), and the {@link Soundex Soundex} code of the last name. Mixing in the version tag ensures
+ * no key produced under version 1 is produced again.
  *
  * <p>Because the telephone is part of the key, two owners with the same last name and postcode but
  * different telephones have different identity keys; only an exact whole-key match between a new
@@ -53,7 +55,7 @@ public final class IdentityKeyNormalizer {
         String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String soundex = Soundex.encode(owner.getLastName());
-        return sha256Hex(telephone + "|" + email + "|" + soundex);
+        return sha256Hex(IdentityVersion.TAG + "|" + telephone + "|" + email + "|" + soundex);
     }
 
     /**
