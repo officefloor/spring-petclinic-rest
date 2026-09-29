@@ -64,12 +64,22 @@ public interface OwnerMapper {
 
     /**
      * Fills the presentation-only {@code membershipNumber} as {@code '<customerCode>-M<YY>'}
-     * where YY is the last two digits of the registrationDate year. Left null when either
-     * source field is missing.
+     * where YY is the last two digits of the fiscal year of the registrationDate. Left null when
+     * either source field is missing.
      */
     @AfterMapping
     default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
         ownerDto.setMembershipNumber(owner.getMembershipNumber());
+    }
+
+    /**
+     * Fills the presentation-only {@code fiscalYear} from the owner's domain-computed
+     * {@link Owner#getFiscalYear()} — {@code 'FY<YY>'} derived from the business-day-adjusted
+     * registrationDate — leaving it null when no registration date is available.
+     */
+    @AfterMapping
+    default void addFiscalYear(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setFiscalYear(owner.getFiscalYear());
     }
 
     /**
