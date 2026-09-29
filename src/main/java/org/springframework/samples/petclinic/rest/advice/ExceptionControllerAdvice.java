@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.CityOwnerLimitException;
 import org.springframework.samples.petclinic.service.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.service.DuplicateIdentityException;
 import org.springframework.samples.petclinic.service.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
@@ -243,6 +244,26 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
         logger.warn("Future registration date at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DisposableEmailDomainException}, raised when an owner is supplied with an email
+     * whose domain is on the disposable-domain blocklist. Returns a 400 Bad Request status.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        logger.warn("Disposable email domain at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

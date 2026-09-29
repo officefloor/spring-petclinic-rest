@@ -291,6 +291,33 @@ public class ClinicServiceImpl implements ClinicService {
         }
     }
 
+    /** Email domains rejected as disposable/throwaway addresses. */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * Rejects saving {@code owner} when its email's domain is on the disposable-domain blocklist
+     * ({@link #DISPOSABLE_EMAIL_DOMAINS}). The email is optional: a {@code null} email is left
+     * untouched. The comparison is case-insensitive on the part after the last {@code '@'}; the
+     * email has already been lower-cased by {@link #saveOwner(Owner)} before this runs.
+     *
+     * @throws DisposableEmailDomainException if the email domain is blocklisted
+     */
+    private void assertEmailDomainAllowed(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null) {
+            return;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailDomainException(domain);
+        }
+    }
+
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
@@ -302,6 +329,7 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getEmail() != null) {
             owner.setEmail(normalizeEmail(owner.getEmail()));
         }
+        assertEmailDomainAllowed(owner);
         if (owner.getAddress() != null) {
             owner.setAddress(normalizeAddress(owner.getAddress()));
         }
