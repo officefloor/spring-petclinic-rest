@@ -36,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Collection;
 import java.util.List;
@@ -263,6 +264,7 @@ public class ClinicServiceImpl implements ClinicService {
         rejectWhenCityAtCapacity(owner);
         List<Owner> householdMembers = assignHousehold(owner, sharesHousehold);
         rejectWhenDuplicateIdentity(owner);
+        assignPossibleDuplicate(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(deriveCustomerCode(owner));
@@ -371,6 +373,36 @@ public class ClinicServiceImpl implements ClinicService {
         }
     }
 
+    /**
+     * Flag the new owner as a possible (soft) duplicate when it is not a hard duplicate but shares
+     * an existing owner's last name and postcode (compared case-insensitively with collapsed
+     * whitespace) while carrying a different telephone. When such an owner exists the new owner's
+     * {@code possibleDuplicate} is set to {@code true} and {@code possibleDuplicateOf} to the
+     * matching owner's id (the lowest id when several match); otherwise {@code possibleDuplicate}
+     * is {@code false} and {@code possibleDuplicateOf} is left unset. Evaluated after the
+     * hard-duplicate check and before the owner is persisted, so it reflects the owners present at
+     * creation time.
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String lastName = IdentityNormalizer.normalize(owner.getLastName());
+        String postcode = IdentityNormalizer.normalize(owner.getPostcode());
+        String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
+        Owner match = ownerRepository.findAll().stream()
+            .filter(existing -> lastName.equals(IdentityNormalizer.normalize(existing.getLastName()))
+                && postcode.equals(IdentityNormalizer.normalize(existing.getPostcode()))
+                && !telephone.equals(TelephoneNormalizer.toComparable(existing.getTelephone())))
+            .min(Comparator.comparingInt(existing -> existing.getId() == null ? Integer.MAX_VALUE : existing.getId()))
+            .orElse(null);
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
+        }
+        else {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
+    }
+
     /** Maximum number of owners that may be created on any single day (by registration date). */
     private static final long DAILY_OWNER_LIMIT = 100L;
 
@@ -442,10 +474,7 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private String deriveCustomerCode(Owner owner) {
         String region = regionForPostcode(owner.getPostcode());
-        String telephone = TelephoneNormalizer.toE164(owner.getTelephone());
-        if (telephone == null) {
-            telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        }
+        String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         return region + "-" + sha256Hex8(telephone + lastName);
     }

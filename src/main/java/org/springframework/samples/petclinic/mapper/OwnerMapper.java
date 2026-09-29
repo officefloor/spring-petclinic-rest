@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -157,6 +158,19 @@ public interface OwnerMapper {
             return null;
         }
         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+    }
+
+    /**
+     * Whether the owner was flagged as a possible (soft) duplicate at creation time — not a hard
+     * duplicate, but sharing an existing owner's last name and postcode with a different telephone.
+     * A {@code null} stored value is treated as {@code false}, so the field is always present in the
+     * response.
+     */
+    default Boolean possibleDuplicate(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate());
     }
 
     /**

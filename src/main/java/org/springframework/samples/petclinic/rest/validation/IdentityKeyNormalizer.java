@@ -45,10 +45,7 @@ public final class IdentityKeyNormalizer {
         if (owner == null) {
             return null;
         }
-        String telephone = TelephoneNormalizer.toE164(owner.getTelephone());
-        if (telephone == null) {
-            telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        }
+        String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String email = owner.getEmail() == null ? "" : owner.getEmail();
         String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
         return telephone + "|" + email + "|" + householdId;

@@ -110,6 +110,24 @@ public final class TelephoneNormalizer {
     }
 
     /**
+     * Canonicalize the supplied telephone for equality comparison: its {@link #toE164 E.164} form
+     * when it can be normalized, otherwise the raw value unchanged, or an empty string when
+     * {@code null}. Unlike {@link #normalize} this never throws, so callers that compare telephones
+     * (identity keys, soft-duplicate matching, derived customer codes) treat non-normalizable values
+     * consistently rather than rejecting them.
+     *
+     * @param telephone the raw telephone value (may be {@code null})
+     * @return the E.164 form, else the raw value, else an empty string
+     */
+    public static String toComparable(String telephone) {
+        String e164 = toE164(telephone);
+        if (e164 != null) {
+            return e164;
+        }
+        return telephone == null ? "" : telephone;
+    }
+
+    /**
      * Check the national-number length of the supplied all-digit E.164 body against its
      * country code. The longest matching known country code wins; when the code is
      * recognized the remaining (national) digits must be exactly the required length.
