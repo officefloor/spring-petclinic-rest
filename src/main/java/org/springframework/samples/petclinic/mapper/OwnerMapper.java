@@ -24,6 +24,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -51,6 +52,22 @@ public interface OwnerMapper {
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String firstName = owner.getFirstName() == null ? "" : owner.getFirstName();
         return lastName + ", " + firstName;
+    }
+
+    /**
+     * Composes the owner's salutation as {@code '<title> <lastName>'} — the title, a single
+     * space and the last name — or just the last name when no (blank/absent) title is given.
+     */
+    default String salutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     /**
