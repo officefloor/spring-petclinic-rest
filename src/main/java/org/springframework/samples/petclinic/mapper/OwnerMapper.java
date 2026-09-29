@@ -42,6 +42,19 @@ public interface OwnerMapper {
                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".");
     }
 
+    /**
+     * Fills the presentation-only {@code membershipNumber} as {@code '<customerCode>-M<YY>'}
+     * where YY is the last two digits of the registrationDate year. Left null when either
+     * source field is missing.
+     */
+    @AfterMapping
+    default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        if (owner.getCustomerCode() != null && owner.getRegistrationDate() != null) {
+            String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+            ownerDto.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
+        }
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
