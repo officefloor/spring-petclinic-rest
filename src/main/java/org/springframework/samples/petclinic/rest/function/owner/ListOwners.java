@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class ListOwners {
 
     public void service(@RequestParam(name = "lastName", required = false) String lastName,
-            OwnerRepository ownerRepository, OwnerMapper ownerMapper,
+            OwnerRepository ownerRepository, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
             ObjectResponse<ResponseEntity<List<OwnerDto>>> response) {
         Collection<Owner> owners = lastName != null
                 ? ownerRepository.findByLastName(lastName)
@@ -23,6 +23,6 @@ public class ListOwners {
             response.send(ResponseEntity.notFound().build());
             return;
         }
-        response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
+        response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(ownerHousehold.stampAll(owners))));
     }
 }

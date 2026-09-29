@@ -17,12 +17,13 @@ public class ListOwnersPage {
             @RequestParam(name = "lastName", required = false) String lastName,
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "size", required = false) Integer size,
-            OwnerRepository ownerRepository, OwnerMapper ownerMapper,
+            OwnerRepository ownerRepository, OwnerHousehold ownerHousehold, OwnerMapper ownerMapper,
             ObjectResponse<OwnerPageDto> response) {
         Pageable pageable = PageRequest.of(page == null ? 0 : page, size == null ? 20 : size, Sort.by("id"));
         Page<Owner> owners = lastName != null
                 ? ownerRepository.findByLastName(lastName, pageable)
                 : ownerRepository.findAll(pageable);
+        ownerHousehold.stampAll(owners.getContent());
         response.send(ownerMapper.toOwnerPageDto(owners));
     }
 }

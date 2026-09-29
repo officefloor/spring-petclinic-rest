@@ -69,6 +69,15 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * The number of owners in this owner's household (owners sharing the same {@code householdId},
+     * counting this owner). Not persisted: it is a live, derived count stamped onto the owner by
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the
+     * owner is mapped to a DTO. Null until stamped, treated as a single-member household.
+     */
+    @Transient
+    private Integer householdSize;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -159,6 +168,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     public Boolean getBulkSignupWarning() {
