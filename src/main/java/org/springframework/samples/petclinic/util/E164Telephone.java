@@ -15,6 +15,8 @@
  */
 package org.springframework.samples.petclinic.util;
 
+import java.util.Map;
+
 /**
  * Normalizes telephone numbers into <a href="https://en.wikipedia.org/wiki/E.164">E.164</a>
  * form. Spaces, dashes and brackets are stripped. A number that already carries a leading
@@ -23,12 +25,28 @@ package org.springframework.samples.petclinic.util;
  * digits. The result must contain between 8 and 15 digits after the {@code '+'}, matching
  * the E.164 length rule.
  *
+ * <p>In addition to the overall length rule, the national number (the digits after the
+ * country code) must have the exact length that country expects: {@code '+61'} (Australia)
+ * requires 9 national digits and {@code '+1'} (NANP) requires 10. A number carrying one of
+ * these country codes with the wrong national-number length cannot form valid E.164 and is
+ * rejected.
+ *
  * <p>The same logic backs both the request-time validator (so a number that cannot form
  * valid E.164 is rejected with HTTP 400) and the normalization applied before an
  * {@code Owner} is persisted, so the value a client is told about matches the value that
  * gets stored and compared for duplicates.
  */
 public final class E164Telephone {
+
+    /**
+     * Country calling code to the exact number of national digits it requires. Order is
+     * irrelevant: when a number's digits could match more than one code, the longest
+     * matching code is selected (see {@link #toE164(String)}), so entries may be listed
+     * in any order.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTH = Map.of(
+            "61", 9,
+            "1", 10);
 
     private E164Telephone() {
     }
@@ -63,6 +81,26 @@ public final class E164Telephone {
         if (digits.length() < 8 || digits.length() > 15) {
             return null;
         }
+        String code = longestMatchingCountryCode(digits);
+        if (code != null && digits.length() - code.length() != NATIONAL_LENGTH.get(code)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * Return the longest known country calling code that {@code digits} starts with, or
+     * {@code null} if none is known. Selecting the longest match makes the result
+     * independent of {@link #NATIONAL_LENGTH}'s iteration order even when one code is a
+     * prefix of another.
+     */
+    private static String longestMatchingCountryCode(String digits) {
+        String match = null;
+        for (String code : NATIONAL_LENGTH.keySet()) {
+            if (digits.startsWith(code) && (match == null || code.length() > match.length())) {
+                match = code;
+            }
+        }
+        return match;
     }
 }
