@@ -73,6 +73,22 @@ public class Owner extends Person {
     private String postcode;
 
     /**
+     * True when this owner was created as a soft match of an existing owner: not a hard duplicate
+     * (its {@link #getIdentityKey() identity key} differs) but sharing an existing owner's
+     * {@code lastName} and {@code postcode} with a different telephone. Assigned once at creation.
+     */
+    @Column(name = "possible_duplicate")
+    private boolean possibleDuplicate;
+
+    /**
+     * The id of the existing owner this owner soft-matches on {@code lastName} and {@code postcode},
+     * set together with {@link #isPossibleDuplicate()}; null when this owner is not a possible
+     * duplicate.
+     */
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
+    /**
      * Write-only, non-persistent acknowledgement that this owner deliberately shares a
      * household with an existing owner. When {@code true}, creation is allowed even if
      * another owner already has the same lastName and address.
@@ -188,6 +204,22 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /** The highest membership level assignable on creation; level 4 is reserved for tenure. */

@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -320,6 +321,9 @@ public class ClinicServiceImpl implements ClinicService {
         List<Owner> household = findHouseholdMembers(owner);
         assignHousehold(owner, household);
         assertIdentityUnique(owner);
+        if (creating) {
+            markPossibleDuplicate(owner);
+        }
         ownerRepository.save(owner);
         populateHouseholdSize(owner);
         if (creating) {
@@ -518,6 +522,39 @@ public class ClinicServiceImpl implements ClinicService {
             if (!existing.getId().equals(owner.getId()) && identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
             }
+        }
+    }
+
+    /**
+     * Flags {@code owner} as a soft match when it is not a hard duplicate (it passed {@link
+     * #assertIdentityUnique(Owner)}) yet shares an existing owner's {@code lastName} (compared
+     * case-insensitively with collapsed whitespace) and {@code postcode} with a different (already
+     * normalized) telephone. The new owner is stamped with {@code possibleDuplicate} true and
+     * {@code possibleDuplicateOf} set to the matching owner's id (the lowest id when several match);
+     * left as a non-duplicate when no such owner exists or no postcode was supplied.
+     */
+    private void markPossibleDuplicate(Owner owner) {
+        String lastName = normalizeHouseholdValue(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (lastName.isEmpty() || postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String telephone = owner.getTelephone();
+        Owner match = null;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.getId().equals(owner.getId())) {
+                continue;
+            }
+            if (lastName.equals(normalizeHouseholdValue(existing.getLastName()))
+                    && postcode.equals(existing.getPostcode())
+                    && !Objects.equals(telephone, existing.getTelephone())
+                    && (match == null || existing.getId() < match.getId())) {
+                match = existing;
+            }
+        }
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
         }
     }
 
