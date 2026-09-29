@@ -77,6 +77,14 @@ public final class Region {
     }
 
     /**
+     * Whether {@code region} is one of the known regions (NSW, VIC or QLD). {@code false} for
+     * {@link #UNKNOWN}, {@code null}, or any other value.
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_POSTCODES.containsKey(region);
+    }
+
+    /**
      * The inclusive 4-digit postcode range {@code {low, high}} for {@code region}, or {@code null}
      * when the region has no defined range. Returns a fresh array so callers cannot mutate the table.
      */

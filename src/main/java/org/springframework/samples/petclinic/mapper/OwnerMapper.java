@@ -125,6 +125,16 @@ public interface OwnerMapper {
     }
 
     /**
+     * Fills the presentation-only {@code ownerSegment} from the owner's domain-computed
+     * {@link Owner#getOwnerSegment()} — {@code '<TIER>_<AREA>'} where TIER reflects the
+     * membershipLevel and AREA reflects whether the locality is a known region.
+     */
+    @AfterMapping
+    default void addOwnerSegment(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setOwnerSegment(OwnerDto.OwnerSegmentEnum.fromValue(owner.getOwnerSegment()));
+    }
+
+    /**
      * Fills the {@code ageBand} from the owner's domain-computed {@link Owner#getAgeBand()}
      * (derived from birthDate measured against registrationDate), leaving it null when no
      * birth date is available.

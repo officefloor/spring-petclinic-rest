@@ -399,6 +399,21 @@ public class Owner extends Person {
         return 1;
     }
 
+    /**
+     * The owner's marketing segment formatted {@code '<TIER>_<AREA>'}, one of
+     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
+     * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when {@link #getMembershipLevel()} is 3
+     * or more, otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality (the
+     * region of its {@code customerCode}, see {@link Region#regionOfCustomerCode(String)}) is a known
+     * region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
+     */
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = Region.isKnownRegion(Region.regionOfCustomerCode(this.customerCode))
+                ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
     public Integer getMembershipLevelCap() {
         return this.membershipLevelCap;
     }
