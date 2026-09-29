@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.service.CityOwnerLimitException;
 import org.springframework.samples.petclinic.service.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.service.DuplicateTelephoneException;
 import org.springframework.security.access.AccessDeniedException;
@@ -158,6 +159,26 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         logger.warn("Duplicate household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityOwnerLimitException}, raised when an owner is created in a city that
+     * already contains the maximum number of owners. Returns a 409 Conflict status.
+     *
+     * @param e The {@link CityOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityOwnerLimitException(CityOwnerLimitException e, HttpServletRequest request) {
+        logger.warn("City owner limit reached at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

@@ -257,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (owner.isNew()) {
             owner.setNamesakeCount(countNamesakes(owner));
+            assertCityCapacity(owner);
         }
         assertTelephoneUnique(owner, owner.getTelephone());
         List<Owner> household = findHouseholdMembers(owner);
@@ -280,6 +281,24 @@ public class ClinicServiceImpl implements ClinicService {
 
     private static String prefix3(String value) {
         return value.substring(0, Math.min(3, value.length())).toUpperCase(Locale.ROOT);
+    }
+
+    /** Maximum number of owners permitted in a single city. */
+    private static final long CITY_OWNER_LIMIT = 50L;
+
+    /**
+     * Rejects creating {@code owner} when its city already contains {@link #CITY_OWNER_LIMIT} or
+     * more owners, so no city can grow beyond the capacity limit.
+     *
+     * @throws CityOwnerLimitException if the owner's city is already at capacity
+     */
+    private void assertCityCapacity(Owner owner) {
+        if (owner.getCity() == null) {
+            return;
+        }
+        if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
+            throw new CityOwnerLimitException(owner.getCity(), CITY_OWNER_LIMIT);
+        }
     }
 
     private long countOwnersInCity(String city) {
