@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
+import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -110,9 +111,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effectiveRegistrationDate =
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> telephone.equals(TelephoneNormalizer.toE164(existing.getTelephone())));
         if (telephoneInUse) {
