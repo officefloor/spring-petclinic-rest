@@ -22,24 +22,23 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 /**
  * Immutable structured audit event emitted via the {@code AUDIT} logger whenever an owner is
  * created. Serialized with the application's Jackson {@code ObjectMapper} it yields the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}; the key order is
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}; the key order is
  * pinned by {@link JsonPropertyOrder}.
  *
  * <p>{@code seq} is a monotonically increasing integer across creates, so the ordering of events
  * is recoverable from the log alone. The event carries the owner's <em>current primary
- * identifier</em>: today that is the {@code customerCode}, and whatever replaces it later — when
- * the customer code is unified into the member id, this same field will carry the member id — so
- * downstream consumers always see the identifier that currently identifies the owner.
+ * identifier</em>, the unified {@code memberId}, so downstream consumers always see the identifier
+ * that currently identifies the owner.
  *
  * <p>The record is immutable; once emitted its fields never change.
  *
  * @param seq             monotonically increasing sequence number across creates
  * @param ownerId         the persisted owner's id
- * @param customerCode    the owner's current primary identifier
+ * @param memberId        the owner's current primary identifier
  * @param membershipLevel the owner's capped numeric membership level (may be {@code null})
  */
-@JsonPropertyOrder({"seq", "ownerId", "customerCode", "membershipLevel", "event"})
-record OwnerCreatedAuditEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+@JsonPropertyOrder({"seq", "ownerId", "memberId", "membershipLevel", "event"})
+record OwnerCreatedAuditEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
 
     /** Discriminator value carried in the {@code event} field. */
     static final String EVENT = "OWNER_CREATED";

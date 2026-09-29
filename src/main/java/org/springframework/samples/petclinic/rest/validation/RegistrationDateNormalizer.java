@@ -76,4 +76,16 @@ public final class RegistrationDateNormalizer {
     public static int fiscalYear(LocalDate date) {
         return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? date.getYear() + 1 : date.getYear();
     }
+
+    /**
+     * Format the last two digits (zero-padded) of the fiscal year that the supplied
+     * (already business-day-adjusted) {@code date} falls in, e.g. fiscal year 2026 yields
+     * {@code "26"}. Shared by every caller that renders the two-digit fiscal-year segment.
+     *
+     * @param date the (already business-day-adjusted) registration date
+     * @return the two-digit, zero-padded fiscal year
+     */
+    public static String fiscalYearYY(LocalDate date) {
+        return String.format("%02d", fiscalYear(date) % 100);
+    }
 }

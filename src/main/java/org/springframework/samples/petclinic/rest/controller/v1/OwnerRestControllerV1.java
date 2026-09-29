@@ -149,11 +149,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(RegistrationDateNormalizer.normalize(effectiveRegistrationDate));
         this.clinicService.createOwner(owner);
         Integer membershipLevel = ownerMapper.membershipLevel(owner);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, ownerMapper.membershipNumber(owner));
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         OwnerCreatedAuditEvent event = new OwnerCreatedAuditEvent(AUDIT_SEQ.incrementAndGet(),
-            owner.getId(), owner.getCustomerCode(), membershipLevel);
+            owner.getId(), owner.getMemberId(), membershipLevel);
         AUDIT.info(objectMapper.writeValueAsString(event));
         idempotencyStore.remember(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

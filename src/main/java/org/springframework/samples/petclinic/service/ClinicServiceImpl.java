@@ -27,6 +27,8 @@ import org.springframework.samples.petclinic.rest.validation.DailyOwnerLimitExce
 import org.springframework.samples.petclinic.rest.validation.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
+import org.springframework.samples.petclinic.rest.validation.Regions;
+import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.Soundex;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.stereotype.Service;
@@ -36,7 +38,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
-import java.util.Map;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -262,8 +263,8 @@ public class ClinicServiceImpl implements ClinicService {
         assignPossibleDuplicate(owner);
         owner.setHouseholdMemberCount(householdMembers.size() + 1);
         owner.setMembershipLevelCap(membershipLevelCap(householdMembers));
-        if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(deduplicateCustomerCode(deriveCustomerCode(owner)));
+        if (owner.getMemberId() == null) {
+            owner.setMemberId(deduplicateMemberId(deriveMemberId(owner)));
         }
         if (owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -476,66 +477,70 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
-    /** Region-to-inclusive 4-digit postcode range {@code {low, high}}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
-    /** Region code used when the postcode maps to no known region (or is absent). */
-    private static final String UNKNOWN_REGION = "UNKNOWN";
-
     /**
-     * Builds the customer code {@code '<REGION>-<HASH8>'}: the region code derived from the
-     * owner's postcode, a hyphen, and the first eight upper-case hexadecimal characters of the
-     * SHA-256 digest over the owner's normalized (E.164) telephone concatenated with the last
-     * name. No sequence number is used; the identity is fully derived from the region and hash.
+     * Builds the member id {@code '<REGION><FY><HASH8><CHK>'}: the region code derived from the
+     * owner's postcode, the two-digit fiscal year derived from the (business-day-adjusted)
+     * registrationDate, the first eight upper-case hexadecimal characters of the SHA-256 digest over
+     * the owner's normalized (E.164) telephone concatenated with the last name (the same HASH8 used
+     * by the region-and-hash identity), and a single Luhn check digit computed over the digits of
+     * {@code <REGION><FY><HASH8>}. No sequence number is used; the identity is fully derived from the
+     * region, fiscal year and hash.
      */
-    private String deriveCustomerCode(Owner owner) {
-        String region = regionForPostcode(owner.getPostcode());
+    private String deriveMemberId(Owner owner) {
+        String region = Regions.forPostcode(owner.getPostcode());
+        LocalDate registrationDate = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : LocalDate.now();
+        String fiscalYear = RegistrationDateNormalizer.fiscalYearYY(registrationDate);
         String telephone = TelephoneNormalizer.toComparable(owner.getTelephone());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        return region + "-" + sha256Hex8(telephone + lastName);
+        String base = region + fiscalYear + sha256Hex8(telephone + lastName);
+        return base + luhnCheckDigit(base);
     }
 
     /**
-     * De-duplicates a computed {@code customerCode} against the existing owners: if no owner already
-     * carries {@code baseCode} it is returned unchanged, otherwise {@code '-<n>'} is appended with the
+     * Computes a single Luhn check digit (0-9) over the digits contained in {@code value};
+     * non-digit characters are ignored.
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * De-duplicates a computed {@code memberId} against the existing owners: if no owner already
+     * carries {@code baseId} it is returned unchanged, otherwise {@code '-<n>'} is appended with the
      * smallest {@code n} of 2 or more that yields a value no existing owner holds. Evaluated before the
      * owner is persisted, so it reflects the owners present at creation time.
      */
-    private String deduplicateCustomerCode(String baseCode) {
-        Set<String> existingCodes = findActiveOwners().stream()
-            .map(Owner::getCustomerCode)
+    private String deduplicateMemberId(String baseId) {
+        Set<String> existingIds = findActiveOwners().stream()
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!existingCodes.contains(baseCode)) {
-            return baseCode;
+        if (!existingIds.contains(baseId)) {
+            return baseId;
         }
         int n = 2;
-        while (existingCodes.contains(baseCode + "-" + n)) {
+        while (existingIds.contains(baseId + "-" + n)) {
             n++;
         }
-        return baseCode + "-" + n;
-    }
-
-    /**
-     * Returns the region code whose inclusive postcode range contains {@code postcode}
-     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), or
-     * {@code "UNKNOWN"} when the postcode is absent, not a 4-digit value, or in no known range.
-     */
-    private static String regionForPostcode(String postcode) {
-        if (postcode == null || !postcode.matches("\\d{4}")) {
-            return UNKNOWN_REGION;
-        }
-        int value = Integer.parseInt(postcode);
-        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-            int[] range = entry.getValue();
-            if (value >= range[0] && value <= range[1]) {
-                return entry.getKey();
-            }
-        }
-        return UNKNOWN_REGION;
+        return baseId + "-" + n;
     }
 
     /**

@@ -37,12 +37,6 @@ public final class PostcodeValidator {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
-    /** Region-to-inclusive 4-digit postcode range {@code {low, high}}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
     private PostcodeValidator() {
     }
 
@@ -62,7 +56,7 @@ public final class PostcodeValidator {
             throw new InvalidPostcodeException("postcode must be a 4-digit value");
         }
         String region = city == null ? null : CITY_REGION.get(city);
-        int[] range = region == null ? null : REGION_POSTCODES.get(region);
+        int[] range = region == null ? null : Regions.REGION_POSTCODES.get(region);
         if (range != null) {
             int value = Integer.parseInt(postcode);
             if (value < range[0] || value > range[1]) {

@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.MembershipLevels;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
+import org.springframework.samples.petclinic.rest.validation.Regions;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
@@ -28,8 +29,6 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -109,19 +108,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}: the customer
-     * code, the literal {@code '-M'}, and the last two digits of the fiscal year derived from
-     * the (business-day-adjusted) registrationDate. Returns {@code null} unless both the
-     * customer code and registration date are present.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return owner.getCustomerCode() + "-M" + fiscalYearYY(owner.getRegistrationDate());
-    }
-
-    /**
      * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'}: the literal {@code 'FY'}
      * and the last two digits of the fiscal year derived from the (business-day-adjusted)
      * registrationDate. The fiscal year starts on 1 July. Returns {@code null} when no registration
@@ -131,43 +117,7 @@ public interface OwnerMapper {
         if (owner == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return "FY" + fiscalYearYY(owner.getRegistrationDate());
-    }
-
-    /**
-     * Formats the last two digits (zero-padded) of the fiscal year that {@code date} falls in.
-     */
-    private String fiscalYearYY(LocalDate date) {
-        return String.format("%02d", RegistrationDateNormalizer.fiscalYear(date) % 100);
-    }
-
-    /**
-     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
-     * contained in the {@code customerCode}. Returns {@code null} when no customer code is present.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return "FY" + RegistrationDateNormalizer.fiscalYearYY(owner.getRegistrationDate());
     }
 
     /**
@@ -185,20 +135,25 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the {@code customerCode}, whose form is
-     * {@code '<REGION>-<HASH8>'}: the locality is the {@code REGION} segment before the first
-     * hyphen. Returns {@code "UNKNOWN"} when the owner has no customer code yet.
+     * Derives the owner's locality (region) from the {@code memberId}, whose form is
+     * {@code '<REGION><FY><HASH8><CHK>'}: the locality is the {@code REGION} prefix, matched against
+     * the shared {@link Regions#known() known region codes}. Returns {@link Regions#UNKNOWN} when the
+     * owner has no member id yet, or when the prefix is not a known region.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return "UNKNOWN";
+        String memberId = owner.getMemberId();
+        if (memberId == null) {
+            return Regions.UNKNOWN;
         }
-        int dash = code.indexOf('-');
-        return dash >= 0 ? code.substring(0, dash) : code;
+        for (String region : Regions.known()) {
+            if (memberId.startsWith(region)) {
+                return region;
+            }
+        }
+        return Regions.UNKNOWN;
     }
 
     /**
