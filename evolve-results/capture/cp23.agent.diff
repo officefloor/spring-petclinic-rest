@@ -1,0 +1,181 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1f51ebeee..5b3a4f0c5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -75,14 +75,18 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Returns the owner's membership tier: {@code 'SILVER'} when the owner has no
+-     * namesakes (namesakeCount is 0) and an email address is present; otherwise
+-     * {@code 'BRONZE'}.
++     * Returns the owner's membership tier: {@code 'GOLD'} when the owner's household had 3 or more
++     * members after the owner was created; otherwise {@code 'SILVER'} when the owner has no
++     * namesakes (namesakeCount is 0) and an email address is present; otherwise {@code 'BRONZE'}.
+      */
+     default String membershipTier(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
++        Integer householdMemberCount = owner.getHouseholdMemberCount();
++        if (householdMemberCount != null && householdMemberCount >= 3) {
++            return "GOLD";
++        }
+         Integer namesakeCount = owner.getNamesakeCount();
+         String email = owner.getEmail();
+         boolean noNamesakes = namesakeCount != null && namesakeCount == 0;
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 07f3367c5..35d51276e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "household_member_count")
++    private Integer householdMemberCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -141,6 +144,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getHouseholdMemberCount() {
++        return this.householdMemberCount;
++    }
++
++    public void setHouseholdMemberCount(Integer householdMemberCount) {
++        this.householdMemberCount = householdMemberCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 64ffbdcf8..868021735 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -256,7 +256,8 @@ public class ClinicServiceImpl implements ClinicService {
+     public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+         rejectWhenDailyLimitReached(owner);
+         rejectWhenCityAtCapacity(owner);
+-        assignHousehold(owner, sharesHousehold);
++        List<Owner> householdMembers = assignHousehold(owner, sharesHousehold);
++        owner.setHouseholdMemberCount(householdMembers.size() + 1);
+         if (owner.getCustomerCode() == null) {
+             owner.setCustomerCode(nextCustomerCode(owner));
+         }
+@@ -297,13 +298,15 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     /**
+-     * Reconcile the owner's household. Owners are in the same household when their last name and
+-     * address match (compared case-insensitively with collapsed whitespace). When another owner
+-     * already lives there, the create is rejected with {@link DuplicateHouseholdException} unless
+-     * {@code sharesHousehold} is set, in which case the new owner and every existing member are
+-     * given the same stable shared {@code householdId}.
++     * Reconcile the owner's household and return its existing members. Owners are in the same
++     * household when their last name and address match (compared case-insensitively with collapsed
++     * whitespace). When another owner already lives there, the create is rejected with
++     * {@link DuplicateHouseholdException} unless {@code sharesHousehold} is set, in which case the
++     * new owner and every existing member are given the same stable shared {@code householdId}.
++     * The returned list is the existing members that make up this owner's household (empty when the
++     * owner lives alone), so callers can derive the household size after this create.
+      */
+-    private void assignHousehold(Owner owner, boolean sharesHousehold) {
++    private List<Owner> assignHousehold(Owner owner, boolean sharesHousehold) {
+         String lastName = IdentityNormalizer.normalize(owner.getLastName());
+         String address = AddressNormalizer.canonical(owner.getAddress());
+         List<Owner> householdMembers = ownerRepository.findAll().stream()
+@@ -311,7 +314,7 @@ public class ClinicServiceImpl implements ClinicService {
+                 && address.equals(AddressNormalizer.canonical(existing.getAddress())))
+             .toList();
+         if (householdMembers.isEmpty()) {
+-            return;
++            return householdMembers;
+         }
+         if (!sharesHousehold) {
+             throw new DuplicateHouseholdException(
+@@ -329,6 +332,7 @@ public class ClinicServiceImpl implements ClinicService {
+                 ownerRepository.save(member);
+             }
+         }
++        return householdMembers;
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 2fe929134..fffb7ee1c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_member_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6b29bf040..042e1232e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_member_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c251e1d87..50dd6fda5 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  household_member_count INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9d354cb21..37562f08f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      household_member_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 92604fe78..70cba171b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2156,9 +2156,11 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier. 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address is present;
+-                otherwise 'BRONZE'.
++                The owner's membership tier. 'GOLD' when the owner's household
++                (owners sharing the same householdId) had 3 or more members
++                after the owner was created; otherwise 'SILVER' when the owner
++                has no namesakes (namesakeCount is 0) and an email address is
++                present; otherwise 'BRONZE'.
+               type: string
+               example: 'SILVER'
+               readOnly: true
