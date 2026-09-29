@@ -233,9 +233,32 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.getTelephone() != null) {
-            owner.setTelephone(owner.getTelephone().replaceAll("\\D", ""));
+            owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         }
+        assertTelephoneUnique(owner, owner.getTelephone());
         ownerRepository.save(owner);
+    }
+
+    private static String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Rejects saving {@code owner} when its {@code normalized} telephone is already used by any
+     * other owner, so no two owners can share a telephone number.
+     *
+     * @throws DuplicateTelephoneException if another owner already has the same normalized telephone
+     */
+    private void assertTelephoneUnique(Owner owner, String normalized) {
+        if (normalized == null || normalized.isEmpty()) {
+            return;
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!existing.getId().equals(owner.getId())
+                    && normalized.equals(normalizeTelephone(existing.getTelephone()))) {
+                throw new DuplicateTelephoneException(normalized);
+            }
+        }
     }
 
     @Override
