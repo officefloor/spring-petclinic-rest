@@ -36,10 +36,8 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
-import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
-import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -119,18 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateTelephoneException(
                 "telephone " + telephone + " is already used by another owner");
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastName = IdentityNormalizer.normalize(owner.getLastName());
-            String address = IdentityNormalizer.normalize(owner.getAddress());
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> lastName.equals(IdentityNormalizer.normalize(existing.getLastName()))
-                    && address.equals(IdentityNormalizer.normalize(existing.getAddress())));
-            if (householdInUse) {
-                throw new DuplicateHouseholdException(
-                    "an owner with last name " + owner.getLastName() + " already lives at " + owner.getAddress());
-            }
-        }
-        this.clinicService.createOwner(owner);
+        this.clinicService.createOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());

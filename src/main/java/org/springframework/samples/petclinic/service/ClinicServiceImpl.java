@@ -22,12 +22,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.rest.validation.DuplicateHouseholdException;
+import org.springframework.samples.petclinic.rest.validation.IdentityNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -239,10 +244,61 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void createOwner(Owner owner) throws DataAccessException {
+        createOwner(owner, false);
+    }
+
+    @Override
+    @Transactional
+    public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
+        assignHousehold(owner, sharesHousehold);
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         }
         ownerRepository.save(owner);
+    }
+
+    /**
+     * Reconcile the owner's household. Owners are in the same household when their last name and
+     * address match (compared case-insensitively with collapsed whitespace). When another owner
+     * already lives there, the create is rejected with {@link DuplicateHouseholdException} unless
+     * {@code sharesHousehold} is set, in which case the new owner and every existing member are
+     * given the same stable shared {@code householdId}.
+     */
+    private void assignHousehold(Owner owner, boolean sharesHousehold) {
+        String lastName = IdentityNormalizer.normalize(owner.getLastName());
+        String address = IdentityNormalizer.normalize(owner.getAddress());
+        List<Owner> householdMembers = ownerRepository.findAll().stream()
+            .filter(existing -> lastName.equals(IdentityNormalizer.normalize(existing.getLastName()))
+                && address.equals(IdentityNormalizer.normalize(existing.getAddress())))
+            .toList();
+        if (householdMembers.isEmpty()) {
+            return;
+        }
+        if (!sharesHousehold) {
+            throw new DuplicateHouseholdException(
+                "an owner with last name " + owner.getLastName() + " already lives at " + owner.getAddress());
+        }
+        String householdId = householdMembers.stream()
+            .map(Owner::getHouseholdId)
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElseGet(() -> deriveHouseholdId(lastName, address));
+        owner.setHouseholdId(householdId);
+        for (Owner member : householdMembers) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+    }
+
+    /**
+     * Derive a stable, shared household identifier from the normalized last name and address, so
+     * every owner in the same household deterministically maps to the same value.
+     */
+    private static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
+        String key = normalizedLastName + "\n" + normalizedAddress;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     /**
