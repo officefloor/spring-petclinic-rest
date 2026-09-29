@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -22,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -85,6 +87,25 @@ public interface OwnerMapper {
         boolean noNamesakes = namesakeCount != null && namesakeCount == 0;
         boolean hasEmail = email != null && !email.isEmpty();
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
+    /** Fixed city-to-region table used to derive an owner's locality. */
+    Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /**
+     * Derives the owner's locality (region) from the city using the fixed city-to-region
+     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}).
+     * Returns {@code "UNKNOWN"} when the city is {@code null} or not in the table.
+     */
+    default String locality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String city = owner.getCity();
+        return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     @Mapping(target = "id", ignore = true)
