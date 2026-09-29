@@ -4,13 +4,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * The single definition of what makes owners share a household: the same last name (compared
  * case-insensitively after collapsing runs of whitespace) and the same address in its normalized
- * form (see {@link AddressNormalizer}). Shared by {@link RequireUniqueHousehold} (which rejects an
- * un-flagged duplicate) and {@link AssignHousehold} (which links a {@code sharesHousehold} owner to
- * the existing members), so both apply the same rule and cannot drift apart.
+ * form (see {@link AddressNormalizer}). Shared by {@link AssignHousehold} (which links a
+ * {@code sharesHousehold} owner to the existing members and assigns the shared {@code householdId})
+ * and {@link RequireUniqueIdentity} (which derives the candidate's household id for its identity key),
+ * so both apply the same rule and cannot drift apart.
  *
  * <p>Also owns the deterministic {@code householdId} derived from that key: joining the same household
  * always yields the same value and it never changes over time.
@@ -32,6 +34,20 @@ final class HouseholdKey {
     /** The household key for the given last name and address. */
     static HouseholdKey of(String lastName, String address) {
         return new HouseholdKey(normalize(lastName), AddressNormalizer.normalize(address));
+    }
+
+    /**
+     * The effective {@code householdId} a create request would carry: the deterministic
+     * {@link #householdId()} when the request opts into {@code sharesHousehold}, otherwise
+     * {@code null} (the owner joins no household). The single home of the share-or-not gate, so
+     * {@link RequireUniqueIdentity} (which folds it into the identity key) and {@link AssignHousehold}
+     * (which assigns it) cannot drift apart.
+     */
+    static String candidateHouseholdId(OwnerFieldsDto request) {
+        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return null;
+        }
+        return of(request.getLastName(), request.getAddress()).householdId();
     }
 
     /** True when the existing owner belongs to this household. */

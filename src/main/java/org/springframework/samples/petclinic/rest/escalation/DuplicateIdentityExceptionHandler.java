@@ -9,15 +9,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 when a create-owner request would duplicate an existing owner's household
- * (same last name and address), mirroring {@link DuplicateTelephoneExceptionHandler}'s
- * {@code errors} array shape.
+ * Responds 409 when a create-owner request's whole {@code identityKey} is already used by another
+ * owner, mirroring the other create-conflict handlers' {@code errors} array shape.
  */
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
         response.send(ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("errors", List.of("lastName", "address"))));
+                .body(Map.of("errors", List.of("identityKey"))));
     }
 }

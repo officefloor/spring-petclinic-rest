@@ -16,11 +16,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 public class AssignHousehold {
 
     public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+        String householdId = HouseholdKey.candidateHouseholdId(request);
+        if (householdId == null) {
             return;
         }
         HouseholdKey household = HouseholdKey.of(owner.getLastName(), owner.getAddress());
-        String householdId = household.householdId();
         owner.setHouseholdId(householdId);
 
         // Backfill the existing household members so the whole household shares the identifier.

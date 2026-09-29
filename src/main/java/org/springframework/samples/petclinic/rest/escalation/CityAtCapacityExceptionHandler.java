@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Responds 409 when a create-owner request targets a city that has already reached its owner
- * capacity, mirroring {@link DuplicateHouseholdExceptionHandler}'s {@code errors} array shape.
+ * capacity, mirroring {@link DuplicateIdentityExceptionHandler}'s {@code errors} array shape.
  */
 public class CityAtCapacityExceptionHandler {
 

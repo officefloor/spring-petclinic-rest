@@ -4,8 +4,8 @@ import java.util.Map;
 
 /**
  * The single definition of the E.164 form of a telephone number. Shared by
- * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and {@link RequireUniqueTelephone}
- * (which compares against it), so both apply the same rule and cannot drift apart.
+ * {@link NormalizeOwnerTelephone} (which stores the E.164 value) and {@link IdentityKey}
+ * (which folds it into the duplicate-detection key), so both apply the same rule and cannot drift apart.
  *
  * <p>The rule: strip spaces, dashes and brackets. When a leading {@code '+'} is present, keep it and
  * the country code that follows; otherwise assume country code {@code '+61'} and drop a single leading
