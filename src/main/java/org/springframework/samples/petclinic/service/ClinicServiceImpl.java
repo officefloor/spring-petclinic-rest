@@ -253,7 +253,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void createOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         assignHousehold(owner, sharesHousehold);
         if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+            owner.setCustomerCode(nextCustomerCode(owner));
         }
         if (owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -320,15 +320,29 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds the customer code {@code '<LAST3>-<NNNN>'}: the upper-cased first three
-     * letters of {@code lastName}, a hyphen, and a global 4-digit zero-padded sequence
-     * equal to one more than the current number of owners.
+     * Builds the customer code {@code '<CITY3>-<LAST3>-<NNNN>'}: the upper-cased first
+     * three letters of the owner's {@code city}, a hyphen, the upper-cased first three
+     * letters of {@code lastName}, a hyphen, and a 4-digit zero-padded per-city sequence
+     * equal to one more than the number of owners already in that city (compared
+     * case-insensitively with collapsed whitespace).
      */
-    private String nextCustomerCode(String lastName) {
-        String name = lastName == null ? "" : lastName;
-        String last3 = name.substring(0, Math.min(3, name.length())).toUpperCase();
-        long sequence = ownerRepository.findAll().size() + 1L;
-        return String.format("%s-%04d", last3, sequence);
+    private String nextCustomerCode(Owner owner) {
+        String city3 = prefix3(owner.getCity());
+        String last3 = prefix3(owner.getLastName());
+        String city = IdentityNormalizer.normalize(owner.getCity());
+        long sequence = ownerRepository.findAll().stream()
+            .filter(existing -> city.equals(IdentityNormalizer.normalize(existing.getCity())))
+            .count() + 1L;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Returns the upper-cased first three letters of {@code value}, or fewer when the value
+     * is shorter; a {@code null} value yields an empty string.
+     */
+    private static String prefix3(String value) {
+        String name = value == null ? "" : value;
+        return name.substring(0, Math.min(3, name.length())).toUpperCase();
     }
 
     @Override
