@@ -249,9 +249,8 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getAddress() != null) {
             owner.setAddress(normalizeAddress(owner.getAddress()));
         }
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effectiveDate = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        owner.setRegistrationDate(rollToBusinessDay(effectiveDate));
         if (owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
         }
@@ -299,6 +298,21 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new CityOwnerLimitException(owner.getCity(), CITY_OWNER_LIMIT);
+        }
+    }
+
+    /**
+     * Rolls {@code date} forward to the next business day when it falls on a weekend: a Saturday or
+     * Sunday becomes the following Monday. Business days (Monday to Friday) are returned unchanged.
+     */
+    private static LocalDate rollToBusinessDay(LocalDate date) {
+        switch (date.getDayOfWeek()) {
+            case SATURDAY:
+                return date.plusDays(2);
+            case SUNDAY:
+                return date.plusDays(1);
+            default:
+                return date;
         }
     }
 
