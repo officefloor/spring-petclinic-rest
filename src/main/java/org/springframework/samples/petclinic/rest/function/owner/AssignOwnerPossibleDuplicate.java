@@ -38,6 +38,7 @@ public class AssignOwnerPossibleDuplicate {
         String telephone = owner.getTelephone();
 
         Optional<Owner> match = ownerRepository.findAll().stream()
+                .filter(DuplicateCandidates::isCandidate)
                 .filter(existing -> householdId.equals(HouseholdKey.householdId(existing))
                         && !Objects.equals(existing.getTelephone(), telephone))
                 .min(Comparator.comparingInt(Owner::getId));
