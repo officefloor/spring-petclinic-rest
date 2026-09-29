@@ -148,6 +148,25 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    /** The highest membership level assignable on creation; level 4 is reserved for tenure. */
+    public static final int MAX_MEMBERSHIP_LEVEL = 3;
+
+    /**
+     * The owner's numeric membership level, computed from stored fields: it starts at 1, gains 1
+     * when an email is present, gains 1 when {@code namesakeCount} is 0, and is capped at
+     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
+     */
+    public int getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isEmpty()) {
+            level++;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+    }
+
     public boolean isSharesHousehold() {
         return this.sharesHousehold;
     }

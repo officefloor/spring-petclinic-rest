@@ -278,8 +278,9 @@ public class ClinicServiceImpl implements ClinicService {
         ownerRepository.save(owner);
         populateHouseholdSize(owner);
         if (creating) {
-            AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+            AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
         }
     }
 
