@@ -42,6 +42,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -312,6 +313,24 @@ public interface OwnerMapper {
             return null;
         }
         return "/api/owners/" + owner.getId();
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code PREMIUM} when {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}.
+     * AREA is {@code METRO} when {@link #locality(Owner)} is a known region (NSW, VIC or QLD),
+     * otherwise {@code REGIONAL}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = membershipLevel(owner);
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String region = locality(owner);
+        boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
+        String area = metro ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     @Mapping(target = "id", ignore = true)
