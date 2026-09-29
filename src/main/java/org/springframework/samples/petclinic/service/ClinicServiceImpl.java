@@ -232,8 +232,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.getTelephone() != null) {
+            owner.setTelephone(owner.getTelephone().replaceAll("\\D", ""));
+        }
         ownerRepository.save(owner);
-
     }
 
     @Override
