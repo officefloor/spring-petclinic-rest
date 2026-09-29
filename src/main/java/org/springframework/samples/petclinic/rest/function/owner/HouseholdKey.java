@@ -12,9 +12,10 @@ import org.springframework.samples.petclinic.rest.function.common.Hashes;
  *
  * <p>Because it is a pure function of {@code (lastName, postcode)}, every owner computes its own id
  * independently and members of one household always agree — there is nothing to link or backfill.
- * Shared by {@link AssignHousehold} (which stamps it onto the new owner), {@link RequireUniqueIdentity}
- * (duplicate detection) and {@link AssignOwnerPossibleDuplicate} (soft-match), so every place that
- * keys off the household applies the one rule and they cannot drift apart.
+ * Shared by {@link AssignHousehold} (which stamps it onto the new owner) and {@link OwnerHousehold}
+ * (which counts household members and caps membershipLevel), so every place that keys off the household
+ * applies the one rule and they cannot drift apart. Duplicate detection and the soft match no longer
+ * key off the household id — they use the {@link IdentityKey} and {@link Soundex} of the last name.
  *
  * <p>Kept out of the function classes themselves because OfficeFloor requires each function class to
  * expose exactly one public method.
