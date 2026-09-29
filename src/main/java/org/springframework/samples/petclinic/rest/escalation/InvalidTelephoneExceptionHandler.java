@@ -9,8 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 400 when a create-owner telephone is not exactly 10 digits after non-digit characters are
- * stripped, mirroring {@link MissingOwnerFieldsExceptionHandler}'s {@code errors} array shape.
+ * Responds 400 when a create-owner telephone cannot be converted to valid E.164 form, mirroring
+ * {@link MissingOwnerFieldsExceptionHandler}'s {@code errors} array shape.
  */
 public class InvalidTelephoneExceptionHandler {
 
