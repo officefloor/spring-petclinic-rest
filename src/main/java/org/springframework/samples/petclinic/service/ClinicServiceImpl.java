@@ -274,10 +274,29 @@ public class ClinicServiceImpl implements ClinicService {
         }
     }
 
+    /**
+     * Rejects saving {@code owner} when it carries a {@code registrationDate} later than the current
+     * server date. The registration date is optional: a {@code null} date is left untouched (it is
+     * defaulted to today by {@link #saveOwner(Owner)}). A registration cannot be dated in the future.
+     *
+     * @throws FutureRegistrationDateException if the supplied registration date is after today
+     */
+    private void assertRegistrationDateNotFuture(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return;
+        }
+        LocalDate today = LocalDate.now();
+        if (registrationDate.isAfter(today)) {
+            throw new FutureRegistrationDateException(registrationDate, today);
+        }
+    }
+
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         assertPostcodeValid(owner);
+        assertRegistrationDateNotFuture(owner);
         if (owner.getTelephone() != null) {
             owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         }

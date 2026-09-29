@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.CityOwnerLimitException;
 import org.springframework.samples.petclinic.service.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.service.DuplicateIdentityException;
+import org.springframework.samples.petclinic.service.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.service.InvalidPostcodeException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -200,6 +201,26 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
         logger.warn("Invalid postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link FutureRegistrationDateException}, raised when an owner is supplied with a
+     * {@code registrationDate} later than the current server date. Returns a 400 Bad Request status.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        logger.warn("Future registration date at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
