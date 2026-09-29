@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
@@ -113,7 +114,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
         owner.setTelephone(telephone);
-        owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+        String email = EmailNormalizer.normalize(owner.getEmail());
+        owner.setEmail(email);
         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
         LocalDate effectiveRegistrationDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
@@ -123,6 +125,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             throw new DuplicateTelephoneException(
                 "telephone " + telephone + " is already used by another owner");
+        }
+        if (email != null) {
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .map(Owner::getEmail)
+                .filter(existing -> existing != null)
+                .anyMatch(existing -> email.equalsIgnoreCase(existing));
+            if (emailInUse) {
+                throw new DuplicateEmailException(
+                    "email " + email + " is already used by another owner");
+            }
         }
         this.clinicService.createOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
