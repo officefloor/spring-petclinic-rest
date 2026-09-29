@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5497e33a1..ef293a0dc 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -5,34 +5,47 @@ import org.mapstruct.AfterMapping;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.mapstruct.MappingTarget;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
+ 
+ /**
+- * Maps Owner & OwnerDto using Mapstruct
++ * Maps Owner &amp; OwnerDto using Mapstruct.
++ *
++ * <p>Declared as an abstract class (rather than a plain interface) so the derived
++ * {@code bulkSignupWarning} field can consult the {@link OwnerRepository} for the
++ * count of owners already registered today.
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
+ 
+     /** Fixed city-to-region lookup used to derive an owner's locality. */
+-    Map<String, String> CITY_REGION = Map.of(
++    static final Map<String, String> CITY_REGION = Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+-    OwnerDto toOwnerDto(Owner owner);
++    /** More than this many owners registered on a single day raises the bulk-signup warning. */
++    private static final long BULK_SIGNUP_THRESHOLD = 80L;
++
++    @Autowired
++    protected OwnerRepository ownerRepository;
++
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Fills the presentation-only {@code displayName} as {@code "LastName, FirstName"}
+      * from the stored names, once MapStruct has mapped the remaining fields.
+      */
+     @AfterMapping
+-    default void addDisplayName(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addDisplayName(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setDisplayName(owner.getLastName() + ", " + owner.getFirstName());
+     }
+ 
+@@ -41,7 +54,7 @@ public interface OwnerMapper {
+      * firstName and lastName, dot-separated with a trailing dot (e.g. {@code "J.S."}).
+      */
+     @AfterMapping
+-    default void addInitials(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addInitials(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setInitials(
+             Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
+                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".");
+@@ -53,7 +66,7 @@ public interface OwnerMapper {
+      * source field is missing.
+      */
+     @AfterMapping
+-    default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         if (owner.getCustomerCode() != null && owner.getRegistrationDate() != null) {
+             String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+             ownerDto.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
+@@ -65,7 +78,7 @@ public interface OwnerMapper {
+      * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
+      */
+     @AfterMapping
+-    default void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+             && owner.getEmail() != null && !owner.getEmail().isEmpty();
+         ownerDto.setMembershipTier(silver ? "SILVER" : "BRONZE");
+@@ -77,21 +90,36 @@ public interface OwnerMapper {
+      * when the city is not in the table.
+      */
+     @AfterMapping
+-    default void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    /**
++     * Fills the presentation-only {@code bulkSignupWarning}: {@code true} once more than
++     * {@link #BULK_SIGNUP_THRESHOLD} owners have already been registered on the current day
++     * (the same daily accumulation the per-day create limit is based on), otherwise
++     * {@code false}.
++     */
++    @AfterMapping
++    void addBulkSignupWarning(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        LocalDate today = LocalDate.now();
++        long registeredToday = ownerRepository.findAll().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        ownerDto.setBulkSignupWarning(registeredToday > BULK_SIGNUP_THRESHOLD);
++    }
++
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f5ffc6bcc..2494bfe63 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,6 +2159,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners have already been created (registered)
++                on the current day, signalling an unusually high daily signup volume;
++                false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
