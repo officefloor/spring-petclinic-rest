@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
+index 8122cf0f3..0131e49f8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
+@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -9,7 +10,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ /**
+  * Defaults and business-day-adjusts the owner {@code registrationDate} on create. An absent (null)
+  * value is first set to the server's current date; then the effective date — supplied or defaulted —
+- * must fall on a business day: a Saturday or Sunday is rolled forward to the following Monday. The
++ * must fall on a business day: a Saturday, Sunday or listed public holiday is rolled forward to the
++ * next non-holiday weekday. The
+  * adjusted value is written back onto the (shared) {@link OwnerFieldsDto}, so every later step sees it:
+  * {@link RequireDailyOwnerLimit} counts per adjusted business day, {@link BuildOwner} stores it, the
+  * membership number's year segment derives from it, and {@code GET /owners/{id}} returns it in ISO
+@@ -25,13 +27,15 @@ public class DefaultOwnerRegistrationDate {
+         owner.setRegistrationDate(toBusinessDay(date));
+     }
+ 
++    /** Fixed public holidays the business-day roll skips. */
++    private static final Set<LocalDate> HOLIDAYS = Set.of(
++            LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
++            LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"), LocalDate.parse("2026-12-28"));
++
+     private static LocalDate toBusinessDay(LocalDate date) {
+-        DayOfWeek day = date.getDayOfWeek();
+-        if (day == DayOfWeek.SATURDAY) {
+-            return date.plusDays(2);
+-        }
+-        if (day == DayOfWeek.SUNDAY) {
+-            return date.plusDays(1);
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY
++                || HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
