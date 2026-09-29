@@ -16,13 +16,14 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown when an {@link org.springframework.samples.petclinic.model.Owner} is
- * created with a lower-cased email address that is already used by another owner.
- * Signals a business-rule conflict, mapped to HTTP 409.
+ * Thrown when an {@link org.springframework.samples.petclinic.model.Owner} is created (or updated)
+ * with a whole {@link org.springframework.samples.petclinic.model.Owner#getIdentityKey() identity
+ * key} already used by another owner. This single rule consolidates the former separate telephone,
+ * email and household duplicate checks. Signals a business-rule conflict, mapped to HTTP 409.
  */
-public class DuplicateEmailException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    public DuplicateEmailException(String email) {
-        super("An owner with email '" + email + "' already exists");
+    public DuplicateIdentityException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
     }
 }

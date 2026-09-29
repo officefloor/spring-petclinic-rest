@@ -167,6 +167,21 @@ public class Owner extends Person {
         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
     }
 
+    /**
+     * The derived identity key used to detect duplicate owners: the (already normalized) telephone,
+     * the email or empty, and the {@code householdId} or empty, joined with {@code '|'}. This single
+     * key consolidates the former separate telephone, email and household duplicate rules — two
+     * owners are duplicates only when their whole identity keys are equal. Because the telephone is
+     * part of the key, two members of the same household (same {@code householdId}) with different
+     * telephones have different keys and are both allowed.
+     */
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String mail = this.email == null ? "" : this.email;
+        String household = this.householdId == null ? "" : this.householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
     public boolean isSharesHousehold() {
         return this.sharesHousehold;
     }

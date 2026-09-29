@@ -271,11 +271,9 @@ public class ClinicServiceImpl implements ClinicService {
             assertDailyCapacity(owner);
             assertCityCapacity(owner);
         }
-        assertTelephoneUnique(owner, owner.getTelephone());
-        assertEmailUnique(owner, owner.getEmail());
         List<Owner> household = findHouseholdMembers(owner);
-        assertHouseholdAllowed(owner, household);
         assignHousehold(owner, household);
+        assertIdentityUnique(owner);
         ownerRepository.save(owner);
         populateHouseholdSize(owner);
         if (creating) {
@@ -443,37 +441,19 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Rejects saving {@code owner} when its {@code normalized} telephone is already used by any
-     * other owner, so no two owners can share a telephone number.
+     * Rejects saving {@code owner} when its whole {@link Owner#getIdentityKey() identity key} equals
+     * that of another owner. This single check consolidates the former separate telephone, email and
+     * household duplicate rules: because the normalized telephone is part of the key, two members of
+     * the same household (same {@code householdId}) with different telephones have different keys and
+     * are both allowed — only an exact full-key match is a duplicate.
      *
-     * @throws DuplicateTelephoneException if another owner already has the same normalized telephone
+     * @throws DuplicateIdentityException if another owner already has the same identity key
      */
-    private void assertTelephoneUnique(Owner owner, String normalized) {
-        if (normalized == null || normalized.isEmpty()) {
-            return;
-        }
+    private void assertIdentityUnique(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId())
-                    && normalized.equals(normalizeTelephone(existing.getTelephone()))) {
-                throw new DuplicateTelephoneException(normalized);
-            }
-        }
-    }
-
-    /**
-     * Rejects saving {@code owner} when its {@code normalized} (lower-cased) email is already used by
-     * any other owner, so no two owners can share an email address.
-     *
-     * @throws DuplicateEmailException if another owner already has the same normalized email
-     */
-    private void assertEmailUnique(Owner owner, String normalized) {
-        if (normalized == null || normalized.isEmpty()) {
-            return;
-        }
-        for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId())
-                    && normalized.equals(normalizeEmail(existing.getEmail()))) {
-                throw new DuplicateEmailException(normalized);
+            if (!existing.getId().equals(owner.getId()) && identityKey.equals(existing.getIdentityKey())) {
+                throw new DuplicateIdentityException(identityKey);
             }
         }
     }
@@ -503,20 +483,6 @@ public class ClinicServiceImpl implements ClinicService {
             }
         }
         return household;
-    }
-
-    /**
-     * Pure guard: rejects creating {@code owner} when it would join a non-empty {@code household}
-     * without acknowledging the shared household via {@link Owner#isSharesHousehold()}. Returns
-     * without side effects otherwise.
-     *
-     * @throws DuplicateHouseholdException if another owner already lives at the same household and
-     *                                     the request does not acknowledge the shared household
-     */
-    private void assertHouseholdAllowed(Owner owner, List<Owner> household) {
-        if (!household.isEmpty() && !owner.isSharesHousehold()) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-        }
     }
 
     /**
