@@ -95,6 +95,19 @@ public interface OwnerMapper {
         ownerDto.setLocality(Region.regionOfCustomerCode(owner.getCustomerCode()));
     }
 
+    /**
+     * Fills the {@code ageBand} from the owner's domain-computed {@link Owner#getAgeBand()}
+     * (derived from birthDate measured against registrationDate), leaving it null when no
+     * birth date is available.
+     */
+    @AfterMapping
+    default void addAgeBand(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        String ageBand = owner.getAgeBand();
+        if (ageBand != null) {
+            ownerDto.setAgeBand(OwnerDto.AgeBandEnum.fromValue(ageBand));
+        }
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
