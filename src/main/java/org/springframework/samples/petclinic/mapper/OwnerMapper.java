@@ -44,6 +44,15 @@ public interface OwnerMapper {
     }
 
     /**
+     * Fills the {@code checkDigit} from the owner's domain-computed
+     * {@link Owner#getCheckDigit()} (a Luhn check digit over the customerCode's digits).
+     */
+    @AfterMapping
+    default void addCheckDigit(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setCheckDigit(owner.getCheckDigit());
+    }
+
+    /**
      * Fills the presentation-only {@code membershipNumber} as {@code '<customerCode>-M<YY>'}
      * where YY is the last two digits of the registrationDate year. Left null when either
      * source field is missing.
