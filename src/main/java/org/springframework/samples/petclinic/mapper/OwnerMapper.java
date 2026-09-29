@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -128,7 +129,9 @@ public interface OwnerMapper {
     /**
      * Returns the owner's numeric membership level. Starts at {@code 1}; adds {@code 1} when an
      * email address is present; adds {@code 1} when the owner has no namesakes (namesakeCount is
-     * 0); capped at {@code 3} (level 4 is reserved for tenure).
+     * 0); adds {@code 1} when the owner's tenure exceeds 365 days. Because a newly created owner
+     * has zero tenure, a new owner never exceeds level {@code 3}; level {@code 4} is reached only
+     * once tenure passes 365 days. Capped at {@code 4}.
      */
     default Integer membershipLevel(Owner owner) {
         if (owner == null) {
@@ -143,7 +146,12 @@ public interface OwnerMapper {
         if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null
+                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
