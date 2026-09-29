@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index b07f2b977..02e45248e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -143,6 +144,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateTelephoneException} raised when an owner is created with a
++     * normalized telephone that is already used by another owner, returning a 409 Conflict status.
++     *
++     * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++        logger.warn("Duplicate telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 986dc1beb..77d6f09f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -102,7 +103,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
++        String telephone = TelephoneNormalizer.normalize(owner.getTelephone());
++        owner.setTelephone(telephone);
++        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> telephone.equals(TelephoneNormalizer.digitsOnly(existing.getTelephone())));
++        if (telephoneInUse) {
++            throw new DuplicateTelephoneException(
++                "telephone " + telephone + " is already used by another owner");
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateTelephoneException.java
+new file mode 100644
+index 000000000..aa864e7d0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/DuplicateTelephoneException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner is created with a normalized telephone number that is
++ * already used by another owner. Handled by the REST
++ * {@code ExceptionControllerAdvice}, which translates it into a
++ * {@code 409 Conflict} response.
++ */
++public class DuplicateTelephoneException extends RuntimeException {
++
++    public DuplicateTelephoneException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index d7fd7be5a..370447be6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -38,11 +38,23 @@ public final class TelephoneNormalizer {
+      * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
+      */
+     public static String normalize(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        String digits = digitsOnly(telephone);
+         if (digits.length() != REQUIRED_DIGITS) {
+             throw new InvalidTelephoneException(
+                 "telephone must contain exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
+         }
+         return digits;
+     }
++
++    /**
++     * Strip every non-digit character from the supplied telephone without enforcing a
++     * required length. Useful for comparing telephones that may already be stored in a
++     * non-normalized form.
++     *
++     * @param telephone the raw telephone value (may be {@code null})
++     * @return the telephone reduced to its digit characters (possibly empty)
++     */
++    public static String digitsOnly(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
+ }
