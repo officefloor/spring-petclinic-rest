@@ -257,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (owner.isNew()) {
             owner.setNamesakeCount(countNamesakes(owner));
+            assertDailyCapacity(owner);
             assertCityCapacity(owner);
         }
         assertTelephoneUnique(owner, owner.getTelephone());
@@ -299,6 +300,32 @@ public class ClinicServiceImpl implements ClinicService {
         if (countOwnersInCity(owner.getCity()) >= CITY_OWNER_LIMIT) {
             throw new CityOwnerLimitException(owner.getCity(), CITY_OWNER_LIMIT);
         }
+    }
+
+    /** Maximum number of owners permitted to be registered on a single day. */
+    private static final long DAILY_OWNER_LIMIT = 100L;
+
+    /**
+     * Rejects creating {@code owner} when its {@code registrationDate} (defaulted to today for a new
+     * owner) already has {@link #DAILY_OWNER_LIMIT} or more owners registered, so no more than that
+     * many owners can be created on any single day.
+     *
+     * @throws DailyOwnerLimitException if the owner's registration day is already at capacity
+     */
+    private void assertDailyCapacity(Owner owner) {
+        LocalDate date = owner.getRegistrationDate();
+        if (date == null) {
+            return;
+        }
+        if (countOwnersRegisteredOn(date) >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitException(date, DAILY_OWNER_LIMIT);
+        }
+    }
+
+    private long countOwnersRegisteredOn(LocalDate date) {
+        return ownerRepository.findAll().stream()
+                .filter(existing -> date.equals(existing.getRegistrationDate()))
+                .count();
     }
 
     private long countOwnersInCity(String city) {
