@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.MembershipLevels;
+import org.springframework.samples.petclinic.rest.validation.EmailNormalizer;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
 import org.springframework.samples.petclinic.rest.validation.Regions;
 import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
@@ -42,6 +43,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -286,6 +288,23 @@ public interface OwnerMapper {
         boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
         String area = metro ? "METRO" : "REGIONAL";
         return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+    }
+
+    /**
+     * Whether the owner should be flagged for manual review. True when any one of these holds: the
+     * owner is a possible (soft) duplicate ({@link #possibleDuplicate(Owner)}), the owner's e-mail
+     * domain is disposable-adjacent ({@link EmailNormalizer#isDisposableAdjacent(String)}), or the
+     * owner's city is over its soft capacity ({@link #capacityWarning(Owner)}). Otherwise false.
+     * The result composes those three sub-flags rather than reading a stored value, so it is always
+     * non-null (and thus always present in the response) for a non-null owner.
+     */
+    default Boolean riskFlag(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(possibleDuplicate(owner))
+            || EmailNormalizer.isDisposableAdjacent(owner.getEmail())
+            || Boolean.TRUE.equals(capacityWarning(owner));
     }
 
     @Mapping(target = "id", ignore = true)

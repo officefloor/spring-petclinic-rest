@@ -67,4 +67,58 @@ public final class EmailNormalizer {
         }
         return normalized;
     }
+
+    /**
+     * Whether the supplied e-mail address is <em>disposable-adjacent</em>: a soft signal that its
+     * domain resembles a known throwaway provider without necessarily being on the outright
+     * {@link #DISPOSABLE_DOMAINS blocklist} (blocklisted domains are already rejected at create
+     * time by {@link #normalize(String)}). A domain qualifies when it is, or is a subdomain of, a
+     * blocklisted disposable domain (e.g. {@code mail.mailinator.com}), or when it shares the
+     * registrable second-level label of one but uses a different top-level domain (e.g.
+     * {@code mailinator.net} for the blocklisted {@code mailinator.com}).
+     *
+     * <p>Unlike {@link #normalize(String)} this never throws; a {@code null}, blank or
+     * domain-less value is simply not adjacent.
+     *
+     * @param email the raw or stored e-mail value (may be {@code null})
+     * @return {@code true} when the address's domain is disposable-adjacent
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.indexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        for (String disposable : DISPOSABLE_DOMAINS) {
+            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
+                return true;
+            }
+        }
+        String secondLevel = registrableLabel(domain);
+        if (secondLevel == null) {
+            return false;
+        }
+        for (String disposable : DISPOSABLE_DOMAINS) {
+            if (secondLevel.equals(registrableLabel(disposable))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The registrable second-level label of a domain — the dot-separated label immediately before
+     * the final (top-level) label, e.g. {@code mailinator} for both {@code mailinator.com} and
+     * {@code mail.mailinator.com}. Returns {@code null} when the domain has no such label.
+     */
+    private static String registrableLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return null;
+        }
+        return labels[labels.length - 2];
+    }
 }
