@@ -37,6 +37,9 @@ public interface OwnerMapper {
                     + ".IdentityKey.ofOwner(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(hasEmail(owner) ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner"
+                    + ".AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "membershipLevel",
             expression = "java(Math.min(3, 1 "
                     + "+ (hasEmail(owner) ? 1 : 0) "
