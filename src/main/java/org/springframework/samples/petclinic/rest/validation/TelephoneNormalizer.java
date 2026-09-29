@@ -128,6 +128,49 @@ public final class TelephoneNormalizer {
     }
 
     /**
+     * Format the supplied telephone for human display: the country code, a space, and the
+     * national digits (the digits after the country code) grouped in threes separated by
+     * spaces, e.g. {@code '+61412345678'} becomes {@code '+61 412 345 678'}. The raw stored
+     * telephone stays in E.164 form; this is a read-only presentation of it.
+     *
+     * <p>Values that cannot be read as an E.164 number are returned unchanged. When the
+     * country code is not recognized the whole number is grouped from the leading digit.
+     *
+     * @param telephone the stored telephone value (may be {@code null})
+     * @return the display form, or {@code null} when {@code telephone} is {@code null}
+     */
+    public static String toDisplay(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        String e164 = telephone.startsWith("+") ? telephone : toE164(telephone);
+        if (e164 == null || !e164.startsWith("+")) {
+            return telephone;
+        }
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d+")) {
+            return telephone;
+        }
+        String countryCode = matchLongestCountryCode(digits);
+        StringBuilder sb = new StringBuilder("+");
+        String national;
+        if (countryCode != null) {
+            sb.append(countryCode);
+            national = digits.substring(countryCode.length());
+        }
+        else {
+            national = digits;
+        }
+        for (int i = 0; i < national.length(); i += 3) {
+            if (sb.length() > 1) {
+                sb.append(' ');
+            }
+            sb.append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Check the national-number length of the supplied all-digit E.164 body against its
      * country code. The longest matching known country code wins; when the code is
      * recognized the remaining (national) digits must be exactly the required length.
@@ -138,6 +181,22 @@ public final class TelephoneNormalizer {
      * @return {@code true} if the national-number length is acceptable for the country code
      */
     private static boolean hasValidNationalLength(String digits) {
+        String matchedCode = matchLongestCountryCode(digits);
+        if (matchedCode == null) {
+            return true;
+        }
+        int nationalLength = digits.length() - matchedCode.length();
+        return nationalLength == NATIONAL_DIGITS_BY_COUNTRY_CODE.get(matchedCode);
+    }
+
+    /**
+     * Return the longest known country calling code that prefixes the supplied E.164 digits,
+     * or {@code null} when none is recognized.
+     *
+     * @param digits the E.164 digits (country code plus national number, no {@code '+'})
+     * @return the matching country code, or {@code null}
+     */
+    private static String matchLongestCountryCode(String digits) {
         String matchedCode = null;
         for (String code : NATIONAL_DIGITS_BY_COUNTRY_CODE.keySet()) {
             if (digits.startsWith(code)
@@ -145,10 +204,6 @@ public final class TelephoneNormalizer {
                 matchedCode = code;
             }
         }
-        if (matchedCode == null) {
-            return true;
-        }
-        int nationalLength = digits.length() - matchedCode.length();
-        return nationalLength == NATIONAL_DIGITS_BY_COUNTRY_CODE.get(matchedCode);
+        return matchedCode;
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
 import java.time.LocalDate;
 import java.time.Period;
@@ -23,6 +24,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -66,6 +68,19 @@ public interface OwnerMapper {
             sb.append(Character.toUpperCase(lastName.charAt(0))).append('.');
         }
         return sb.toString();
+    }
+
+    /**
+     * Formats the owner's stored E.164 {@code telephone} for human display: the country code,
+     * a space, and the national digits grouped in threes separated by spaces, e.g.
+     * {@code '+61412345678'} becomes {@code '+61 412 345 678'}. The raw {@code telephone} is
+     * left unchanged in E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return TelephoneNormalizer.toDisplay(owner.getTelephone());
     }
 
     /**
