@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 32ebecbfd..661fd22d3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -61,6 +61,8 @@ public interface OwnerMapper {
+             expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(membershipLevel(owner))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(ownerSegment(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Whether the owner has a usable email address. */
+@@ -108,6 +110,21 @@ public interface OwnerMapper {
+         return level;
+     }
+ 
++    /**
++     * The owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
++     * owner's {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}. AREA is
++     * {@code METRO} when the owner's locality (the region segment of the customerCode) is a known region
++     * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    default String ownerSegment(Owner owner) {
++        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String locality = org.springframework.samples.petclinic.rest.function.owner.CustomerCode
++                .regionOf(owner.getCustomerCode());
++        String area = org.springframework.samples.petclinic.rest.function.common.Localities
++                .isKnownRegion(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+index 0ac6399a3..da962ce45 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+@@ -78,6 +78,11 @@ public final class Localities {
+         return REGION_TIMEZONE.get(region);
+     }
+ 
++    /** Whether {@code region} is a known canonical region (NSW, VIC or QLD) rather than "UNKNOWN". */
++    public static boolean isKnownRegion(String region) {
++        return REGION_POSTCODES.containsKey(region);
++    }
++
+     /** The inclusive {low, high} postcode range for {@code city}'s region, or {@code null} when the
+      *  city has no known region (any 4-digit postcode is then accepted). */
+     public static int[] postcodeRange(String city) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index afc27bf0e..638975797 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2296,6 +2296,17 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'.
++                AREA is 'METRO' when the owner's locality is a known region
++                (NSW, VIC or QLD), otherwise 'REGIONAL'. One of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
