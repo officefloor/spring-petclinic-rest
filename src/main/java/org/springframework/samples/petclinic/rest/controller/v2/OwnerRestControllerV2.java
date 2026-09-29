@@ -36,6 +36,9 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
         Page<Owner> owners = this.clinicService.findOwners(
             lastName,
             PageRequest.of(pageNumber, pageSize, Sort.by("id")));
-        return new ResponseEntity<>(ownerMapper.toOwnerPageDto(owners), HttpStatus.OK);
+        OwnerPageDto ownerPageDto = ownerMapper.toOwnerPageDto(owners);
+        boolean bulkSignupWarning = this.clinicService.isBulkSignupWarningActive();
+        ownerPageDto.getContent().forEach(ownerDto -> ownerDto.setBulkSignupWarning(bulkSignupWarning));
+        return new ResponseEntity<>(ownerPageDto, HttpStatus.OK);
     }
 }

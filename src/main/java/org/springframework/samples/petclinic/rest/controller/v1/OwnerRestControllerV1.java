@@ -83,7 +83,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+        List<OwnerDto> ownerDtos = ownerMapper.toOwnerDtoCollection(owners);
+        boolean bulkSignupWarning = this.clinicService.isBulkSignupWarningActive();
+        ownerDtos.forEach(ownerDto -> ownerDto.setBulkSignupWarning(bulkSignupWarning));
+        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -93,7 +96,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(owner)), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -102,7 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = withBulkSignupWarning(ownerMapper.toOwnerDto(owner));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -122,7 +125,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+        return new ResponseEntity<>(withBulkSignupWarning(ownerMapper.toOwnerDto(currentOwner)),
+            HttpStatus.NO_CONTENT);
+    }
+
+    /**
+     * Sets the response-level {@code bulkSignupWarning} flag on {@code ownerDto} from the service's
+     * current daily-signup assessment. The warning is a property of the current day's signup volume,
+     * so it is the same for every owner returned in a single response.
+     */
+    private OwnerDto withBulkSignupWarning(OwnerDto ownerDto) {
+        ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupWarningActive());
+        return ownerDto;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

@@ -60,6 +60,12 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
+	/**
+	 * Whether more than the bulk-signup threshold of owners have already been registered on the
+	 * current day, signalling an unusually high daily signup volume.
+	 */
+	boolean isBulkSignupWarningActive() throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;

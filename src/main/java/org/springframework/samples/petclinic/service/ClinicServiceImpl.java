@@ -329,6 +329,20 @@ public class ClinicServiceImpl implements ClinicService {
     /** Maximum number of owners permitted to be registered on a single day. */
     private static final long DAILY_OWNER_LIMIT = 100L;
 
+    /** More than this many owners registered on a single day raises the bulk-signup warning. */
+    private static final long BULK_SIGNUP_THRESHOLD = 80L;
+
+    /**
+     * Reports whether more than {@link #BULK_SIGNUP_THRESHOLD} owners have already been registered
+     * today, reusing the same daily accumulation as the per-day create limit ({@link
+     * #assertDailyCapacity}).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isBulkSignupWarningActive() throws DataAccessException {
+        return countOwnersRegisteredOn(LocalDate.now()) > BULK_SIGNUP_THRESHOLD;
+    }
+
     /**
      * Rejects creating {@code owner} when its {@code registrationDate} (defaulted to today for a new
      * owner) already has {@link #DAILY_OWNER_LIMIT} or more owners registered, so no more than that
