@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.function.common.Strings;
 
 /**
  * Assigns the owner's {@code namesakeCount} — the number of existing owners (before
@@ -15,13 +16,9 @@ public class AssignOwnerNamesakeCount {
         String firstName = owner.getFirstName();
         String lastName = owner.getLastName();
         long count = ownerRepository.findAll().stream()
-                .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
-                        && equalsIgnoreCase(existing.getLastName(), lastName))
+                .filter(existing -> Strings.equalsIgnoreCase(existing.getFirstName(), firstName)
+                        && Strings.equalsIgnoreCase(existing.getLastName(), lastName))
                 .count();
         owner.setNamesakeCount((int) count);
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 }
