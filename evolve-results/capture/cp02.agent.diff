@@ -1,0 +1,170 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 61f5836f4..b07f2b977 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.rest.validation.InvalidTelephoneException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+@@ -122,6 +123,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidTelephoneException} raised when an owner's telephone does not contain
++     * exactly ten digits after non-digit characters are stripped, returning a 400 Bad Request status.
++     *
++     * @param e The {@link InvalidTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
++        logger.warn("Invalid telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e52..986dc1beb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
+ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
++import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -101,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(TelephoneNormalizer.normalize(owner.getTelephone()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+new file mode 100644
+index 000000000..e0ed9cdfa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/InvalidTelephoneException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Thrown when an owner's telephone number does not contain exactly ten digits
++ * after every non-digit character has been stripped. Handled by the REST
++ * {@code ExceptionControllerAdvice}, which translates it into a
++ * {@code 400 Bad Request} response.
++ */
++public class InvalidTelephoneException extends RuntimeException {
++
++    public InvalidTelephoneException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+new file mode 100644
+index 000000000..d7fd7be5a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -0,0 +1,48 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Utility for normalizing telephone numbers submitted when creating an owner.
++ * Every non-digit character is stripped and the result must contain exactly ten
++ * digits; otherwise an {@link InvalidTelephoneException} is raised so the request
++ * is rejected with {@code 400 Bad Request}.
++ */
++public final class TelephoneNormalizer {
++
++    private static final int REQUIRED_DIGITS = 10;
++
++    private TelephoneNormalizer() {
++    }
++
++    /**
++     * Normalize the supplied telephone by removing every non-digit character and
++     * requiring exactly ten remaining digits.
++     *
++     * @param telephone the raw telephone value (may be {@code null})
++     * @return the normalized 10-digit telephone
++     * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
++     */
++    public static String normalize(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != REQUIRED_DIGITS) {
++            throw new InvalidTelephoneException(
++                "telephone must contain exactly " + REQUIRED_DIGITS + " digits after removing non-digit characters");
++        }
++        return digits;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 72b98bf60..1a8df9ae0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,11 +2029,13 @@ components:
+           x-field-extra-annotation: "@jakarta.validation.constraints.NotBlank"
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create the value is
++            normalized by removing every non-digit character and must contain
++            exactly 10 digits after stripping.
+           type: string
+           minLength: 1
+-          maxLength: 20
+-          pattern: '^[0-9]*$'
++          maxLength: 40
+           example: '6085551023'
+           x-field-extra-annotation: "@jakarta.validation.constraints.NotBlank"
+       required:
