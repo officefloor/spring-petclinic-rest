@@ -9,11 +9,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.IdentityKeyNormalizer;
+import org.springframework.samples.petclinic.rest.validation.RegistrationDateNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -105,15 +106,35 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}: the customer
-     * code, the literal {@code '-M'}, and the last two digits of the registrationDate year.
-     * Returns {@code null} unless both the customer code and registration date are present.
+     * code, the literal {@code '-M'}, and the last two digits of the fiscal year derived from
+     * the (business-day-adjusted) registrationDate. Returns {@code null} unless both the
+     * customer code and registration date are present.
      */
     default String membershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
-        return owner.getCustomerCode() + "-M" + yy;
+        return owner.getCustomerCode() + "-M" + fiscalYearYY(owner.getRegistrationDate());
+    }
+
+    /**
+     * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'}: the literal {@code 'FY'}
+     * and the last two digits of the fiscal year derived from the (business-day-adjusted)
+     * registrationDate. The fiscal year starts on 1 July. Returns {@code null} when no registration
+     * date is present.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return "FY" + fiscalYearYY(owner.getRegistrationDate());
+    }
+
+    /**
+     * Formats the last two digits (zero-padded) of the fiscal year that {@code date} falls in.
+     */
+    private String fiscalYearYY(LocalDate date) {
+        return String.format("%02d", RegistrationDateNormalizer.fiscalYear(date) % 100);
     }
 
     /**
@@ -149,7 +170,8 @@ public interface OwnerMapper {
      * Computes the owner's membership points. Starts at {@code 0}; adds {@code 2} when an email
      * address is present; adds {@code 1} when the owner has no namesakes (namesakeCount is 0);
      * adds {@code 2} when the owner belongs to a household of {@code 3} or more members; adds
-     * {@code 3} when the owner's tenure exceeds 365 days.
+     * {@code 3} when the owner's tenure exceeds one fiscal year, where tenure is the number of
+     * elapsed fiscal years (the current fiscal year minus the registration fiscal year).
      */
     default Integer membershipPoints(Owner owner) {
         if (owner == null) {
@@ -169,9 +191,12 @@ public interface OwnerMapper {
             points += 2;
         }
         LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365) {
-            points += 3;
+        if (registrationDate != null) {
+            int tenure = RegistrationDateNormalizer.fiscalYear(LocalDate.now())
+                - RegistrationDateNormalizer.fiscalYear(registrationDate);
+            if (tenure > 1) {
+                points += 3;
+            }
         }
         return points;
     }

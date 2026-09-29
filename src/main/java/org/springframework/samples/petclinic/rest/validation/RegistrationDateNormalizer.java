@@ -38,6 +38,9 @@ public final class RegistrationDateNormalizer {
         LocalDate.of(2026, 12, 25),
         LocalDate.of(2026, 12, 28));
 
+    /** First month of the fiscal year (1 July). */
+    private static final int FISCAL_YEAR_START_MONTH = 7;
+
     private RegistrationDateNormalizer() {
     }
 
@@ -59,5 +62,18 @@ public final class RegistrationDateNormalizer {
     private static boolean isWeekend(LocalDate date) {
         DayOfWeek dayOfWeek = date.getDayOfWeek();
         return dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
+    }
+
+    /**
+     * Determine the fiscal year that the supplied date falls in. The fiscal year starts on
+     * 1 July, so a date on or after 1 July belongs to the fiscal year of the following calendar
+     * year (e.g. 2025-07-01 through 2026-06-30 is fiscal year 2026), while a date before 1 July
+     * belongs to the fiscal year of its own calendar year.
+     *
+     * @param date the (already business-day-adjusted) registration date
+     * @return the four-digit fiscal year
+     */
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? date.getYear() + 1 : date.getYear();
     }
 }
