@@ -174,10 +174,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Sets the derived warning flags on {@code ownerDto}. {@code bulkSignupWarning} reflects the
      * current day's signup volume (the same for every owner in a response); {@code capacityWarning}
      * is city-specific, true when the owner's city is approaching the per-city capacity limit.
+     * {@code riskFlag} aggregates the individual risk signals into a single indicator.
      */
     private OwnerDto withDerivedWarnings(OwnerDto ownerDto) {
         ownerDto.setBulkSignupWarning(this.clinicService.isBulkSignupWarningActive());
         ownerDto.setCapacityWarning(this.clinicService.isCityCapacityWarningActive(ownerDto.getCity()));
+        ownerDto.setRiskFlag(this.clinicService.isOwnerRiskFlagged(
+            Boolean.TRUE.equals(ownerDto.getPossibleDuplicate()), ownerDto.getEmail(), ownerDto.getCity()));
         return ownerDto;
     }
 

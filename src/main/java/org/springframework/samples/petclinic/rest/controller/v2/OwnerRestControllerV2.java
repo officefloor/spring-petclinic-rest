@@ -41,6 +41,8 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
         ownerPageDto.getContent().forEach(ownerDto -> {
             ownerDto.setBulkSignupWarning(bulkSignupWarning);
             ownerDto.setCapacityWarning(this.clinicService.isCityCapacityWarningActive(ownerDto.getCity()));
+            ownerDto.setRiskFlag(this.clinicService.isOwnerRiskFlagged(
+                Boolean.TRUE.equals(ownerDto.getPossibleDuplicate()), ownerDto.getEmail(), ownerDto.getCity()));
         });
         return new ResponseEntity<>(ownerPageDto, HttpStatus.OK);
     }

@@ -72,6 +72,28 @@ public interface ClinicService {
 	 */
 	boolean isCityCapacityWarningActive(String city) throws DataAccessException;
 
+	/**
+	 * Whether the given city is over its soft capacity, i.e. it already holds at least the per-city
+	 * soft-capacity threshold of 40 owners (unlike the approaching-capacity warning, this stays true
+	 * once the city reaches or exceeds the hard limit).
+	 */
+	boolean isCityOverSoftCapacity(String city) throws DataAccessException;
+
+	/**
+	 * Whether {@code email}'s domain is disposable-adjacent: it shares a label with a known disposable
+	 * domain (a subdomain of one, or the same base name under a different TLD) without necessarily
+	 * being on the blocklist itself. Returns false when the email or its domain is absent.
+	 */
+	boolean isEmailDomainDisposableAdjacent(String email) throws DataAccessException;
+
+	/**
+	 * The aggregate owner risk flag: true when any single risk signal holds — the owner is a possible
+	 * duplicate ({@code possibleDuplicate}), its {@code email} domain is disposable-adjacent (see
+	 * {@link #isEmailDomainDisposableAdjacent(String)}), or its {@code city} is over its soft capacity
+	 * (see {@link #isCityOverSoftCapacity(String)}); false otherwise.
+	 */
+	boolean isOwnerRiskFlagged(boolean possibleDuplicate, String email, String city) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;

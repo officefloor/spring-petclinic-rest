@@ -312,6 +312,17 @@ public class ClinicServiceImpl implements ClinicService {
         "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
+     * The base (second-level) labels of the {@link #DISPOSABLE_EMAIL_DOMAINS}, e.g. {@code
+     * "mailinator"} for {@code "mailinator.com"}. A domain is treated as disposable-adjacent when any
+     * of its dot-separated labels equals one of these, so subdomains of a disposable domain and the
+     * same base name under a different TLD are both caught (see {@link
+     * #isEmailDomainDisposableAdjacent(String)}).
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_BASE_LABELS = DISPOSABLE_EMAIL_DOMAINS.stream()
+        .map(domain -> domain.substring(0, domain.indexOf('.')))
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /**
      * Rejects saving {@code owner} when its email's domain is on the disposable-domain blocklist
      * ({@link #DISPOSABLE_EMAIL_DOMAINS}). The email is optional: a {@code null} email is left
      * untouched. The comparison is case-insensitive on the part after the last {@code '@'}; the
@@ -495,6 +506,63 @@ public class ClinicServiceImpl implements ClinicService {
         }
         long count = countOwnersInCity(city);
         return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_OWNER_LIMIT;
+    }
+
+    /**
+     * Reports whether {@code city} is over its soft capacity, i.e. it already holds at least
+     * {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners. Unlike {@link #isCityCapacityWarningActive},
+     * this has no upper bound, so it stays true once the city reaches or exceeds the hard limit.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCityOverSoftCapacity(String city) throws DataAccessException {
+        if (city == null) {
+            return false;
+        }
+        return countOwnersInCity(city) >= CITY_CAPACITY_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Reports whether {@code email}'s domain is disposable-adjacent: any of the domain's
+     * dot-separated labels equals a {@link #DISPOSABLE_EMAIL_BASE_LABELS disposable base label}, so a
+     * subdomain of a disposable domain and the same base name under a different TLD are both caught.
+     * Returns false when the email is null or has no domain part. The comparison is case-insensitive.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isEmailDomainDisposableAdjacent(String email) throws DataAccessException {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        if (domain.isEmpty()) {
+            return false;
+        }
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_EMAIL_BASE_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Composes the aggregate owner risk flag from its three signals: true when the owner is a
+     * possible duplicate, its email domain is {@link #isEmailDomainDisposableAdjacent(String)
+     * disposable-adjacent}, or its city is {@link #isCityOverSoftCapacity(String) over its soft
+     * capacity}; false otherwise. Single authoritative home for the spec's OR-composition.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isOwnerRiskFlagged(boolean possibleDuplicate, String email, String city)
+            throws DataAccessException {
+        return possibleDuplicate
+            || isEmailDomainDisposableAdjacent(email)
+            || isCityOverSoftCapacity(city);
     }
 
     /**
