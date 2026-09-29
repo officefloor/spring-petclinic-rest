@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5497e33a1..96e988499 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -5,8 +5,10 @@ import org.mapstruct.AfterMapping;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.mapstruct.MappingTarget;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -19,20 +21,27 @@ import java.util.Map;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    /** Household size (owners sharing a householdId) at or above which the GOLD tier applies. */
++    private static final long GOLD_HOUSEHOLD_SIZE = 3L;
+ 
+     /** Fixed city-to-region lookup used to derive an owner's locality. */
+-    Map<String, String> CITY_REGION = Map.of(
++    static final Map<String, String> CITY_REGION = Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+-    OwnerDto toOwnerDto(Owner owner);
++    /** Used to count the members of an owner's household when deriving the GOLD tier. */
++    @Autowired
++    protected OwnerRepository ownerRepository;
++
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Fills the presentation-only {@code displayName} as {@code "LastName, FirstName"}
+      * from the stored names, once MapStruct has mapped the remaining fields.
+      */
+     @AfterMapping
+-    default void addDisplayName(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addDisplayName(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setDisplayName(owner.getLastName() + ", " + owner.getFirstName());
+     }
+ 
+@@ -41,7 +50,7 @@ public interface OwnerMapper {
+      * firstName and lastName, dot-separated with a trailing dot (e.g. {@code "J.S."}).
+      */
+     @AfterMapping
+-    default void addInitials(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addInitials(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setInitials(
+             Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
+                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".");
+@@ -53,7 +62,7 @@ public interface OwnerMapper {
+      * source field is missing.
+      */
+     @AfterMapping
+-    default void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addMembershipNumber(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         if (owner.getCustomerCode() != null && owner.getRegistrationDate() != null) {
+             String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+             ownerDto.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
+@@ -61,37 +70,59 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Fills the presentation-only {@code membershipTier}: {@code 'SILVER'} when
+-     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
++     * Fills the presentation-only {@code membershipTier}: {@code 'GOLD'} when the owner's
++     * household (owners sharing the same {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE}
++     * or more members; otherwise {@code 'SILVER'} when namesakeCount is 0 and an email is
++     * present, and {@code 'BRONZE'} in all other cases.
+      */
+     @AfterMapping
+-    default void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addMembershipTier(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        if (isGoldHousehold(owner)) {
++            ownerDto.setMembershipTier("GOLD");
++            return;
++        }
+         boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+             && owner.getEmail() != null && !owner.getEmail().isEmpty();
+         ownerDto.setMembershipTier(silver ? "SILVER" : "BRONZE");
+     }
+ 
++    /**
++     * Reports whether {@code owner} belongs to a household of {@value #GOLD_HOUSEHOLD_SIZE} or
++     * more owners sharing the same {@code householdId}. An owner without a household identifier
++     * is never part of a qualifying household.
++     */
++    private boolean isGoldHousehold(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            return false;
++        }
++        long members = ownerRepository.findAll().stream()
++            .filter(other -> householdId.equals(other.getHouseholdId()))
++            .count();
++        return members >= GOLD_HOUSEHOLD_SIZE;
++    }
++
+     /**
+      * Fills the presentation-only {@code locality} as the canonical region derived from
+      * the owner's city via the fixed {@link #CITY_REGION} table, or {@code 'UNKNOWN'}
+      * when the city is not in the table.
+      */
+     @AfterMapping
+-    default void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
++    void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
+         ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
