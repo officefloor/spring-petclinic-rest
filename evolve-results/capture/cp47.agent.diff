@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateNormalizer.java
+index 6dc1379e3..fb166ba7c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/RegistrationDateNormalizer.java
+@@ -16,18 +16,28 @@
+ 
+ package org.springframework.samples.petclinic.rest.validation;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ /**
+  * Utility for normalizing an owner's registration date to a business day. The effective
+- * registration date must never fall on a weekend, so a Saturday or Sunday is rolled forward
+- * to the following Monday; a weekday value is left untouched. This applies to the effective
+- * date whether it was supplied in the request or defaulted to the server date, and any value
+- * derived from the registration date (such as the membership number's year segment) uses the
+- * adjusted date.
++ * registration date must never fall on a weekend or a public holiday, so a Saturday, Sunday
++ * or listed public holiday is rolled forward to the next non-holiday business day; a weekday
++ * value that is not a holiday is left untouched. This applies to the effective date whether
++ * it was supplied in the request or defaulted to the server date, and any value derived from
++ * the registration date (such as the membership number's year segment) uses the adjusted date.
+  */
+ public final class RegistrationDateNormalizer {
+ 
++    /** Fixed list of public holidays that the registration date must roll past. */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28));
++
+     private RegistrationDateNormalizer() {
+     }
+ 
+@@ -35,13 +45,19 @@ public final class RegistrationDateNormalizer {
+      * Normalize the supplied registration date to a business day.
+      *
+      * @param date the effective registration date (must not be {@code null})
+-     * @return the same date when it falls on a weekday, otherwise the following Monday
++     * @return the same date when it falls on a non-holiday weekday, otherwise the next
++     *         non-holiday business day
+      */
+     public static LocalDate normalize(LocalDate date) {
+-        return switch (date.getDayOfWeek()) {
+-            case SATURDAY -> date.plusDays(2);
+-            case SUNDAY -> date.plusDays(1);
+-            default -> date;
+-        };
++        LocalDate normalized = date;
++        while (isWeekend(normalized) || PUBLIC_HOLIDAYS.contains(normalized)) {
++            normalized = normalized.plusDays(1);
++        }
++        return normalized;
++    }
++
++    private static boolean isWeekend(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        return dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
+     }
+ }
