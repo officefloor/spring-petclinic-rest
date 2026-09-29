@@ -87,9 +87,9 @@ public class Owner extends Person {
      * Whether this owner was flagged as a suspected soft-duplicate of an existing owner. Retained
      * as part of the API/persistence contract but always {@code false} under the current
      * household-keyed rule: an owner sharing an existing owner's {@code lastName} and
-     * {@code postcode} is now the same household, so it is either rejected as a household duplicate
-     * (409) or admitted as a declared {@code sharesHousehold} member — and a declared member is not
-     * a suspected duplicate. No production code path sets this field.
+     * {@code postcode} is now simply admitted as a member of the same household (its membership
+     * level capped by {@link #getMembershipLevelCap()}), not flagged as a suspected duplicate. No
+     * production code path sets this field.
      */
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
@@ -112,9 +112,21 @@ public class Owner extends Person {
     private boolean deleted;
 
     /**
-     * Write-only, non-persistent acknowledgement that this owner deliberately shares a
-     * household with an existing owner. When {@code true}, creation is allowed even if
-     * another owner already has the same lastName and address.
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membership level}, captured
+     * when the owner was created: a new owner's level may not exceed one above the highest level
+     * among the household members that already existed at creation time. {@code null} when no cap
+     * applies (the owner belonged to no existing household member when created), in which case the
+     * membership level is returned uncapped.
+     */
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
+    /**
+     * Write-only, non-persistent acknowledgement that this owner deliberately shares a household
+     * with an existing owner. Retained as part of the API contract but now inert: an owner sharing
+     * an existing owner's {@code lastName} and {@code postcode} is always admitted as a household
+     * member (its membership level capped by {@link #getMembershipLevelCap()}), so the former
+     * household-duplicate rejection this flag used to bypass no longer exists.
      */
     @Transient
     private boolean sharesHousehold;
@@ -359,9 +371,22 @@ public class Owner extends Person {
 
     /**
      * The owner's numeric membership level, mapped from {@link #getMembershipPoints()}: 1 for 0-1
-     * points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     * points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points, then capped by the
+     * {@link #getMembershipLevelCap() membership level cap} when one was captured at creation time.
      */
     public int getMembershipLevel() {
+        int level = computeMembershipLevel();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    /**
+     * The uncapped membership level derived purely from {@link #getMembershipPoints()}: 1 for 0-1
+     * points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     */
+    private int computeMembershipLevel() {
         int points = getMembershipPoints();
         if (points >= 6) {
             return 4;
@@ -373,6 +398,14 @@ public class Owner extends Person {
             return 2;
         }
         return 1;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     /**

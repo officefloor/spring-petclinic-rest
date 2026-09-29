@@ -35,7 +35,6 @@ import org.springframework.samples.petclinic.service.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.service.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.service.DuplicateIdentityException;
 import org.springframework.samples.petclinic.service.FutureRegistrationDateException;
-import org.springframework.samples.petclinic.service.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.service.InvalidPostcodeException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -143,27 +142,6 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
         logger.warn("Duplicate identity at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getMessage());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link HouseholdDuplicateException}, raised when an owner is created into a household
-     * that already has a member (same computed householdId, i.e. the same lastName and postcode)
-     * without declaring {@code sharesHousehold}. Returns a 409 Conflict status.
-     *
-     * @param e The {@link HouseholdDuplicateException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(HouseholdDuplicateException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
-        logger.warn("Household duplicate at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

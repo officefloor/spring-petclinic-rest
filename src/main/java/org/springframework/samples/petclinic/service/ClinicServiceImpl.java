@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -347,7 +348,7 @@ public class ClinicServiceImpl implements ClinicService {
         assignHouseholdId(owner);
         assertIdentityUnique(owner);
         if (creating) {
-            assertHouseholdUnique(owner);
+            applyMembershipLevelCap(owner);
         }
         ownerRepository.save(owner);
         populateHouseholdSize(owner);
@@ -629,27 +630,38 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Rejects creating {@code owner} when another owner already belongs to the same household — i.e.
-     * shares its computed {@code householdId} (same normalized {@code lastName} and {@code postcode}).
-     * Because the household is keyed on those two fields, a second such owner is a household
-     * duplicate unless it declares {@code sharesHousehold}, in which case it is admitted as a
-     * declared household member (and, being declared, is never a suspected duplicate). No-op when the
-     * owner has no household id.
+     * Captures the membership-level ceiling for a newly created {@code owner}: its
+     * {@link Owner#getMembershipLevel() membership level} may not exceed one above the highest level
+     * among the household members (owners sharing its {@code householdId}) that already exist. When
+     * the owner belongs to no household, or no existing member shares it, no cap applies and the
+     * level is left uncapped. Each existing member's household size is stamped via
+     * {@link #populateHouseholdSizes(Collection)} first so its level reflects the household-size
+     * membership points.
      *
-     * @throws HouseholdDuplicateException if another owner already shares the household and the owner
-     *     did not declare {@code sharesHousehold}
+     * @see Owner#getMembershipLevelCap()
      */
-    private void assertHouseholdUnique(Owner owner) {
+    private void applyMembershipLevelCap(Owner owner) {
+        owner.setMembershipLevelCap(null);
         String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank() || owner.isSharesHousehold()) {
+        if (householdId == null || householdId.isBlank()) {
             return;
         }
+        List<Owner> members = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (!existing.getId().equals(owner.getId()) && !existing.isDeleted()
                     && householdId.equals(existing.getHouseholdId())) {
-                throw new HouseholdDuplicateException(householdId);
+                members.add(existing);
             }
         }
+        if (members.isEmpty()) {
+            return;
+        }
+        populateHouseholdSizes(members);
+        int maxLevel = 0;
+        for (Owner member : members) {
+            maxLevel = Math.max(maxLevel, member.getMembershipLevel());
+        }
+        owner.setMembershipLevelCap(maxLevel + 1);
     }
 
     /**
