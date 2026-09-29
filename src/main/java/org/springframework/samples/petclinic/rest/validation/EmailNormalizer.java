@@ -16,15 +16,16 @@
 
 package org.springframework.samples.petclinic.rest.validation;
 
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * Utility for normalizing the optional e-mail address submitted when creating or
  * updating an owner. A {@code null} value is left untouched (the field is optional),
- * but when a value is supplied it must be a syntactically valid address; otherwise an
- * {@link InvalidEmailException} is raised so the request is rejected with
- * {@code 400 Bad Request}. Valid values are returned lower-cased for consistent
- * storage and retrieval.
+ * but when a value is supplied it must be a syntactically valid address whose domain is
+ * not on the disposable-domain blocklist; otherwise an {@link InvalidEmailException} is
+ * raised so the request is rejected with {@code 400 Bad Request}. Valid values are
+ * returned lower-cased for consistent storage and retrieval.
  */
 public final class EmailNormalizer {
 
@@ -35,6 +36,12 @@ public final class EmailNormalizer {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
+    /**
+     * Domains of disposable / throwaway e-mail providers that are not accepted for an owner.
+     */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     private EmailNormalizer() {
     }
 
@@ -43,7 +50,8 @@ public final class EmailNormalizer {
      *
      * @param email the raw e-mail value (may be {@code null} because the field is optional)
      * @return {@code null} when the input is {@code null}, otherwise the address lower-cased
-     * @throws InvalidEmailException if a value is supplied but is not syntactically valid
+     * @throws InvalidEmailException if a value is supplied but is not syntactically valid,
+     *     or its domain is on the disposable-domain blocklist
      */
     public static String normalize(String email) {
         if (email == null) {
@@ -52,6 +60,11 @@ public final class EmailNormalizer {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
             throw new InvalidEmailException("email must be a syntactically valid address");
         }
-        return email.toLowerCase();
+        String normalized = email.toLowerCase();
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException("email domain is not accepted");
+        }
+        return normalized;
     }
 }
