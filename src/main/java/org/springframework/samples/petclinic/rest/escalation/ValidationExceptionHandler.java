@@ -19,6 +19,13 @@ public class ValidationExceptionHandler {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
                 "The request contains invalid or missing parameters");
         BindingResult bindingResult = ex.getBindingResult();
+        // Top-level 'errors' array of the offending field names — the contract the create-owner
+        // endpoint reports, shared here so a missing required field (@NotNull) surfaces the same way.
+        List<String> errors = bindingResult.getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList();
+        detail.setProperty("errors", errors);
         if (bindingResult.hasErrors()) {
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                     .map(fieldError -> {
