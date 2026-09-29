@@ -20,7 +20,20 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's membership tier: 'SILVER' when namesakeCount is 0 and an email is
+     * present, otherwise 'BRONZE'.
+     */
+    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
+        Integer namesakeCount = owner.getNamesakeCount();
+        String email = owner.getEmail();
+        boolean hasEmail = email != null && !email.isBlank();
+        return (namesakeCount != null && namesakeCount == 0 && hasEmail)
+                ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+    }
 
     /** The owner's name formatted as 'LastName, FirstName'. */
     default String toDisplayName(Owner owner) {
