@@ -32,13 +32,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -318,11 +316,10 @@ public class ClinicServiceImpl implements ClinicService {
             assertDailyCapacity(owner);
             assertCityCapacity(owner);
         }
-        List<Owner> household = findHouseholdMembers(owner);
-        assignHousehold(owner, household);
+        assignHouseholdId(owner);
         assertIdentityUnique(owner);
         if (creating) {
-            markPossibleDuplicate(owner);
+            assertHouseholdUnique(owner);
         }
         ownerRepository.save(owner);
         populateHouseholdSize(owner);
@@ -526,81 +523,41 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Flags {@code owner} as a soft match when it is not a hard duplicate (it passed {@link
-     * #assertIdentityUnique(Owner)}) yet shares an existing owner's {@code lastName} (compared
-     * case-insensitively with collapsed whitespace) and {@code postcode} with a different (already
-     * normalized) telephone. The new owner is stamped with {@code possibleDuplicate} true and
-     * {@code possibleDuplicateOf} set to the matching owner's id (the lowest id when several match);
-     * left as a non-duplicate when no such owner exists or no postcode was supplied.
+     * Assigns {@code owner} its deterministic {@code householdId}: the first 12 upper-case hex
+     * characters of the SHA-256 digest over {@code normalizedLastName + '|' + postcode}, so all
+     * owners that share a normalized {@code lastName} and {@code postcode} automatically share the
+     * same household. Left {@code null} when either the lastName or the postcode is absent, since a
+     * household is keyed on both.
      */
-    private void markPossibleDuplicate(Owner owner) {
+    private void assignHouseholdId(Owner owner) {
         String lastName = normalizeHouseholdValue(owner.getLastName());
         String postcode = owner.getPostcode();
         if (lastName.isEmpty() || postcode == null || postcode.isBlank()) {
+            owner.setHouseholdId(null);
             return;
         }
-        String telephone = owner.getTelephone();
-        Owner match = null;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (existing.getId().equals(owner.getId())) {
-                continue;
-            }
-            if (lastName.equals(normalizeHouseholdValue(existing.getLastName()))
-                    && postcode.equals(existing.getPostcode())
-                    && !Objects.equals(telephone, existing.getTelephone())
-                    && (match == null || existing.getId() < match.getId())) {
-                match = existing;
-            }
-        }
-        if (match != null) {
-            owner.setPossibleDuplicate(true);
-            owner.setPossibleDuplicateOf(match.getId());
-        }
+        owner.setHouseholdId(generateHouseholdId(lastName, postcode));
     }
 
     /**
-     * Returns the existing owners that share both {@code lastName} (compared case-insensitively with
-     * collapsed whitespace) and the normalized {@code address} with a new {@code owner} — i.e. the
-     * members of the household it would join. Returns an empty list for an update to an existing
-     * owner or when either household value is blank, so household rules only apply to genuine new
-     * members.
+     * Rejects creating {@code owner} when another owner already belongs to the same household — i.e.
+     * shares its computed {@code householdId} (same normalized {@code lastName} and {@code postcode}).
+     * Because the household is keyed on those two fields, a second such owner is a household
+     * duplicate unless it declares {@code sharesHousehold}, in which case it is admitted as a
+     * declared household member (and, being declared, is never a suspected duplicate). No-op when the
+     * owner has no household id.
+     *
+     * @throws HouseholdDuplicateException if another owner already shares the household and the owner
+     *     did not declare {@code sharesHousehold}
      */
-    private List<Owner> findHouseholdMembers(Owner owner) {
-        if (!owner.isNew()) {
-            return List.of();
-        }
-        String lastName = normalizeHouseholdValue(owner.getLastName());
-        String address = normalizeHouseholdAddress(owner.getAddress());
-        if (lastName.isEmpty() || address.isEmpty()) {
-            return List.of();
-        }
-        List<Owner> household = new ArrayList<>();
-        for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.getId().equals(owner.getId())
-                    && lastName.equals(normalizeHouseholdValue(existing.getLastName()))
-                    && address.equals(normalizeHouseholdAddress(existing.getAddress()))) {
-                household.add(existing);
-            }
-        }
-        return household;
-    }
-
-    /**
-     * Assigns household membership when {@code owner} joins a non-empty {@code household}: the new
-     * owner and every matching existing member that lacks one are given the same stable
-     * {@code householdId}, and any updated existing members are persisted. No-op when the household
-     * is empty.
-     */
-    private void assignHousehold(Owner owner, List<Owner> household) {
-        if (household.isEmpty()) {
+    private void assertHouseholdUnique(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank() || owner.isSharesHousehold()) {
             return;
         }
-        String householdId = resolveHouseholdId(owner, household);
-        owner.setHouseholdId(householdId);
-        for (Owner existing : household) {
-            if (existing.getHouseholdId() == null || existing.getHouseholdId().isBlank()) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!existing.getId().equals(owner.getId()) && householdId.equals(existing.getHouseholdId())) {
+                throw new HouseholdDuplicateException(householdId);
             }
         }
     }
@@ -653,27 +610,13 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Returns the {@code householdId} shared by a household: the first non-blank identifier already
-     * carried by an existing member, or otherwise a freshly derived stable identifier for the
-     * joining {@code owner}'s normalized lastName and address.
+     * Derives the deterministic {@code householdId} from the normalized {@code lastName} and
+     * {@code postcode}: the first 12 upper-case hex characters of SHA-256 over
+     * {@code lastName + '|' + postcode}, so all owners in the same household share the same
+     * identifier.
      */
-    private String resolveHouseholdId(Owner owner, List<Owner> household) {
-        for (Owner existing : household) {
-            if (existing.getHouseholdId() != null && !existing.getHouseholdId().isBlank()) {
-                return existing.getHouseholdId();
-            }
-        }
-        return generateHouseholdId(normalizeHouseholdValue(owner.getLastName()),
-            normalizeHouseholdAddress(owner.getAddress()));
-    }
-
-    /**
-     * Derives a stable {@code householdId} formatted {@code 'HH-<12 upper-hex>'} from the SHA-256
-     * digest of the normalized {@code lastName} and {@code address}, so all owners in the same
-     * household deterministically share the same identifier.
-     */
-    private static String generateHouseholdId(String lastName, String address) {
-        return "HH-" + sha256UpperHex(lastName + "\u0000" + address, 12);
+    private static String generateHouseholdId(String lastName, String postcode) {
+        return sha256UpperHex(lastName + "|" + postcode, 12);
     }
 
     /**
@@ -685,16 +628,6 @@ public class ClinicServiceImpl implements ClinicService {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Household comparison value for an address: the canonical {@link #normalizeAddress(String)}
-     * form (never {@code null}), so duplicate detection and the shared household id compare
-     * addresses using the same normalized representation that is stored and returned.
-     */
-    private static String normalizeHouseholdAddress(String address) {
-        String normalized = normalizeAddress(address);
-        return normalized == null ? "" : normalized;
     }
 
     @Override

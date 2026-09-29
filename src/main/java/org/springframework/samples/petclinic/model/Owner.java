@@ -73,17 +73,21 @@ public class Owner extends Person {
     private String postcode;
 
     /**
-     * True when this owner was created as a soft match of an existing owner: not a hard duplicate
-     * (its {@link #getIdentityKey() identity key} differs) but sharing an existing owner's
-     * {@code lastName} and {@code postcode} with a different telephone. Assigned once at creation.
+     * Whether this owner was flagged as a suspected soft-duplicate of an existing owner. Retained
+     * as part of the API/persistence contract but always {@code false} under the current
+     * household-keyed rule: an owner sharing an existing owner's {@code lastName} and
+     * {@code postcode} is now the same household, so it is either rejected as a household duplicate
+     * (409) or admitted as a declared {@code sharesHousehold} member — and a declared member is not
+     * a suspected duplicate. No production code path sets this field.
      */
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
 
     /**
-     * The id of the existing owner this owner soft-matches on {@code lastName} and {@code postcode},
-     * set together with {@link #isPossibleDuplicate()}; null when this owner is not a possible
-     * duplicate.
+     * The id of the existing owner this owner soft-matches, set together with
+     * {@link #isPossibleDuplicate()}. Retained for contract compatibility but always {@code null}
+     * under the current household-keyed rule (see {@link #isPossibleDuplicate()}); no production
+     * code path sets it.
      */
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
