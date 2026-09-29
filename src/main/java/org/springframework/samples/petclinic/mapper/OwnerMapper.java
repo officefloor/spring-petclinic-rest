@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.common.FiscalYear;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -42,8 +42,12 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".Luhn.checkDigit(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
-            expression = "java(owner.getCustomerCode() + \"-M\" "
-                    + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", "
+                    + "org.springframework.samples.petclinic.rest.function.common.FiscalYear"
+                    + ".yy(owner.getRegistrationDate())))")
+    @Mapping(target = "fiscalYear",
+            expression = "java(org.springframework.samples.petclinic.rest.function.common"
+                    + ".FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner"
                     + ".IdentityKey.ofOwner(owner))")
@@ -66,7 +70,8 @@ public interface OwnerMapper {
     /**
      * The owner's membership points. Starting from 0: add 2 when an email address is present, add 1
      * when the owner has no namesakes (namesakeCount is 0), add 2 for a household of 3 or more
-     * members, and add 3 when the owner's tenure exceeds 365 days.
+     * members, and add 3 when the owner's tenure exceeds one fiscal year (more than one elapsed
+     * fiscal year since the registrationDate; the fiscal year starts on 1 July).
      *
      * <p>The household size is not derived here: it depends on other owners, so it is computed by
      * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerHousehold} before the
@@ -83,9 +88,9 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
             points += 2;
         }
-        long tenureDays = owner.getRegistrationDate() == null ? 0
-                : ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now());
-        if (tenureDays > 365) {
+        long tenureFiscalYears = owner.getRegistrationDate() == null ? 0
+                : FiscalYear.between(owner.getRegistrationDate(), LocalDate.now());
+        if (tenureFiscalYears > 1) {
             points += 3;
         }
         return points;
