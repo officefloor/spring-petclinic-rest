@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -106,6 +107,18 @@ public interface OwnerMapper {
         }
         String city = owner.getCity();
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Whether the owner carries the bulk-signup warning (more than 80 owners already created
+     * on its registration day at creation time). A {@code null} stored value is treated as
+     * {@code false}, so the field is always present in the response.
+     */
+    default Boolean bulkSignupWarning(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(owner.getBulkSignupWarning());
     }
 
     @Mapping(target = "id", ignore = true)

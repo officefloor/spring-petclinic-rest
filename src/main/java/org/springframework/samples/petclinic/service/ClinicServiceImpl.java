@@ -263,7 +263,23 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        owner.setBulkSignupWarning(exceedsBulkSignupThreshold(owner));
         ownerRepository.save(owner);
+    }
+
+    /** Number of owners created on a single day beyond which the bulk-signup warning is raised. */
+    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80L;
+
+    /**
+     * Whether more than {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created
+     * today (compared by {@code registrationDate}), evaluated before this owner is persisted so it
+     * reflects the owners present at creation time. The new owner's registration date, defaulted to
+     * today by the controller, determines which day is counted — the same accumulation path as the
+     * daily-limit rule.
+     */
+    private boolean exceedsBulkSignupThreshold(Owner owner) {
+        LocalDate day = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        return countOwnersRegisteredOn(day) > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
