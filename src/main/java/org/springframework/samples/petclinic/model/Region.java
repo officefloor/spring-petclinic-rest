@@ -31,6 +31,12 @@ public final class Region {
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private Region() {
     }
 
@@ -42,10 +48,55 @@ public final class Region {
     }
 
     /**
+     * The canonical region whose range contains the given 4-digit {@code postcode}, or {@code null}
+     * when the postcode is absent, not a number, or falls in no known range.
+     */
+    public static String forPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The inclusive 4-digit postcode range {@code {low, high}} for {@code region}, or {@code null}
+     * when the region has no defined range. Returns a fresh array so callers cannot mutate the table.
+     */
+    public static int[] postcodeRange(String region) {
+        int[] range = REGION_POSTCODES.get(region);
+        return range == null ? null : new int[] {range[0], range[1]};
+    }
+
+    /**
      * The canonical region for {@code city}, or {@link #UNKNOWN} when the city has no known region.
      */
     public static String localityForCity(String city) {
         String region = forCity(city);
+        return region == null ? UNKNOWN : region;
+    }
+
+    /**
+     * The canonical region derived by preferring the {@code postcode} range, and only falling back
+     * to the city-to-region table when the postcode is absent or in no known range. Returns
+     * {@link #UNKNOWN} when neither the postcode nor the city yields a region.
+     */
+    public static String locality(String city, String postcode) {
+        String region = forPostcode(postcode);
+        if (region == null) {
+            region = forCity(city);
+        }
         return region == null ? UNKNOWN : region;
     }
 }

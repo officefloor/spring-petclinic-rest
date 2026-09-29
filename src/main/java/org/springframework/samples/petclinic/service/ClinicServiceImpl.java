@@ -248,18 +248,13 @@ public class ClinicServiceImpl implements ClinicService {
         return vetRepository.findAll();
     }
 
-    /** Region -> inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
     /**
      * Rejects saving {@code owner} when it carries a postcode that is out of range for its city's
      * region. The postcode is optional: a {@code null} postcode is left untouched. When present it
      * is assumed to already be four digits (enforced by request validation); if the owner's city has
      * a known region (see {@link Region}), the postcode must fall within that region's range
-     * ({@link #REGION_POSTCODES}). A city with no known region accepts any 4-digit postcode.
+     * ({@link Region#postcodeRange(String)}). A city with no known region accepts any 4-digit
+     * postcode.
      *
      * @throws InvalidPostcodeException if the postcode is out of range for the city's region
      */
@@ -269,7 +264,7 @@ public class ClinicServiceImpl implements ClinicService {
             return;
         }
         String region = Region.forCity(owner.getCity());
-        int[] range = region == null ? null : REGION_POSTCODES.get(region);
+        int[] range = region == null ? null : Region.postcodeRange(region);
         if (range == null) {
             return;
         }

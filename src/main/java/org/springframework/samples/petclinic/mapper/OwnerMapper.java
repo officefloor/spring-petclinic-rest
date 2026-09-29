@@ -77,13 +77,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fills the presentation-only {@code locality} as the canonical region derived from
-     * the owner's city via the fixed {@link Region} table, or {@code 'UNKNOWN'}
-     * when the city is not in the table.
+     * Fills the presentation-only {@code locality} as the canonical region derived by preferring
+     * the owner's postcode range and falling back to the city-to-region table (see
+     * {@link Region#locality(String, String)}), or {@code 'UNKNOWN'} when neither yields a region.
      */
     @AfterMapping
     default void addLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setLocality(Region.localityForCity(owner.getCity()));
+        ownerDto.setLocality(Region.locality(owner.getCity(), owner.getPostcode()));
     }
 
     Owner toOwner(OwnerDto ownerDto);
