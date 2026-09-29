@@ -69,8 +69,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -196,25 +196,23 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current <strong>primary identifier</strong> — the stable business key an audit
-     * event or external consumer refers to this owner by. Today that is the
-     * {@link #getCustomerCode() customerCode}; when the customer code is unified into the
-     * {@code memberId}, this returns the memberId instead and every caller follows in a single edit.
+     * The owner's <strong>primary identifier</strong> — the stable business key an audit event or
+     * external consumer refers to this owner by, namely the {@link #getMemberId() memberId}.
      *
      * <p>Deliberately not a {@code get*} bean accessor, so it stays a derived domain concept rather
      * than another mapped/serialized property.
      */
     public String primaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     public String getHouseholdId() {

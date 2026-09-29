@@ -9,9 +9,9 @@ import java.time.Month;
  * and a date before 1 July belongs to the fiscal year identified by the <em>previous</em> calendar
  * year. So 1 Jul 2026 – 30 Jun 2027 is fiscal year 2026, labelled {@code FY26}.
  *
- * <p>The single definition of the fiscal-year basis, shared by the owner mapper: the {@code fiscalYear}
- * field ({@link #label}), the membership number's year segment ({@link #yy}) and the membership-points
- * tenure ({@link #between}) all derive from here so they cannot drift apart. Every input is the
+ * <p>The single definition of the fiscal-year basis: the owner mapper's {@code fiscalYear} field
+ * ({@link #label}) and membership-points tenure ({@link #between}), and the {@code memberId}'s FY
+ * segment ({@link #yy}), all derive from here so they cannot drift apart. Every input is the
  * business-day-adjusted {@code registrationDate}, so all three reflect the same effective date.
  */
 public final class FiscalYear {
@@ -24,7 +24,7 @@ public final class FiscalYear {
         return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() : date.getYear() - 1;
     }
 
-    /** The two-digit fiscal year (e.g. {@code 26}), used as the membership number's year segment. */
+    /** The two-digit fiscal year (e.g. {@code 26}), used as the memberId's FY segment. */
     public static int yy(LocalDate date) {
         return of(date) % 100;
     }

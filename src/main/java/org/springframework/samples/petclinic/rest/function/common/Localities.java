@@ -43,7 +43,7 @@ public final class Localities {
     /**
      * The canonical region derived from the {@code postcode} alone — the region whose range contains
      * it, or "UNKNOWN" when the postcode is absent, blank, non-numeric or in no known range. This is
-     * the region embedded in an owner's {@code customerCode}.
+     * the region embedded in an owner's {@code memberId}.
      */
     public static String ofPostcode(String postcode) {
         String byPostcode = regionForPostcode(postcode);

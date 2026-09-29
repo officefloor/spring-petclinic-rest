@@ -1,11 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.common;
 
 /**
- * Computes a single Luhn check digit over the digits contained in a string. Used to derive an
- * owner's {@code checkDigit} from their customerCode. The algorithm is the standard Luhn
- * (right-to-left doubling of alternate digits); non-digit characters are ignored, so separators
- * such as the '-' in a customerCode do not affect the result. Pinned so both the Spring and
- * OfficeFloor arms produce identical values.
+ * Computes a single Luhn check digit over the digits contained in a string. Used to derive the
+ * {@code CHK} segment of an owner's {@code memberId} from its {@code <REGION><FY><HASH8>} base. The
+ * algorithm is the standard Luhn (right-to-left doubling of alternate digits); non-digit characters
+ * are ignored, so the region and hash letters in a memberId base do not affect the result. Pinned so
+ * both the Spring and OfficeFloor arms produce identical values.
  */
 public final class Luhn {
 

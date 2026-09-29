@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 /**
- * SHA-256 helper used to derive an owner's {@code customerCode} hash segment. Pinned so both the
+ * SHA-256 helper used to derive an owner's {@code memberId} hash segment. Pinned so both the
  * Spring and OfficeFloor arms produce identical values: the digest is taken over the UTF-8 bytes and
  * rendered as lower-case hex, from which callers take the leading, upper-cased characters.
  *

@@ -7,17 +7,15 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
  * Immutable structured audit event emitted on a successful owner create, alongside the plain audit
  * line. {@link AuditOwnerCreated} serializes it with the project's Jackson {@code ObjectMapper} — the
  * same serializer the {@code rest/dto} DTOs use — to a single-line JSON object with fields in the
- * order the spec lists them: {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+ * order the spec lists them: {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
  *
- * <p>The {@code customerCode} slot carries the owner's <strong>current primary identifier</strong>,
- * read from {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()}. Today that
- * is the customer code; when it is unified into the {@code memberId}, the domain accessor returns the
- * memberId and this event follows with no change here.
+ * <p>The {@code memberId} slot carries the owner's <strong>primary identifier</strong>, read from
+ * {@link org.springframework.samples.petclinic.model.Owner#primaryIdentifier()} — the unified member id.
  *
  * <p>{@code seq} is a monotonically increasing integer across creates (see {@link AuditOwnerCreated}).
  */
-@JsonPropertyOrder({ "seq", "ownerId", "customerCode", "membershipLevel", "event" })
-public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, Integer membershipLevel) {
+@JsonPropertyOrder({ "seq", "ownerId", "memberId", "membershipLevel", "event" })
+public record OwnerCreatedEvent(long seq, int ownerId, String memberId, Integer membershipLevel) {
 
     /** The fixed event marker distinguishing this structured event from other AUDIT lines. */
     public static final String EVENT = "OWNER_CREATED";

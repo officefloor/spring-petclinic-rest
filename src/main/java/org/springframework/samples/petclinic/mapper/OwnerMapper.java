@@ -37,13 +37,6 @@ public interface OwnerMapper {
     @Mapping(target = "timezone",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".Localities.timezoneOfRegion(locality(owner)))")
-    @Mapping(target = "checkDigit",
-            expression = "java(org.springframework.samples.petclinic.rest.function.common"
-                    + ".Luhn.checkDigit(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber",
-            expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", "
-                    + "org.springframework.samples.petclinic.rest.function.common.FiscalYear"
-                    + ".yy(owner.getRegistrationDate())))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.rest.function.common"
                     + ".FiscalYear.label(owner.getRegistrationDate()))")
@@ -111,7 +104,7 @@ public interface OwnerMapper {
     /**
      * The owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
      * owner's {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}. AREA is
-     * {@code METRO} when the owner's locality (the region segment of the customerCode) is a known region
+     * {@code METRO} when the owner's locality (the region segment of the memberId) is a known region
      * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
      */
     default String ownerSegment(Owner owner) {
@@ -122,14 +115,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's canonical region ("locality"), read from the region segment of their customerCode via
-     * {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode#regionOf(String)}, or
-     * {@code "UNKNOWN"} when the code maps to no known region. Shared by the {@code locality} and
+     * The owner's canonical region ("locality"), read from the region segment of their memberId via
+     * {@link org.springframework.samples.petclinic.rest.function.owner.MemberId#regionOf(String)}, or
+     * {@code "UNKNOWN"} when the id maps to no known region. Shared by the {@code locality} and
      * {@code timezone} mappings and by {@link #ownerSegment(Owner)} so the derivation lives in one place.
      */
     default String locality(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
-                .regionOf(owner.getCustomerCode());
+        return org.springframework.samples.petclinic.rest.function.owner.MemberId
+                .regionOf(owner.getMemberId());
     }
 
     Owner toOwner(OwnerDto ownerDto);
