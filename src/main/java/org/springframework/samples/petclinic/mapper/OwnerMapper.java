@@ -137,6 +137,17 @@ public interface OwnerMapper {
         }
     }
 
+    /**
+     * Fills the presentation-only {@code selfLink} as {@code '/api/owners/'} followed by the
+     * owner's id, leaving it null when the owner has no id assigned yet.
+     */
+    @AfterMapping
+    default void addSelfLink(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        if (owner.getId() != null) {
+            ownerDto.setSelfLink("/api/owners/" + owner.getId());
+        }
+    }
+
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
