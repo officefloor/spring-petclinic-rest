@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 899b1bec1..eff8375e9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+@@ -47,8 +46,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be in E.164 form (a leading '+' and 8 to 15 digits)")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+index 33bfd261c..3ab1d25af 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+@@ -5,8 +5,8 @@ import jakarta.validation.Payload;
+ import java.lang.annotation.*;
+ 
+ /**
+- * Validates that a telephone number contains exactly ten digits once every
+- * non-digit character has been stripped out (see {@link TelephoneValidator}).
++ * Validates that a telephone number can be normalized into E.164 form, i.e. a
++ * leading '+' followed by 8 to 15 digits (see {@link TelephoneValidator}).
+  */
+ @Target({ ElementType.FIELD })
+ @Retention(RetentionPolicy.RUNTIME)
+@@ -14,7 +14,7 @@ import java.lang.annotation.*;
+ @Documented
+ public @interface TelephoneValidation {
+ 
+-    String message() default "Telephone number must contain exactly 10 digits";
++    String message() default "Telephone number must be a valid E.164 number (8 to 15 digits)";
+ 
+     Class<?>[] groups() default {};
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+index 88c07995f..3e55e262a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidator.java
+@@ -1,19 +1,20 @@
+ package org.springframework.samples.petclinic.rest.validation;
+ 
++import org.springframework.samples.petclinic.util.E164Telephone;
++
+ import jakarta.validation.ConstraintValidator;
+ import jakarta.validation.ConstraintValidatorContext;
+ 
+ /**
+- * Rejects a telephone number that does not contain exactly ten digits after
+- * every non-digit character has been removed. The stripping mirrors the
+- * normalization applied before an {@code Owner} is persisted, so the value the
+- * client is told about matches the value that gets stored.
++ * Rejects a telephone number that cannot be normalized into E.164 form (see
++ * {@link E164Telephone}). The normalization mirrors what is applied before an
++ * {@code Owner} is persisted, so the value the client is told about matches the
++ * value that gets stored.
+  */
+ public class TelephoneValidator implements ConstraintValidator<TelephoneValidation, String> {
+ 
+     @Override
+     public boolean isValid(String telephone, ConstraintValidatorContext context) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        return digits.length() == 10;
++        return E164Telephone.toE164(telephone) != null;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 99cd65edb..62786014c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.E164Telephone;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -252,7 +253,7 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     private static String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        return telephone == null ? null : E164Telephone.toE164(telephone);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/util/E164Telephone.java
+new file mode 100644
+index 000000000..1867979e1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/E164Telephone.java
+@@ -0,0 +1,68 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Normalizes telephone numbers into <a href="https://en.wikipedia.org/wiki/E.164">E.164</a>
++ * form. Spaces, dashes and brackets are stripped. A number that already carries a leading
++ * {@code '+'} keeps its explicit country code; otherwise the Australian country code
++ * {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the national
++ * digits. The result must contain between 8 and 15 digits after the {@code '+'}, matching
++ * the E.164 length rule.
++ *
++ * <p>The same logic backs both the request-time validator (so a number that cannot form
++ * valid E.164 is rejected with HTTP 400) and the normalization applied before an
++ * {@code Owner} is persisted, so the value a client is told about matches the value that
++ * gets stored and compared for duplicates.
++ */
++public final class E164Telephone {
++
++    private E164Telephone() {
++    }
++
++    /**
++     * Convert a raw telephone number to E.164 form, or return {@code null} if it cannot
++     * form a valid E.164 number.
++     *
++     * @param raw the raw telephone number as supplied by the client (may be {@code null})
++     * @return the normalized {@code +<digits>} string, or {@code null} when invalid
++     */
++    public static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String cleaned = raw.replaceAll("[\\s()\\-]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            String body = cleaned.substring(1);
++            if (!body.matches("\\d+")) {
++                return null;
++            }
++            digits = body;
++        }
++        else {
++            if (!cleaned.matches("\\d+")) {
++                return null;
++            }
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
++            return null;
++        }
++        return "+" + digits;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 94c2b4a7d..6ec5355e1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2028,13 +2028,15 @@ components:
+         telephone:
+           title: Telephone number
+           description: >-
+-            The telephone number of the pet owner. The value is normalized by
+-            removing every non-digit character and must contain exactly 10
+-            digits afterwards.
++            The telephone number of the pet owner. The value is normalized into
++            E.164 form: spaces, dashes and brackets are stripped; a leading '+'
++            and country code are kept when present, otherwise country code '+61'
++            is assumed and a single leading '0' is dropped from the national
++            digits. The result must contain 8 to 15 digits after the '+'.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+           x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.TelephoneValidation"
+         email:
+           title: Email
