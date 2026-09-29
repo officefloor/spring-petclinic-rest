@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -238,6 +239,9 @@ public class ClinicServiceImpl implements ClinicService {
         }
         if (owner.getEmail() != null) {
             owner.setEmail(normalizeEmail(owner.getEmail()));
+        }
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
         }
         assertTelephoneUnique(owner, owner.getTelephone());
         ownerRepository.save(owner);
