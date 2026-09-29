@@ -1,0 +1,167 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5a751196a..29a4db639 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
++    @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
+     @Mapping(target = "possibleDuplicate", expression = "java(possibleDuplicate(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+@@ -229,6 +230,18 @@ public interface OwnerMapper {
+         return Boolean.TRUE.equals(owner.getBulkSignupWarning());
+     }
+ 
++    /**
++     * Whether the owner carries the capacity warning (its city already held between 40 and 49
++     * owners, approaching the capacity limit of 50, at creation time). A {@code null} stored value
++     * is treated as {@code false}, so the field is always present in the response.
++     */
++    default Boolean capacityWarning(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return Boolean.TRUE.equals(owner.getCapacityWarning());
++    }
++
+     /**
+      * Whether the owner was flagged as a possible (soft) duplicate at creation time — not a hard
+      * duplicate, but sharing an existing owner's last-name Soundex code and postcode while differing
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 96759efe2..7497d1236 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_member_count")
+     private Integer householdMemberCount;
+ 
+@@ -211,6 +214,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdMemberCount() {
+         return this.householdMemberCount;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 8b5ebccb3..509133fc5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -269,6 +269,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setNamesakeCount(countNamesakes(owner));
+         }
+         owner.setBulkSignupWarning(exceedsBulkSignupThreshold(owner));
++        owner.setCapacityWarning(approachingCityCapacity(owner));
+         ownerRepository.save(owner);
+     }
+ 
+@@ -443,6 +444,26 @@ public class ClinicServiceImpl implements ClinicService {
+         }
+     }
+ 
++    /**
++     * Lower bound (inclusive) of the range of existing owners in a city that raises the
++     * capacity warning. Between this and {@code CITY_CAPACITY - 1} the city is approaching its
++     * {@value #CITY_CAPACITY} limit.
++     */
++    private static final long CITY_CAPACITY_WARNING_THRESHOLD = 40L;
++
++    /**
++     * Whether the owner's city already contains between {@value #CITY_CAPACITY_WARNING_THRESHOLD}
++     * and {@code CITY_CAPACITY - 1} owners (approaching, but not at, the {@value #CITY_CAPACITY}
++     * capacity limit), compared case-insensitively with collapsed whitespace. Evaluated before the
++     * owner is persisted, so it reflects the owners present at creation time. The hard rejection at
++     * {@value #CITY_CAPACITY} runs earlier (see {@link #rejectWhenCityAtCapacity(Owner)}), so the
++     * count is always below capacity when this is reached.
++     */
++    private boolean approachingCityCapacity(Owner owner) {
++        long count = countOwnersInCity(owner);
++        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
++    }
++
+     /**
+      * Count the existing owners that already live in this owner's city, compared
+      * case-insensitively (with surrounding/collapsed whitespace ignored). Evaluated before the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 1719102f7..d3f87a076 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_member_count INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 2b2c265bb..d26bad0ac 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_member_count INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 96918b847..f9735330e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_member_count INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 91499b5ab..732567da9 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_member_count INTEGER,
+                                       membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8a8d4a32a..097856198 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2308,6 +2308,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already held between 40 and 49 owners
++                (approaching the capacity limit of 50) at the time this owner was
++                created; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
