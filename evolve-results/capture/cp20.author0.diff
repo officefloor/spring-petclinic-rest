@@ -1,0 +1,37 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8bcd3913b..674682da8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,9 +110,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(telephone);
+         owner.setEmail(EmailNormalizer.normalize(owner.getEmail()));
+         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        LocalDate effectiveRegistrationDate =
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        owner.setRegistrationDate(toBusinessDay(effectiveRegistrationDate));
+         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> telephone.equals(TelephoneNormalizer.toE164(existing.getTelephone())));
+         if (telephoneInUse) {
+@@ -126,6 +126,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Roll a registration date that falls on a weekend forward to the next Monday, so the
++     * effective registration date always lands on a business day. Weekday dates are returned
++     * unchanged.
++     */
++    private static LocalDate toBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
