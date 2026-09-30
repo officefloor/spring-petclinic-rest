@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a7bb5c834..b5c13eecd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -48,14 +48,20 @@ public interface OwnerMapper {
+ 
+     /**
+      * Determines an owner's membership tier for the read-only {@code membershipTier} field:
+-     * {@code 'SILVER'} when the owner had no namesakes at creation (namesakeCount is 0) and an
+-     * email address is present, otherwise {@code 'BRONZE'}.
++     * {@code 'GOLD'} when the owner's household (owners sharing the same householdId) had 3 or
++     * more members after this owner was created; otherwise {@code 'SILVER'} when the owner had no
++     * namesakes at creation (namesakeCount is 0) and an email address is present, otherwise
++     * {@code 'BRONZE'}.
+      */
+     @Named("formatMembershipTier")
+     default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
++        boolean largeHousehold = owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
++        if (largeHousehold) {
++            return OwnerDto.MembershipTierEnum.GOLD;
++        }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cb5036932..8b4766e29 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * Establishes the effective registration date at persist time, so the create-time default
+      * applies to any persistence path.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4eef162b1..df6c45d05 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -131,9 +131,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!sharesHousehold && householdExists) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        int householdSize = 1;
+         if (sharesHousehold && householdExists) {
++            householdSize = this.clinicService.countOwnersInHousehold(owner.getLastName(), owner.getAddress()) + 1;
+             this.clinicService.assignHousehold(owner);
+         }
++        owner.setHouseholdSize(householdSize);
+         owner.setNamesakeCount(
+             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 2416b40a4..16490edba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -64,6 +64,7 @@ public interface ClinicService {
+ 	int countOwnersByCity(String city) throws DataAccessException;
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+ 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
++	int countOwnersInHousehold(String lastName, String address) throws DataAccessException;
+ 	String assignHousehold(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 25d1333ea..d86b85719 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -321,6 +321,17 @@ public class ClinicServiceImpl implements ClinicService {
+         return !findHouseholdMembers(lastName, address).isEmpty();
+     }
+ 
++    /**
++     * Counts the existing owners that belong to the household identified by the given last name
++     * and address (compared in normalized form). Zero when either field is absent, since no
++     * household can be formed.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public int countOwnersInHousehold(String lastName, String address) throws DataAccessException {
++        return findHouseholdMembers(lastName, address).size();
++    }
++
+     /**
+      * Returns the existing owners that belong to the household identified by the given last name
+      * and address, comparing both fields in their normalized form. An empty list is returned when
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..89fdfaf4f 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..675b9a81c 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6eb..bee2a7a1e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  household_size INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..0f7089afd 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a9291498f..012f94fa6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2153,13 +2153,16 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier. 'SILVER' when the owner had no
+-                namesakes at creation (namesakeCount is 0) and an email address
+-                is present, otherwise 'BRONZE'.
++                The owner's membership tier. 'GOLD' when the owner's household
++                (owners sharing the same householdId) had 3 or more members
++                after this owner was created; otherwise 'SILVER' when the owner
++                had no namesakes at creation (namesakeCount is 0) and an email
++                address is present, otherwise 'BRONZE'.
+               type: string
+               enum:
+                 - BRONZE
+                 - SILVER
++                - GOLD
+               example: 'SILVER'
+               readOnly: true
+             bulkSignupWarning:
