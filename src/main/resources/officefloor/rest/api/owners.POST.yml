@@ -1,6 +1,24 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# An 'Idempotency-Key' already seen short-circuits to 'existing' (return the original owner, 200);
+# otherwise 'create' runs the normal validate-through-respond pipeline. Runs before the body is
+# read so a duplicate retry never binds @RequestBody.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdempotency
+  outputs:
+    existing: loadExisting
+    create: validate
+
+loadExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadExistingOwner
+  govern: [ readonly-transaction ]
+  next: respondExisting
+
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
   next: validateRegistrationDate
@@ -81,6 +99,11 @@ detectPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordOwnerIdempotency
   govern: [ transaction ]
   next: audit
 
