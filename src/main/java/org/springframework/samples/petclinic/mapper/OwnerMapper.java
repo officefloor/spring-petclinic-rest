@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -31,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -65,6 +67,29 @@ public interface OwnerMapper {
         }
         int dash = code.indexOf('-');
         return dash < 0 ? code : code.substring(0, dash);
+    }
+
+    /**
+     * Fixed region-to-timezone table mapping each canonical region to its IANA timezone name.
+     */
+    Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
+     * Derives an owner's {@code timezone} as the IANA timezone name for its locality/region, using
+     * the fixed region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane). The region is taken from {@link #formatLocality(Owner)}, so the
+     * timezone always agrees with the reported locality. Returns {@code null} when the region is not
+     * in the table (e.g. {@code 'UNKNOWN'}).
+     */
+    @Named("formatTimezone")
+    default String formatTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return REGION_TIMEZONE.get(formatLocality(owner));
     }
 
     /**
