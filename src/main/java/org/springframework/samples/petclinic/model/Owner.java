@@ -99,6 +99,9 @@ public class Owner extends Person {
     @Transient
     private Integer householdSize;
 
+    @Transient
+    private Integer membershipLevelCap;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -251,8 +254,8 @@ public class Owner extends Person {
      * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner, keyed
      * off the shared {@link #getHouseholdId() householdId} (same lastName and postcode). A declared
      * household member (created with {@code sharesHousehold} true) is never flagged; any other owner
-     * joining an existing household is rejected 409 instead. {@code false} when no such earlier owner
-     * existed. Assigned at creation.
+     * joining an existing household is allowed but flagged {@code true}. {@code false} when no such
+     * earlier owner existed. Assigned at creation.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -319,6 +322,19 @@ public class Owner extends Person {
     }
 
     /**
+     * The ceiling applied to {@link #getMembershipLevel() membershipLevel}: one above the current
+     * maximum membershipLevel among this owner's existing household members. Derived at response
+     * time and not persisted; {@code null} means no household member exists and no cap applies.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * The owner's membership points, derived at response time. Starts at {@code 0}, plus 2 when an
      * email is present, plus 1 when {@link #namesakeCount} is 0, plus 2 when the
      * {@link #getHouseholdSize() household} has 3 or more members, plus 3 when tenure exceeds one
@@ -346,19 +362,30 @@ public class Owner extends Person {
      * The owner's numeric membership level, mapped from {@link #getMembershipPoints() membershipPoints}:
      * {@code 1} for 0-1 points, {@code 2} for 2-3 points, {@code 3} for 4-5 points, and {@code 4} for
      * 6 or more points.
+     *
+     * <p>When a {@link #getMembershipLevelCap() membershipLevelCap} is present the result is capped to
+     * it, so a new owner's level cannot exceed one above the current maximum membershipLevel among
+     * their household members. With no household member the cap is absent and the mapped level stands.
      */
     public Integer getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**
@@ -512,7 +539,7 @@ public class Owner extends Person {
      * canonical E.164 form and the email lower-cased; an absent email or householdId contributes an
      * empty segment. Derived at response time and exposed as a read-only response field only — it
      * drives no check. Duplicate detection is purely household-based (see
-     * {@code CheckOwnerHouseholdUnique}, which compares {@link #getHouseholdId() householdId}); this
+     * {@code DetectOwnerPossibleDuplicate}, which compares {@link #getHouseholdId() householdId}); this
      * key is not consulted. Not persisted.
      */
     public String getIdentityKey() {

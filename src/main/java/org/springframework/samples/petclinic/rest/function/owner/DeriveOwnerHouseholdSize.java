@@ -21,20 +21,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class DeriveOwnerHouseholdSize {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            owner.setHouseholdSize(1);
-            return;
-        }
-        long count = 1; // the owner itself
-        for (Owner existing : ownerRepository.findAll()) {
-            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
-                continue;
-            }
-            if (householdId.equals(existing.getHouseholdId())) {
-                count++;
-            }
-        }
-        owner.setHouseholdSize((int) count);
+        // 1 for the owner itself plus its household members.
+        owner.setHouseholdSize(1 + HouseholdMembers.of(owner, ownerRepository).size());
     }
 }

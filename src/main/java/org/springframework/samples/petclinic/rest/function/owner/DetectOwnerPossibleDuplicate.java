@@ -12,9 +12,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  *
  * <p>A <em>declared</em> household member — one created with {@code sharesHousehold} true — is never
  * flagged: it deliberately joins the household, so it is not a suspected duplicate. Any other owner
- * sharing an existing household has already been rejected 409 by {@link CheckOwnerHouseholdUnique},
- * so in practice this leaves {@code possibleDuplicate} false; keeping the check here keys the soft
- * signal off the same household id as the hard block.
+ * joining an existing household is allowed (its membership level is capped by
+ * {@link CapOwnerMembershipLevel}) but flagged here as a possible duplicate, keying the soft signal
+ * off the same {@link HouseholdMembers household membership} as the size and cap steps.
  *
  * <p>Runs after {@link BuildOwner}/{@link AssignOwnerHousehold} and before {@link SaveOwner},
  * scanning only pre-existing (already persisted) owners — the new owner has no id yet and is skipped.
@@ -28,21 +28,12 @@ public class DetectOwnerPossibleDuplicate {
     public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
         Owner match = null;
         if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            String householdId = owner.getHouseholdId();
-            if (householdId != null) {
-                for (Owner existing : ownerRepository.findAll()) {
-                    if (existing.getId() == null
-                            || existing.getId().equals(owner.getId())) {
-                        continue;
-                    }
-                    if (existing.isDeleted()) {
-                        continue; // soft-deleted owners are ignored by the duplicate check
-                    }
-                    if (householdId.equals(existing.getHouseholdId())) {
-                        if (match == null || existing.getId() < match.getId()) {
-                            match = existing;
-                        }
-                    }
+            for (Owner member : HouseholdMembers.of(owner, ownerRepository)) {
+                if (member.getId() == null) {
+                    continue; // an unsaved member has no id to record as possibleDuplicateOf
+                }
+                if (match == null || member.getId() < match.getId()) {
+                    match = member;
                 }
             }
         }
