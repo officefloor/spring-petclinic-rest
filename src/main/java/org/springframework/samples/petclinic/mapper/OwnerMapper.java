@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -25,6 +26,8 @@ public interface OwnerMapper {
             + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipTier",
         expression = "java(toMembershipTier(owner))")
+    @Mapping(target = "locality",
+        expression = "java(toLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -35,6 +38,20 @@ public interface OwnerMapper {
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * Fixed city-to-region table used to derive an owner's locality.
+     */
+    Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derive an owner's locality (region) from the city using the fixed
+     * {@link #CITY_REGION} table, returning 'UNKNOWN' when the city is not listed.
+     */
+    default String toLocality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
     Owner toOwner(OwnerDto ownerDto);
