@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index 917dc8cad..f2712bf82 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -64,6 +64,14 @@ public interface OwnerRepository {
+      */
+     boolean existsByTelephone(String telephone) throws DataAccessException;
+ 
++    /**
++     * Check whether an <code>Owner</code> with the given email exists, comparing case-insensitively.
++     *
++     * @param email the email address to look for
++     * @return <code>true</code> if any owner already uses the given email (ignoring case)
++     */
++    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
++
+ 
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 449b3d040..0f8cd4c96 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -160,6 +160,18 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return count != null && count > 0;
+     }
+ 
++    @Override
++    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("email", email);
++        Long count = this.namedParameterJdbcTemplate.queryForObject(
++            "SELECT COUNT(*) FROM owners WHERE LOWER(email) = LOWER(:email)",
++            params,
++            Long.class
++        );
++        return count != null && count > 0;
++    }
++
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 317dcfb1c..76e3611fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -96,6 +96,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return (long) query.getSingleResult() > 0;
+     }
+ 
++    @Override
++    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)");
++        query.setParameter("email", email);
++        return (long) query.getSingleResult() > 0;
++    }
++
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4eef162b1..58765f880 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 2416b40a4..1acd411d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -60,6 +60,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
++	boolean existsOwnerWithEmail(String email) throws DataAccessException;
+ 	int countOwnersByName(String firstName, String lastName) throws DataAccessException;
+ 	int countOwnersByCity(String city) throws DataAccessException;
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 25d1333ea..e5d0ad3d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -269,6 +269,15 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.existsByTelephone(telephone);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean existsOwnerWithEmail(String email) throws DataAccessException {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        return ownerRepository.existsByEmailIgnoreCase(email);
++    }
++
+     /**
+      * Counts the existing owners whose firstName and lastName match the given values
+      * case-insensitively. Used to record an owner's namesake count at creation time.
