@@ -47,6 +47,27 @@ public final class AddressNormalizer {
         return sb.toString();
     }
 
+    /**
+     * Composes the stored flat address from its (already-normalized) parts. When a non-blank
+     * {@code line1} is present the structured form wins: the result is {@code line1}, with a single
+     * space and {@code line2} appended when {@code line2} is present. Otherwise it falls back to the
+     * supplied {@code flat} address, keeping the request backward-compatible.
+     *
+     * <p>Inputs are expected to be already normalized (see {@link #normalize(String)}); this method
+     * only chooses and joins, it does not re-normalize.
+     *
+     * @param line1 the normalized structured first address line (may be {@code null}/blank)
+     * @param line2 the normalized structured second address line (may be {@code null}/blank)
+     * @param flat  the normalized flat address to fall back to (may be {@code null})
+     * @return the composed address
+     */
+    public static String compose(String line1, String line2, String flat) {
+        if (line1 != null && !line1.isBlank()) {
+            return (line2 != null && !line2.isBlank()) ? line1 + " " + line2 : line1;
+        }
+        return flat;
+    }
+
     private static String expand(String token) {
         return switch (token) {
             case "ST" -> "STREET";

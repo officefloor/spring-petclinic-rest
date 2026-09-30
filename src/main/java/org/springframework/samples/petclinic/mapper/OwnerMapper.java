@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.mapper;
 
 import org.jspecify.annotations.NonNull;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
@@ -226,8 +228,22 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Resolves the owner's stored {@code address} after the field mapping runs, from the already
+     * normalized {@code addressLine1}/{@code addressLine2} fields set on the target (preferred when
+     * present) with the normalized flat {@code address} as the fallback. See
+     * {@link AddressNormalizer#compose(String, String, String)} for the composition rule.
+     */
+    @AfterMapping
+    default void composeAddress(OwnerFieldsDto ownerDto, @MappingTarget Owner owner) {
+        owner.setAddress(AddressNormalizer.compose(
+            owner.getAddressLine1(), owner.getAddressLine2(), normalizeAddress(ownerDto.getAddress())));
+    }
 
     /**
      * Normalizes a postal address for persistence: whitespace is trimmed and collapsed, the
