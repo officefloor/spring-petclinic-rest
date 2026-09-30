@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Global Exception handler for REST controllers.
@@ -84,6 +85,29 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(AccessDeniedException.class)
     public void handleAccessDeniedException(AccessDeniedException e) throws AccessDeniedException {
         throw e;
+    }
+
+    /**
+     * Handles {@link ResponseStatusException}s raised by controllers to reject a request (e.g. the
+     * per-day rate limit as 429 or a capacity/duplicate conflict as 409). The declared HTTP status
+     * is preserved and the response carries an RFC7807 {@code application/problem+json} body.
+     *
+     * @param e The {@link ResponseStatusException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the problem detail and the exception's HTTP status
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        logger.warn("Request rejected with {} at {} {}: {}",
+            status.value(),
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getReason());
+        String detail = Objects.toString(e.getReason(), status.getReasonPhrase());
+        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
+        return ResponseEntity.status(status).body(problemDetail);
     }
 
     /**

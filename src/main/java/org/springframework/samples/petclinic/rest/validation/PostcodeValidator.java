@@ -36,7 +36,10 @@ public class PostcodeValidator implements ConstraintValidator<PostcodeValidation
         if (postcode == null || !postcode.matches("^[0-9]{4}$")) {
             return true;
         }
-        String region = CITY_REGION.get(owner.getCity());
+        // A null city has no known region (its own @NotNull rule reports the missing city); treat it
+        // like any unknown-region city and accept the postcode rather than failing the lookup.
+        String city = owner.getCity();
+        String region = city == null ? null : CITY_REGION.get(city);
         int[] range = region == null ? null : REGION_POSTCODES.get(region);
         if (range == null) {
             // City with no known region accepts any 4-digit postcode.

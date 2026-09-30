@@ -46,6 +46,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -187,10 +188,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         LocalDate registrationDate = owner.resolveRegistrationDate();
         if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner registration limit has been reached; please retry later");
         }
         if (this.clinicService.countOwnersByCity(owner.getCity()) >= HARD_CAPACITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "The requested city has reached its owner capacity");
         }
         // The household id is deterministic: owners that share a (normalized lastName, postcode)
         // share it automatically. It feeds the membership-level cap and household sizing below.
@@ -204,7 +207,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // There is no separate household-duplicate 409: two owners sharing a lastName and postcode
         // but differing in telephone (or email) have distinct identity keys and are allowed.
         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         // Soft-match: the identity key differs, yet the surname's soundex and the postcode match an
         // existing owner, flagged 'possibleDuplicate'. This is exactly the same lastName/postcode,
