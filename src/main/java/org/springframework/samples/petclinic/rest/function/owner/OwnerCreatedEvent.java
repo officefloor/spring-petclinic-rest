@@ -9,22 +9,17 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured audit event emitted when an owner is created, serialized as the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
  *
- * <p>The {@code customerCode} is the owner's <em>current primary identifier</em> — the value that
- * uniquely names the owner to the outside world. When a later evolution unifies the customer code into
- * a {@code memberId}, this event should move with it: rename the component (and its factory source in
- * {@link #of(Owner)}) so both the field and the serialized key track the owner's primary identity. The
- * concept is deliberately named {@code customerCode} in one place only, so that migration is a single
- * consistent rename rather than a hunt across an abstract field name, a hardcoded getter and a string
- * literal.
+ * <p>The {@code memberId} is the owner's <em>primary identifier</em> — the single value that uniquely
+ * names the owner to the outside world, unifying the former customer code and membership number.
  *
  * <p>{@link #seq} is a process-wide, monotonically increasing sequence assigned at construction via
  * {@link #of(Owner)}, ordering events across every create regardless of pipeline or thread. The record
  * is immutable: once built, its fields never change.
  */
-@JsonPropertyOrder({ "seq", "ownerId", "customerCode", "membershipLevel", "event" })
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+@JsonPropertyOrder({ "seq", "ownerId", "memberId", "membershipLevel", "event" })
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
 
     /** The fixed event marker. */
@@ -39,11 +34,11 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
     /**
      * Builds the event for a persisted {@code owner}, assigning the next monotonic {@link #seq} and
      * stamping the {@link #EVENT} marker. The identifier is taken from the owner's
-     * {@link Owner#getCustomerCode() customerCode} — the owner's current primary identifier.
+     * {@link Owner#getMemberId() memberId} — the owner's primary identifier.
      */
     public static OwnerCreatedEvent of(Owner owner) {
         return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                owner.getCustomerCode(), owner.getMembershipLevel(), EVENT);
+                owner.getMemberId(), owner.getMembershipLevel(), EVENT);
     }
 
     /** Renders the event as a compact JSON object via the shared {@link ObjectMapper}. */

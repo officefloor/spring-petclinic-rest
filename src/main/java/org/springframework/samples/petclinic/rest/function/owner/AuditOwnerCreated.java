@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits, via the dedicated {@code AUDIT} logger, both the human-readable audit line — recording the
- * new owner's id, its assigned {@code customerCode}, its {@code registrationDate}, its
- * {@code membershipLevel} and its {@code membershipNumber} — and, in addition, an immutable structured
- * {@link OwnerCreatedEvent} serialized as JSON ({@code {seq, ownerId, customerCode, membershipLevel,
+ * new owner's id, its assigned {@code memberId}, its {@code registrationDate} and its
+ * {@code membershipLevel} — and, in addition, an immutable structured
+ * {@link OwnerCreatedEvent} serialized as JSON ({@code {seq, ownerId, memberId, membershipLevel,
  * event:'OWNER_CREATED'}}) whose {@code seq} increases monotonically across creates. Runs after
  * {@link SaveOwner} (so the id is populated) and before {@link RespondWithOwnerCreated}.
  *
@@ -23,9 +23,9 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
         AUDIT.info(OwnerCreatedEvent.of(owner).toJson());
     }
 }
