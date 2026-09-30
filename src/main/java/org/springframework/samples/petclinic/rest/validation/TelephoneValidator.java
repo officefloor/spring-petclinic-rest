@@ -7,11 +7,8 @@ public class TelephoneValidator implements ConstraintValidator<TelephoneValidati
 
     @Override
     public boolean isValid(String telephone, ConstraintValidatorContext context) {
-
-        if (telephone == null) {
-            return true; // absence is handled by @NotNull / @NotEmpty
-        }
-
-        return telephone.replaceAll("\\D", "").length() == 10;
+        // absence is handled by @NotNull / @NotEmpty; otherwise the value must be able
+        // to form a valid E.164 number.
+        return TelephoneNormalizer.isValid(telephone);
     }
 }

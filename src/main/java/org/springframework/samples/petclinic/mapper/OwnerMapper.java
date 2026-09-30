@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -52,12 +53,13 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * Normalizes a telephone number for persistence by removing every non-digit character.
-     * The exactly-10-digits rule is enforced separately by {@code TelephoneValidation}.
+     * Normalizes a telephone number for persistence into canonical E.164 form (e.g.
+     * {@code '0412 345 678'} becomes {@code '+61412345678'}). The formability rule is
+     * enforced separately by {@code TelephoneValidation}.
      */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return TelephoneNormalizer.toE164(telephone);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
