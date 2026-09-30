@@ -360,20 +360,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
     /**
-     * Rolls a registration date forward onto a business day: a date that falls on a Saturday or
-     * Sunday is moved forward to the following Monday, while a date already on a weekday is returned
+     * The fixed public holidays that the business-day roll skips. A registration date landing on one
+     * of these dates is rolled forward, exactly as it is for a weekend day.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"),
+        LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
+    /**
+     * Rolls a registration date forward onto a business day: a date that falls on a Saturday, a
+     * Sunday or a listed public holiday is advanced one day at a time until it lands on a weekday
+     * that is not a public holiday, while a date already on a non-holiday weekday is returned
      * unchanged. Applied to the effective registration date (supplied or defaulted to the server
      * date) so that the stored {@code registrationDate}, and every value derived from it, always
      * falls on a business day.
      *
      * @param date the effective registration date
-     * @return the same date when it is a weekday, otherwise the following Monday
+     * @return the same date when it is a non-holiday weekday, otherwise the next such business day
      */
     private static LocalDate rollToBusinessDay(LocalDate date) {
+        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
+        }
+        return date;
+    }
+
+    private static boolean isWeekend(LocalDate date) {
         return switch (date.getDayOfWeek()) {
-            case SATURDAY -> date.plusDays(2);
-            case SUNDAY -> date.plusDays(1);
-            default -> date;
+            case SATURDAY, SUNDAY -> true;
+            default -> false;
         };
     }
 
