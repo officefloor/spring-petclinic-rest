@@ -7,8 +7,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Derives the owner's {@code householdSize} at response time: the number of owners sharing this
  * owner's {@link Owner#getHouseholdId() householdId}, counting this owner itself. An owner with no
- * household id is a household of one. The size drives the {@code GOLD} membership tier (3 or more
- * members) in {@link Owner#getMembershipTier()}.
+ * household id is a household of one. The size is exposed as a derived, response-time field on the
+ * owner.
  *
  * <p>The current owner is counted explicitly (starting at one) rather than relying on it appearing
  * in {@link OwnerRepository#findAll()}, so the count is correct in the create pipeline — where the

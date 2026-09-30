@@ -163,8 +163,7 @@ public class Owner extends Person {
 
     /**
      * The number of owners in this owner's household (owners sharing the same
-     * {@link #householdId}), derived at response time and not persisted. Used to derive the
-     * {@code GOLD} membership tier.
+     * {@link #householdId}), derived at response time and not persisted.
      */
     public Integer getHouseholdSize() {
         return this.householdSize;
@@ -175,17 +174,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier, derived at response time: {@code GOLD} when the owner's
-     * household ({@link #householdSize} owners sharing the same {@link #householdId}) has 3 or more
-     * members; otherwise {@code SILVER} when {@link #namesakeCount} is 0 and an email is present,
-     * else {@code BRONZE}.
+     * The owner's numeric membership level, assigned at creation. Starts at {@code 1}, plus 1 when
+     * an email is present, plus 1 when {@link #namesakeCount} is 0, capped at {@code 3} (level 4 is
+     * reserved for tenure).
      */
-    public String getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= 3) {
-            return "GOLD";
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isEmpty()) {
+            level++;
         }
-        boolean hasEmail = this.email != null && !this.email.isEmpty();
-        return (this.namesakeCount != null && this.namesakeCount == 0 && hasEmail) ? "SILVER" : "BRONZE";
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** Fixed city-to-region table used to derive {@link #getLocality()}. */

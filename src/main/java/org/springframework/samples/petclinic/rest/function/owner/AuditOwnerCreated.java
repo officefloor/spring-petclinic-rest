@@ -7,8 +7,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits an audit line via the dedicated {@code AUDIT} logger once an owner has been
- * persisted, recording the new owner's id, its assigned {@code customerCode} and its
- * {@code registrationDate}. Runs after {@link SaveOwner} (so the id is populated) and
+ * persisted, recording the new owner's id, its assigned {@code customerCode}, its
+ * {@code registrationDate} and its {@code membershipLevel}. Runs after {@link SaveOwner} (so the
+ * id is populated) and
  * before {@link RespondWithOwnerCreated}.
  *
  * <p>It reads no repository, but stays under the pipeline's {@code transaction} governance
@@ -21,7 +22,8 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
     }
 }
