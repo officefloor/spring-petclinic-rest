@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -296,6 +297,21 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+    }
+
+    /**
+     * Counts the existing owners whose registration date matches the given value.
+     * Used to enforce the per-day owner creation limit.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException {
+        if (registrationDate == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
     }
 

@@ -15,6 +15,7 @@
  */
 package org.springframework.samples.petclinic.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +62,7 @@ public interface ClinicService {
 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
 	int countOwnersByName(String firstName, String lastName) throws DataAccessException;
 	int countOwnersByCity(String city) throws DataAccessException;
+	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
 	String assignHousehold(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
