@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -108,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        owner.setAddress(normalizeAddress(owner.getAddress()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -312,6 +314,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "email must be a syntactically valid address");
         }
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Common street-type abbreviations expanded to their full word during address normalization.
+     * Keys and values are upper-case; matching is done per whitespace-delimited token.
+     */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
+        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Normalizes an owner address for storage. Leading/trailing whitespace is trimmed and internal
+     * runs of whitespace are collapsed to a single space, the value is upper-cased, and common
+     * street-type abbreviations are expanded per token ({@code ST -> STREET}, {@code RD -> ROAD},
+     * {@code AVE -> AVENUE}). This normalized value is what gets stored, returned, and used for every
+     * address comparison (household duplicate detection and the shared household id).
+     *
+     * <p>For example {@code "  12  main  st "} is normalized to {@code "12 MAIN STREET"}.
+     *
+     * @param address the raw address supplied by the client, possibly {@code null}
+     * @return the normalized address
+     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the address is blank
+     *                                 after normalization (required field)
+     */
+    private static String normalizeAddress(String address) {
+        String collapsed = address == null ? "" : address.trim().replaceAll("\\s+", " ");
+        if (collapsed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "address must not be blank");
+        }
+        String[] tokens = collapsed.toUpperCase(Locale.ROOT).split(" ");
+        StringBuilder normalized = new StringBuilder();
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                normalized.append(' ');
+            }
+            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return normalized.toString();
     }
 
     /**
