@@ -313,6 +313,10 @@ public class Owner extends Person {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-IANA-timezone table used to derive {@link #getTimezone()}. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     /**
      * The fixed city-to-region mapping ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
      * {@code Brisbane -> QLD}): the region for {@code city}, or {@code null} when the city is not in
@@ -360,6 +364,16 @@ public class Owner extends Person {
         }
         int dash = this.customerCode.indexOf('-');
         return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
+    }
+
+    /**
+     * The owner's IANA timezone name, derived at response time from the {@link #getLocality()
+     * locality}/region via the fixed region-to-timezone table ({@code NSW -> Australia/Sydney},
+     * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}), or {@code null}
+     * when the region is not in the table. Not persisted.
+     */
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
     }
 
     /**
