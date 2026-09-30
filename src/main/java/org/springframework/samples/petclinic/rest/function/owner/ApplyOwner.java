@@ -9,6 +9,7 @@ public class ApplyOwner {
     public void service(@Val Owner owner, @Val OwnerFieldsDto request) {
         owner.setAddress(request.getAddress());
         owner.setCity(request.getCity());
+        owner.setPostcode(request.getPostcode());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
         owner.setTelephone(request.getTelephone());

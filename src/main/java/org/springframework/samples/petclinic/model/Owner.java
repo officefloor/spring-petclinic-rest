@@ -43,6 +43,10 @@ public class Owner extends Person {
     @NotEmpty
     private String city;
 
+    @Column(name = "postcode")
+    @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
+    private String postcode;
+
     @Column(name = "telephone")
     @NotEmpty
     @Pattern(regexp = "^\\+[0-9]{8,15}$",
@@ -90,6 +94,14 @@ public class Owner extends Person {
 
     public void setCity(String city) {
         this.city = city;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getTelephone() {
@@ -194,12 +206,24 @@ public class Owner extends Person {
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
+     * The single source of truth for the fixed city-to-region mapping ({@code Sydney -> NSW},
+     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}): the region for {@code city}, or
+     * {@code null} when the city is not in the table. Callers that need a displayable value use
+     * {@link #getLocality()}; callers that need to branch on "known region or not" (such as
+     * postcode validation) test for {@code null}.
+     */
+    public static String regionOf(String city) {
+        return CITY_REGION.get(city);
+    }
+
+    /**
      * The owner's region, derived at response time from {@link #city} using the fixed
      * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
      * {@code Brisbane -> QLD}), or {@code UNKNOWN} when the city is not in the table.
      */
     public String getLocality() {
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        String region = regionOf(this.city);
+        return region != null ? region : "UNKNOWN";
     }
 
     /**
