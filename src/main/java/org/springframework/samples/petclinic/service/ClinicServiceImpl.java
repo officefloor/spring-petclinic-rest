@@ -261,6 +261,22 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.existsByTelephone(telephone);
     }
 
+    /**
+     * Counts the existing owners whose firstName and lastName match the given values
+     * case-insensitively. Used to record an owner's namesake count at creation time.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersByName(String firstName, String lastName) throws DataAccessException {
+        if (firstName == null || lastName == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
