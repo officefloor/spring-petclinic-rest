@@ -238,6 +238,12 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean existsOwnerWithTelephone(String telephone) throws DataAccessException {
+        return ownerRepository.existsByTelephone(telephone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
     }
