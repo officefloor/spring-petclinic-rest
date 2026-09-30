@@ -55,6 +55,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -76,14 +77,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final IdempotencyKeyRegistry idempotencyKeyRegistry;
+
+    private final HttpServletRequest request;
+
+    /** HTTP header carrying the idempotency key for the create-owner endpoint. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 IdempotencyKeyRegistry idempotencyKeyRegistry,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.idempotencyKeyRegistry = idempotencyKeyRegistry;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -115,6 +127,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
+        String idempotencyKey = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
+        Integer existingId = this.idempotencyKeyRegistry.findOwnerId(idempotencyKey);
+        if (existingId != null) {
+            Owner existing = this.clinicService.findOwnerById(existingId);
+            if (existing != null) {
+                return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+            }
+        }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
@@ -164,6 +184,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicate(softDuplicate != null);
         owner.setPossibleDuplicateOf(softDuplicate == null ? null : softDuplicate.getId());
         this.clinicService.saveOwner(owner);
+        this.idempotencyKeyRegistry.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
