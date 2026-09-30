@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** City -> canonical region; anything not listed derives locality 'UNKNOWN'. */
@@ -35,6 +36,17 @@ public interface OwnerMapper {
      */
     default String toLocality(Owner owner) {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The owner's preferred contact channel: 'EMAIL' when an email is present,
+     * otherwise 'PHONE'.
+     */
+    default OwnerDto.ContactPreferenceEnum toContactPreference(Owner owner) {
+        String email = owner.getEmail();
+        return (email != null && !email.isBlank())
+                ? OwnerDto.ContactPreferenceEnum.EMAIL
+                : OwnerDto.ContactPreferenceEnum.PHONE;
     }
 
     /** The owner's name formatted as 'LastName, FirstName'. */
