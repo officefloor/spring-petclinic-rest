@@ -1,0 +1,203 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 90974c9b2..3ac71214b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.util.DisposableEmailDomains;
+ import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+ import org.springframework.samples.petclinic.util.IdentityKeyUtils;
+ 
+@@ -53,8 +54,50 @@ public interface OwnerMapper {
+         expression = "java(toFiscalYear(owner))")
+     @Mapping(target = "selfLink",
+         expression = "java(toSelfLink(owner))")
++    @Mapping(target = "riskFlag",
++        expression = "java(toRiskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derive an owner's risk flag: {@code true} when the owner warrants a manual risk review, defined
++     * as the logical OR of three conditions — the owner is a possible duplicate
++     * ({@code possibleDuplicate} is true), the owner's email domain is disposable-adjacent (see
++     * {@link #hasDisposableAdjacentEmail(Owner)}), or the owner's city is over its soft capacity
++     * ({@code capacityWarning} is true). Otherwise {@code false}. Derived at read time.
++     */
++    default Boolean toRiskFlag(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || hasDisposableAdjacentEmail(owner);
++    }
++
++    /**
++     * Whether the owner's email domain is disposable-adjacent: a domain that is not itself a
++     * whole-blocklisted disposable domain (those are rejected at creation) but shares a known
++     * disposable provider's second-level label — i.e. one of the domain's dot-separated labels equals a
++     * label in {@link DisposableEmailDomains#BASE_LABELS}. This catches subdomains of a disposable provider
++     * (e.g. {@code sub.mailinator.com}) and the same base under a different TLD (e.g.
++     * {@code mailinator.net}), while a merely similar label (e.g. {@code mymailinator.com}) is not
++     * matched. Returns {@code false} when the owner has no email or the value carries no domain.
++     */
++    default boolean hasDisposableAdjacentEmail(Owner owner) {
++        if (!hasEmail(owner)) {
++            return false;
++        }
++        String email = owner.getEmail();
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        for (String label : domain.split("\\.")) {
++            if (DisposableEmailDomains.BASE_LABELS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     /**
+      * Derive an owner's canonical self link: the resource path {@code '/api/owners/<id>'} where
+      * {@code <id>} is the owner's id. Returns {@code null} when the owner has no id yet (the field is
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1bc3e4988..222ac9e22 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.DisposableEmailDomains;
+ import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+ import org.springframework.samples.petclinic.util.IdentityKeyUtils;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -604,14 +605,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
+-    /**
+-     * Disposable email domains that are not accepted for an owner. An email whose domain is on this
+-     * blocklist is rejected with {@link HttpStatus#BAD_REQUEST}. Entries are lower-case and matched
+-     * case-insensitively against the domain (the part after the {@code @}).
+-     */
+-    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     /**
+      * Validates and normalizes an optional owner email address. A {@code null} value is left as is
+      * (email is optional). When a value is supplied it must be a syntactically valid address whose
+@@ -634,7 +627,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         String normalized = email.toLowerCase(Locale.ROOT);
+         String domain = normalized.substring(normalized.indexOf('@') + 1);
+-        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++        if (DisposableEmailDomains.BLOCKLIST.contains(domain)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                 "email domain " + domain + " is not allowed");
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java
+new file mode 100644
+index 000000000..22069cf99
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/DisposableEmailDomains.java
+@@ -0,0 +1,72 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++/**
++ * Single source of truth for the disposable-email providers the application knows about. Both the
++ * create-time email validation (in the owner controller, which rejects an owner whose whole email
++ * domain is on {@link #BLOCKLIST}) and the read-time risk-flag derivation (in the owner mapper, which
++ * raises the softer "disposable-adjacent" signal from {@link #BASE_LABELS}) consult this class, so the
++ * set of disposable providers has one owner: add a domain to {@link #BLOCKLIST} here and both paths
++ * pick it up — the base-label view is derived from it rather than hand-restated.
++ */
++public final class DisposableEmailDomains {
++
++    /**
++     * The disposable-email domains not accepted for an owner. An email whose whole domain (the part
++     * after the {@code @}) is on this blocklist is rejected at creation. Entries are lower-case and
++     * matched case-insensitively.
++     */
++    public static final Set<String> BLOCKLIST =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /**
++     * The second-level labels of the {@link #BLOCKLIST} domains — each domain's label immediately
++     * before its final TLD (e.g. {@code "mailinator"} from {@code "mailinator.com"}). Derived from the
++     * blocklist rather than maintained separately, so it always tracks it. Used for the read-time
++     * "disposable-adjacent" signal: a domain sharing one of these labels (a subdomain of a disposable
++     * provider, or the same base under a different TLD) is disposable-adjacent.
++     */
++    public static final Set<String> BASE_LABELS = BLOCKLIST.stream()
++        .map(DisposableEmailDomains::baseLabel)
++        .collect(Collectors.toUnmodifiableSet());
++
++    private DisposableEmailDomains() {
++    }
++
++    /**
++     * The second-level label of a domain: the dot-separated label immediately before its final TLD
++     * (e.g. {@code "mailinator"} from {@code "mailinator.com"}), or the whole value when it carries no
++     * dot. Lower-cased.
++     *
++     * @param domain the domain to reduce to its base label
++     * @return the domain's lower-cased second-level label
++     */
++    private static String baseLabel(String domain) {
++        String lower = domain.toLowerCase(Locale.ROOT);
++        int lastDot = lower.lastIndexOf('.');
++        if (lastDot < 0) {
++            return lower;
++        }
++        int prevDot = lower.lastIndexOf('.', lastDot - 1);
++        return lower.substring(prevDot + 1, lastDot);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d63b12632..dfe598556 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2378,6 +2378,21 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review, derived at
++                read time as the logical OR of three conditions: the owner is a
++                possible duplicate ('possibleDuplicate' is true), the email
++                domain is disposable-adjacent (a dot-separated label of the
++                email domain matches the second-level label of a known
++                disposable-email provider, e.g. 'mailinator' in
++                'sub.mailinator.com' or 'mailinator.net'), or the city is over
++                its soft capacity ('capacityWarning' is true, i.e. the city held
++                at least 40 owners when this owner was created). Otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: >-

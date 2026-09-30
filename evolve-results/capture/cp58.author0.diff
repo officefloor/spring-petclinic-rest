@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 90974c9b2..92348b1a1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,6 +17,7 @@ import java.time.Period;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ 
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+@@ -53,8 +54,59 @@ public interface OwnerMapper {
+         expression = "java(toFiscalYear(owner))")
+     @Mapping(target = "selfLink",
+         expression = "java(toSelfLink(owner))")
++    @Mapping(target = "riskFlag",
++        expression = "java(toRiskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The second-level labels of the known disposable-email providers (the create endpoint's
++     * disposable-domain blocklist, keyed by the label immediately before the final TLD). A stored
++     * email can never carry a whole blocklisted domain (the create endpoint rejects those with a 400),
++     * so this drives the softer "disposable-adjacent" signal instead — a domain that merely shares a
++     * disposable provider's base label, such as a subdomain of it or the same base with a different TLD.
++     */
++    Set<String> DISPOSABLE_EMAIL_BASE_LABELS = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    /**
++     * Derive an owner's risk flag: {@code true} when the owner warrants a manual risk review, defined
++     * as the logical OR of three conditions — the owner is a possible duplicate
++     * ({@code possibleDuplicate} is true), the owner's email domain is disposable-adjacent (see
++     * {@link #hasDisposableAdjacentEmail(Owner)}), or the owner's city is over its soft capacity
++     * ({@code capacityWarning} is true). Otherwise {@code false}. Derived at read time.
++     */
++    default Boolean toRiskFlag(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || hasDisposableAdjacentEmail(owner);
++    }
++
++    /**
++     * Whether the owner's email domain is disposable-adjacent: a domain that is not itself a
++     * whole-blocklisted disposable domain (those are rejected at creation) but shares a known
++     * disposable provider's second-level label — i.e. one of the domain's dot-separated labels equals a
++     * label in {@link #DISPOSABLE_EMAIL_BASE_LABELS}. This catches subdomains of a disposable provider
++     * (e.g. {@code sub.mailinator.com}) and the same base under a different TLD (e.g.
++     * {@code mailinator.net}), while a merely similar label (e.g. {@code mymailinator.com}) is not
++     * matched. Returns {@code false} when the owner has no email or the value carries no domain.
++     */
++    default boolean hasDisposableAdjacentEmail(Owner owner) {
++        if (!hasEmail(owner)) {
++            return false;
++        }
++        String email = owner.getEmail();
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_EMAIL_BASE_LABELS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     /**
+      * Derive an owner's canonical self link: the resource path {@code '/api/owners/<id>'} where
+      * {@code <id>} is the owner's id. Returns {@code null} when the owner has no id yet (the field is
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d63b12632..dfe598556 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2378,6 +2378,21 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review, derived at
++                read time as the logical OR of three conditions: the owner is a
++                possible duplicate ('possibleDuplicate' is true), the email
++                domain is disposable-adjacent (a dot-separated label of the
++                email domain matches the second-level label of a known
++                disposable-email provider, e.g. 'mailinator' in
++                'sub.mailinator.com' or 'mailinator.net'), or the city is over
++                its soft capacity ('capacityWarning' is true, i.e. the city held
++                at least 40 owners when this owner was created). Otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: >-
