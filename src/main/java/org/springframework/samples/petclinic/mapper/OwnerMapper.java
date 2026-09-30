@@ -12,6 +12,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -66,9 +68,11 @@ public interface OwnerMapper {
 
     /**
      * Determines an owner's numeric membership level for the read-only {@code membershipLevel}
-     * field, assigned at creation and ranging from 1 to 3: it starts at 1, gains 1 when an email
-     * address is present, gains 1 when the owner had no namesakes at creation (namesakeCount is 0),
-     * and is capped at 3. Level 4 is reserved for tenure.
+     * field, ranging from 1 to 4: it starts at 1, gains 1 when an email address is present, gains 1
+     * when the owner had no namesakes at creation (namesakeCount is 0), and gains a final 1 for
+     * tenure of more than 365 days (measured from the registration date to the current date). The
+     * pre-tenure factors are capped at 3, so level 4 requires tenure over 365 days. A newly created
+     * owner has zero tenure and therefore never exceeds level 3.
      */
     @Named("formatMembershipLevel")
     default Integer formatMembershipLevel(Owner owner) {
@@ -84,7 +88,12 @@ public interface OwnerMapper {
         if (noNamesakes) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (owner.getRegistrationDate() != null
+            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /**
