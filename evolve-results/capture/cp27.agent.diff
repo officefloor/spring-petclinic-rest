@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5fe7b4448..f143ab74f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,8 +28,26 @@ public interface OwnerMapper {
+         expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(toLocality(owner))")
++    @Mapping(target = "contactPreference",
++        expression = "java(toContactPreference(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Whether the owner has an email address present (non-null and non-empty). Single source of truth
++     * for the "is an email present" rule shared by the derived fields below.
++     */
++    default boolean hasEmail(Owner owner) {
++        return owner.getEmail() != null && !owner.getEmail().isEmpty();
++    }
++
++    /**
++     * Derive an owner's preferred contact channel: 'EMAIL' when an email address is present,
++     * otherwise 'PHONE'.
++     */
++    default String toContactPreference(Owner owner) {
++        return hasEmail(owner) ? "EMAIL" : "PHONE";
++    }
++
+     /**
+      * Derive an owner's numeric membership level (1 to 3): start at 1; add 1 when an email address is
+      * present; add 1 when the owner has no namesakes (namesakeCount is 0); capped at 3 (level 4 is
+@@ -37,8 +55,7 @@ public interface OwnerMapper {
+      */
+     default Integer toMembershipLevel(Owner owner) {
+         int level = 1;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+-        if (hasEmail) {
++        if (hasEmail(owner)) {
+             level++;
+         }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a4ad4cd23..b5a0ef492 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2165,6 +2165,14 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            contactPreference:
++              title: Contact preference
++              description: >-
++                The owner's preferred contact channel, derived at read time:
++                'EMAIL' when an email address is present, otherwise 'PHONE'.
++              type: string
++              readOnly: true
++              example: 'EMAIL'
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
