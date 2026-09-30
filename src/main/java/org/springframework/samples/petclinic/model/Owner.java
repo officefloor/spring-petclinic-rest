@@ -268,6 +268,37 @@ public class Owner extends Person {
     }
 
     /**
+     * A single Luhn check digit (0-9) derived at response time over the digits contained in
+     * {@link #customerCode} (non-digit characters are ignored), or {@code null} when the owner
+     * has no customer code. Computed with the standard Luhn algorithm — doubling every second
+     * digit from the right, subtracting 9 from any result over 9, and taking
+     * {@code (10 - sum % 10) % 10}. Not persisted.
+     */
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The single source of truth for an owner's identity: the derived key
      * {@code normalizedTelephone|email|householdId}, joined with '|'. The telephone is stored in
      * canonical E.164 form and the email lower-cased, so this key composes their canonical values;
