@@ -1,0 +1,358 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c45affb79..261541073 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.HashUtils;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+@@ -364,18 +365,68 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's derived identity key, used as the single basis for duplicate detection:
+-     * the normalized telephone, the email (empty when absent) and the household id (empty
+-     * when absent), joined with {@code '|'}. Two owners are duplicates only when their whole
+-     * identity keys are equal, so any single differing component (telephone, email or
+-     * household) yields distinct keys and is allowed. Derived from persisted fields, so it is
+-     * not itself a persistent column.
++     * The owner's derived identity key, used as the single basis for duplicate detection: the
++     * lower-case hex SHA-256 digest over {@code normalizedTelephone + '|' + lowerEmail + '|' +
++     * soundex(lastName)}, where the telephone and email components are empty when absent. Two
++     * owners are duplicates only when their whole identity keys are equal, so any single differing
++     * component (telephone, email or the surname's soundex) yields distinct keys and is allowed.
++     * Derived from persisted fields, so it is not itself a persistent column.
+      */
+     @Transient
+     public String getIdentityKey() {
+-        return (this.telephone == null ? "" : this.telephone)
+-            + "|" + (this.email == null ? "" : this.email)
+-            + "|" + (this.householdId == null ? "" : this.householdId);
++        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
++        String lowerEmail = this.email == null ? "" : this.email.toLowerCase();
++        String seed = normalizedTelephone + "|" + lowerEmail + "|" + soundex(getLastName());
++        return HashUtils.sha256Hex(seed);
++    }
++
++    /**
++     * Computes the American Soundex code for a name: the retained first letter followed by three
++     * digits derived from the remaining consonants (b,f,p,v-&gt;1; c,g,j,k,q,s,x,z-&gt;2; d,t-&gt;3;
++     * l-&gt;4; m,n-&gt;5; r-&gt;6), with adjacent equal codes collapsed, h and w ignored (so they do
++     * not separate equal codes) and vowels acting as separators, right-padded with zeros to length
++     * four. Returns an empty string when the value is null or holds no letters, so surnames that
++     * sound alike share a code.
++     */
++    public static String soundex(String value) {
++        if (value == null) {
++            return "";
++        }
++        String letters = value.toUpperCase().replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder();
++        code.append(letters.charAt(0));
++        char previous = soundexDigit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            if (c == 'H' || c == 'W') {
++                continue;
++            }
++            char digit = soundexDigit(c);
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            previous = digit;
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /** Maps a letter to its Soundex digit, or {@code '0'} for vowels, y, h and w. */
++    private static char soundexDigit(char c) {
++        return switch (c) {
++            case 'B', 'F', 'P', 'V' -> '1';
++            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
++            case 'D', 'T' -> '3';
++            case 'L' -> '4';
++            case 'M', 'N' -> '5';
++            case 'R' -> '6';
++            default -> '0';
++        };
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 138bffce8..07a53a339 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -143,24 +143,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         // The household id is deterministic: owners that share a (normalized lastName, postcode)
+-        // share it automatically. It feeds the identity key, the membership-level cap and the
+-        // possible-duplicate suppression below.
++        // share it automatically. It feeds the membership-level cap and household sizing below.
+         owner.setHouseholdId(this.clinicService.computeHouseholdId(owner));
+-        boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getHouseholdId());
+         // A new owner joining an existing household (owners sharing a normalized lastName and
+         // postcode) has its membershipLevel capped at one above the current maximum membershipLevel
+         // among the existing household members. With no existing household member, no cap applies.
+         owner.setMembershipLevelCap(this.clinicService.computeMembershipLevelCap(owner.getHouseholdId()));
+         // Hard duplicate detection is consolidated into the owner's derived identity key (see
+         // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
++        // There is no separate household-duplicate 409: two owners sharing a lastName and postcode
++        // but differing in telephone (or email) have distinct identity keys and are allowed.
+         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        // Soft-match: shares an existing owner's lastName and postcode with a different telephone,
+-        // flagged 'possibleDuplicate'. A declared household member is not a suspected duplicate, so
+-        // the flag is suppressed when this owner joins an existing household.
+-        Integer possibleDuplicateOf = householdExists ? null
+-            : this.clinicService.findPossibleDuplicateOwnerId(owner);
++        // Soft-match: the identity key differs, yet the surname's soundex and the postcode match an
++        // existing owner, flagged 'possibleDuplicate'. This is exactly the same lastName/postcode,
++        // different telephone case that is no longer a hard duplicate.
++        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+         owner.setPossibleDuplicate(possibleDuplicateOf != null);
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         owner.setNamesakeCount(
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 8f6649a34..21b85919d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -65,7 +65,6 @@ public interface ClinicService {
+ 	int countOwnersByCity(String city) throws DataAccessException;
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+ 	String computeHouseholdId(Owner owner) throws DataAccessException;
+-	boolean existsOwnerInHousehold(String householdId) throws DataAccessException;
+ 	int countOwnersByHouseholdId(String householdId) throws DataAccessException;
+ 	Collection<Owner> findOwnersByHouseholdId(String householdId) throws DataAccessException;
+ 	Integer computeMembershipLevelCap(String householdId) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 78895d6ff..ee4cae04e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,12 +22,10 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.HashUtils;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.Comparator;
+@@ -322,19 +320,7 @@ public class ClinicServiceImpl implements ClinicService {
+     private static String hash8(Owner owner) {
+         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+-        String seed = telephone + lastName;
+-        try {
+-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+-            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder(hash.length * 2);
+-            for (byte b : hash) {
+-                sb.append(String.format("%02X", b));
+-            }
+-            return sb.substring(0, 8);
+-        }
+-        catch (NoSuchAlgorithmException e) {
+-            throw new IllegalStateException("SHA-256 not available", e);
+-        }
++        return HashUtils.sha256UpperHex(telephone + lastName, 8);
+     }
+ 
+     /**
+@@ -355,11 +341,13 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     /**
+      * Finds the id of an existing owner that {@code owner} soft-matches (a possible duplicate): one
+-     * that shares its lastName (case-insensitive) and postcode while carrying a <i>different</i>
+-     * telephone. This is a weaker match than the hard-duplicate identity key, so it is only meaningful
+-     * for an owner that is not itself a hard duplicate. When several owners match, the one with the
+-     * lowest id is returned; {@code null} is returned when there is no match (or lastName/postcode is
+-     * absent), meaning the owner is not a possible duplicate.
++     * whose surname shares this owner's {@code soundex(lastName)} and whose postcode matches, yet
++     * whose identity key differs (so it is not itself a hard duplicate). This is a weaker match than
++     * the hard-duplicate identity key, so it is only meaningful for an owner that is not itself a hard
++     * duplicate; in particular two owners with the same lastName and postcode but different telephones
++     * are soft matches rather than hard duplicates. When several owners match, the one with the lowest
++     * id is returned; {@code null} is returned when there is no match (or lastName/postcode is absent),
++     * meaning the owner is not a possible duplicate.
+      */
+     @Override
+     @Transactional(readOnly = true)
+@@ -367,14 +355,14 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner == null || owner.getLastName() == null || owner.getPostcode() == null) {
+             return null;
+         }
+-        String lastName = owner.getLastName();
++        String soundex = Owner.soundex(owner.getLastName());
+         String postcode = owner.getPostcode();
+-        String telephone = owner.getTelephone();
++        String identityKey = owner.getIdentityKey();
+         return ownerRepository.findAll().stream()
+             .filter(existing -> !existing.isDeleted())
+-            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName())
++            .filter(existing -> soundex.equals(Owner.soundex(existing.getLastName()))
+                 && postcode.equals(existing.getPostcode())
+-                && !Objects.equals(telephone, existing.getTelephone()))
++                && !Objects.equals(identityKey, existing.getIdentityKey()))
+             .map(Owner::getId)
+             .filter(Objects::nonNull)
+             .min(Comparator.naturalOrder())
+@@ -447,24 +435,7 @@ public class ClinicServiceImpl implements ClinicService {
+             || postcode == null || postcode.isBlank()) {
+             return null;
+         }
+-        return sha256UpperHex(normalizedLastName + "|" + postcode, 12);
+-    }
+-
+-    /**
+-     * Whether any existing owner already belongs to the household identified by the given
+-     * (deterministic) household id. This is the single basis for the household-duplicate rule:
+-     * owners that share a last name and postcode share a household id, so a matching existing owner
+-     * means the new owner is a household duplicate. Returns {@code false} when the id is absent.
+-     */
+-    @Override
+-    @Transactional(readOnly = true)
+-    public boolean existsOwnerInHousehold(String householdId) throws DataAccessException {
+-        if (householdId == null || householdId.isBlank()) {
+-            return false;
+-        }
+-        return ownerRepository.findAll().stream()
+-            .filter(existing -> !existing.isDeleted())
+-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
++        return HashUtils.sha256UpperHex(normalizedLastName + "|" + postcode, 12);
+     }
+ 
+     /**
+@@ -537,25 +508,6 @@ public class ClinicServiceImpl implements ClinicService {
+         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
+-    /**
+-     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the
+-     * UTF-8 bytes of {@code seed}.
+-     */
+-    private static String sha256UpperHex(String seed, int length) {
+-        try {
+-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+-            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder(hash.length * 2);
+-            for (byte b : hash) {
+-                sb.append(String.format("%02X", b));
+-            }
+-            return sb.substring(0, length);
+-        }
+-        catch (NoSuchAlgorithmException e) {
+-            throw new IllegalStateException("SHA-256 not available", e);
+-        }
+-    }
+-
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/HashUtils.java b/src/main/java/org/springframework/samples/petclinic/util/HashUtils.java
+new file mode 100644
+index 000000000..0b723304c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/HashUtils.java
+@@ -0,0 +1,59 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Shared SHA-256 hex helpers used to derive the owner identity key, household id and customer-code
++ * hash. Centralises the digest-and-hex boilerplate so those derivations differ only in hex case and
++ * truncation length rather than each carrying their own copy.
++ */
++public final class HashUtils {
++
++    private HashUtils() {
++    }
++
++    /**
++     * Returns the full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code seed} (64 hex
++     * characters).
++     */
++    public static String sha256Hex(String seed) {
++        try {
++            MessageDigest digest = MessageDigest.getInstance("SHA-256");
++            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(hash.length * 2);
++            for (byte b : hash) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
++    }
++
++    /**
++     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
++     * bytes of {@code seed}.
++     */
++    public static String sha256UpperHex(String seed, int length) {
++        return sha256Hex(seed).substring(0, length).toUpperCase();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e0ac8cfe2..dc1caa3c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2379,13 +2379,15 @@ components:
+             identityKey:
+               title: Identity key
+               description: >-
+-                The owner's derived identity key, formed as
+-                '<normalizedTelephone>|<email or empty>|<householdId or empty>'.
+-                Two owners are considered duplicates only when their whole
+-                identity keys are equal; a create is rejected with 409 on an
+-                exact full-key match against an existing owner.
++                The owner's derived identity key: the lower-case hex SHA-256
++                digest over
++                '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>' (the
++                telephone and email components empty when absent). Two owners are
++                considered duplicates only when their whole identity keys are
++                equal; a create is rejected with 409 on an exact full-key match
++                against an existing owner.
+               type: string
+-              example: '+61412345678||A1B2C3D4E5F6A7B8'
++              example: '3b8c2f0e1d5a9c7b4e6f8a0d2c1b3e5f7a9c0d2e4f6a8c0b1d3e5f7a9c1b3d5e'
+               readOnly: true
+             selfLink:
+               title: Self link
