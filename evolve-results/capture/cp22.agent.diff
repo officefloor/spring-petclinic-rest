@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f0f145974..a7bb5c834 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+     @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
++    @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Fixed city-to-region table used to derive an owner's {@code locality}. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 024583556..4eef162b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -98,7 +98,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
++        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
++    }
++
++    /**
++     * Whether more than 80 owners have already been created on {@code registrationDate},
++     * signalling a bulk-signup surge for the read-only {@code bulkSignupWarning} field.
++     */
++    private boolean isBulkSignup(LocalDate registrationDate) {
++        return this.clinicService.countOwnersByRegistrationDate(registrationDate) > 80;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -130,6 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         auditLogger.info("owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0399a3250..a9291498f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2162,6 +2162,15 @@ components:
+                 - SILVER
+               example: 'SILVER'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners have already been created on this
++                owner's registration date, signalling a bulk-signup surge;
++                otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
