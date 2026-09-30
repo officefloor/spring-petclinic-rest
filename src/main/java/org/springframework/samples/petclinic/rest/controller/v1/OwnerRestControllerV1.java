@@ -104,9 +104,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress());
+        if (!sharesHousehold && householdExists) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (sharesHousehold && householdExists) {
+            this.clinicService.assignHousehold(owner);
         }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

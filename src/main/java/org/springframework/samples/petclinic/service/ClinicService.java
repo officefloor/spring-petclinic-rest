@@ -60,6 +60,7 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
 	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
+	String assignHousehold(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

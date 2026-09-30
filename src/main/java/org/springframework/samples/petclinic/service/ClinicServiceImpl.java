@@ -25,6 +25,9 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -260,14 +263,24 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
+        return !findHouseholdMembers(lastName, address).isEmpty();
+    }
+
+    /**
+     * Returns the existing owners that belong to the household identified by the given last name
+     * and address, comparing both fields in their normalized form. An empty list is returned when
+     * either field is absent (no household can be formed).
+     */
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeHouseholdField(lastName);
         String normalizedAddress = normalizeHouseholdField(address);
         if (normalizedLastName == null || normalizedAddress == null) {
-            return false;
+            return List.of();
         }
         return ownerRepository.findAll().stream()
-            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())));
+            .filter(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
+                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())))
+            .toList();
     }
 
     /**
@@ -280,6 +293,56 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Places {@code owner} into the household formed by owners that share its (normalized) last
+     * name and address, and returns the household's stable shared identifier. If any existing
+     * member already carries a household id it is reused; otherwise a stable id is derived from
+     * the shared last name and address. Every member missing an id (including the given owner)
+     * is assigned the shared value so all owners in the household agree on it.
+     */
+    @Override
+    @Transactional
+    public String assignHousehold(Owner owner) throws DataAccessException {
+        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
+        if (members.isEmpty()) {
+            return null;
+        }
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(id -> id != null && !id.isBlank())
+            .findFirst()
+            .orElseGet(() -> generateHouseholdId(owner.getLastName(), owner.getAddress()));
+        for (Owner member : members) {
+            if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+                member.setHouseholdId(householdId);
+                ownerRepository.save(member);
+            }
+        }
+        owner.setHouseholdId(householdId);
+        return householdId;
+    }
+
+    /**
+     * Derives a stable household identifier from the normalized last name and address as the
+     * first 16 upper-case hex characters of their SHA-256 digest, so the same household always
+     * maps to the same value regardless of creation order.
+     */
+    private static String generateHouseholdId(String lastName, String address) {
+        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdField(address);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, 16);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @Override
