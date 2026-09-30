@@ -225,14 +225,15 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>} — the region code,
-     * the two-digit fiscal year, the 8 upper-case hex HASH8 of the region-and-hash identity, and a
-     * single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}. Assigned at creation
-     * (see {@code AssignOwnerMemberId}); it is the owner's single primary identifier, replacing the
-     * former {@code customerCode}, {@code membershipNumber} and standalone {@code checkDigit}. Every
-     * value that used to derive from the customer code — the {@link #getLocality() locality}, the
-     * {@link #getFiscalYear() fiscal year} and thus the {@link #getOwnerSegment() owner segment} —
-     * now follows from this member id.
+     * The owner's unified member id, formatted {@code <REGIONV2><FY><HASH8><CHK>} — the version-2
+     * {@link #regionCodeV2(String) region code} (the plain region with the {@link #IDENTITY_VERSION}
+     * tag mixed in), the two-digit fiscal year, the 8 upper-case hex HASH8 of the region-and-hash
+     * identity, and a single Luhn check digit over the digits of {@code <REGIONV2><FY><HASH8>}.
+     * Assigned at creation (see {@code AssignOwnerMemberId}); it is the owner's single primary
+     * identifier, replacing the former {@code customerCode}, {@code membershipNumber} and standalone
+     * {@code checkDigit}. The user-facing {@link #getLocality() locality}, {@link #getFiscalYear()
+     * fiscal year} and {@link #getOwnerSegment() owner segment} are derived independently from the
+     * postcode and registration date, so the version-2 tag stays inside this identifier.
      */
     public String getMemberId() {
         return this.memberId;
@@ -434,22 +435,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, derived at response time from the {@code FY} segment of the
-     * {@link #getMemberId() memberId} (the two digits following the REGION prefix) as {@code FY<YY>},
-     * where the fiscal year starts on 1 July and {@code YY} is the last two digits of the fiscal
-     * year (the calendar year in which it ends). Because the member id embeds the fiscal year of the
-     * business-day-adjusted {@link #registrationDate} at creation, the value tracks the member id.
-     * {@code null} when the owner has no member id. Not persisted.
+     * The owner's fiscal year, derived at response time from the (business-day-adjusted)
+     * {@link #registrationDate} as {@code FY<YY>}, where the fiscal year starts on 1 July and
+     * {@code YY} is the last two digits of the fiscal year (the calendar year in which it ends). This
+     * is the same fiscal year the {@link #getMemberId() memberId} embeds, but it is computed directly
+     * from the registration date rather than parsed out of the member id — so the version-2 tag mixed
+     * into the member id never leaks into this value. {@code null} when the owner has no registration
+     * date. Not persisted.
      */
     public String getFiscalYear() {
-        if (this.memberId == null) {
+        if (this.registrationDate == null) {
             return null;
         }
-        int start = getLocality().length();
-        if (this.memberId.length() < start + 2) {
-            return null;
-        }
-        return "FY" + this.memberId.substring(start, start + 2);
+        return "FY" + String.format(Locale.ROOT, "%02d", fiscalYear(this.registrationDate) % 100);
     }
 
     /**
@@ -464,6 +462,16 @@ public class Owner extends Person {
         long years = (long) fiscalYear(LocalDate.now()) - fiscalYear(this.registrationDate);
         return Math.max(years, 0);
     }
+
+    /**
+     * The fixed identity-scheme version tag mixed into every version-2 identifier — the
+     * {@link #getMemberId() memberId} (via its {@link #regionCodeV2(String) region code}), the
+     * {@link #getHouseholdId() householdId} and the {@link #getIdentityKey() identityKey}. It appears
+     * only inside those identifiers; the user-facing {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} and {@link #getOwnerSegment() owner segment} stay the plain
+     * region code.
+     */
+    public static final String IDENTITY_VERSION = "V2";
 
     /** Fixed city-to-region table used to derive {@link #getLocality()}. */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -512,21 +520,28 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's region, derived at response time from the {@code REGION} prefix of the
-     * {@link #getMemberId() memberId} (the leading run of letters before the two-digit fiscal year).
-     * Because the member id is assigned as {@code <REGION><FY><HASH8><CHK>} with REGION taken from the
-     * postcode, the locality follows the same region-and-hash identity as the member id.
-     * {@code UNKNOWN} when the owner has no member id.
+     * The version-2 region code embedded <em>inside</em> the identifiers: the plain region code with
+     * the fixed {@link #IDENTITY_VERSION} tag appended (e.g. {@code NSWV2}, {@code UNKNOWNV2}). A
+     * {@code null} region is treated as {@code UNKNOWN}. Because every version-1 identifier carried the
+     * bare region code, mixing the tag in guarantees no version-2 identifier can ever reproduce a
+     * version-1 value. This is an identifier-internal value only; the user-facing
+     * {@link #getLocality() locality}, {@link #getTimezone() timezone} and {@link #getOwnerSegment()
+     * owner segment} keep using the plain region code.
+     */
+    public static String regionCodeV2(String region) {
+        return (region == null ? "UNKNOWN" : region) + IDENTITY_VERSION;
+    }
+
+    /**
+     * The owner's region, derived at response time directly from the {@link #getPostcode() postcode}
+     * via {@link #regionOfPostcode(String)} — the plain region code ({@code NSW}, {@code VIC} or
+     * {@code QLD}), or {@code UNKNOWN} when the postcode maps to no known region. This is the same
+     * region the {@link #getMemberId() memberId} is built from, but it is the <em>plain</em> code:
+     * the version-2 {@link #IDENTITY_VERSION} tag mixed into the member id never appears here.
      */
     public String getLocality() {
-        if (this.memberId == null) {
-            return "UNKNOWN";
-        }
-        int i = 0;
-        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? "UNKNOWN" : this.memberId.substring(0, i);
+        String region = regionOfPostcode(this.postcode);
+        return region == null ? "UNKNOWN" : region;
     }
 
     /**
@@ -574,11 +589,15 @@ public class Owner extends Person {
      * Because the telephone participates in the key, two owners with the same last name and postcode
      * but different telephones no longer collide here — they are flagged as a soft match instead (see
      * {@code DetectOwnerPossibleDuplicate}). Derived at response time and not persisted.
+     *
+     * <p>The version-2 derivation mixes the fixed {@link #IDENTITY_VERSION} tag into the hashed input,
+     * so every key differs from the version-1 value while owners that share an identity still share
+     * the (new) key — the collision semantics are unchanged, only the value.
      */
     public String getIdentityKey() {
         String telephone = keyPart(this.telephone);
         String email = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
-        String input = telephone + "|" + email + "|" + soundex(this.lastName);
+        String input = IDENTITY_VERSION + "|" + telephone + "|" + email + "|" + soundex(this.lastName);
         return sha256Hex(input);
     }
 

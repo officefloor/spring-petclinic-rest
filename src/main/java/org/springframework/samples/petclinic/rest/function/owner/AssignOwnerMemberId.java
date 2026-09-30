@@ -12,34 +12,34 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where:
+ * Assigns the owner's unified {@code memberId}, formatted {@code <REGIONV2><FY><HASH8><CHK>} where:
  * <ul>
- * <li>REGION is the region code derived from the owner's postcode (see
- * {@link Owner#regionOfPostcode(String)}, or {@code UNKNOWN} when the postcode maps to no known
- * region),</li>
+ * <li>REGIONV2 is the version-2 {@link Owner#regionCodeV2(String) region code} — the plain region
+ * derived from the owner's postcode (see {@link Owner#regionOfPostcode(String)}, or {@code UNKNOWN}
+ * when the postcode maps to no known region) with the fixed {@link Owner#IDENTITY_VERSION} tag mixed
+ * in (e.g. {@code NSWV2}),</li>
  * <li>FY is the two-digit (zero-padded) last two digits of the fiscal year (starting 1 July) of the
  * business-day-adjusted {@code registrationDate},</li>
  * <li>HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone
  * concatenated with the lastName — the same region-and-hash identity used elsewhere, and</li>
- * <li>CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
+ * <li>CHK is a single Luhn check digit computed over the digits of {@code <REGIONV2><FY><HASH8>}.</li>
  * </ul>
- * e.g. {@code NSW273F9A1C7E4}. This single value unifies the former {@code customerCode} and
- * {@code membershipNumber} and subsumes the standalone {@code checkDigit}. When the computed id
- * collides with an existing owner's {@code memberId}, {@code -<n>} is appended with the smallest
- * {@code n} of 2 or more that makes it unique (e.g. {@code NSW273F9A1C7E4-2}). Runs after
- * {@link BuildOwner} builds the entity (so the telephone is in canonical E.164 form and the
- * business-day-adjusted registration date is set) and before {@link SaveOwner} persists it, mutating
- * the built owner in place so the saved and returned record carries the id. Every value derived from
- * the member id — the {@link Owner#getLocality() locality}, the {@link Owner#getFiscalYear() fiscal
- * year} and thus the owner segment — follows from this region-and-hash identity.
+ * e.g. {@code NSWV2273F9A1C7E4}. Because the version-2 tag is mixed into the region code, no
+ * version-2 member id can reproduce a version-1 value. This single value unifies the former
+ * {@code customerCode} and {@code membershipNumber} and subsumes the standalone {@code checkDigit}.
+ * When the computed id collides with an existing owner's {@code memberId}, {@code -<n>} is appended
+ * with the smallest {@code n} of 2 or more that makes it unique (e.g. {@code NSWV2273F9A1C7E4-2}).
+ * Runs after {@link BuildOwner} builds the entity (so the telephone is in canonical E.164 form and
+ * the business-day-adjusted registration date is set) and before {@link SaveOwner} persists it,
+ * mutating the built owner in place so the saved and returned record carries the id. The user-facing
+ * {@link Owner#getLocality() locality}, {@link Owner#getFiscalYear() fiscal year} and owner segment
+ * are derived independently from the postcode and registration date, so they stay the plain region
+ * code and never carry the version-2 tag.
  */
 public class AssignOwnerMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Owner.regionOfPostcode(owner.getPostcode());
-        if (region == null) {
-            region = "UNKNOWN";
-        }
+        String region = Owner.regionCodeV2(Owner.regionOfPostcode(owner.getPostcode()));
         String fy = String.format(Locale.ROOT, "%02d", Owner.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());
         String identity = region + fy + hash8;

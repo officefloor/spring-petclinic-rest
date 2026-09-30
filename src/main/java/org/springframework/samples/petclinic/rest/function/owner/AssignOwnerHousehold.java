@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's deterministic {@code householdId}: the first 12 (upper-case) hex characters of
- * the SHA-256 of {@code normalizedLastName + '|' + postcode}. The id is derived purely from the
- * (lastName, postcode) pair, so every owner with the same lastName and postcode receives the same
- * value automatically, regardless of creation order and without any repository lookup or opt-in.
+ * the SHA-256 of {@code IDENTITY_VERSION + '|' + normalizedLastName + '|' + postcode}. The id is
+ * derived purely from the (lastName, postcode) pair (plus the fixed version-2 tag), so every owner
+ * with the same lastName and postcode receives the same value automatically, regardless of creation
+ * order and without any repository lookup or opt-in.
  *
  * <p>Because the household is now keyed on (lastName, postcode), owners sharing that pair are the
  * same household. This computed id is the single source of truth the household consumers key off
@@ -33,11 +34,15 @@ public class AssignOwnerHousehold {
 
     /**
      * The single source of truth for an owner's household identity: the first 12 upper-case hex
-     * characters of the SHA-256 of {@code normalize(lastName) + '|' + postcode}. An absent postcode
-     * contributes an empty segment. Two owners share a household exactly when this value is equal.
+     * characters of the SHA-256 of {@code IDENTITY_VERSION + '|' + normalize(lastName) + '|' +
+     * postcode}. An absent postcode contributes an empty segment. Two owners share a household exactly
+     * when this value is equal. The version-2 derivation mixes the fixed {@link Owner#IDENTITY_VERSION}
+     * tag into the hashed input, so every household id differs from its version-1 value while owners
+     * that share a (lastName, postcode) still share the new id.
      */
     static String householdId(String lastName, String postcode) {
-        String input = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String input = Owner.IDENTITY_VERSION + "|" + normalize(lastName) + "|"
+                + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(input.getBytes(StandardCharsets.UTF_8));

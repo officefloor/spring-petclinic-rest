@@ -21,8 +21,14 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId", source = "householdId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
