@@ -31,10 +31,15 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     /**
-     * Derive an owner's membership tier: 'SILVER' when the owner has no namesakes
+     * Derive an owner's membership tier: 'GOLD' when the owner's household (owners sharing the same
+     * householdId) has 3 or more members; otherwise 'SILVER' when the owner has no namesakes
      * (namesakeCount is 0) and an email address is present, otherwise 'BRONZE'.
      */
     default String toMembershipTier(Owner owner) {
+        Integer householdMembers = owner.getHouseholdMemberCount();
+        if (householdMembers != null && householdMembers >= 3) {
+            return "GOLD";
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return noNamesakes && hasEmail ? "SILVER" : "BRONZE";

@@ -277,6 +277,21 @@ public class ClinicServiceImpl implements ClinicService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public int countHouseholdMembers(String householdId) throws DataAccessException {
+        if (householdId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /**
      * Whether {@code other} belongs to the same household as an owner with the given last name and
      * address, i.e. both match case-insensitively with collapsed whitespace. This single definition

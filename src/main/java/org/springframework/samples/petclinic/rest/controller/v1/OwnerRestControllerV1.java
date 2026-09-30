@@ -102,6 +102,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owner.setHouseholdMemberCount(
+            this.clinicService.countHouseholdMembers(owner.getHouseholdId()));
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
@@ -147,6 +149,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.clinicService.assignHousehold(owner);
         }
         this.clinicService.saveOwner(owner);
+        owner.setHouseholdMemberCount(
+            this.clinicService.countHouseholdMembers(owner.getHouseholdId()));
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
