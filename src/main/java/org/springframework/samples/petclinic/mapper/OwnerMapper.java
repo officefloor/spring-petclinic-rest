@@ -83,16 +83,47 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table used to derive an owner's locality.
+     * Fixed city-to-region table used as the fall-back when deriving an owner's locality.
      */
     Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * Derive an owner's locality (region) from the city using the fixed
-     * {@link #CITY_REGION} table, returning 'UNKNOWN' when the city is not listed.
+     * Fixed region-to-inclusive-postcode-range table used to derive an owner's locality from the
+     * postcode: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099. Each entry is {@code {low, high}}
+     * inclusive.
+     */
+    Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Derive an owner's locality (region), preferring the postcode: when the postcode is present and
+     * falls within a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When
+     * the postcode is absent or in no known range, fall back to the fixed {@link #CITY_REGION} table.
+     * Returns 'UNKNOWN' when neither the postcode nor the city resolves a region. Preferring the
+     * postcode returns the same region for known cities but disambiguates cities that share a name.
      */
     default String toLocality(Owner owner) {
+        // Prefer the postcode: the region whose range contains it wins. The logic is inlined (rather
+        // than a String -> String helper) because MapStruct would treat such a helper as an implicit
+        // type conversion and wrongly apply it to other String properties (e.g. telephone).
+        String postcode = owner.getPostcode();
+        if (postcode != null) {
+            try {
+                int value = Integer.parseInt(postcode.trim());
+                for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+                    int[] range = entry.getValue();
+                    if (value >= range[0] && value <= range[1]) {
+                        return entry.getKey();
+                    }
+                }
+            }
+            catch (NumberFormatException ignored) {
+                // Non-numeric postcode: fall back to the city table below.
+            }
+        }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
