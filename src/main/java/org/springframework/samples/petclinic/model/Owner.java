@@ -74,6 +74,14 @@ public class Owner extends Person {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
+    /**
+     * The number of owners in this owner's household (those sharing the same householdId),
+     * derived on read and used to determine the 'GOLD' membership tier. Not persisted:
+     * response functions populate it from the current data before the owner is mapped.
+     */
+    @Transient
+    private Integer householdSize;
+
     public String getAddress() {
         return this.address;
     }
@@ -156,6 +164,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     protected Set<Pet> getPetsInternal() {
