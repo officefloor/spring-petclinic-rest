@@ -17,7 +17,17 @@ public class NormalizeOwnerEmail {
     public void service(@Val OwnerFieldsDto request) {
         String email = request.getEmail();
         if (email != null) {
-            request.setEmail(email.toLowerCase(Locale.ROOT));
+            request.setEmail(normalize(email));
         }
+    }
+
+    /**
+     * The single source of truth for an email's canonical form: lower-cased. Null-safe so it can
+     * canonicalize an existing owner's (possibly absent) stored value. Shared with
+     * {@link CheckOwnerEmailUnique} so the "same email" definition can never drift from how emails
+     * are stored and returned.
+     */
+    static String normalize(String email) {
+        return email == null ? null : email.toLowerCase(Locale.ROOT);
     }
 }
