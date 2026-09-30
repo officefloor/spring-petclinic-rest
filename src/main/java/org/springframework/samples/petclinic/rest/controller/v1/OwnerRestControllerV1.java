@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+import org.springframework.samples.petclinic.rest.validation.EmailDomainValidator;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -61,6 +62,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger auditLogger = LoggerFactory.getLogger("AUDIT");
 
     private static final Logger notifyLogger = LoggerFactory.getLogger("NOTIFY");
+
+    /** The per-city soft capacity: at or above this owner count a city is over its soft capacity. */
+    private static final int SOFT_CAPACITY = 40;
+
+    /** The per-city hard limit: a create is rejected once a city already holds this many owners. */
+    private static final int HARD_CAPACITY = 50;
 
     private final ClinicService clinicService;
 
@@ -119,7 +126,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(isRisk(owner));
         return ownerDto;
+    }
+
+    /**
+     * Whether the owner should be flagged for review via the read-only {@code riskFlag} field: true
+     * when any of the following hold, otherwise false. The owner is a possible duplicate
+     * ({@link Owner#getPossibleDuplicate()}); its email domain is disposable-adjacent
+     * ({@link EmailDomainValidator#isDisposableAdjacent(String)}); or its city is over its soft
+     * capacity (see {@link #isOverSoftCapacity(String)}).
+     */
+    private boolean isRisk(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || EmailDomainValidator.isDisposableAdjacent(owner.getEmail())
+            || isOverSoftCapacity(owner.getCity());
+    }
+
+    /**
+     * Whether {@code city} is over its soft capacity: it already holds {@link #SOFT_CAPACITY} or
+     * more owners. The soft capacity sits below the per-city hard limit enforced at create time
+     * (see {@link #addOwner}), so this stays true from the soft capacity right up to the full city.
+     */
+    private boolean isOverSoftCapacity(String city) {
+        return this.clinicService.countOwnersByCity(city) >= SOFT_CAPACITY;
     }
 
     /**
@@ -131,13 +161,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Whether {@code city} already holds between 40 and 49 owners (inclusive), signalling that it
-     * is approaching the per-city capacity limit of 50, for the read-only {@code capacityWarning}
-     * field. The hard rejection at 50 (see {@link #addOwner}) is unaffected.
+     * Whether {@code city} already holds from the soft capacity up to one below the hard limit
+     * (40 to 49 inclusive), signalling that it is approaching the per-city capacity limit of 50,
+     * for the read-only {@code capacityWarning} field. The hard rejection at 50 (see
+     * {@link #addOwner}) is unaffected.
      */
     private boolean isApproachingCapacity(String city) {
         int count = this.clinicService.countOwnersByCity(city);
-        return count >= 40 && count <= 49;
+        return count >= SOFT_CAPACITY && count < HARD_CAPACITY;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -158,7 +189,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
+        if (this.clinicService.countOwnersByCity(owner.getCity()) >= HARD_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // The household id is deterministic: owners that share a (normalized lastName, postcode)
