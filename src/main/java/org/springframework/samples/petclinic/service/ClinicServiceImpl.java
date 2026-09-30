@@ -322,17 +322,6 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Counts the existing owners that belong to the household identified by the given last name
-     * and address (compared in normalized form). Zero when either field is absent, since no
-     * household can be formed.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public int countOwnersInHousehold(String lastName, String address) throws DataAccessException {
-        return findHouseholdMembers(lastName, address).size();
-    }
-
-    /**
      * Returns the existing owners that belong to the household identified by the given last name
      * and address, comparing both fields in their normalized form. An empty list is returned when
      * either field is absent (no household can be formed).

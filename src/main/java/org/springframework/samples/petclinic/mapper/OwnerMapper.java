@@ -24,7 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
+    @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -47,24 +47,26 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determines an owner's membership tier for the read-only {@code membershipTier} field:
-     * {@code 'GOLD'} when the owner's household (owners sharing the same householdId) had 3 or
-     * more members after this owner was created; otherwise {@code 'SILVER'} when the owner had no
-     * namesakes at creation (namesakeCount is 0) and an email address is present, otherwise
-     * {@code 'BRONZE'}.
+     * Determines an owner's numeric membership level for the read-only {@code membershipLevel}
+     * field, assigned at creation and ranging from 1 to 3: it starts at 1, gains 1 when an email
+     * address is present, gains 1 when the owner had no namesakes at creation (namesakeCount is 0),
+     * and is capped at 3. Level 4 is reserved for tenure.
      */
-    @Named("formatMembershipTier")
-    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
+    @Named("formatMembershipLevel")
+    default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        boolean largeHousehold = owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
-        if (largeHousehold) {
-            return OwnerDto.MembershipTierEnum.GOLD;
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
