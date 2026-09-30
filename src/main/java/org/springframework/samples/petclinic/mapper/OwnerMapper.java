@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
+    @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
@@ -67,33 +68,56 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determines an owner's numeric membership level for the read-only {@code membershipLevel}
-     * field, ranging from 1 to 4: it starts at 1, gains 1 when an email address is present, gains 1
-     * when the owner had no namesakes at creation (namesakeCount is 0), and gains a final 1 for
-     * tenure of more than 365 days (measured from the registration date to the current date). The
-     * pre-tenure factors are capped at 3, so level 4 requires tenure over 365 days. A newly created
-     * owner has zero tenure and therefore never exceeds level 3.
+     * Computes an owner's membership points for the read-only {@code membershipPoints} field. Points
+     * start at 0 and accumulate: 2 when an email address is present, 1 when the owner had no
+     * namesakes at creation (namesakeCount is 0), 2 for a household of 3 or more members, and 3 for
+     * tenure of more than 365 days (measured from the registration date to the current date).
      */
-    @Named("formatMembershipLevel")
-    default Integer formatMembershipLevel(Owner owner) {
+    @Named("formatMembershipPoints")
+    default Integer formatMembershipPoints(Owner owner) {
         if (owner == null) {
             return null;
         }
-        int level = 1;
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
         if (owner.getRegistrationDate() != null
             && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * Derives an owner's numeric membership level for the read-only {@code membershipLevel} field
+     * from its membership points: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for
+     * 6 or more points.
+     */
+    @Named("formatMembershipLevel")
+    default Integer formatMembershipLevel(Owner owner) {
+        Integer points = formatMembershipPoints(owner);
+        if (points == null) {
+            return null;
+        }
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**

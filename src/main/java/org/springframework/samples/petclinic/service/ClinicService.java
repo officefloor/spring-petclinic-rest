@@ -66,6 +66,7 @@ public interface ClinicService {
 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 	String computeHouseholdId(Owner owner) throws DataAccessException;
 	boolean existsOwnerInHousehold(String householdId) throws DataAccessException;
+	int countOwnersByHouseholdId(String householdId) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

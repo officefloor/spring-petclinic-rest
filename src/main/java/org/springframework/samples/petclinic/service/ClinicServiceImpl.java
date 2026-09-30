@@ -438,6 +438,22 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * Counts the owners that belong to the household identified by the given (deterministic)
+     * household id, i.e. the number of owners currently sharing it. Used to size a household for
+     * the membership-points calculation. Returns {@code 0} when the id is absent.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersByHouseholdId(String householdId) throws DataAccessException {
+        if (householdId == null || householdId.isBlank()) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+    }
+
+    /**
      * Normalizes a household-identity field for comparison by trimming, collapsing internal
      * runs of whitespace to a single space and lower-casing, so values that differ only in
      * whitespace or letter case are treated as equal.
