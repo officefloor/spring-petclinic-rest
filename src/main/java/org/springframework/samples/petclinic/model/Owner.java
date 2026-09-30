@@ -205,6 +205,10 @@ public class Owner extends Person {
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Region -> inclusive 4-digit postcode range {low, high} used to derive {@link #getLocality()}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
     /**
      * The single source of truth for the fixed city-to-region mapping ({@code Sydney -> NSW},
      * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}): the region for {@code city}, or
@@ -217,12 +221,41 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's region, derived at response time from {@link #city} using the fixed
-     * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
-     * {@code Brisbane -> QLD}), or {@code UNKNOWN} when the city is not in the table.
+     * The region whose fixed postcode range ({@code NSW 2000-2099}, {@code VIC 3000-3099},
+     * {@code QLD 4000-4099}) contains {@code postcode}, or {@code null} when {@code postcode} is
+     * absent, not a 4-digit number, or in no known range.
+     */
+    public static String regionOfPostcode(String postcode) {
+        if (postcode == null || postcode.isEmpty()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The owner's region, derived at response time by preferring the postcode: the region whose
+     * fixed postcode range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099})
+     * contains {@link #postcode}, falling back to the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) when the postcode is
+     * absent or in no known range, or {@code UNKNOWN} when neither resolves.
      */
     public String getLocality() {
-        String region = regionOf(this.city);
+        String region = regionOfPostcode(this.postcode);
+        if (region == null) {
+            region = regionOf(this.city);
+        }
         return region != null ? region : "UNKNOWN";
     }
 
