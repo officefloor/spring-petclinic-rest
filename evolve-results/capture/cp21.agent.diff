@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+new file mode 100644
+index 000000000..94b527977
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Emits an audit line via the dedicated {@code AUDIT} logger once an owner has been
++ * persisted, recording the new owner's id, its assigned {@code customerCode} and its
++ * {@code registrationDate}. Runs after {@link SaveOwner} (so the id is populated) and
++ * before {@link RespondWithOwnerCreated}.
++ *
++ * <p>It reads no repository, but stays under the pipeline's {@code transaction} governance
++ * so the create commits as a single boundary spanning {@code save} through {@code respond}
++ * (the responder maps the entity's lazy relations); an ungoverned step here would split
++ * that boundary.
++ */
++public class AuditOwnerCreated {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    public void service(@Val Owner owner) {
++        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 12564fff8..fa1316835 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -65,6 +65,11 @@ countNamesakes:
+ save:
+   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+   govern: [ transaction ]
++  next: audit
++
++audit:
++  class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
