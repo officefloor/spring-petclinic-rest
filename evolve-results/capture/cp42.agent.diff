@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b878da1fa..48587fd3b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -16,6 +16,7 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
+ 
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+@@ -31,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
++    @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+@@ -67,6 +69,29 @@ public interface OwnerMapper {
+         return dash < 0 ? code : code.substring(0, dash);
+     }
+ 
++    /**
++     * Fixed region-to-timezone table mapping each canonical region to its IANA timezone name.
++     */
++    Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    /**
++     * Derives an owner's {@code timezone} as the IANA timezone name for its locality/region, using
++     * the fixed region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++     * QLD-&gt;Australia/Brisbane). The region is taken from {@link #formatLocality(Owner)}, so the
++     * timezone always agrees with the reported locality. Returns {@code null} when the region is not
++     * in the table (e.g. {@code 'UNKNOWN'}).
++     */
++    @Named("formatTimezone")
++    default String formatTimezone(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return REGION_TIMEZONE.get(formatLocality(owner));
++    }
++
+     /**
+      * Computes an owner's membership points for the read-only {@code membershipPoints} field. Points
+      * start at 0 and accumulate: 2 when an email address is present, 1 when the owner had no
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f20f6bd62..aead773c5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2148,6 +2148,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                using a fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane), or null when
++                the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
