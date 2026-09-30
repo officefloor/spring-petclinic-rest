@@ -69,6 +69,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated logger for the welcome-notification queue. On a successful create a single line
+     * carrying the new owner's id and member id is emitted here, standing in for enqueuing a
+     * welcome notification to the owner.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Assigns the monotonically increasing sequence number carried by each structured
      * {@link OwnerCreatedEvent}. Static so the order spans every create handled by this endpoint,
      * regardless of the controller instance, giving the audit event stream a total order.
@@ -199,6 +206,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         AUDIT.info(event.toJson());
+        NOTIFY.info("welcome queued: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
