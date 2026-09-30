@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CityRegions;
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.LuhnCheckDigit;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
@@ -33,7 +34,17 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' by the shared {@link FiscalYear} rule
+     * from the business-day-adjusted {@code registrationDate} (fiscal year starts 1 July, named
+     * by the calendar year it ends in). {@code null} when the owner has no registrationDate.
+     */
+    default String toFiscalYear(Owner owner) {
+        return FiscalYear.label(owner.getRegistrationDate());
+    }
 
     /**
      * The owner's age band, derived by {@link AgeBand} from the owner's {@code birthDate}

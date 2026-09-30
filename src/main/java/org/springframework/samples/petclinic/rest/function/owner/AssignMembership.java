@@ -1,10 +1,10 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import net.officefloor.plugin.clazz.Qualified;
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -15,8 +15,9 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Points start at 0 and accumulate: 2 when an email is present, 1 when the owner has no
  * namesakes ({@code namesakeCount} of 0), 2 when the owner belongs to a household of 3 or
- * more, and 3 when the owner's tenure is more than 365 days. Tenure is the number of whole
- * days between the registration date and today; a newly created owner has zero tenure.
+ * more, and 3 when the owner's tenure is more than one elapsed fiscal year. Tenure is the
+ * number of whole fiscal years elapsed between the registration date and today; a newly
+ * created owner has zero tenure.
  *
  * <p>The points map to a level: 0-1 points is level 1, 2-3 is level 2, 4-5 is level 3, and
  * 6 or more is level 4.
@@ -31,8 +32,8 @@ public class AssignMembership {
     /** A household of this size or more earns {@link #POINTS_LARGE_HOUSEHOLD}. */
     static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Long-tenure points require tenure of more than this many days. */
-    static final long TENURE_DAYS_FOR_LONG_TENURE = 365;
+    /** Long-tenure points require tenure of more than this many elapsed fiscal years. */
+    static final int TENURE_FISCAL_YEARS_FOR_LONG_TENURE = 1;
 
     public void service(@Val Owner owner, @Qualified("householdSize") @Val Integer householdSize) {
         int points = 0;
@@ -53,7 +54,7 @@ public class AssignMembership {
 
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_LONG_TENURE) {
+                && FiscalYear.elapsedYears(registrationDate, LocalDate.now()) > TENURE_FISCAL_YEARS_FOR_LONG_TENURE) {
             points += POINTS_LONG_TENURE;
         }
 
