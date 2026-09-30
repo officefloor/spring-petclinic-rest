@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8629e4b0a..80cfa6fc1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,8 @@ public interface OwnerMapper {
+         expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(toLocality(owner))")
++    @Mapping(target = "timezone",
++        expression = "java(toTimezone(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java(toContactPreference(owner))")
+     @Mapping(target = "identityKey",
+@@ -258,6 +260,24 @@ public interface OwnerMapper {
+         return regionOf(owner);
+     }
+ 
++    /**
++     * Fixed region-to-IANA-timezone table used to derive an owner's timezone: NSW -> Australia/Sydney,
++     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane.
++     */
++    Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
++    /**
++     * Derive an owner's IANA timezone name from its locality/region (see {@link #toLocality(Owner)})
++     * via the fixed {@link #REGION_TIMEZONE} table. Returns {@code null} when the region resolves to no
++     * entry in the table (e.g. 'UNKNOWN'), so the timezone is then absent from the DTO.
++     */
++    default String toTimezone(Owner owner) {
++        return REGION_TIMEZONE.get(toLocality(owner));
++    }
++
+     /**
+      * Derive an owner's region, preferring the postcode: when the postcode is present and falls within
+      * a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When the postcode
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fd3dfb221..2de89b736 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2241,6 +2241,17 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived at read time from the
++                locality/region via a fixed region-to-timezone table:
++                NSW -> Australia/Sydney, VIC -> Australia/Melbourne,
++                QLD -> Australia/Brisbane. Absent when the region resolves to
++                no entry in the table.
++              type: string
++              readOnly: true
++              example: 'Australia/Sydney'
+             contactPreference:
+               title: Contact preference
+               description: >-
