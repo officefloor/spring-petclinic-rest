@@ -133,6 +133,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Soft-match: not a hard duplicate, but shares an existing owner's lastName and postcode with a
+        // different telephone. Still created, flagged 'possibleDuplicate' with the matching owner's id.
+        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(
             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);

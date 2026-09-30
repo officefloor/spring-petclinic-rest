@@ -60,6 +60,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	boolean existsOwnerWithIdentityKey(String identityKey) throws DataAccessException;
+	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
 	int countOwnersByName(String firstName, String lastName) throws DataAccessException;
 	int countOwnersByCity(String city) throws DataAccessException;
 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;

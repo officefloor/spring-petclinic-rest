@@ -31,7 +31,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -322,6 +324,33 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+    }
+
+    /**
+     * Finds the id of an existing owner that {@code owner} soft-matches (a possible duplicate): one
+     * that shares its lastName (case-insensitive) and postcode while carrying a <i>different</i>
+     * telephone. This is a weaker match than the hard-duplicate identity key, so it is only meaningful
+     * for an owner that is not itself a hard duplicate. When several owners match, the one with the
+     * lowest id is returned; {@code null} is returned when there is no match (or lastName/postcode is
+     * absent), meaning the owner is not a possible duplicate.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
+        if (owner == null || owner.getLastName() == null || owner.getPostcode() == null) {
+            return null;
+        }
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        return ownerRepository.findAll().stream()
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName())
+                && postcode.equals(existing.getPostcode())
+                && !Objects.equals(telephone, existing.getTelephone()))
+            .map(Owner::getId)
+            .filter(Objects::nonNull)
+            .min(Comparator.naturalOrder())
+            .orElse(null);
     }
 
     /**
