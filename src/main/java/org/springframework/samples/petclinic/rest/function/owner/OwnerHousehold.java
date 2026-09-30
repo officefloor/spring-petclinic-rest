@@ -5,9 +5,8 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The single definition of household membership, shared by {@link EnsureUniqueOwnerHousehold}
- * (which rejects an unshared duplicate) and {@link AssignOwnerHousehold} (which assigns the
- * shared id), so the guard and the assignment agree by construction rather than by comment.
+ * The single definition of household membership, used by {@link AssignOwnerHousehold} (which
+ * assigns the shared householdId), so the assignment rule lives in one place.
  * Two owners are in the same household when their lastName and address match. lastName is
  * compared case-insensitively with collapsed whitespace; address is compared using the
  * shared {@link AddressNormalizer} form, so the guard and the assignment agree with the

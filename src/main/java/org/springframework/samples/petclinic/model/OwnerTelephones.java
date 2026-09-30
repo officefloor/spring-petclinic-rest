@@ -1,4 +1,4 @@
-package org.springframework.samples.petclinic.rest.function.owner;
+package org.springframework.samples.petclinic.model;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -8,12 +8,13 @@ import java.util.Map;
  * dashes and brackets; keep a leading '+' and country code when present, otherwise assume
  * country code '+61' and drop a single leading '0' from the national digits; require 8 to
  * 15 digits after the '+', and additionally require the national-number length to match the
- * country code ('+61' => 9 national digits, '+1' => 10). Both {@link NormalizeOwnerTelephone} (which normalizes the
- * incoming request) and {@link EnsureUniqueOwnerTelephone} (which normalizes stored owners
- * for comparison) call this, so the create-time rule and the dedup comparison can never
- * silently diverge.
+ * country code ('+61' => 9 national digits, '+1' => 10). Both {@code NormalizeOwnerTelephone}
+ * (which normalizes the incoming request) and {@link OwnerIdentity} (which normalizes the
+ * telephone component of the identityKey used for dedup) call this, so the create-time rule
+ * and the dedup comparison can never silently diverge. Lives beside {@link Owner} so both the
+ * mapping and request-handling layers can depend on it without a package cycle.
  */
-final class OwnerTelephones {
+public final class OwnerTelephones {
 
     /**
      * Required national-number length per country calling code. Iterated in order so the
@@ -33,7 +34,7 @@ final class OwnerTelephones {
      * Converts {@code telephone} to its E.164 representation (e.g. "0412 345 678" ->
      * "+61412345678"), or returns {@code null} when it cannot form a valid E.164 number.
      */
-    static String toE164(String telephone) {
+    public static String toE164(String telephone) {
         if (telephone == null) {
             return null;
         }

@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Assigns the owner's {@code householdId} when the request opts in with
  * {@code sharesHousehold} true. Housemates — see {@link OwnerHousehold} for the membership
- * rule shared with {@link EnsureUniqueOwnerHousehold} — receive one stable shared
+ * rule — receive one stable shared
  * identifier: the first existing housemate's id is reused, otherwise a fresh one is minted
  * and back-filled onto every existing housemate so later joiners keep sharing it. Runs after
  * the owner is built and before it is saved; leaves {@code householdId} null when

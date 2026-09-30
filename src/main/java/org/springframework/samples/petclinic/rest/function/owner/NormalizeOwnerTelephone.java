@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.OwnerTelephones;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 

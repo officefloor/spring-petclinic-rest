@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -23,7 +24,16 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's derived identityKey — the single value all duplicate detection is
+     * expressed through. See {@link OwnerIdentity}.
+     */
+    default String toIdentityKey(Owner owner) {
+        return OwnerIdentity.of(owner);
+    }
 
     /** City -> canonical region; anything not listed derives locality 'UNKNOWN'. */
     Map<String, String> CITY_REGION = Map.of(
