@@ -28,7 +28,25 @@ public interface OwnerMapper {
         expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(toLocality(owner))")
+    @Mapping(target = "contactPreference",
+        expression = "java(toContactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Whether the owner has an email address present (non-null and non-empty). Single source of truth
+     * for the "is an email present" rule shared by the derived fields below.
+     */
+    default boolean hasEmail(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isEmpty();
+    }
+
+    /**
+     * Derive an owner's preferred contact channel: 'EMAIL' when an email address is present,
+     * otherwise 'PHONE'.
+     */
+    default String toContactPreference(Owner owner) {
+        return hasEmail(owner) ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Derive an owner's numeric membership level (1 to 3): start at 1; add 1 when an email address is
@@ -37,8 +55,7 @@ public interface OwnerMapper {
      */
     default Integer toMembershipLevel(Owner owner) {
         int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        if (hasEmail) {
+        if (hasEmail(owner)) {
             level++;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
