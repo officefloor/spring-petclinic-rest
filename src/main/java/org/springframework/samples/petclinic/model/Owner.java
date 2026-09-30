@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -251,9 +252,11 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, assigned at creation. Starts at {@code 1}, plus 1 when
-     * an email is present, plus 1 when {@link #namesakeCount} is 0, capped at {@code 3} (level 4 is
-     * reserved for tenure).
+     * The owner's numeric membership level. Starts at {@code 1}, plus 1 when an email is present,
+     * plus 1 when {@link #namesakeCount} is 0, plus 1 when the {@link #getHouseholdSize() household}
+     * has 3 or more members. Level {@code 4} additionally requires tenure of more than 365 days
+     * (measured from the {@link #registrationDate}); without that tenure the level is capped at
+     * {@code 3}. Because a newly created owner has zero tenure, a new owner never exceeds level 3.
      */
     public Integer getMembershipLevel() {
         int level = 1;
@@ -263,7 +266,26 @@ public class Owner extends Person {
         if (this.namesakeCount != null && this.namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        if (this.householdSize != null && this.householdSize >= 3) {
+            level++;
+        }
+        // Level 4 is reserved for established members: it requires tenure of more than 365 days.
+        if (level >= 4 && getTenureDays() <= 365) {
+            level = 3;
+        }
+        return level;
+    }
+
+    /**
+     * The owner's tenure in whole days, measured from the {@link #registrationDate} to today; zero
+     * when the registration date is absent or in the future.
+     */
+    private long getTenureDays() {
+        if (this.registrationDate == null) {
+            return 0;
+        }
+        long days = ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return Math.max(days, 0);
     }
 
     /** Fixed city-to-region table used to derive {@link #getLocality()}. */
