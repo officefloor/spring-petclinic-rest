@@ -7,16 +7,16 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits an audit line on the dedicated {@code AUDIT} logger recording the newly created
- * owner's id, customer code, registration date and membership level. Runs after the owner
- * has been saved so the generated id is available.
+ * owner's id, customer code, registration date, membership level and membership number.
+ * Runs after the owner has been saved so the generated id is available.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel());
+                owner.getMembershipLevel(), owner.getMembershipNumber());
     }
 }
