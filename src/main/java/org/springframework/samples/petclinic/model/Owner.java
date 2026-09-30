@@ -23,7 +23,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -322,8 +321,9 @@ public class Owner extends Person {
     /**
      * The owner's membership points, derived at response time. Starts at {@code 0}, plus 2 when an
      * email is present, plus 1 when {@link #namesakeCount} is 0, plus 2 when the
-     * {@link #getHouseholdSize() household} has 3 or more members, plus 3 when tenure exceeds 365 days
-     * (measured from the {@link #registrationDate}).
+     * {@link #getHouseholdSize() household} has 3 or more members, plus 3 when tenure exceeds one
+     * elapsed fiscal year (measured from the {@link #registrationDate}; see
+     * {@link #getTenureFiscalYears()}).
      */
     public Integer getMembershipPoints() {
         int points = 0;
@@ -336,7 +336,7 @@ public class Owner extends Person {
         if (this.householdSize != null && this.householdSize >= 3) {
             points += 2;
         }
-        if (getTenureDays() > 365) {
+        if (getTenureFiscalYears() > 1) {
             points += 3;
         }
         return points;
@@ -362,15 +362,38 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure in whole days, measured from the {@link #registrationDate} to today; zero
-     * when the registration date is absent or in the future.
+     * The fiscal year containing {@code date}: fiscal years start on 1 July and are named for the
+     * calendar year in which they end, so 1 July 2026 – 30 June 2027 is fiscal year {@code 2027}.
      */
-    private long getTenureDays() {
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, derived at response time from the business-day-adjusted
+     * {@link #registrationDate} (stamped business-day-adjusted at creation) as {@code FY<YY>},
+     * where the fiscal year starts on 1 July and {@code YY} is the last two digits of the fiscal
+     * year (the calendar year in which it ends). {@code null} when the registration date is absent.
+     * Not persisted.
+     */
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format(Locale.ROOT, "FY%02d", fiscalYear(this.registrationDate) % 100);
+    }
+
+    /**
+     * The owner's tenure in elapsed fiscal years, measured from the {@link #registrationDate}'s
+     * fiscal year to the current fiscal year (fiscal years start on 1 July); zero when the
+     * registration date is absent or falls in a later fiscal year than today.
+     */
+    private long getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return 0;
         }
-        long days = ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
-        return Math.max(days, 0);
+        long years = (long) fiscalYear(LocalDate.now()) - fiscalYear(this.registrationDate);
+        return Math.max(years, 0);
     }
 
     /** Fixed city-to-region table used to derive {@link #getLocality()}. */
