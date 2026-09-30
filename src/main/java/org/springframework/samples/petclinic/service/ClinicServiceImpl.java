@@ -25,8 +25,12 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -240,6 +244,87 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isHouseholdInUse(String lastName, String address, Integer excludeId) throws DataAccessException {
+        for (Owner existing : ownerRepository.findAll()) {
+            if (excludeId != null && excludeId.equals(existing.getId())) {
+                continue;
+            }
+            if (sameHousehold(lastName, address, existing)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    @Transactional
+    public void assignHousehold(Owner owner) throws DataAccessException {
+        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
+        owner.setHouseholdId(householdId);
+        for (Owner existing : ownerRepository.findAll()) {
+            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                continue;
+            }
+            if (sameHousehold(owner.getLastName(), owner.getAddress(), existing)
+                && !householdId.equals(existing.getHouseholdId())) {
+                existing.setHouseholdId(householdId);
+                ownerRepository.save(existing);
+            }
+        }
+    }
+
+    /**
+     * Whether {@code other} belongs to the same household as an owner with the given last name and
+     * address, i.e. both match case-insensitively with collapsed whitespace. This single definition
+     * of "same household" backs both {@link #isHouseholdInUse} and {@link #assignHousehold}.
+     */
+    private static boolean sameHousehold(String lastName, String address, Owner other) {
+        return normalizeForHousehold(lastName).equals(normalizeForHousehold(other.getLastName()))
+            && normalizeForHousehold(address).equals(normalizeForHousehold(other.getAddress()));
+    }
+
+    /**
+     * Normalizes a value for household comparison: leading/trailing whitespace is trimmed, internal
+     * runs of whitespace are collapsed to a single space, and the result is lower-cased. This lets
+     * two last names or addresses that differ only in case or whitespace be treated as equal.
+     *
+     * @param value the raw value, possibly {@code null}
+     * @return the normalized comparison key, or {@code ""} when the value is {@code null}
+     */
+    private static String normalizeForHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Derives the stable household identifier shared by all owners with the same last name and
+     * address. The value is deterministic (the first 12 upper-case hex characters of the SHA-256
+     * digest of the normalized last name and address), so every owner in the same household is
+     * assigned an identical, non-blank identifier regardless of creation order.
+     *
+     * @param lastName the owner's last name
+     * @param address  the owner's address
+     * @return the stable household identifier
+     */
+    private static String householdIdFor(String lastName, String address) {
+        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, 12);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     @Override

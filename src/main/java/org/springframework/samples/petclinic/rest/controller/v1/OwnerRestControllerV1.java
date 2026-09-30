@@ -115,12 +115,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "telephone is already in use by another owner");
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && isHouseholdInUse(owner.getLastName(), owner.getAddress(), null)) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold
+            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress(), null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "another owner with the same last name already lives at this address");
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        if (sharesHousehold) {
+            this.clinicService.assignHousehold(owner);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -332,43 +336,4 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return false;
     }
 
-    /**
-     * Normalizes a value for household comparison: leading/trailing whitespace is trimmed, internal
-     * runs of whitespace are collapsed to a single space, and the result is lower-cased. This lets
-     * two last names or addresses that differ only in case or whitespace be treated as equal.
-     *
-     * @param value the raw value, possibly {@code null}
-     * @return the normalized comparison key, or {@code ""} when the value is {@code null}
-     */
-    private static String normalizeForHousehold(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Determines whether another owner (other than {@code excludeId}, or every owner when it is
-     * {@code null}) already shares the same household, i.e. has the same last name and the same
-     * address compared case-insensitively with collapsed whitespace.
-     *
-     * @param lastName  the last name to check
-     * @param address   the address to check
-     * @param excludeId id of an owner to ignore during the check, or {@code null} for none
-     * @return {@code true} if another owner shares the same last name and address
-     */
-    private boolean isHouseholdInUse(String lastName, String address, Integer excludeId) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeForHousehold(address);
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (excludeId != null && excludeId.equals(existing.getId())) {
-                continue;
-            }
-            if (normalizedLastName.equals(normalizeForHousehold(existing.getLastName()))
-                && normalizedAddress.equals(normalizeForHousehold(existing.getAddress()))) {
-                return true;
-            }
-        }
-        return false;
-    }
 }
