@@ -83,8 +83,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -221,22 +221,20 @@ public class Owner extends Person {
         return age < 65 ? "ADULT" : "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * This owner's current primary identifier. It is the {@code customerCode} today; when the
-     * customerCode is later unified into a {@code memberId}, this returns the memberId instead.
-     * Callers that need "whatever identifies the owner right now" (e.g. the structured audit
-     * event) should read it here so they follow that migration automatically.
+     * This owner's primary identifier: its unified {@code memberId}. Callers that need "whatever
+     * identifies the owner right now" (e.g. the structured audit event) read it here.
      */
     public String primaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     public String getHouseholdId() {

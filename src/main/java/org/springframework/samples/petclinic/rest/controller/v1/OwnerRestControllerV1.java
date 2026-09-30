@@ -185,12 +185,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.registerIdempotencyKey(idempotencyKey, owner.getId());
         OwnerDto ownerDto = toOwnerDtoWithDerived(owner);
         auditLogger.info(
-            "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+            "owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         // Immutable structured event, in addition to the human-readable line above. It carries the
-        // owner's CURRENT primary identifier (Owner#primaryIdentifier) so that when the customerCode
-        // is later unified into the memberId, the event follows without touching this call site.
+        // owner's primary identifier (Owner#primaryIdentifier), i.e. its unified memberId.
         this.ownerAuditEvents.ownerCreated(
             owner.getId(), owner.primaryIdentifier(), ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()

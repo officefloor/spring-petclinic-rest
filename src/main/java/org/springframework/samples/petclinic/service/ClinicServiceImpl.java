@@ -246,14 +246,14 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         ownerRepository.save(owner);
 
     }
 
-    /** Fixed city-to-region table used to derive an owner's region for its customer code. */
+    /** Fixed city-to-region table used to derive an owner's region for its member id. */
     private static final java.util.Map<String, String> CITY_REGION = java.util.Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
@@ -265,20 +265,24 @@ public class ClinicServiceImpl implements ClinicService {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Builds an owner's customer code formatted {@code '<REGION>-<HASH8>'}, where REGION is the
-     * region code derived from the owner's postcode (see {@link #deriveRegion(Owner)}) and HASH8 is
-     * the first 8 upper-case hex characters of the SHA-256 digest over the owner's normalized
-     * telephone concatenated with its last name (e.g. {@code 'NSW-1A2B3C4D'}). The old per-city
-     * sequence numbers have been dropped: the identity is now purely region-and-hash.
+     * Builds an owner's unified member id formatted {@code '<REGION><FY><HASH8><CHK>'}, where REGION
+     * is the region code derived from the owner's postcode (see {@link #deriveRegion(Owner)}), FY is
+     * the two-digit fiscal year of the owner's business-day-adjusted registration date, HASH8 is the
+     * first 8 upper-case hex characters of the SHA-256 digest over the owner's normalized telephone
+     * concatenated with its last name, and CHK is a single Luhn check digit computed over the digits
+     * of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW271A2B3C4D5'}).
      *
-     * <p>When the computed code collides with an existing owner's {@code customerCode}, {@code '-<n>'}
+     * <p>When the computed member id collides with an existing owner's {@code memberId}, {@code '-<n>'}
      * is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners
-     * always receive distinct customer codes.
+     * always receive distinct member ids.
      */
-    private String generateCustomerCode(Owner owner) {
-        String base = String.format("%s-%s", deriveRegion(owner), hash8(owner));
+    private String generateMemberId(Owner owner) {
+        String region = deriveRegion(owner);
+        String fy = String.format("%02d", Owner.fiscalYear(owner.resolveRegistrationDate()) % 100);
+        String core = region + fy + hash8(owner);
+        String base = core + luhnCheckDigit(core);
         Set<String> existing = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         if (!existing.contains(base)) {
@@ -290,6 +294,31 @@ public class ClinicServiceImpl implements ClinicService {
                 return candidate;
             }
         }
+    }
+
+    /**
+     * Computes the Luhn check digit (0-9) over the decimal digits contained in {@code value},
+     * ignoring any non-digit characters. Used to derive the CHK segment of an owner's member id.
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

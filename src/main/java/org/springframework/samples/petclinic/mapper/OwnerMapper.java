@@ -27,9 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
-    @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "formatFiscalYear")
-    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
@@ -67,22 +65,26 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's {@code locality} from its region-and-hash customer code: the region is the
-     * segment of the {@code '<REGION>-<HASH8>'} code before the first {@code '-'}, so the locality
-     * always agrees with the identity's region (which itself prefers the postcode over the city,
-     * defaulting to {@code 'UNKNOWN'}). Returns {@code 'UNKNOWN'} when no customer code is present.
+     * Derives an owner's {@code locality} from its unified member id: the region is the leading run
+     * of letters of the {@code '<REGION><FY><HASH8><CHK>'} member id (the letters before the
+     * two-digit fiscal year that follows the region), so the locality always agrees with the
+     * identity's region (which itself prefers the postcode over the city, defaulting to
+     * {@code 'UNKNOWN'}). Returns {@code 'UNKNOWN'} when no member id is present.
      */
     @Named("formatLocality")
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
+        String code = owner.getMemberId();
         if (code == null || code.isBlank()) {
             return "UNKNOWN";
         }
-        int dash = code.indexOf('-');
-        return dash < 0 ? code : code.substring(0, dash);
+        int i = 0;
+        while (i < code.length() && Character.isLetter(code.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? "UNKNOWN" : code.substring(0, i);
     }
 
     /**
@@ -154,20 +156,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last
-     * two digits of the fiscal year derived from the business-day-adjusted registration date (e.g.
-     * {@code 'NSW-1A2B3C4D-M27'}), for the read-only {@code membershipNumber} field. Null when the
-     * customer code or registration date is absent.
-     */
-    @Named("formatMembershipNumber")
-    default String formatMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), Owner.fiscalYear(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
      * Formats an owner's fiscal year as {@code 'FY<YY>'}, where YY is the last two digits of the
      * fiscal year derived from the business-day-adjusted registration date (e.g. {@code 'FY27'}),
      * for the read-only {@code fiscalYear} field. Each fiscal year starts on 1 July and is named by
@@ -179,37 +167,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("FY%02d", Owner.fiscalYear(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Computes the Luhn check digit (0-9) over the digits contained in the owner's
-     * {@code customerCode} for the read-only {@code checkDigit} field. Null when the
-     * customer code is absent.
-     */
-    @Named("formatCheckDigit")
-    default Integer formatCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**

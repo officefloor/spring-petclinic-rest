@@ -45,18 +45,17 @@ public class OwnerAuditEvents {
 
     /**
      * Emit the immutable {@code OWNER_CREATED} event, stamping a fresh monotonically increasing
-     * {@code seq}. The {@code customerCode} argument is the owner's <em>current</em> primary
-     * identifier (see {@code Owner#primaryIdentifier}); when that identifier is later unified into
-     * the memberId, the event carries the memberId without any change here.
+     * {@code seq}. The {@code memberId} argument is the owner's primary identifier (see
+     * {@code Owner#primaryIdentifier}).
      */
-    public void ownerCreated(Integer ownerId, String customerCode, Integer membershipLevel) {
+    public void ownerCreated(Integer ownerId, String memberId, Integer membershipLevel) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
-            seq.incrementAndGet(), ownerId, customerCode, membershipLevel, "OWNER_CREATED");
+            seq.incrementAndGet(), ownerId, memberId, membershipLevel, "OWNER_CREATED");
         auditLogger.info(objectMapper.writeValueAsString(event));
     }
 
     /** Immutable structured OWNER_CREATED audit event. */
-    record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                              Integer membershipLevel, String event) {
     }
 }

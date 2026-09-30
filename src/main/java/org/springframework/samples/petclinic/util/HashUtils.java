@@ -21,7 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Shared SHA-256 hex helpers used to derive the owner identity key, household id and customer-code
+ * Shared SHA-256 hex helpers used to derive the owner identity key, household id and member-id
  * hash. Centralises the digest-and-hex boilerplate so those derivations differ only in hex case and
  * truncation length rather than each carrying their own copy.
  */
