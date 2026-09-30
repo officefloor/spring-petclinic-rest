@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.CityRegions;
+import org.springframework.samples.petclinic.model.LuhnCheckDigit;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -25,7 +26,16 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * A single Luhn check digit (0-9) computed over the digits of the owner's
+     * {@code customerCode}. {@code null} when the owner has no customer code.
+     */
+    default Integer toCheckDigit(Owner owner) {
+        return LuhnCheckDigit.of(owner.getCustomerCode());
+    }
 
     /**
      * The owner's derived identityKey — the single value all duplicate detection is
