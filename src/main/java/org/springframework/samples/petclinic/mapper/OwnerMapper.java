@@ -28,6 +28,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
             + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "membershipPoints",
+        expression = "java(toMembershipPoints(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality",
@@ -155,25 +157,57 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's numeric membership level (1 to 4): start at 1; add 1 when an email address is
-     * present; add 1 when the owner has no namesakes (namesakeCount is 0); add 1 when the owner's
-     * tenure exceeds 365 days (see {@link #hasTenureBonus(Owner)}); capped at 4. Because a newly
-     * created owner has zero tenure it never earns the tenure point, so a new owner with an email and
-     * no namesakes lands at level 3, not 4.
+     * Derive an owner's membership points: start at 0; add 2 when an email address is present; add 1
+     * when the owner has no namesakes (namesakeCount is 0); add 2 when the owner belongs to a
+     * household of 3 or more (see {@link #hasHouseholdBonus(Owner)}); add 3 when the owner's tenure
+     * exceeds 365 days (see {@link #hasTenureBonus(Owner)}). Because a newly created owner has zero
+     * tenure it never earns the tenure points, so a new owner with an email and no namesakes in a
+     * single-member household scores 3 points.
      */
-    default Integer toMembershipLevel(Owner owner) {
-        int level = 1;
+    default Integer toMembershipPoints(Owner owner) {
+        int points = 0;
         if (hasEmail(owner)) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
+        }
+        if (hasHouseholdBonus(owner)) {
+            points += 2;
         }
         if (hasTenureBonus(owner)) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Whether the owner belongs to a household of 3 or more members. The household size is the count
+     * of owners sharing the owner's household id, frozen at creation (see the create endpoint).
+     * Returns {@code false} when no household size is present (e.g. legacy records).
+     */
+    default boolean hasHouseholdBonus(Owner owner) {
+        return owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
+    }
+
+    /**
+     * Derive an owner's numeric membership level (1 to 4) from its membership points (see
+     * {@link #toMembershipPoints(Owner)}): level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6
+     * or more.
+     */
+    default Integer toMembershipLevel(Owner owner) {
+        int points = toMembershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**

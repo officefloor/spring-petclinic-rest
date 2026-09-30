@@ -154,6 +154,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCodeFor(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         // A declared household member (one created with 'sharesHousehold' that joins an existing
@@ -397,6 +398,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Counts the existing owners that already belong to the given household (i.e. that share the
+     * given {@code householdId}). Called before a new owner is saved, so adding one for the owner
+     * being created yields the household's total size at the moment of creation. Owners without a
+     * household id are ignored.
+     *
+     * @param householdId the new owner's assigned household id
+     * @return the number of existing owners already in that household
+     */
+    private int countHouseholdMembers(String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (householdId.equals(existing.getHouseholdId())) {
                 count++;
             }
         }
