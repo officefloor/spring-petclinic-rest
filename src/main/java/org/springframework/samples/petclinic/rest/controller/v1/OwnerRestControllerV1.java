@@ -695,6 +695,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isIdentityKeyInUse(String identityKey, Integer excludeId) {
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (excludeId != null && excludeId.equals(existing.getId())) {
                 continue;
             }
@@ -721,6 +724,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))

@@ -144,7 +144,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void deleteOwner(Owner owner) throws DataAccessException {
-        ownerRepository.delete(owner);
+        // Soft delete: flag the owner deleted and retain the row rather than removing it.
+        owner.setDeleted(true);
+        ownerRepository.save(owner);
     }
 
     @Override
@@ -253,6 +255,9 @@ public class ClinicServiceImpl implements ClinicService {
             return false;
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (excludeId != null && excludeId.equals(existing.getId())) {
                 continue;
             }
