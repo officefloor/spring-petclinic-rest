@@ -1,0 +1,158 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5b6244cfd..65e886c4f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -51,6 +51,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -104,6 +107,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8062019b8..381efd412 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(normalizedTelephone);
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+         owner.setAddress(normalizeAddress(owner.getAddress()));
++        validatePostcode(owner.getCity(), owner.getPostcode());
+         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
+         if (effectiveRegistrationDate == null) {
+             effectiveRegistrationDate = LocalDate.now();
+@@ -458,6 +459,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email.toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Fixed region-to-inclusive-postcode-range table. The postcode of an owner whose city maps to a
++     * known region (via {@link OwnerMapper#CITY_REGION}) must fall within its region's range: NSW
++     * 2000-2099, VIC 3000-3099, QLD 4000-4099. Each entry is {@code {low, high}} inclusive.
++     */
++    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validates an owner's optional postcode against the city's region. Postcode is validated only
++     * when present ({@code null} is accepted, keeping the request contract backward-compatible). The
++     * four-digit format is enforced by request validation; here the value is range-checked: when the
++     * city maps to a known region (via {@link OwnerMapper#CITY_REGION}) the postcode must fall within
++     * that region's inclusive range (see {@link #REGION_POSTCODE_RANGES}). A city with no known region
++     * accepts any four-digit postcode.
++     *
++     * @param city     the owner's city
++     * @param postcode the owner's postcode, possibly {@code null}
++     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if a supplied postcode is
++     *                                 out of range for the city's region
++     */
++    private static void validatePostcode(String city, String postcode) {
++        if (postcode == null) {
++            return;
++        }
++        String region = OwnerMapper.CITY_REGION.get(city);
++        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
++        if (range == null) {
++            return;
++        }
++        int value = Integer.parseInt(postcode);
++        if (value < range[0] || value > range[1]) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "postcode " + postcode + " is not valid for region " + region);
++        }
++    }
++
+     /**
+      * Common street-type abbreviations expanded to their full word during address normalization.
+      * Keys and values are upper-case; matching is done per whitespace-delimited token.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 1c5a48d1e..87b0beb22 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 3882847e2..cd07f20bb 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2b9906d19..b130c2d5c 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(10),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 540ab182d..a9626db05 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 736fc955d..9978720d7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2050,6 +2050,18 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: george.franklin@example.com
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when supplied it must be
++            exactly four digits and, when the city has a known region (Sydney
++            -> NSW, Melbourne -> VIC, Brisbane -> QLD), fall within that
++            region's inclusive range (NSW 2000-2099, VIC 3000-3099, QLD
++            4000-4099). A city with no known region accepts any 4-digit
++            postcode. Stored and returned when given.
++          type: string
++          pattern: "^[0-9]{4}$"
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: >-
