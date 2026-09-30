@@ -74,6 +74,9 @@ public class Owner extends Person {
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -167,6 +170,14 @@ public class Owner extends Person {
 
     public void setMembershipLevel(Integer membershipLevel) {
         this.membershipLevel = membershipLevel;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     protected Set<Pet> getPetsInternal() {

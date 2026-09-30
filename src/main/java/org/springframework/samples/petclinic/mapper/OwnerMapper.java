@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.CityRegions;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -12,7 +13,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -35,17 +35,13 @@ public interface OwnerMapper {
         return OwnerIdentity.of(owner);
     }
 
-    /** City -> canonical region; anything not listed derives locality 'UNKNOWN'. */
-    Map<String, String> CITY_REGION = Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
     /**
-     * The owner's locality, derived from the city using a fixed city-to-region table
+     * The owner's locality, derived from the city using the shared {@link CityRegions} table
      * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not
      * in the table.
      */
     default String toLocality(Owner owner) {
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        return CityRegions.localityOf(owner.getCity());
     }
 
     /**
