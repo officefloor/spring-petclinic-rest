@@ -5,10 +5,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * The single definition of household identity, used by {@link AssignOwnerHousehold} (which
- * stamps the householdId) and by the household-keyed rules (duplicate detection), so the
- * rule lives in one place.
+ * stamps the householdId) and by the household-keyed rules (duplicate detection, household
+ * size), so the rule lives in one place.
  *
  * <p>A household is keyed on {@code (lastName, postcode)}: two owners are in the same
  * household when their normalized lastName and postcode match. The householdId is therefore
@@ -30,6 +32,24 @@ final class OwnerHousehold {
     static String householdId(String lastName, String postcode) {
         String input = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         return sha256Hex(input).substring(0, 12);
+    }
+
+    /**
+     * The number of owners in the given household — those whose {@code householdId} matches.
+     * A {@code null} householdId matches nothing. Used by the household-keyed rules so the
+     * membership comparison lives in the same place as the identity that defines it.
+     */
+    static int memberCount(String householdId, Iterable<Owner> owners) {
+        if (householdId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner owner : owners) {
+            if (householdId.equals(owner.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
