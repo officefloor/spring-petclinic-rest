@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.Period;
 import java.util.*;
 
@@ -326,6 +327,20 @@ public class Owner extends Person {
         LocalDate effective = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
         this.registrationDate = toBusinessDay(effective);
         return this.registrationDate;
+    }
+
+    /**
+     * Derives the fiscal year that a date falls in, where each fiscal year starts on 1 July and is
+     * identified by the calendar year in which it ends: a date from July onwards belongs to the
+     * fiscal year ending in the following calendar year (e.g. 2 July 2026 gives 2027), while a date
+     * from January to June belongs to the fiscal year ending in its own calendar year. Returns
+     * {@code null} when the date is absent.
+     */
+    public static Integer fiscalYear(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
