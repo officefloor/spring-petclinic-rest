@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+index 701d0b597..f71d9ebf4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+@@ -10,6 +10,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.validation.BindingResult;
++import org.springframework.validation.FieldError;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ 
+ public class ValidationExceptionHandler {
+@@ -20,6 +21,11 @@ public class ValidationExceptionHandler {
+                 "The request contains invalid or missing parameters");
+         BindingResult bindingResult = ex.getBindingResult();
+         if (bindingResult.hasErrors()) {
++            List<String> errors = bindingResult.getFieldErrors().stream()
++                    .map(FieldError::getField)
++                    .distinct()
++                    .toList();
++            detail.setProperty("errors", errors);
+             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
+                     .map(fieldError -> {
+                         String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 87ace0584..2342f86f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -1,17 +1,14 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import jakarta.validation.Valid;
+ import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.validation.annotation.Validated;
+-import org.springframework.web.bind.annotation.RequestBody;
+ 
+-@Validated
+ public class BuildOwner {
+ 
+-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
++    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         built.set(ownerMapper.toOwner(request));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4d4b28686..67cc75bf8 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,10 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++validate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
++  next: build
++
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
