@@ -20,6 +20,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
+    @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -29,6 +30,18 @@ public interface OwnerMapper {
     @Named("formatDisplayName")
     default String formatDisplayName(Owner owner) {
         return owner == null ? null : owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Formats an owner's initials as the upper-cased first letters of firstName and
+     * lastName, dot-separated with a trailing dot (e.g. {@code 'J.S.'}), for the
+     * read-only {@code initials} field.
+     */
+    @Named("formatInitials")
+    default String formatInitials(Owner owner) {
+        return owner == null ? null
+            : Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
+                + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
     }
 
     Owner toOwner(OwnerDto ownerDto);
