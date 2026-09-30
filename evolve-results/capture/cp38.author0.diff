@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidation.java
+new file mode 100644
+index 000000000..600ee2243
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidation.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Validates that an email address does not use a disposable-email domain. The domain
++ * (the part after the final {@code '@'}) is compared case-insensitively against a fixed
++ * blocklist ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}); a
++ * value using one of those domains is rejected. Absence and general syntactic validity
++ * are handled separately, so a {@code null} or blank value passes this constraint.
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = EmailDomainValidator.class)
++@Documented
++public @interface EmailDomainValidation {
++
++    String message() default "Email address must not use a disposable-email domain "
++        + "(mailinator.com, tempmail.com, guerrillamail.com)";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+new file mode 100644
+index 000000000..f7ce0c80f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++import java.util.Locale;
++import java.util.Set;
++
++public class EmailDomainValidator implements ConstraintValidator<EmailDomainValidation, String> {
++
++    private static final Set<String> BLOCKED_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    @Override
++    public boolean isValid(String email, ConstraintValidatorContext context) {
++        // absence and general syntax are handled elsewhere (@NotEmpty / format: email);
++        // here we only reject disposable-email domains.
++        if (email == null || email.isBlank()) {
++            return true;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return true;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        return !BLOCKED_DOMAINS.contains(domain);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f702769db..3e57c594b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2050,6 +2050,7 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: george.franklin@example.com
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.EmailDomainValidation"
+         postcode:
+           title: Postcode
+           description: >-
