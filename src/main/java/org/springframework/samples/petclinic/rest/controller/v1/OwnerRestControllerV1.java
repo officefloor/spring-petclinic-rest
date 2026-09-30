@@ -273,16 +273,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * city table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)}) and HASH8 is the
      * first 8 upper-case hex characters of the SHA-256 digest of the owner's normalized E.164
      * telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The code carries no
-     * sequence number, so it is a stable function of the owner's region and telephone/last-name
-     * identity rather than of creation order.
+     * sequence number, so its base form is a stable function of the owner's region and
+     * telephone/last-name identity rather than of creation order.
+     *
+     * <p>When that computed code already belongs to an existing owner it is de-duplicated by
+     * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a code no
+     * existing owner already has; the de-duplicated code is returned.
      *
      * @param owner the owner being created, with its telephone already normalized to E.164 form
-     * @return the assigned customer code
+     * @return the assigned, collision-free customer code
      */
     private String customerCodeFor(Owner owner) {
         String region = ownerMapper.regionOf(owner);
         String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName()).substring(0, 8);
-        return region + "-" + hash8;
+        String baseCode = region + "-" + hash8;
+        if (!isCustomerCodeInUse(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        String candidate = baseCode + "-" + n;
+        while (isCustomerCodeInUse(candidate)) {
+            n++;
+            candidate = baseCode + "-" + n;
+        }
+        return candidate;
+    }
+
+    /**
+     * Determines whether any existing owner already carries the given {@code customerCode}, compared
+     * exactly. Called while assigning a new owner's code so collisions can be de-duplicated.
+     *
+     * @param customerCode the candidate customer code to look for
+     * @return {@code true} if an existing owner already has that customer code
+     */
+    private boolean isCustomerCodeInUse(String customerCode) {
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (customerCode.equals(existing.getCustomerCode())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
