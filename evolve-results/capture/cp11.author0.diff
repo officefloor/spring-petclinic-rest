@@ -1,0 +1,191 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a956fa978..ac06ed897 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -108,6 +111,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8a484e6d3..6444adce3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,9 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+@@ -115,12 +118,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                 "telephone is already in use by another owner");
+         }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        if (!sharesHousehold
+             && isHouseholdInUse(owner.getLastName(), owner.getAddress(), null)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                 "another owner with the same last name already lives at this address");
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        if (sharesHousehold) {
++            assignHousehold(owner);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -371,4 +378,54 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return false;
+     }
++
++    /**
++     * Derives the stable household identifier shared by all owners with the same last name and
++     * address. The value is deterministic (the first 12 upper-case hex characters of the SHA-256
++     * digest of the normalized last name and address), so every owner in the same household is
++     * assigned an identical, non-blank identifier regardless of creation order.
++     *
++     * @param lastName the owner's last name
++     * @param address  the owner's address
++     * @return the stable household identifier
++     */
++    private static String householdIdFor(String lastName, String address) {
++        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(key.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02X", b));
++            }
++            return sb.substring(0, 12);
++        } catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
++    }
++
++    /**
++     * Assigns the shared household identifier to the given owner and to every existing owner that
++     * already shares its household (same last name and address), so all members carry the same
++     * stable value. Existing members whose identifier is missing or stale are updated and saved.
++     *
++     * @param owner the owner being created into (or as the seed of) a shared household
++     */
++    private void assignHousehold(Owner owner) {
++        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
++        owner.setHouseholdId(householdId);
++        String normalizedLastName = normalizeForHousehold(owner.getLastName());
++        String normalizedAddress = normalizeForHousehold(owner.getAddress());
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue;
++            }
++            if (normalizedLastName.equals(normalizeForHousehold(existing.getLastName()))
++                && normalizedAddress.equals(normalizeForHousehold(existing.getAddress()))
++                && !householdId.equals(existing.getHouseholdId())) {
++                existing.setHouseholdId(householdId);
++                this.clinicService.saveOwner(existing);
++            }
++        }
++    }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c192..a3ba7e5a4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871a..82270213a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b796581..91eec0f11 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e1167703f..1c80ff02e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007'
++            householdId:
++              title: Household ID
++              description: >-
++                A stable shared identifier assigned when an owner is created
++                with 'sharesHousehold' true and joins an existing household
++                (another owner with the same last name and address). All owners
++                in the same household share the same value.
++              type: string
++              readOnly: true
++              example: 'A1B2C3D4E5F6'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
