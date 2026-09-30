@@ -24,7 +24,23 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Determines an owner's membership tier for the read-only {@code membershipTier} field:
+     * {@code 'SILVER'} when the owner had no namesakes at creation (namesakeCount is 0) and an
+     * email address is present, otherwise {@code 'BRONZE'}.
+     */
+    @Named("formatMembershipTier")
+    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+    }
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last
