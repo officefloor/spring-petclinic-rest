@@ -1,0 +1,156 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e46a8ba4c..41aad9c01 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+@@ -50,8 +51,20 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
++    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /**
++     * Normalizes a postal address for persistence: whitespace is trimmed and collapsed, the
++     * text is upper-cased and common street-type abbreviations are expanded (e.g.
++     * {@code '  12  main  st '} becomes {@code '12 MAIN STREET'}). The required-field rule is
++     * enforced separately; an address blank after normalization is rejected.
++     */
++    @Named("normalizeAddress")
++    default String normalizeAddress(String address) {
++        return AddressNormalizer.normalize(address);
++    }
++
+     /**
+      * Normalizes a telephone number for persistence into canonical E.164 form (e.g.
+      * {@code '0412 345 678'} becomes {@code '+61412345678'}). The formability rule is
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+new file mode 100644
+index 000000000..20bc032b2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressNormalizer.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++/**
++ * Normalizes free-form postal address input into a canonical stored form.
++ *
++ * <p>Rules:
++ * <ul>
++ *   <li>Leading and trailing whitespace is trimmed and internal runs of whitespace
++ *       are collapsed to a single space.</li>
++ *   <li>The text is upper-cased.</li>
++ *   <li>Common street-type abbreviations are expanded token-by-token:
++ *       {@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}.</li>
++ * </ul>
++ *
++ * <p>For example {@code '  12  main  st '} becomes {@code '12 MAIN STREET'} and
++ * {@code '7 elm ave'} becomes {@code '7 ELM AVENUE'}.
++ */
++public final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * Normalizes raw address input, or returns {@code null} when the input is {@code null}.
++     * An input that is blank (empty once whitespace is collapsed) normalizes to an empty
++     * string, so the required-field check rejects it.
++     *
++     * @param raw the raw address input (may be {@code null})
++     * @return the normalized address (e.g. {@code '12 MAIN STREET'}), or {@code null}
++     */
++    public static String normalize(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String collapsed = raw.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(expand(tokens[i]));
++        }
++        return sb.toString();
++    }
++
++    private static String expand(String token) {
++        return switch (token) {
++            case "ST" -> "STREET";
++            case "RD" -> "ROAD";
++            case "AVE" -> "AVENUE";
++            default -> token;
++        };
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 11d4777d0..1ed1b0345 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -273,13 +274,13 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     private List<Owner> findHouseholdMembers(String lastName, String address) {
+         String normalizedLastName = normalizeHouseholdField(lastName);
+-        String normalizedAddress = normalizeHouseholdField(address);
++        String normalizedAddress = normalizeHouseholdAddress(address);
+         if (normalizedLastName == null || normalizedAddress == null) {
+             return List.of();
+         }
+         return ownerRepository.findAll().stream()
+             .filter(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
+-                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())))
++                && normalizedAddress.equals(normalizeHouseholdAddress(existing.getAddress())))
+             .toList();
+     }
+ 
+@@ -295,6 +296,21 @@ public class ClinicServiceImpl implements ClinicService {
+         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
++    /**
++     * Normalizes an address for household comparison and identity using the same canonical form
++     * applied when an owner is created (trim/collapse whitespace, upper-case, expand common
++     * abbreviations), so comparisons always use the normalized address regardless of the form in
++     * which either value was originally supplied. Returns {@code null} when the address is absent
++     * or blank, since no household can be formed without one.
++     */
++    private static String normalizeHouseholdAddress(String address) {
++        String normalized = AddressNormalizer.normalize(address);
++        if (normalized == null || normalized.isBlank()) {
++            return null;
++        }
++        return normalized;
++    }
++
+     /**
+      * Places {@code owner} into the household formed by owners that share its (normalized) last
+      * name and address, and returns the household's stable shared identifier. If any existing
+@@ -330,7 +346,7 @@ public class ClinicServiceImpl implements ClinicService {
+      * maps to the same value regardless of creation order.
+      */
+     private static String generateHouseholdId(String lastName, String address) {
+-        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdField(address);
++        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdAddress(address);
+         try {
+             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+             byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
