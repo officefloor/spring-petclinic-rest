@@ -75,6 +75,12 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @Transient
     private Boolean bulkSignupWarning;
 
@@ -190,6 +196,32 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner: not a
+     * hard duplicate (differing identity key, so still created), but sharing an existing owner's
+     * lastName and postcode with a different telephone. {@code false} when no such earlier owner
+     * existed. Assigned at creation.
+     */
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the earlier owner this owner is a possible duplicate of (the earliest such match),
+     * or {@code null} when {@link #getPossibleDuplicate()} is false. Assigned at creation.
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**

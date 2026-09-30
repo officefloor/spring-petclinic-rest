@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       customer_code TEXT,
                                       membership_number TEXT,
                                       household_id TEXT,
-                                      namesake_count INTEGER
+                                      namesake_count INTEGER,
+                                      possible_duplicate BOOLEAN,
+                                      possible_duplicate_of INTEGER
 );
 CREATE INDEX ON owners (last_name);
 
