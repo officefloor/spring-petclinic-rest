@@ -46,7 +46,23 @@ public interface OwnerMapper {
         expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(toTelephoneDisplay(owner))")
+    @Mapping(target = "salutation",
+        expression = "java(toSalutation(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's salutation: the {@code title}, a single space, and the {@code lastName}
+     * (e.g. {@code "DR Franklin"}). When no title was supplied (null or blank) the salutation is
+     * just the last name.
+     */
+    default String toSalutation(Owner owner) {
+        String lastName = owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
+    }
 
     /**
      * Derive an owner's age band from the {@code birthDate} relative to the {@code registrationDate}:
