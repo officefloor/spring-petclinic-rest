@@ -36,8 +36,21 @@ public interface OwnerMapper {
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+    @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's canonical resource URL as {@code '/api/owners/'} followed by its id, for the
+     * read-only {@code selfLink} field. Null when the owner or its id is absent.
+     */
+    @Named("formatSelfLink")
+    default String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives an owner's preferred contact channel for the read-only {@code contactPreference}
