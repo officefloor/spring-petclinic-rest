@@ -252,28 +252,45 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level. Starts at {@code 1}, plus 1 when an email is present,
-     * plus 1 when {@link #namesakeCount} is 0, plus 1 when the {@link #getHouseholdSize() household}
-     * has 3 or more members. Level {@code 4} additionally requires tenure of more than 365 days
-     * (measured from the {@link #registrationDate}); without that tenure the level is capped at
-     * {@code 3}. Because a newly created owner has zero tenure, a new owner never exceeds level 3.
+     * The owner's membership points, derived at response time. Starts at {@code 0}, plus 2 when an
+     * email is present, plus 1 when {@link #namesakeCount} is 0, plus 2 when the
+     * {@link #getHouseholdSize() household} has 3 or more members, plus 3 when tenure exceeds 365 days
+     * (measured from the {@link #registrationDate}).
      */
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         if (this.email != null && !this.email.isEmpty()) {
-            level++;
+            points += 2;
         }
         if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+            points += 1;
         }
         if (this.householdSize != null && this.householdSize >= 3) {
-            level++;
+            points += 2;
         }
-        // Level 4 is reserved for established members: it requires tenure of more than 365 days.
-        if (level >= 4 && getTenureDays() <= 365) {
-            level = 3;
+        if (getTenureDays() > 365) {
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, mapped from {@link #getMembershipPoints() membershipPoints}:
+     * {@code 1} for 0-1 points, {@code 2} for 2-3 points, {@code 3} for 4-5 points, and {@code 4} for
+     * 6 or more points.
+     */
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
