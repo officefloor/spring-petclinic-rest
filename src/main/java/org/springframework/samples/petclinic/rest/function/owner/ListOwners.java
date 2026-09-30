@@ -23,7 +23,6 @@ public class ListOwners {
             response.send(ResponseEntity.notFound().build());
             return;
         }
-        OwnerHouseholdSize.populateAll(owners, ownerRepository);
         response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
     }
 }

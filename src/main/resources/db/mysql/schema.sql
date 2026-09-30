@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   membership_number VARCHAR(30),
   bulk_signup_warning BOOLEAN,
+  membership_level INT,
   INDEX(last_name)
 ) engine=InnoDB;
 

@@ -23,7 +23,6 @@ public class ListOwnersPage {
         Page<Owner> owners = lastName != null
                 ? ownerRepository.findByLastName(lastName, pageable)
                 : ownerRepository.findAll(pageable);
-        OwnerHouseholdSize.populateAll(owners, ownerRepository);
         response.send(ownerMapper.toOwnerPageDto(owners));
     }
 }

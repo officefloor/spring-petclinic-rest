@@ -19,12 +19,8 @@ import java.util.Map;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
-    /** Household size at or above which an owner reaches the 'GOLD' tier. */
-    int GOLD_HOUSEHOLD_SIZE = 3;
-
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
-    @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -39,25 +35,6 @@ public interface OwnerMapper {
      */
     default String toLocality(Owner owner) {
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
-     * same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0
-     * and an email is present, else 'BRONZE'. The household size is derived on read and
-     * populated onto the owner upstream (see the owner response functions), keeping this
-     * mapper a pure projection of the data already on the owner.
-     */
-    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= GOLD_HOUSEHOLD_SIZE) {
-            return OwnerDto.MembershipTierEnum.GOLD;
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean hasEmail = email != null && !email.isBlank();
-        return (namesakeCount != null && namesakeCount == 0 && hasEmail)
-                ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
     }
 
     /** The owner's name formatted as 'LastName, FirstName'. */
