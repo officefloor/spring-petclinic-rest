@@ -38,6 +38,9 @@ public class AssignPossibleDuplicate {
                 if (existing.getId() == null || existing.getId().equals(owner.getId())) {
                     continue;
                 }
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue; // soft-deleted owners are not flagged as possible duplicates
+                }
                 if (lastName.equalsIgnoreCase(existing.getLastName())
                         && postcode.equals(existing.getPostcode())
                         && !telephone.equals(OwnerTelephones.toE164OrRaw(existing.getTelephone()))) {
