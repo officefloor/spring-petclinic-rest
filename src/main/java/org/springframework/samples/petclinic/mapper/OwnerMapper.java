@@ -25,6 +25,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+    @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
@@ -103,6 +104,17 @@ public interface OwnerMapper {
     /** The owner's name formatted as 'LastName, FirstName'. */
     default String toDisplayName(Owner owner) {
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * The owner's salutation: the title followed by a single space and the lastName when a
+     * title is supplied, otherwise just the lastName.
+     */
+    default String toSalutation(Owner owner) {
+        String title = owner.getTitle();
+        return (title != null && !title.isBlank())
+                ? title + " " + owner.getLastName()
+                : owner.getLastName();
     }
 
     /** The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
