@@ -2076,9 +2076,12 @@ components:
           title: Shares household
           description: >-
             Create-time hint that this owner deliberately shares a household with an
-            existing owner. When true, the duplicate-household check (same lastName and
-            same address, compared case-insensitively with collapsed whitespace) is
-            bypassed so the owner can be created despite the collision. Not persisted.
+            existing owner. The household is keyed on (lastName, postcode), so a second
+            owner with the same lastName and postcode is otherwise rejected 409 as a
+            household duplicate. When true, that duplicate block is bypassed so the owner
+            is created as a declared household member (and is not flagged as a possible
+            duplicate). It does not create the household link; the shared householdId is
+            always derived deterministically. Not persisted.
           type: boolean
           example: false
       required:
@@ -2139,14 +2142,13 @@ components:
             householdId:
               title: Household ID
               description: >-
-                A stable identifier shared by owners who deliberately share a
-                household. Assigned when an owner is created with
-                'sharesHousehold' true and an existing owner shares the same
-                lastName and address (compared case-insensitively with collapsed
-                whitespace); every owner in that household carries the same value.
-                Absent when the owner does not share a household.
+                A stable, deterministic household identifier: the first 12 upper-case
+                hex characters of the SHA-256 of the normalized lastName concatenated
+                with '|' and the postcode. Owners with the same lastName and postcode
+                automatically share it, regardless of creation order. Assigned at
+                creation.
               type: string
-              example: 'HH-9F86D081884C'
+              example: '9F86D081884C'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2221,10 +2223,11 @@ components:
             possibleDuplicate:
               title: Possible duplicate
               description: >-
-                Assigned at creation. 'true' when this owner, though not a hard
-                duplicate (its identityKey differs so it was still created),
-                shared an earlier owner's lastName and postcode with a different
-                telephone; otherwise 'false'.
+                Assigned at creation. Flags a suspected duplicate, keyed off the
+                shared householdId (same lastName and postcode). A declared household
+                member (created with 'sharesHousehold' true) is never flagged; any
+                other owner joining an existing household is rejected 409 instead, so
+                in practice this is 'false'.
               type: boolean
               example: false
               readOnly: true
@@ -2242,14 +2245,14 @@ components:
             identityKey:
               title: Identity key
               description: >-
-                The owner's derived identity key, formatted
+                A display-only derived string formatted
                 'normalizedTelephone|email|householdId' (an absent email or
-                householdId contributes an empty segment). All duplicate
-                detection is consolidated into this one key: a create is rejected
-                409 only when a new owner's whole identityKey equals an existing
-                owner's. Derived at response time; not persisted.
+                householdId contributes an empty segment). Exposed at response time
+                only; it drives no check. Duplicate detection is household-based: a
+                create is rejected 409 when a new owner joins an existing household
+                (same householdId) without 'sharesHousehold'. Not persisted.
               type: string
-              example: '+61412345678||HH-9F86D081884C'
+              example: '+61412345678||9F86D081884C'
               readOnly: true
             pets:
               title: Pets

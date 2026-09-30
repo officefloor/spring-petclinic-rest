@@ -199,9 +199,10 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner: not a
-     * hard duplicate (differing identity key, so still created), but sharing an existing owner's
-     * lastName and postcode with a different telephone. {@code false} when no such earlier owner
+     * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner, keyed
+     * off the shared {@link #getHouseholdId() householdId} (same lastName and postcode). A declared
+     * household member (created with {@code sharesHousehold} true) is never flagged; any other owner
+     * joining an existing household is rejected 409 instead. {@code false} when no such earlier owner
      * existed. Assigned at creation.
      */
     public Boolean getPossibleDuplicate() {
@@ -362,13 +363,13 @@ public class Owner extends Person {
     }
 
     /**
-     * The single source of truth for an owner's identity: the derived key
+     * A display-only derived string composing the owner's canonical contact and household values:
      * {@code normalizedTelephone|email|householdId}, joined with '|'. The telephone is stored in
-     * canonical E.164 form and the email lower-cased, so this key composes their canonical values;
-     * an absent email or householdId contributes an empty segment. Two owners are duplicates exactly
-     * when their whole identity keys are equal — differing in any one segment (for example two
-     * members of the same household with different telephones) yields different keys. Derived at
-     * response time and used by the create pipeline's single duplicate check; not persisted.
+     * canonical E.164 form and the email lower-cased; an absent email or householdId contributes an
+     * empty segment. Derived at response time and exposed as a read-only response field only — it
+     * drives no check. Duplicate detection is purely household-based (see
+     * {@code CheckOwnerHouseholdUnique}, which compares {@link #getHouseholdId() householdId}); this
+     * key is not consulted. Not persisted.
      */
     public String getIdentityKey() {
         return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
