@@ -284,6 +284,21 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
+    /**
+     * Counts the existing owners whose city matches the given value case-insensitively.
+     * Used to enforce the per-city capacity rule at creation time.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnersByCity(String city) throws DataAccessException {
+        if (city == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {

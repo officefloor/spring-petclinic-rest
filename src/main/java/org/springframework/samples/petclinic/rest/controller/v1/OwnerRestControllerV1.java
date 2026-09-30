@@ -104,6 +104,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress());
         if (!sharesHousehold && householdExists) {
