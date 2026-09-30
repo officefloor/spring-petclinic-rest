@@ -21,9 +21,7 @@ public class CheckOwnerDailyLimit {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DailyOwnerLimitExceededException {
         LocalDate businessDay = RegistrationDates.effective(request.getRegistrationDate());
-        long registeredThatDay = ownerRepository.findAll().stream()
-                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
-                .count();
+        long registeredThatDay = RegistrationDates.countRegisteredOn(businessDay, ownerRepository);
         if (registeredThatDay >= DAILY_LIMIT) {
             throw new DailyOwnerLimitExceededException(
                     DAILY_LIMIT + " or more owners have already been created on " + businessDay);
