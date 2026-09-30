@@ -514,6 +514,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, derived at response time as {@code <TIER>_<AREA>} — one of
+     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
+     * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} when {@link #getMembershipLevel()
+     * membershipLevel} is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the
+     * {@link #getLocality() locality} is a known region ({@code NSW}, {@code VIC} or {@code QLD}),
+     * otherwise {@code REGIONAL}. Not persisted.
+     */
+    public String getOwnerSegment() {
+        Integer level = getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * The owner's preferred contact channel, derived at response time: {@code EMAIL} when an
      * email is present, otherwise {@code PHONE}. Not persisted.
      */
