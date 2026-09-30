@@ -109,12 +109,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the read representation of a persisted owner, populating the derived fields
-     * ({@code householdSize}, {@code bulkSignupWarning}) that are not stored on the entity.
+     * ({@code householdSize}, {@code bulkSignupWarning}, {@code capacityWarning}) that are not
+     * stored on the entity.
      */
     private OwnerDto toOwnerDtoWithDerived(Owner owner) {
         owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
         return ownerDto;
     }
 
@@ -124,6 +126,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isBulkSignup(LocalDate registrationDate) {
         return this.clinicService.countOwnersByRegistrationDate(registrationDate) > 80;
+    }
+
+    /**
+     * Whether {@code city} already holds between 40 and 49 owners (inclusive), signalling that it
+     * is approaching the per-city capacity limit of 50, for the read-only {@code capacityWarning}
+     * field. The hard rejection at 50 (see {@link #addOwner}) is unaffected.
+     */
+    private boolean isApproachingCapacity(String city) {
+        int count = this.clinicService.countOwnersByCity(city);
+        return count >= 40 && count <= 49;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
