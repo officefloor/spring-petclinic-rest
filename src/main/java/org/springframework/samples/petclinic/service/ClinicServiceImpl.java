@@ -253,31 +253,21 @@ public class ClinicServiceImpl implements ClinicService {
 
     }
 
-    /** Fixed city-to-region table used to derive an owner's region for its member id. */
-    private static final java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region to inclusive 4-digit postcode range {low, high}, preferred over the city table
-     *  when deriving an owner's region. */
-    private static final java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
     /**
      * Builds an owner's unified member id formatted {@code '<REGION><FY><HASH8><CHK>'}, where REGION
-     * is the region code derived from the owner's postcode (see {@link #deriveRegion(Owner)}), FY is
-     * the two-digit fiscal year of the owner's business-day-adjusted registration date, HASH8 is the
+     * is the version-2 region code derived from the owner's postcode/city (the plain region with the
+     * fixed {@code 'V2'} version tag mixed in, see {@link Owner#deriveIdentityRegion()}), FY is the
+     * two-digit fiscal year of the owner's business-day-adjusted registration date, HASH8 is the
      * first 8 upper-case hex characters of the SHA-256 digest over the owner's normalized telephone
      * concatenated with its last name, and CHK is a single Luhn check digit computed over the digits
-     * of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW271A2B3C4D5'}).
+     * of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSWV2271A2B3C4D5'}).
      *
      * <p>When the computed member id collides with an existing owner's {@code memberId}, {@code '-<n>'}
      * is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners
      * always receive distinct member ids.
      */
     private String generateMemberId(Owner owner) {
-        String region = deriveRegion(owner);
+        String region = owner.deriveIdentityRegion();
         String fy = String.format("%02d", Owner.fiscalYear(owner.resolveRegistrationDate()) % 100);
         String core = region + fy + hash8(owner);
         String base = core + luhnCheckDigit(core);
@@ -319,27 +309,6 @@ public class ClinicServiceImpl implements ClinicService {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * Derives an owner's region code, preferring the postcode: the region whose inclusive 4-digit
-     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) contains the postcode is used first. When
-     * the postcode is absent or in no known range, it falls back to the fixed city-to-region table
-     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), returning {@code 'UNKNOWN'} when the
-     * city is not in the table.
-     */
-    private static String deriveRegion(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("^[0-9]{4}$")) {
-            int value = Integer.parseInt(postcode);
-            for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-                int[] range = entry.getValue();
-                if (value >= range[0] && value <= range[1]) {
-                    return entry.getKey();
-                }
-            }
-        }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
     /**
@@ -446,11 +415,13 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Computes an owner's deterministic household id: the first 12 upper-case hex characters of the
-     * SHA-256 digest over the owner's normalized last name, a {@code '|'} separator and its postcode
-     * ({@code normalizedLastName + '|' + postcode}). Owners that share a last name and postcode
-     * therefore map to the same household id automatically, without any explicit linking. Returns
-     * {@code null} when the last name or postcode is absent or blank, since no household can be
-     * formed without both.
+     * SHA-256 digest over the version-2 region code ({@link Owner#deriveIdentityRegion()}, which
+     * mixes in the fixed {@code 'V2'} version tag), a {@code '|'} separator, the owner's normalized
+     * last name, a {@code '|'} separator and its postcode
+     * ({@code identityRegion + '|' + normalizedLastName + '|' + postcode}). Owners that share a last
+     * name and postcode therefore map to the same household id automatically, without any explicit
+     * linking. Returns {@code null} when the last name or postcode is absent or blank, since no
+     * household can be formed without both.
      */
     @Override
     @Transactional(readOnly = true)
@@ -464,7 +435,8 @@ public class ClinicServiceImpl implements ClinicService {
             || postcode == null || postcode.isBlank()) {
             return null;
         }
-        return HashUtils.sha256UpperHex(normalizedLastName + "|" + postcode, 12);
+        return HashUtils.sha256UpperHex(
+            owner.deriveIdentityRegion() + "|" + normalizedLastName + "|" + postcode, 12);
     }
 
     /**

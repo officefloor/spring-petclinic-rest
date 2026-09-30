@@ -49,6 +49,27 @@ public class Owner extends Person {
         LocalDate.of(2026, 12, 25),
         LocalDate.of(2026, 12, 28));
 
+    /**
+     * The fixed version tag mixed into the version-2 identity derivations. It is folded into the
+     * region code used inside every owner identifier (the {@link #getMemberId() memberId}, the
+     * {@link #getHouseholdId() householdId} and the {@link #getIdentityKey() identityKey}) so each
+     * value differs from its version-1 form. The tag is confined to the identifiers: it never leaks
+     * into the user-facing region ({@link #deriveRegion()}) reported as locality, timezone or the
+     * owner segment's derived region.
+     */
+    public static final String IDENTITY_VERSION = "V2";
+
+    /** Fixed city-to-region table used to derive an owner's plain region code. */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** Region to inclusive 4-digit postcode range {low, high}, preferred over the city table
+     *  when deriving an owner's region. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     @Column(name = "title")
     private String title;
 
@@ -373,18 +394,53 @@ public class Owner extends Person {
     }
 
     /**
+     * Derives the owner's plain region code, preferring the postcode: the region whose inclusive
+     * 4-digit range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) contains the postcode is used
+     * first. When the postcode is absent or in no known range, it falls back to the fixed
+     * city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD), returning
+     * {@code 'UNKNOWN'} when the city is not in the table. This is the user-facing region reported
+     * as {@code locality}/{@code timezone} and used by the owner segment; the fixed
+     * {@code 'V2'} version tag is never mixed in here.
+     */
+    public String deriveRegion() {
+        if (this.postcode != null && this.postcode.matches("^[0-9]{4}$")) {
+            int value = Integer.parseInt(this.postcode);
+            for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+                int[] range = entry.getValue();
+                if (value >= range[0] && value <= range[1]) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
+     * Derives the version-2 region code used INSIDE the owner's identifiers: the plain
+     * {@link #deriveRegion() region} with the fixed {@link #IDENTITY_VERSION 'V2'} version tag mixed
+     * in (e.g. {@code 'NSWV2'}). This is the shared source of the version bump across the memberId,
+     * householdId and identityKey, so every identifier differs from its version-1 form while the
+     * plain region reported to users stays untagged.
+     */
+    public String deriveIdentityRegion() {
+        return deriveRegion() + IDENTITY_VERSION;
+    }
+
+    /**
      * The owner's derived identity key, used as the single basis for duplicate detection: the
-     * lower-case hex SHA-256 digest over {@code normalizedTelephone + '|' + lowerEmail + '|' +
-     * soundex(lastName)}, where the telephone and email components are empty when absent. Two
-     * owners are duplicates only when their whole identity keys are equal, so any single differing
-     * component (telephone, email or the surname's soundex) yields distinct keys and is allowed.
+     * lower-case hex SHA-256 digest over {@code identityRegion + '|' + normalizedTelephone + '|' +
+     * lowerEmail + '|' + soundex(lastName)}, where {@code identityRegion} is the version-2 region
+     * ({@link #deriveIdentityRegion()}, which mixes in the fixed {@code 'V2'} tag) and the telephone
+     * and email components are empty when absent. Two owners are duplicates only when their whole
+     * identity keys are equal, so any single differing component yields distinct keys and is allowed.
      * Derived from persisted fields, so it is not itself a persistent column.
      */
     @Transient
     public String getIdentityKey() {
         String normalizedTelephone = this.telephone == null ? "" : this.telephone;
         String lowerEmail = this.email == null ? "" : this.email.toLowerCase();
-        String seed = normalizedTelephone + "|" + lowerEmail + "|" + soundex(getLastName());
+        String seed = deriveIdentityRegion() + "|" + normalizedTelephone + "|" + lowerEmail
+            + "|" + soundex(getLastName());
         return HashUtils.sha256Hex(seed);
     }
 

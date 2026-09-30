@@ -225,10 +225,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             "owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
-        // Immutable structured event, in addition to the human-readable line above. It carries the
-        // owner's primary identifier (Owner#primaryIdentifier), i.e. its unified memberId.
+        // Immutable structured event (schema version 2), in addition to the human-readable line
+        // above. It carries the owner's primary identifier (Owner#primaryIdentifier), i.e. its
+        // version-2 memberId, and the owner segment recomputed from that version-2 identity.
         this.ownerAuditEvents.ownerCreated(
-            owner.getId(), owner.primaryIdentifier(), ownerDto.getMembershipLevel());
+            owner.getId(), owner.primaryIdentifier(), ownerDto.getMembershipLevel(),
+            ownerMapper.formatOwnerSegment(owner));
         // Enqueue a welcome notification for the freshly created owner: the NOTIFY line
         // carries the owner id and its memberId so downstream consumers can address it.
         notifyLogger.info("welcome: owner id={} memberId={}", owner.getId(), owner.getMemberId());

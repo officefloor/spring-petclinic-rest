@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
@@ -35,10 +36,31 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", source = "owner", qualifiedByName = "formatIdentity")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identity values (memberId, householdId and identityKey) under the
+     * nested {@code identity} object of the response. Each value is derived with the fixed {@code 'V2'}
+     * version tag mixed into the region code used inside the identifier (see
+     * {@link Owner#deriveIdentityRegion()}), so none matches its version-1 form. Returns {@code null}
+     * when the owner is absent.
+     */
+    @Named("formatIdentity")
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
 
     /**
      * Formats an owner's canonical resource URL as {@code '/api/owners/'} followed by its id, for the
@@ -66,26 +88,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's {@code locality} from its unified member id: the region is the leading run
-     * of letters of the {@code '<REGION><FY><HASH8><CHK>'} member id (the letters before the
-     * two-digit fiscal year that follows the region), so the locality always agrees with the
-     * identity's region (which itself prefers the postcode over the city, defaulting to
-     * {@code 'UNKNOWN'}). Returns {@code 'UNKNOWN'} when no member id is present.
+     * Derives an owner's user-facing {@code locality}: the plain region code derived from the owner's
+     * postcode/city (see {@link Owner#deriveRegion()}), which prefers the postcode over the city and
+     * defaults to {@code 'UNKNOWN'}. This is the untagged region: the {@code 'V2'} version tag mixed
+     * into the identifiers never appears here, so the locality stays a plain region such as
+     * {@code 'NSW'}. Returns {@code 'UNKNOWN'} when the owner is absent.
      */
     @Named("formatLocality")
     default String formatLocality(Owner owner) {
         if (owner == null) {
-            return null;
-        }
-        String code = owner.getMemberId();
-        if (code == null || code.isBlank()) {
             return "UNKNOWN";
         }
-        int i = 0;
-        while (i < code.length() && Character.isLetter(code.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? "UNKNOWN" : code.substring(0, i);
+        return owner.deriveRegion();
     }
 
     /**

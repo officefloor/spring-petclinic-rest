@@ -43,19 +43,26 @@ public class OwnerAuditEvents {
         this.objectMapper = objectMapper;
     }
 
+    /** The schema version stamped onto every structured audit event. Version 2 accompanies the
+     *  version-2 owner identity: the {@code memberId} is the version-2 member id and the event now
+     *  carries the {@code ownerSegment} recomputed from that version-2 identity. */
+    private static final int SCHEMA_VERSION = 2;
+
     /**
      * Emit the immutable {@code OWNER_CREATED} event, stamping a fresh monotonically increasing
-     * {@code seq}. The {@code memberId} argument is the owner's primary identifier (see
-     * {@code Owner#primaryIdentifier}).
+     * {@code seq} and the current {@link #SCHEMA_VERSION}. The {@code memberId} argument is the
+     * owner's primary identifier (see {@code Owner#primaryIdentifier}), i.e. its version-2 member id,
+     * and {@code ownerSegment} is the segment recomputed from that version-2 identity.
      */
-    public void ownerCreated(Integer ownerId, String memberId, Integer membershipLevel) {
+    public void ownerCreated(Integer ownerId, String memberId, Integer membershipLevel, String ownerSegment) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
-            seq.incrementAndGet(), ownerId, memberId, membershipLevel, "OWNER_CREATED");
+            seq.incrementAndGet(), SCHEMA_VERSION, ownerId, memberId, membershipLevel,
+            ownerSegment, "OWNER_CREATED");
         auditLogger.info(objectMapper.writeValueAsString(event));
     }
 
-    /** Immutable structured OWNER_CREATED audit event. */
-    record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-                             Integer membershipLevel, String event) {
+    /** Immutable structured OWNER_CREATED audit event (schema version 2). */
+    record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
+                             Integer membershipLevel, String ownerSegment, String event) {
     }
 }
