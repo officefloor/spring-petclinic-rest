@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,32 @@ public interface OwnerMapper {
         expression = "java(toIdentityKey(owner))")
     @Mapping(target = "checkDigit",
         expression = "java(toCheckDigit(owner))")
+    @Mapping(target = "ageBand",
+        expression = "java(toAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's age band from the {@code birthDate} relative to the {@code registrationDate}:
+     * 'MINOR' when under 18, 'ADULT' when 18 to 64, and 'SENIOR' when 65 or older. Returns
+     * {@code null} when no birth date was supplied (the band is then absent from the DTO). When the
+     * registration date is missing (e.g. legacy records) the current date is used as the reference.
+     */
+    default OwnerDto.AgeBandEnum toAgeBand(Owner owner) {
+        LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : LocalDate.now();
+        int age = Period.between(birthDate, reference).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Derive an owner's check digit: a single Luhn check digit (0-9) computed over the digits
