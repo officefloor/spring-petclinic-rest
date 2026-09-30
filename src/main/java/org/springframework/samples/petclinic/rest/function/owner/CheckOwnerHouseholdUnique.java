@@ -29,14 +29,16 @@ public class CheckOwnerHouseholdUnique {
     }
 
     /**
-     * The single source of truth for what "same household" means: identical lastName AND address,
-     * each compared case-insensitively with internal whitespace collapsed. Shared with
+     * The single source of truth for what "same household" means: identical lastName AND address.
+     * The lastName is compared case-insensitively with internal whitespace collapsed; the address is
+     * compared on its normalized form (see {@link NormalizeOwnerAddress#normalize}) so abbreviation,
+     * case and whitespace differences never split one household. Shared with
      * {@link AssignOwnerHousehold} so the 409 bypass and the {@code householdId} assignment can
      * never drift on what counts as one household.
      */
     static boolean sameHousehold(String lastNameA, String addressA, String lastNameB, String addressB) {
         return normalize(lastNameA).equals(normalize(lastNameB))
-                && normalize(addressA).equals(normalize(addressB));
+                && NormalizeOwnerAddress.normalize(addressA).equals(NormalizeOwnerAddress.normalize(addressB));
     }
 
     /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */

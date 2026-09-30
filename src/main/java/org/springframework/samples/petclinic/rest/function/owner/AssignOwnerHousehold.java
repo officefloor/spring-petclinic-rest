@@ -15,8 +15,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Assigns a shared, stable {@code householdId} when the request opts in with
  * {@code sharesHousehold=true} and an existing owner shares the same household. What counts
- * as the same household — same lastName AND address, compared case-insensitively with
- * collapsed whitespace — is single-sourced in
+ * as the same household — same lastName AND address, compared on their normalized forms — is
+ * single-sourced in
  * {@link CheckOwnerHouseholdUnique#sameHousehold}, so the 409 bypass and this id assignment
  * agree by construction. The identifier is derived deterministically from the
  * normalized lastName and address, so every owner in one household receives the same value
@@ -51,7 +51,7 @@ public class AssignOwnerHousehold {
         }
         if (shared == null) {
             shared = deriveHouseholdId(CheckOwnerHouseholdUnique.normalize(owner.getLastName()),
-                    CheckOwnerHouseholdUnique.normalize(owner.getAddress()));
+                    NormalizeOwnerAddress.normalize(owner.getAddress()));
         }
         owner.setHouseholdId(shared);
         for (Owner existing : matches) {
