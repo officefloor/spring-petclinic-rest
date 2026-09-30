@@ -105,6 +105,9 @@ public class Owner extends Person {
     @Transient
     private Integer membershipLevelCap;
 
+    @Transient
+    private Boolean riskFlag;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -350,6 +353,22 @@ public class Owner extends Person {
 
     public void setMembershipLevelCap(Integer membershipLevelCap) {
         this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
+     * Whether this owner is flagged as elevated risk, derived at response time and not persisted.
+     * {@code true} when any of three soft signals holds: the owner is a {@link #getPossibleDuplicate()
+     * possible duplicate}; the email domain is disposable-adjacent (see
+     * {@code ValidateOwnerEmailDomain.isDisposableAdjacent}); or the owner's city is over its soft
+     * capacity (see {@code DeriveOwnerRiskFlag.SOFT_CAPACITY}). {@code false} when none hold.
+     * Populated by {@code DeriveOwnerRiskFlag} on both the create and single-owner GET responses.
+     */
+    public Boolean getRiskFlag() {
+        return this.riskFlag;
+    }
+
+    public void setRiskFlag(Boolean riskFlag) {
+        this.riskFlag = riskFlag;
     }
 
     /**
