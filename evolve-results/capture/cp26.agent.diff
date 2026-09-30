@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+index 83f1c2bf7..92431d111 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneNormalizer.java
+@@ -11,6 +11,10 @@ package org.springframework.samples.petclinic.rest.validation;
+  *       leading {@code '0'} is dropped from the national digits.</li>
+  *   <li>The result must carry between 8 and 15 digits after the {@code '+'}, otherwise
+  *       it cannot form a valid E.164 number.</li>
++ *   <li>For a recognised country code the national number (the digits after the country
++ *       code) must have the exact length that country requires: {@code +61} needs 9
++ *       national digits and {@code +1} needs 10. A wrong national length for the country
++ *       is rejected.</li>
+  * </ul>
+  *
+  * <p>For example {@code '0412 345 678'} becomes {@code '+61412345678'} and
+@@ -43,9 +47,32 @@ public final class TelephoneNormalizer {
+         if (digits.length() < 8 || digits.length() > 15) {
+             return null;
+         }
++        if (!hasValidNationalLength(digits)) {
++            return null;
++        }
+         return "+" + digits;
+     }
+ 
++    /**
++     * Checks the national-number length against the country code carried by {@code digits}
++     * (the E.164 digits without the leading {@code '+'}). {@code +61} requires 9 national
++     * digits and {@code +1} requires 10; the national number is whatever follows the
++     * country code. Country codes without a known length pass this check and are governed
++     * only by the generic 8-to-15 total-digit rule.
++     *
++     * @param digits the E.164 digits without the leading {@code '+'}
++     * @return {@code true} when the national-number length is acceptable for the country
++     */
++    private static boolean hasValidNationalLength(String digits) {
++        if (digits.startsWith("61")) {
++            return digits.length() - 2 == 9;
++        }
++        if (digits.startsWith("1")) {
++            return digits.length() - 1 == 10;
++        }
++        return true;
++    }
++
+     /**
+      * @param raw the raw telephone input (may be {@code null})
+      * @return {@code true} when {@code raw} is {@code null} (absence is handled elsewhere)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+index 706783fe4..7526e4dde 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/TelephoneValidation.java
+@@ -9,7 +9,9 @@ import java.lang.annotation.*;
+  * Non-digit separators (spaces, parentheses, dashes, ...) are ignored; a leading
+  * {@code '+'} keeps the supplied country code, otherwise {@code +61} is assumed and a
+  * single leading {@code '0'} is dropped. The result must carry 8 to 15 digits after the
+- * {@code '+'}. This mirrors the create-time normalization performed by the mapper.
++ * {@code '+'}, and for a recognised country code the national number must have that
++ * country's required length ({@code +61} needs 9 national digits, {@code +1} needs 10).
++ * This mirrors the create-time normalization performed by the mapper.
+  */
+ @Target({ ElementType.FIELD })
+ @Retention(RetentionPolicy.RUNTIME)
+@@ -17,7 +19,8 @@ import java.lang.annotation.*;
+ @Documented
+ public @interface TelephoneValidation {
+ 
+-    String message() default "Telephone number must form a valid E.164 number (8 to 15 digits after the '+')";
++    String message() default "Telephone number must form a valid E.164 number (8 to 15 digits after the '+', "
++        + "with the correct national-number length for its country: '+61' needs 9 national digits, '+1' needs 10)";
+ 
+     Class<?>[] groups() default {};
+ 
