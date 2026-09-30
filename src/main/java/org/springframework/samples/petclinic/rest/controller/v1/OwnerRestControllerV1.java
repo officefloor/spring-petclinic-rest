@@ -123,19 +123,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // The household id is deterministic: owners that share a (normalized lastName, postcode)
+        // share it automatically. It feeds the identity key and the household-duplicate rule below.
+        owner.setHouseholdId(this.clinicService.computeHouseholdId(owner));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress());
-        if (sharesHousehold && householdExists) {
-            this.clinicService.assignHousehold(owner);
+        boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getHouseholdId());
+        // Household duplicate: another owner already shares this (lastName, postcode). Rejected unless
+        // the caller declares they share the household ('sharesHousehold' only bypasses this block).
+        if (householdExists && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // All duplicate detection is consolidated into the owner's derived identity key (see
+        // Hard duplicate detection is consolidated into the owner's derived identity key (see
         // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Soft-match: not a hard duplicate, but shares an existing owner's lastName and postcode with a
-        // different telephone. Still created, flagged 'possibleDuplicate' with the matching owner's id.
-        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
+        // Soft-match: shares an existing owner's lastName and postcode with a different telephone,
+        // flagged 'possibleDuplicate'. A declared household member is not a suspected duplicate, so
+        // the flag is suppressed when this owner joins an existing household.
+        Integer possibleDuplicateOf = householdExists ? null
+            : this.clinicService.findPossibleDuplicateOwnerId(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(

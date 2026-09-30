@@ -22,7 +22,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
-import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -399,27 +398,43 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
     }
 
+    /**
+     * Computes an owner's deterministic household id: the first 12 upper-case hex characters of the
+     * SHA-256 digest over the owner's normalized last name, a {@code '|'} separator and its postcode
+     * ({@code normalizedLastName + '|' + postcode}). Owners that share a last name and postcode
+     * therefore map to the same household id automatically, without any explicit linking. Returns
+     * {@code null} when the last name or postcode is absent or blank, since no household can be
+     * formed without both.
+     */
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
-        return !findHouseholdMembers(lastName, address).isEmpty();
+    public String computeHouseholdId(Owner owner) throws DataAccessException {
+        if (owner == null) {
+            return null;
+        }
+        String normalizedLastName = normalizeHouseholdField(owner.getLastName());
+        String postcode = owner.getPostcode();
+        if (normalizedLastName == null || normalizedLastName.isBlank()
+            || postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        return sha256UpperHex(normalizedLastName + "|" + postcode, 12);
     }
 
     /**
-     * Returns the existing owners that belong to the household identified by the given last name
-     * and address, comparing both fields in their normalized form. An empty list is returned when
-     * either field is absent (no household can be formed).
+     * Whether any existing owner already belongs to the household identified by the given
+     * (deterministic) household id. This is the single basis for the household-duplicate rule:
+     * owners that share a last name and postcode share a household id, so a matching existing owner
+     * means the new owner is a household duplicate. Returns {@code false} when the id is absent.
      */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedLastName = normalizeHouseholdField(lastName);
-        String normalizedAddress = normalizeHouseholdAddress(address);
-        if (normalizedLastName == null || normalizedAddress == null) {
-            return List.of();
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnerInHousehold(String householdId) throws DataAccessException {
+        if (householdId == null || householdId.isBlank()) {
+            return false;
         }
         return ownerRepository.findAll().stream()
-            .filter(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdAddress(existing.getAddress())))
-            .toList();
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
     /**
@@ -435,56 +450,10 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Normalizes an address for household comparison and identity using the same canonical form
-     * applied when an owner is created (trim/collapse whitespace, upper-case, expand common
-     * abbreviations), so comparisons always use the normalized address regardless of the form in
-     * which either value was originally supplied. Returns {@code null} when the address is absent
-     * or blank, since no household can be formed without one.
+     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the
+     * UTF-8 bytes of {@code seed}.
      */
-    private static String normalizeHouseholdAddress(String address) {
-        String normalized = AddressNormalizer.normalize(address);
-        if (normalized == null || normalized.isBlank()) {
-            return null;
-        }
-        return normalized;
-    }
-
-    /**
-     * Places {@code owner} into the household formed by owners that share its (normalized) last
-     * name and address, and returns the household's stable shared identifier. If any existing
-     * member already carries a household id it is reused; otherwise a stable id is derived from
-     * the shared last name and address. Every member missing an id (including the given owner)
-     * is assigned the shared value so all owners in the household agree on it.
-     */
-    @Override
-    @Transactional
-    public String assignHousehold(Owner owner) throws DataAccessException {
-        List<Owner> members = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        if (members.isEmpty()) {
-            return null;
-        }
-        String householdId = members.stream()
-            .map(Owner::getHouseholdId)
-            .filter(id -> id != null && !id.isBlank())
-            .findFirst()
-            .orElseGet(() -> generateHouseholdId(owner.getLastName(), owner.getAddress()));
-        for (Owner member : members) {
-            if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
-        owner.setHouseholdId(householdId);
-        return householdId;
-    }
-
-    /**
-     * Derives a stable household identifier from the normalized last name and address as the
-     * first 16 upper-case hex characters of their SHA-256 digest, so the same household always
-     * maps to the same value regardless of creation order.
-     */
-    private static String generateHouseholdId(String lastName, String address) {
-        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdAddress(address);
+    private static String sha256UpperHex(String seed, int length) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
@@ -492,7 +461,7 @@ public class ClinicServiceImpl implements ClinicService {
             for (byte b : hash) {
                 sb.append(String.format("%02X", b));
             }
-            return sb.substring(0, 16);
+            return sb.substring(0, length);
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
