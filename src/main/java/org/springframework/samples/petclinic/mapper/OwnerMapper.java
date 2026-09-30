@@ -31,17 +31,6 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
-    /** Fixed city-to-region table used to derive an owner's {@code locality}. */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region to inclusive 4-digit postcode range {low, high}, used to derive an
-     *  owner's {@code locality} from its postcode ahead of the city table. */
-    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-        "NSW", new int[] {2000, 2099},
-        "VIC", new int[] {3000, 3099},
-        "QLD", new int[] {4000, 4099});
-
     /**
      * Derives an owner's preferred contact channel for the read-only {@code contactPreference}
      * field: {@code 'EMAIL'} when an email address is present, otherwise {@code 'PHONE'}.
@@ -56,28 +45,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's {@code locality} by preferring the postcode: the region whose
-     * inclusive 4-digit range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) contains the
-     * postcode is used first. When the postcode is absent or in no known range, it falls
-     * back to the fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
-     * Brisbane-&gt;QLD), returning {@code 'UNKNOWN'} when the city is not in the table.
+     * Derives an owner's {@code locality} from its region-and-hash customer code: the region is the
+     * segment of the {@code '<REGION>-<HASH8>'} code before the first {@code '-'}, so the locality
+     * always agrees with the identity's region (which itself prefers the postcode over the city,
+     * defaulting to {@code 'UNKNOWN'}). Returns {@code 'UNKNOWN'} when no customer code is present.
      */
     @Named("formatLocality")
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("^[0-9]{4}$")) {
-            int value = Integer.parseInt(postcode);
-            for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-                int[] range = entry.getValue();
-                if (value >= range[0] && value <= range[1]) {
-                    return entry.getKey();
-                }
-            }
+        String code = owner.getCustomerCode();
+        if (code == null || code.isBlank()) {
+            return "UNKNOWN";
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        int dash = code.indexOf('-');
+        return dash < 0 ? code : code.substring(0, dash);
     }
 
     /**
@@ -105,7 +88,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last
-     * two digits of the registrationDate year (e.g. {@code 'SYD-SMI-0007-M26'}), for the read-only
+     * two digits of the registrationDate year (e.g. {@code 'NSW-1A2B3C4D-M26'}), for the read-only
      * {@code membershipNumber} field. Null when the customer code or registration date is absent.
      */
     @Named("formatMembershipNumber")
