@@ -113,6 +113,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (countOwnersRegisteredToday() >= DAILY_CREATE_LIMIT) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "the maximum number of owners that may be created today has been reached");
+        }
         if (isTelephoneInUse(normalizedTelephone, null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "telephone is already in use by another owner");
@@ -256,6 +260,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owner's city already contains this many owners.
      */
     private static final int CITY_CAPACITY = 50;
+
+    /**
+     * The maximum number of owners that may be created on a single day. A create is rejected with
+     * {@link HttpStatus#TOO_MANY_REQUESTS} once this many owners already have today's
+     * {@code registrationDate}.
+     */
+    private static final int DAILY_CREATE_LIMIT = 100;
+
+    /**
+     * Counts the existing owners whose {@code registrationDate} is today, i.e. the number of owners
+     * that have already been created today. Called before a new owner is saved, so the returned
+     * value reflects the number of owners created earlier today prior to this create.
+     *
+     * @return the number of existing owners registered today
+     */
+    private int countOwnersRegisteredToday() {
+        LocalDate today = LocalDate.now();
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+    }
 
     /**
      * Counts the existing owners that live in the given city, comparing city names case-insensitively.
