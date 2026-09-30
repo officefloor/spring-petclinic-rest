@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 33c902fbd..6dafcc0f7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -59,6 +61,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger auditLogger = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Remembers the owner id created for each already-seen {@code Idempotency-Key}, so a
++     * repeated create with the same key replays the original owner instead of duplicating it.
++     */
++    private final Map<String, Integer> idempotencyKeys = new ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -99,10 +107,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        return new ResponseEntity<>(toOwnerDtoWithDerived(owner), HttpStatus.OK);
++    }
++
++    /**
++     * Builds the read representation of a persisted owner, populating the derived fields
++     * ({@code householdSize}, {@code bulkSignupWarning}) that are not stored on the entity.
++     */
++    private OwnerDto toOwnerDtoWithDerived(Owner owner) {
+         owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
++        return ownerDto;
+     }
+ 
+     /**
+@@ -115,7 +131,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
++        // Idempotent replay: a repeat with an already-seen key returns the originally created
++        // owner with 200 rather than creating (and possibly rejecting as) a duplicate.
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            Integer existingId = this.idempotencyKeys.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    return new ResponseEntity<>(toOwnerDtoWithDerived(existing), HttpStatus.OK);
++                }
++            }
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         LocalDate registrationDate = owner.resolveRegistrationDate();
+@@ -150,6 +177,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(
+             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
++        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
++            this.idempotencyKeys.put(idempotencyKey, owner.getId());
++        }
+         owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 844e7037c..e0ac8cfe2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -69,6 +69,16 @@ paths:
+       operationId: addOwner
+       summary: Adds a pet owner
+       description: Records the details of a new pet owner.
++      parameters:
++        - name: Idempotency-Key
++          in: header
++          description: >-
++            Optional client-supplied key that makes the create idempotent. When
++            a create repeats with a key already seen, the originally created
++            owner is returned with 200 instead of creating a duplicate.
++          required: false
++          schema:
++            type: string
+       requestBody:
+         description: The pet owner
+         content:
+@@ -77,6 +87,14 @@ paths:
+               $ref: '#/components/schemas/OwnerFields'
+         required: true
+       responses:
++        200:
++          description: >-
++            The create repeated an already-seen idempotency key; the originally
++            created owner is returned.
++          content:
++            application/json:
++              schema:
++                $ref: '#/components/schemas/Owner'
+         201:
+           description: The pet owner was successfully added.
+           content:
