@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7f96b765f..b197989cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,7 +102,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
++        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
++        owner.setTelephone(normalizedTelephone);
++        if (isTelephoneInUse(normalizedTelephone, null)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "telephone is already in use by another owner");
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -214,11 +219,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *                                 contain exactly 10 digits after stripping non-digit characters
+      */
+     private static String normalizeTelephone(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        String digits = stripNonDigits(telephone);
+         if (digits.length() != 10) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                 "telephone must contain exactly 10 digits after removing non-digit characters");
+         }
+         return digits;
+     }
++
++    /**
++     * Strips every non-digit character from the given value, returning "" for {@code null}. This is
++     * the shared comparison rule used both when normalizing a submitted telephone and when comparing
++     * against already-stored telephones.
++     *
++     * @param telephone the raw telephone value, possibly {@code null}
++     * @return the value with all non-digit characters removed
++     */
++    private static String stripNonDigits(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
++
++    /**
++     * Determines whether the given normalized telephone is already used by any owner other than the
++     * one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g. on create).
++     * Stored telephones are normalized the same way before comparison so that differently formatted
++     * values representing the same number are treated as duplicates.
++     *
++     * @param normalizedTelephone the already-normalized telephone to look for
++     * @param excludeId           id of an owner to ignore during the check, or {@code null} for none
++     * @return {@code true} if another owner already uses the telephone
++     */
++    private boolean isTelephoneInUse(String normalizedTelephone, Integer excludeId) {
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (excludeId != null && excludeId.equals(existing.getId())) {
++                continue;
++            }
++            if (normalizedTelephone.equals(stripNonDigits(existing.getTelephone()))) {
++                return true;
++            }
++        }
++        return false;
++    }
+ }
