@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 31e187064..7949abfe4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
++            && this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 35bd24266..50e544a4a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,6 +59,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
++	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 091afd930..300a8b48b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -257,6 +257,31 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.existsByTelephone(telephone);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
++        String normalizedLastName = normalizeHouseholdField(lastName);
++        String normalizedAddress = normalizeHouseholdField(address);
++        if (normalizedLastName == null || normalizedAddress == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
++                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())));
++    }
++
++    /**
++     * Normalizes a household-identity field for comparison by trimming, collapsing internal
++     * runs of whitespace to a single space and lower-casing, so values that differ only in
++     * whitespace or letter case are treated as equal.
++     */
++    private static String normalizeHouseholdField(String value) {
++        if (value == null) {
++            return null;
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index de414c57f..6b5f92718 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2057,6 +2057,15 @@ components:
+           type: string
+           format: date
+           example: '2026-09-30'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            When true, allows creating this owner even if another owner already
++            has the same last name and address (i.e. they share a household).
++            Optional and write-only; defaults to false.
++          type: boolean
++          writeOnly: true
++          example: true
+       required:
+         - firstName
+         - lastName
