@@ -7,7 +7,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 public class ApplyOwner {
 
     public void service(@Val Owner owner, @Val OwnerFieldsDto request) {
-        owner.setAddress(request.getAddress());
+        owner.setAddressLine1(request.getAddressLine1());
+        owner.setAddressLine2(request.getAddressLine2());
+        // Prefer the structured form: compose the flat address from the supplied lines.
+        owner.setAddress(OwnerAddresses.hasStructured(request)
+                ? OwnerAddresses.compose(request.getAddressLine1(), request.getAddressLine2())
+                : request.getAddress());
         owner.setCity(request.getCity());
         owner.setPostcode(request.getPostcode());
         owner.setFirstName(request.getFirstName());
