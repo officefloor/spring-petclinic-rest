@@ -23,9 +23,9 @@ public class NormalizeOwnerEmail {
 
     /**
      * The single source of truth for an email's canonical form: lower-cased. Null-safe so it can
-     * canonicalize an existing owner's (possibly absent) stored value. Shared with
-     * {@link CheckOwnerEmailUnique} so the "same email" definition can never drift from how emails
-     * are stored and returned.
+     * canonicalize an existing owner's (possibly absent) stored value. The canonical value feeds the
+     * derived {@link org.springframework.samples.petclinic.model.Owner#getIdentityKey() identityKey},
+     * so the "same email" definition can never drift from how emails are stored and returned.
      */
     static String normalize(String email) {
         return email == null ? null : email.toLowerCase(Locale.ROOT);

@@ -16,15 +16,15 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Assigns a shared, stable {@code householdId} when the request opts in with
  * {@code sharesHousehold=true} and an existing owner shares the same household. What counts
  * as the same household — same lastName AND address, compared on their normalized forms — is
- * single-sourced in
- * {@link CheckOwnerHouseholdUnique#sameHousehold}, so the 409 bypass and this id assignment
- * agree by construction. The identifier is derived deterministically from the
+ * single-sourced in {@link #sameHousehold}, so the household id assigned here feeds the derived
+ * {@link org.springframework.samples.petclinic.model.Owner#getIdentityKey() identityKey} and the
+ * duplicate check consistently. The identifier is derived deterministically from the
  * normalized lastName and address, so every owner in one household receives the same value
  * regardless of creation order. Both the joining owner and any matching existing owner that
  * still lacks the id are stamped with it, so the household is linked on both sides. Runs
- * after {@link BuildOwner} has created the entity (and {@link CheckOwnerHouseholdUnique} has
- * allowed the collision) and before {@link SaveOwner} persists it. When the request does not
- * opt in, or opts in but no existing owner shares the household, the id is left unset.
+ * after {@link BuildOwner} has created the entity and before {@link CheckOwnerIdentityUnique}
+ * (which sees the resolved {@code householdId}) and {@link SaveOwner} persists it. When the request
+ * does not opt in, or opts in but no existing owner shares the household, the id is left unset.
  */
 public class AssignOwnerHousehold {
 
@@ -38,7 +38,7 @@ public class AssignOwnerHousehold {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue;
             }
-            if (CheckOwnerHouseholdUnique.sameHousehold(owner.getLastName(), owner.getAddress(),
+            if (sameHousehold(owner.getLastName(), owner.getAddress(),
                     existing.getLastName(), existing.getAddress())) {
                 matches.add(existing);
                 if (shared == null && existing.getHouseholdId() != null) {
@@ -50,7 +50,7 @@ public class AssignOwnerHousehold {
             return;
         }
         if (shared == null) {
-            shared = deriveHouseholdId(CheckOwnerHouseholdUnique.normalize(owner.getLastName()),
+            shared = deriveHouseholdId(normalize(owner.getLastName()),
                     NormalizeOwnerAddress.normalize(owner.getAddress()));
         }
         owner.setHouseholdId(shared);
@@ -60,6 +60,25 @@ public class AssignOwnerHousehold {
                 ownerRepository.save(existing);
             }
         }
+    }
+
+    /**
+     * The single source of truth for what "same household" means: identical lastName AND address.
+     * The lastName is compared case-insensitively with internal whitespace collapsed; the address is
+     * compared on its normalized form (see {@link NormalizeOwnerAddress#normalize}) so abbreviation,
+     * case and whitespace differences never split one household.
+     */
+    static boolean sameHousehold(String lastNameA, String addressA, String lastNameB, String addressB) {
+        return normalize(lastNameA).equals(normalize(lastNameB))
+                && NormalizeOwnerAddress.normalize(addressA).equals(NormalizeOwnerAddress.normalize(addressB));
+    }
+
+    /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */
+    static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**

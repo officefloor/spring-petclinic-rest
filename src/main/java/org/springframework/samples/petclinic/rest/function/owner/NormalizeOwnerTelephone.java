@@ -25,9 +25,9 @@ public class NormalizeOwnerTelephone {
      * E.164 form. Spaces, dashes and brackets are removed; a leading '+' and country code are kept,
      * otherwise '+61' is assumed and a single leading '0' is dropped from the national digits. The
      * digits after the '+' must number 8 to 15, no other characters may remain, and the national
-     * number must have the length the country code requires ('+61' => 9, '+1' => 10). Shared with
-     * {@link CheckOwnerTelephoneUnique} so the request side and stored owners are normalized
-     * identically.
+     * number must have the length the country code requires ('+61' => 9, '+1' => 10). The E.164 value
+     * feeds the derived {@link org.springframework.samples.petclinic.model.Owner#getIdentityKey()
+     * identityKey} so the request side and stored owners are normalized identically.
      *
      * @throws InvalidTelephoneException if the value cannot form valid E.164.
      */

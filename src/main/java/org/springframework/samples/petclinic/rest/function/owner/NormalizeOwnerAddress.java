@@ -28,9 +28,8 @@ public class NormalizeOwnerAddress {
     /**
      * The single source of truth for the normalized form of an address: trimmed with internal
      * whitespace collapsed, upper-cased, and common street-type abbreviations expanded. Returns the
-     * empty string for a null or blank input. Shared with {@link CheckOwnerHouseholdUnique} and
-     * {@link AssignOwnerHousehold} so the request side, the household duplicate check and the shared
-     * household id are all compared on identical normalized text.
+     * empty string for a null or blank input. Shared with {@link AssignOwnerHousehold} so the request
+     * side and the shared household id are compared on identical normalized text.
      */
     static String normalize(String value) {
         if (value == null) {

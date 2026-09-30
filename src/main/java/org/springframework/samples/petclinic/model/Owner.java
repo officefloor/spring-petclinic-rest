@@ -210,6 +210,23 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isEmpty()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The single source of truth for an owner's identity: the derived key
+     * {@code normalizedTelephone|email|householdId}, joined with '|'. The telephone is stored in
+     * canonical E.164 form and the email lower-cased, so this key composes their canonical values;
+     * an absent email or householdId contributes an empty segment. Two owners are duplicates exactly
+     * when their whole identity keys are equal — differing in any one segment (for example two
+     * members of the same household with different telephones) yields different keys. Derived at
+     * response time and used by the create pipeline's single duplicate check; not persisted.
+     */
+    public String getIdentityKey() {
+        return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
+    }
+
+    private static String keyPart(String value) {
+        return value == null ? "" : value;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
