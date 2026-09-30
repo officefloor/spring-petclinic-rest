@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 638f88c5b..f7dd275f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -307,7 +307,8 @@ public class Owner extends Person {
+     /**
+      * Resolves this owner's effective registration date and stores it: the supplied value is used, or
+      * the server's current date when none was supplied, and the result is rolled forward onto a
+-     * business day (a Saturday or Sunday becomes the following Monday). Returns the resolved date.
++     * business day (a Saturday, Sunday or public holiday rolls forward to the next business day).
++     * Returns the resolved date.
+      * Idempotent, so it is safe to call from both the create flow and the persist hook.
+      */
+     public LocalDate resolveRegistrationDate() {
+@@ -317,18 +318,37 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced to the
+-     * following Monday, while any weekday (and {@code null}) is returned unchanged. Applying this to a
+-     * date that is already a business day is a no-op, so it is safe to call more than once.
++     * The fixed list of public holidays that a registration date must roll forward past, in addition
++     * to weekends.
++     */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28));
++
++    /**
++     * Rolls a registration date forward onto a business day: a Saturday, Sunday or listed public
++     * holiday is advanced to the next non-holiday weekday, while any other weekday (and {@code null})
++     * is returned unchanged. Applying this to a date that is already a business day is a no-op, so it
++     * is safe to call more than once.
+      */
+     public static LocalDate toBusinessDay(LocalDate date) {
+         if (date == null) {
+             return null;
+         }
++        LocalDate result = date;
++        while (isWeekend(result) || PUBLIC_HOLIDAYS.contains(result)) {
++            result = result.plusDays(1);
++        }
++        return result;
++    }
++
++    private static boolean isWeekend(LocalDate date) {
+         return switch (date.getDayOfWeek()) {
+-            case SATURDAY -> date.plusDays(2);
+-            case SUNDAY -> date.plusDays(1);
+-            default -> date;
++            case SATURDAY, SUNDAY -> true;
++            default -> false;
+         };
+     }
+ 
