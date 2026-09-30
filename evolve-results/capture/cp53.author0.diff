@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 261541073..8d35f9489 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -229,6 +229,16 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * This owner's current primary identifier. It is the {@code customerCode} today; when the
++     * customerCode is later unified into a {@code memberId}, this returns the memberId instead.
++     * Callers that need "whatever identifies the owner right now" (e.g. the structured audit
++     * event) should read it here so they follow that migration automatically.
++     */
++    public String primaryIdentifier() {
++        return this.customerCode;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 07a53a339..bf0947e56 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.concurrent.atomic.AtomicLong;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -59,6 +60,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger auditLogger = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Monotonically increasing sequence stamped onto every OWNER_CREATED structured event. */
++    private static final AtomicLong eventSeq = new AtomicLong();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -121,6 +125,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return this.clinicService.countOwnersByRegistrationDate(registrationDate) > 80;
+     }
+ 
++    /**
++     * Renders the immutable {@code OWNER_CREATED} structured audit event as a JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event}}, stamping a fresh monotonically
++     * increasing {@code seq}. The {@code identifier} is the owner's current primary identifier.
++     */
++    private static String ownerCreatedEvent(Integer ownerId, String identifier, Integer membershipLevel) {
++        return String.format(
++            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":%s,\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
++            eventSeq.incrementAndGet(), ownerId, jsonString(identifier), membershipLevel);
++    }
++
++    /** JSON-encode a nullable string value (quoted with the minimal escaping, or bare {@code null}). */
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2).append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    } else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        return sb.append('"').toString();
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+@@ -171,6 +212,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
++        // Immutable structured event, in addition to the human-readable line above. It carries the
++        // owner's CURRENT primary identifier (Owner#primaryIdentifier) so that when the customerCode
++        // is later unified into the memberId, the event follows without touching this call site.
++        auditLogger.info(ownerCreatedEvent(owner.getId(), owner.primaryIdentifier(),
++            ownerDto.getMembershipLevel()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
