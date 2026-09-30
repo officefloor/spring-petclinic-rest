@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 4a4a16993..d75173ee4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Global Exception handler for REST controllers.
+@@ -123,6 +124,24 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link ResponseStatusException} raised explicitly by controllers (for example when a
++     * request payload fails a business rule such as telephone normalization) so the declared HTTP
++     * status is honoured instead of being turned into a 500 by {@link #handleGeneralException}.
++     *
++     * @param e The {@link ResponseStatusException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} carrying the exception's status and a problem detail body.
++     */
++    @ExceptionHandler(ResponseStatusException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
++        String detailMessage = e.getReason() != null ? e.getReason() : ERROR_INVALID_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e52..7f96b765f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -101,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -119,7 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+@@ -200,4 +202,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
++
++    /**
++     * Normalizes a telephone number by stripping every non-digit character and requiring the
++     * result to be exactly 10 digits. The normalized 10-digit value is what gets stored and
++     * returned.
++     *
++     * @param telephone the raw telephone value supplied by the client
++     * @return the normalized 10-digit telephone number
++     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the value does not
++     *                                 contain exactly 10 digits after stripping non-digit characters
++     */
++    private static String normalizeTelephone(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "telephone must contain exactly 10 digits after removing non-digit characters");
++        }
++        return digits;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f8f4de936..c0983f7f2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,11 +2027,14 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create the value is
++            normalized by removing every non-digit character and must contain
++            exactly 10 digits afterwards; the normalized 10-digit value is
++            stored and returned.
+           type: string
+           minLength: 1
+-          maxLength: 20
+-          pattern: '^[0-9]*$'
++          maxLength: 30
+           example: '6085551023'
+       required:
+         - firstName
