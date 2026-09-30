@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
         owner.setAddress(normalizeAddress(owner.getAddress()));
+        validatePostcode(owner.getCity(), owner.getPostcode());
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
             effectiveRegistrationDate = LocalDate.now();
@@ -456,6 +457,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "email must be a syntactically valid address");
         }
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Fixed region-to-inclusive-postcode-range table. The postcode of an owner whose city maps to a
+     * known region (via {@link OwnerMapper#CITY_REGION}) must fall within its region's range: NSW
+     * 2000-2099, VIC 3000-3099, QLD 4000-4099. Each entry is {@code {low, high}} inclusive.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's optional postcode against the city's region. Postcode is validated only
+     * when present ({@code null} is accepted, keeping the request contract backward-compatible). The
+     * four-digit format is enforced by request validation; here the value is range-checked: when the
+     * city maps to a known region (via {@link OwnerMapper#CITY_REGION}) the postcode must fall within
+     * that region's inclusive range (see {@link #REGION_POSTCODE_RANGES}). A city with no known region
+     * accepts any four-digit postcode.
+     *
+     * @param city     the owner's city
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if a supplied postcode is
+     *                                 out of range for the city's region
+     */
+    private static void validatePostcode(String city, String postcode) {
+        if (postcode == null) {
+            return;
+        }
+        String region = OwnerMapper.CITY_REGION.get(city);
+        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "postcode " + postcode + " is not valid for region " + region);
+        }
     }
 
     /**
