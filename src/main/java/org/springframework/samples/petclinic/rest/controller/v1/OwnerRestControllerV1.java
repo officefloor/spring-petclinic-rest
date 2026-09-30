@@ -217,34 +217,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number by stripping every non-digit character and requiring the
-     * result to be exactly 10 digits. The normalized 10-digit value is what gets stored and
-     * returned.
+     * Normalizes a telephone number into E.164 form. Spaces, dashes and brackets are stripped. When
+     * the value carries a leading {@code '+'} the following country code and digits are kept as-is;
+     * otherwise country code {@code +61} is assumed and a single leading {@code '0'} is dropped from
+     * the national digits. The result must be a {@code '+'} followed by 8 to 15 digits. This E.164
+     * string is what gets stored and returned.
+     *
+     * <p>For example {@code "0412 345 678"} is normalized to {@code "+61412345678"}.
      *
      * @param telephone the raw telephone value supplied by the client
-     * @return the normalized 10-digit telephone number
-     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the value does not
-     *                                 contain exactly 10 digits after stripping non-digit characters
+     * @return the normalized E.164 telephone number
+     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the value cannot form a
+     *                                 valid E.164 number (unexpected characters, or not 8 to 15
+     *                                 digits after the {@code '+'})
      */
     private static String normalizeTelephone(String telephone) {
-        String digits = stripNonDigits(telephone);
-        if (digits.length() != 10) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "telephone must contain exactly 10 digits after removing non-digit characters");
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
         }
-        return digits;
+        if (!digits.matches("[0-9]{8,15}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "telephone could not be normalized to a valid E.164 number");
+        }
+        return "+" + digits;
     }
 
     /**
-     * Strips every non-digit character from the given value, returning "" for {@code null}. This is
-     * the shared comparison rule used both when normalizing a submitted telephone and when comparing
-     * against already-stored telephones.
+     * Returns the E.164 form of an already-stored telephone for duplicate comparison, falling back
+     * to the raw stored value if it cannot be normalized (e.g. legacy seed data in another format).
      *
-     * @param telephone the raw telephone value, possibly {@code null}
-     * @return the value with all non-digit characters removed
+     * @param telephone the stored telephone value, possibly {@code null}
+     * @return the E.164 form, or the raw value when it cannot be normalized
      */
-    private static String stripNonDigits(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    private static String toComparableTelephone(String telephone) {
+        try {
+            return normalizeTelephone(telephone);
+        } catch (ResponseStatusException ex) {
+            return telephone;
+        }
     }
 
     /**
@@ -276,12 +291,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether the given normalized telephone is already used by any owner other than the
-     * one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g. on create).
-     * Stored telephones are normalized the same way before comparison so that differently formatted
-     * values representing the same number are treated as duplicates.
+     * Determines whether the given normalized E.164 telephone is already used by any owner other
+     * than the one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g.
+     * on create). Stored telephones are compared by their E.164 value so that differently formatted
+     * inputs representing the same number are treated as duplicates.
      *
-     * @param normalizedTelephone the already-normalized telephone to look for
+     * @param normalizedTelephone the already-normalized E.164 telephone to look for
      * @param excludeId           id of an owner to ignore during the check, or {@code null} for none
      * @return {@code true} if another owner already uses the telephone
      */
@@ -290,7 +305,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (excludeId != null && excludeId.equals(existing.getId())) {
                 continue;
             }
-            if (normalizedTelephone.equals(stripNonDigits(existing.getTelephone()))) {
+            if (normalizedTelephone.equals(toComparableTelephone(existing.getTelephone()))) {
                 return true;
             }
         }
