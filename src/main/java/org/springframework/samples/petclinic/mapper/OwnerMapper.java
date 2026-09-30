@@ -30,7 +30,24 @@ public interface OwnerMapper {
         expression = "java(toLocality(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(toContactPreference(owner))")
+    @Mapping(target = "identityKey",
+        expression = "java(toIdentityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's duplicate-detection identity key: the normalized E.164 telephone, the
+     * lower-cased email (empty when none), and the household id (empty when none), joined with
+     * {@code '|'}. Two owners are duplicates only when their whole identity keys are equal.
+     *
+     * <p>This is the single source of truth for the key: it is both returned on the DTO and used by
+     * the create endpoint's 409 duplicate check, so the value clients see is exactly the value that
+     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}.
+     */
+    default String toIdentityKey(Owner owner) {
+        String email = hasEmail(owner) ? owner.getEmail() : "";
+        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return owner.getTelephone() + "|" + email + "|" + household;
+    }
 
     /**
      * Whether the owner has an email address present (non-null and non-empty). Single source of truth

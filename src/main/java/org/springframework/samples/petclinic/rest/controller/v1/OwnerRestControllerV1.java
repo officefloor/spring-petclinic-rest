@@ -125,19 +125,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "the maximum number of owners that may be created today has been reached");
         }
-        if (isTelephoneInUse(normalizedTelephone, null)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "telephone is already in use by another owner");
-        }
-        if (isEmailInUse(owner.getEmail(), null)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "email is already in use by another owner");
-        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold
-            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress(), null)) {
+        if (sharesHousehold) {
+            this.clinicService.assignHousehold(owner);
+        }
+        if (isIdentityKeyInUse(ownerMapper.toIdentityKey(owner), null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "another owner with the same last name already lives at this address");
+                "an owner with the same identity already exists");
         }
         if (countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -148,9 +142,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
-        if (sharesHousehold) {
-            this.clinicService.assignHousehold(owner);
-        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -440,21 +431,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Returns the E.164 form of an already-stored telephone for duplicate comparison, falling back
-     * to the raw stored value if it cannot be normalized (e.g. legacy seed data in another format).
-     *
-     * @param telephone the stored telephone value, possibly {@code null}
-     * @return the E.164 form, or the raw value when it cannot be normalized
-     */
-    private static String toComparableTelephone(String telephone) {
-        try {
-            return normalizeTelephone(telephone);
-        } catch (ResponseStatusException ex) {
-            return telephone;
-        }
-    }
-
-    /**
      * Basic syntactic email validation: a non-empty local part, an {@code @}, and a domain
      * containing at least one dot, none of the three sections containing whitespace or an
      * additional {@code @}.
@@ -521,48 +497,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether the given normalized E.164 telephone is already used by any owner other
-     * than the one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g.
-     * on create). Stored telephones are compared by their E.164 value so that differently formatted
-     * inputs representing the same number are treated as duplicates.
+     * Determines whether the given whole identity key already belongs to any owner other than the
+     * one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g. on
+     * create). The key is derived in one place — {@link OwnerMapper#toIdentityKey(Owner)}, the same
+     * method that builds the {@code identityKey} returned on the DTO — so the value governing the
+     * 409 is exactly the value clients see. Only an exact full-key match counts as a duplicate.
      *
-     * @param normalizedTelephone the already-normalized E.164 telephone to look for
-     * @param excludeId           id of an owner to ignore during the check, or {@code null} for none
-     * @return {@code true} if another owner already uses the telephone
+     * @param identityKey the identity key to look for
+     * @param excludeId   id of an owner to ignore during the check, or {@code null} for none
+     * @return {@code true} if another owner already has the same identity key
      */
-    private boolean isTelephoneInUse(String normalizedTelephone, Integer excludeId) {
+    private boolean isIdentityKeyInUse(String identityKey, Integer excludeId) {
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (excludeId != null && excludeId.equals(existing.getId())) {
                 continue;
             }
-            if (normalizedTelephone.equals(toComparableTelephone(existing.getTelephone()))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Determines whether the given (already normalized, lower-cased) email is already used by any
-     * owner other than the one identified by {@code excludeId} (pass {@code null} to consider every
-     * owner, e.g. on create). Stored emails are compared case-insensitively, so two addresses that
-     * differ only in letter case are treated as duplicates. A {@code null} email never matches, as
-     * email is optional.
-     *
-     * @param normalizedEmail the already-normalized lower-cased email to look for, or {@code null}
-     * @param excludeId       id of an owner to ignore during the check, or {@code null} for none
-     * @return {@code true} if another owner already uses the email
-     */
-    private boolean isEmailInUse(String normalizedEmail, Integer excludeId) {
-        if (normalizedEmail == null) {
-            return false;
-        }
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (excludeId != null && excludeId.equals(existing.getId())) {
-                continue;
-            }
-            String existingEmail = existing.getEmail();
-            if (existingEmail != null && normalizedEmail.equalsIgnoreCase(existingEmail)) {
+            if (identityKey.equals(ownerMapper.toIdentityKey(existing))) {
                 return true;
             }
         }
