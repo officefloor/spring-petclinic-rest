@@ -131,9 +131,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!sharesHousehold && householdExists) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        int householdSize = 1;
         if (sharesHousehold && householdExists) {
+            householdSize = this.clinicService.countOwnersInHousehold(owner.getLastName(), owner.getAddress()) + 1;
             this.clinicService.assignHousehold(owner);
         }
+        owner.setHouseholdSize(householdSize);
         owner.setNamesakeCount(
             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);

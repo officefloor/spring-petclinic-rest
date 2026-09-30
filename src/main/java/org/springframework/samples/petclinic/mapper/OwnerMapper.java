@@ -48,13 +48,19 @@ public interface OwnerMapper {
 
     /**
      * Determines an owner's membership tier for the read-only {@code membershipTier} field:
-     * {@code 'SILVER'} when the owner had no namesakes at creation (namesakeCount is 0) and an
-     * email address is present, otherwise {@code 'BRONZE'}.
+     * {@code 'GOLD'} when the owner's household (owners sharing the same householdId) had 3 or
+     * more members after this owner was created; otherwise {@code 'SILVER'} when the owner had no
+     * namesakes at creation (namesakeCount is 0) and an email address is present, otherwise
+     * {@code 'BRONZE'}.
      */
     @Named("formatMembershipTier")
     default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        boolean largeHousehold = owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
+        if (largeHousehold) {
+            return OwnerDto.MembershipTierEnum.GOLD;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
