@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -471,14 +472,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     /**
+     * Disposable email domains that are not accepted for an owner. An email whose domain is on this
+     * blocklist is rejected with {@link HttpStatus#BAD_REQUEST}. Entries are lower-case and matched
+     * case-insensitively against the domain (the part after the {@code @}).
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Validates and normalizes an optional owner email address. A {@code null} value is left as is
-     * (email is optional). When a value is supplied it must be a syntactically valid address; the
-     * value is then stored and returned lower-cased.
+     * (email is optional). When a value is supplied it must be a syntactically valid address whose
+     * domain is not on the disposable-domain blocklist; the value is then stored and returned
+     * lower-cased.
      *
      * @param email the raw email value supplied by the client, possibly {@code null}
      * @return the lower-cased email, or {@code null} when none was supplied
      * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if a value is present but
-     *                                 is not a syntactically valid address
+     *                                 is not a syntactically valid address, or its domain is on the
+     *                                 disposable-domain blocklist
      */
     private static String normalizeEmail(String email) {
         if (email == null) {
@@ -488,7 +499,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "email must be a syntactically valid address");
         }
-        return email.toLowerCase(Locale.ROOT);
+        String normalized = email.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "email domain " + domain + " is not allowed");
+        }
+        return normalized;
     }
 
     /**
