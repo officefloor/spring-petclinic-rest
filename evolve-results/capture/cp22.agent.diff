@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 444b44107..ff4bcb656 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -67,6 +67,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Transient
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -142,6 +145,19 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * Whether more than 80 owners had already been created on this owner's registration day,
++     * derived at response time and not persisted. {@code true} triggers a bulk-signup warning
++     * in the response.
++     */
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     /**
+      * The owner's membership tier, derived at response time: {@code SILVER} when
+      * {@link #namesakeCount} is 0 and an email is present, otherwise {@code BRONZE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+index 60e55d562..1fa0502bf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerDailyLimit.java
+@@ -21,9 +21,7 @@ public class CheckOwnerDailyLimit {
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DailyOwnerLimitExceededException {
+         LocalDate businessDay = RegistrationDates.effective(request.getRegistrationDate());
+-        long registeredThatDay = ownerRepository.findAll().stream()
+-                .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
+-                .count();
++        long registeredThatDay = RegistrationDates.countRegisteredOn(businessDay, ownerRepository);
+         if (registeredThatDay >= DAILY_LIMIT) {
+             throw new DailyOwnerLimitExceededException(
+                     DAILY_LIMIT + " or more owners have already been created on " + businessDay);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerBulkSignupWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerBulkSignupWarning.java
+new file mode 100644
+index 000000000..9361ab2fa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerBulkSignupWarning.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Derives the owner's {@code bulkSignupWarning} at response time: {@code true} when more than
++ * {@value #BULK_THRESHOLD} owners have already been created on this owner's registration day,
++ * otherwise {@code false}. The day count is delegated to
++ * {@link RegistrationDates#countRegisteredOn(LocalDate, OwnerRepository)} — the same per-business-day
++ * accumulation the daily-limit rule uses (see {@link CheckOwnerDailyLimit}) — so the warning
++ * provably tracks the same population that the daily cap governs.
++ *
++ * <p>Wired into both the create pipeline (where the signal originates) and the single-owner GET
++ * pipeline. The GET wiring is deliberate and exists purely for DTO consistency: it keeps
++ * {@code bulkSignupWarning} populated (never null) on reads rather than only on the create
++ * response. The flag is transient and set on the in-flight owner so the responder carries it; it
++ * is not persisted.
++ */
++public class DeriveOwnerBulkSignupWarning {
++
++    static final int BULK_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        long registeredThatDay = RegistrationDates.countRegisteredOn(owner.getRegistrationDate(), ownerRepository);
++        owner.setBulkSignupWarning(registeredThatDay > BULK_THRESHOLD);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RegistrationDates.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RegistrationDates.java
+index 652320487..6ba7dba87 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RegistrationDates.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RegistrationDates.java
+@@ -3,17 +3,28 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ 
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
+ /**
+  * Registration-date business rule: the effective registration date must fall on a business day.
+  * A Saturday or Sunday rolls forward to the next Monday. Shared by {@link BuildOwner} (which
+  * stamps the stored date) and {@link CheckOwnerDailyLimit} (which counts per business day) so
+- * both agree on the adjusted date.
++ * both agree on the adjusted date. It also owns the per-business-day owner count, so the
++ * daily-limit rule and the bulk-signup warning ({@link DeriveOwnerBulkSignupWarning}) provably
++ * count the same population.
+  */
+ final class RegistrationDates {
+ 
+     private RegistrationDates() {
+     }
+ 
++    /** The number of existing owners whose stored registration date equals {@code day}. */
++    static long countRegisteredOn(LocalDate day, OwnerRepository ownerRepository) {
++        return ownerRepository.findAll().stream()
++                .filter(existing -> day != null && day.equals(existing.getRegistrationDate()))
++                .count();
++    }
++
+     /**
+      * The effective registration date: the supplied date, or the server's current date when none
+      * was supplied, rolled forward off a weekend to the next business day.
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index fa1316835..0f6e3b5c0 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -70,6 +70,11 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: deriveBulkSignupWarning
++
++deriveBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerBulkSignupWarning
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 97ea16977..e8a826d59 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -4,6 +4,11 @@ composition:
+ load:
+   class: org.springframework.samples.petclinic.rest.function.owner.LoadOwner
+   govern: [ readonly-transaction ]
++  next: deriveBulkSignupWarning
++
++deriveBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerBulkSignupWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f8bf97975..bc702c030 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2156,6 +2156,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                Derived at response time. 'true' when more than 80 owners have
++                already been created on this owner's registration day, otherwise
++                'false'.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
