@@ -64,6 +64,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -151,6 +154,27 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation, derived at response time from the optional {@link #title} and the
+     * {@link #getLastName() lastName}: the title, a single space, then the lastName (e.g.
+     * {@code DR Who}) when a title is present, otherwise just the lastName. Not persisted as a
+     * separate value; composed from the stored title and last name.
+     */
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
     }
 
     public LocalDate getRegistrationDate() {
