@@ -100,6 +100,9 @@ public class Owner extends Person {
     private Boolean bulkSignupWarning;
 
     @Transient
+    private Boolean capacityWarning;
+
+    @Transient
     private Integer householdSize;
 
     @Transient
@@ -310,6 +313,19 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner's city already holds between 40 and 49 owners (inclusive), approaching the
+     * hard capacity limit of 50. Derived at response time and not persisted; {@code true} triggers a
+     * capacity warning in the response.
+     */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     /**

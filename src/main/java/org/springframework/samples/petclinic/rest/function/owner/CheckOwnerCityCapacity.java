@@ -22,10 +22,14 @@ public class CheckOwnerCityCapacity {
         }
     }
 
-    /** Existing owners whose city equals {@code city} case-insensitively, backing the 409 gate. */
-    private static long countInCity(OwnerRepository ownerRepository, String city) {
+    /**
+     * Existing owners whose city equals {@code city} case-insensitively, backing the 409 gate. Also
+     * used by {@link DeriveOwnerCapacityWarning} so the capacity warning provably counts the same
+     * population this gate rejects on. A {@code null} city counts as no matches.
+     */
+    static long countInCity(OwnerRepository ownerRepository, String city) {
         return ownerRepository.findAll().stream()
-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+                .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
                 .count();
     }
 }
