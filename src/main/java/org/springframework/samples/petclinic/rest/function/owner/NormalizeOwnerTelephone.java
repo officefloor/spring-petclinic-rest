@@ -13,12 +13,20 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
 public class NormalizeOwnerTelephone {
 
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
-        String raw = request.getTelephone();
-        String digits = raw == null ? "" : raw.replaceAll("\\D", "");
+        String digits = toDigits(request.getTelephone());
         if (digits.length() != 10) {
             throw new InvalidTelephoneException(
                     "Telephone must contain exactly 10 digits after removing non-digit characters");
         }
         request.setTelephone(digits);
+    }
+
+    /**
+     * The single source of truth for what "same telephone" means: strips every non-digit
+     * character, treating {@code null} as empty. Shared with {@link CheckOwnerTelephoneUnique}
+     * so the request side and stored owners are normalized identically.
+     */
+    static String toDigits(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
