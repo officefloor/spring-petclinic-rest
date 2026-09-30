@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
@@ -68,6 +69,16 @@ public interface OwnerMapper {
      */
     default String toLocality(Owner owner) {
         return CityRegions.identityRegion(owner.getPostcode());
+    }
+
+    /**
+     * The owner's IANA timezone, derived from the same region as the {@link #toLocality(Owner)
+     * locality} via the shared {@link CityRegions} region-to-timezone table
+     * (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane).
+     * {@code null} when the region is 'UNKNOWN' (postcode absent or in no known range).
+     */
+    default String toTimezone(Owner owner) {
+        return CityRegions.timezoneOf(CityRegions.identityRegion(owner.getPostcode()));
     }
 
     /**

@@ -28,6 +28,12 @@ public final class CityRegions {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -&gt; IANA timezone; anything not listed has no known timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     private CityRegions() {
     }
 
@@ -80,5 +86,14 @@ public final class CityRegions {
     public static String identityRegion(String postcode) {
         String region = regionByPostcode(postcode);
         return region != null ? region : UNKNOWN;
+    }
+
+    /**
+     * The IANA timezone for {@code region} (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane), or {@code null} when the region has no known timezone (including
+     * {@link #UNKNOWN}).
+     */
+    public static String timezoneOf(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 }
