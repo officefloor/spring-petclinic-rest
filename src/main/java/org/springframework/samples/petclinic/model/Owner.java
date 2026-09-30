@@ -85,6 +85,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
     @Transient
     private Integer householdSize;
 
@@ -262,6 +265,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted. A newly created owner is not deleted; a
+     * {@code DELETE /api/owners/{id}} flags it deleted while retaining the row. Deleted owners are
+     * ignored by the create endpoint's duplicate and identity checks.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**
