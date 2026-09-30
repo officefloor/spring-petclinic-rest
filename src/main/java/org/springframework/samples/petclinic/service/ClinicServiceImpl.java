@@ -54,6 +54,12 @@ public class ClinicServiceImpl implements ClinicService {
     private final SpecialtyRepository specialtyRepository;
     private final PetTypeRepository petTypeRepository;
 
+    /**
+     * Remembers the owner id created for each already-seen {@code Idempotency-Key}, so a repeated
+     * create with the same key replays the original owner instead of creating a duplicate.
+     */
+    private final java.util.Map<String, Integer> idempotencyKeys = new java.util.concurrent.ConcurrentHashMap<>();
+
     public ClinicServiceImpl(
         PetRepository petRepository,
         VetRepository vetRepository,
@@ -512,6 +518,30 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
+    }
+
+    /**
+     * Returns the id of the owner previously created for the given idempotency key, or {@code null}
+     * when the key has not been seen (or is absent), meaning the create should proceed normally.
+     */
+    @Override
+    public Integer findOwnerIdByIdempotencyKey(String idempotencyKey) throws DataAccessException {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        return idempotencyKeys.get(idempotencyKey);
+    }
+
+    /**
+     * Records that the given idempotency key produced the owner with the given id, so a later create
+     * repeating the key replays that owner instead of duplicating it. No-op when the key is absent.
+     */
+    @Override
+    public void registerIdempotencyKey(String idempotencyKey, Integer ownerId) throws DataAccessException {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || ownerId == null) {
+            return;
+        }
+        idempotencyKeys.put(idempotencyKey, ownerId);
     }
 
     @Override

@@ -99,10 +99,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        return new ResponseEntity<>(toOwnerDtoWithDerived(owner), HttpStatus.OK);
+    }
+
+    /**
+     * Builds the read representation of a persisted owner, populating the derived fields
+     * ({@code householdSize}, {@code bulkSignupWarning}) that are not stored on the entity.
+     */
+    private OwnerDto toOwnerDtoWithDerived(Owner owner) {
         owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
-        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+        return ownerDto;
     }
 
     /**
@@ -115,7 +123,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
-    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+    public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
+        // Idempotent replay: a repeat with an already-seen key returns the originally created
+        // owner with 200 rather than creating (and possibly rejecting as) a duplicate.
+        Integer existingId = this.clinicService.findOwnerIdByIdempotencyKey(idempotencyKey);
+        if (existingId != null) {
+            Owner existing = this.clinicService.findOwnerById(existingId);
+            if (existing != null) {
+                return new ResponseEntity<>(toOwnerDtoWithDerived(existing), HttpStatus.OK);
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         LocalDate registrationDate = owner.resolveRegistrationDate();
@@ -150,9 +167,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(
             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
-        owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        this.clinicService.registerIdempotencyKey(idempotencyKey, owner.getId());
+        OwnerDto ownerDto = toOwnerDtoWithDerived(owner);
         auditLogger.info(
             "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
