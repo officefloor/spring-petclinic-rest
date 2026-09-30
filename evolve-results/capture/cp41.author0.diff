@@ -1,0 +1,32 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 6f7dff929..7c07bbdd5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -262,9 +262,26 @@ public class ClinicServiceImpl implements ClinicService {
+      * the first 8 upper-case hex characters of the SHA-256 digest over the owner's normalized
+      * telephone concatenated with its last name (e.g. {@code 'NSW-1A2B3C4D'}). The old per-city
+      * sequence numbers have been dropped: the identity is now purely region-and-hash.
++     *
++     * <p>When the computed code collides with an existing owner's {@code customerCode}, {@code '-<n>'}
++     * is appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners
++     * always receive distinct customer codes.
+      */
+     private String generateCustomerCode(Owner owner) {
+-        return String.format("%s-%s", deriveRegion(owner), hash8(owner));
++        String base = String.format("%s-%s", deriveRegion(owner), hash8(owner));
++        java.util.Set<String> existing = ownerRepository.findAll().stream()
++            .map(Owner::getCustomerCode)
++            .filter(java.util.Objects::nonNull)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existing.contains(base)) {
++            return base;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = base + "-" + n;
++            if (!existing.contains(candidate)) {
++                return candidate;
++            }
++        }
+     }
+ 
+     /**
