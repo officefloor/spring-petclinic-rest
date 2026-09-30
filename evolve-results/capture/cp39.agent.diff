@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c029e5165..e25bc3e00 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+ 
+ import java.time.LocalDate;
+ import java.time.Period;
++import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
+@@ -154,9 +155,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derive an owner's numeric membership level (1 to 3): start at 1; add 1 when an email address is
+-     * present; add 1 when the owner has no namesakes (namesakeCount is 0); capped at 3 (level 4 is
+-     * reserved for tenure).
++     * Derive an owner's numeric membership level (1 to 4): start at 1; add 1 when an email address is
++     * present; add 1 when the owner has no namesakes (namesakeCount is 0); add 1 when the owner's
++     * tenure exceeds 365 days (see {@link #hasTenureBonus(Owner)}); capped at 4. Because a newly
++     * created owner has zero tenure it never earns the tenure point, so a new owner with an email and
++     * no namesakes lands at level 3, not 4.
+      */
+     default Integer toMembershipLevel(Owner owner) {
+         int level = 1;
+@@ -167,7 +170,23 @@ public interface OwnerMapper {
+         if (noNamesakes) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        if (hasTenureBonus(owner)) {
++            level++;
++        }
++        return Math.min(level, 4);
++    }
++
++    /**
++     * Whether the owner's tenure exceeds 365 days, i.e. more than a year has elapsed between the
++     * {@code registrationDate} and the current date. A brand-new owner (registered today) has zero
++     * tenure and so never qualifies. Returns {@code false} when no registration date is present.
++     */
++    default boolean hasTenureBonus(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return false;
++        }
++        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+     }
+ 
+     /**
