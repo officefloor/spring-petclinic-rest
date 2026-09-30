@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 57f71b06d..00cf61820 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,6 +35,8 @@ public interface OwnerMapper {
+         expression = "java(toMembershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(toLocality(owner))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(toOwnerSegment(owner))")
+     @Mapping(target = "timezone",
+         expression = "java(toTimezone(owner))")
+     @Mapping(target = "contactPreference",
+@@ -342,6 +344,21 @@ public interface OwnerMapper {
+         return regionOf(owner);
+     }
+ 
++    /**
++     * Derive an owner's marketing segment, formatted {@code '<TIER>_<AREA>'} and one of
++     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
++     * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when the owner's membership level (see
++     * {@link #toMembershipLevel(Owner)}) is 3 or more, otherwise {@code 'STANDARD'}. AREA is
++     * {@code 'METRO'} when the owner's locality (see {@link #toLocality(Owner)}) is a known region
++     * (NSW, VIC or QLD, i.e. one carrying a {@link #REGION_TIMEZONE} entry), otherwise
++     * {@code 'REGIONAL'}.
++     */
++    default String toOwnerSegment(Owner owner) {
++        String tier = toMembershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String area = REGION_TIMEZONE.containsKey(toLocality(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Fixed region-to-IANA-timezone table used to derive an owner's timezone: NSW -> Australia/Sydney,
+      * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 039aa3b87..08aa46bfe 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2308,6 +2308,18 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, derived at read time and
++                formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD),
++                otherwise 'REGIONAL'. One of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              readOnly: true
++              example: 'STANDARD_METRO'
+             timezone:
+               title: Timezone
+               description: >-
