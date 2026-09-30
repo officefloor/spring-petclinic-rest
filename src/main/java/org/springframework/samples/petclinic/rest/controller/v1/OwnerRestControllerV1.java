@@ -205,7 +205,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+            owner.getId(), primaryIdentifier(owner), ownerDto.getOwnerSegment(),
+            ownerDto.getMembershipLevel());
         AUDIT.info(event.toJson());
         NOTIFY.info("welcome queued: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -324,13 +325,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the member id for a new owner, formatted {@code '<REGION><FY><HASH8><CHK>'} where REGION is
-     * the region derived from the owner's postcode (preferring the postcode, falling back to the city
-     * table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)}), FY is the two-digit fiscal
+     * the version-2 region code — the region derived from the owner's postcode (preferring the postcode,
+     * falling back to the city table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)})
+     * with the fixed {@link IdentityKeyUtils#IDENTITY_VERSION_TAG 'V2' version tag} appended, FY is the
+     * two-digit fiscal
      * year (starting 1 July; see {@link OwnerMapper#fiscalYear(LocalDate)}) of the business-day-adjusted
      * registration date, HASH8 is the first 8 upper-case hex characters of the SHA-256 digest of the
      * owner's normalized E.164 telephone concatenated with the last name, and CHK is a single Luhn check
      * digit computed over the digits of {@code '<REGION><FY><HASH8>'} (see
-     * {@link IdentityKeyUtils#luhnCheckDigit(String)}), e.g. {@code 'NSW271A2B3C4D5'}. The id carries no
+     * {@link IdentityKeyUtils#luhnCheckDigit(String)}), e.g. {@code 'NSWV2271A2B3C4D5'}. The id carries no
      * sequence number, so its base form is a stable function of the owner's region, fiscal year and
      * telephone/last-name identity rather than of creation order.
      *
@@ -343,7 +346,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the assigned, collision-free member id
      */
     private String memberIdFor(Owner owner) {
-        String region = ownerMapper.regionOf(owner);
+        // Version-2 region code: the plain region with the fixed 'V2' version tag mixed in, so the member
+        // id (and every value derived from it) changes and no version-1 member id is produced again. The
+        // user-facing locality keeps the plain, untagged region (see OwnerMapper.toLocality).
+        String region = ownerMapper.regionOf(owner) + IdentityKeyUtils.IDENTITY_VERSION_TAG;
         String fy = String.format("%02d", OwnerMapper.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = IdentityKeyUtils.sha256UpperHex(owner.getTelephone() + owner.getLastName())
             .substring(0, 8);

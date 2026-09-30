@@ -287,18 +287,21 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Derives the stable household identifier shared by all owners with the same last name and
+     * Derives the stable version-2 household identifier shared by all owners with the same last name and
      * postcode. The value is deterministic (the first 12 upper-case hex characters of the SHA-256
-     * digest of the normalized last name and the postcode, joined with {@code '|'}), so every owner
+     * digest of the normalized last name, the postcode and the fixed
+     * {@link IdentityKeyUtils#IDENTITY_VERSION_TAG version tag}, joined with {@code '|'}), so every owner
      * in the same household is assigned an identical identifier regardless of creation order and
-     * without any explicit linking.
+     * without any explicit linking. Mixing in the version tag means no household id produced under
+     * version 1 is produced again.
      *
      * @param lastName the owner's last name
      * @param postcode the owner's postcode, possibly {@code null}
      * @return the stable household identifier
      */
     private static String householdIdFor(String lastName, String postcode) {
-        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode)
+            + "|" + IdentityKeyUtils.IDENTITY_VERSION_TAG;
         return IdentityKeyUtils.sha256UpperHex(key).substring(0, 12);
     }
 

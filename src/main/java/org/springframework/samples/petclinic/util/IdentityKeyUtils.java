@@ -34,6 +34,16 @@ import java.util.Locale;
  */
 public final class IdentityKeyUtils {
 
+    /**
+     * The fixed version tag mixed into every derived owner identifier — the member id's region code, the
+     * household id and the identity key — to produce the version-2 identity. Because the tag becomes part
+     * of each identifier's pre-image (or, for the member id, its literal region segment), no value
+     * produced under version 1 is produced again. This is the single source of truth shared by every
+     * layer that derives an identifier; it is deliberately absent from the user-facing region derivations
+     * (locality, timezone and the owner segment's derived region), which keep the plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private IdentityKeyUtils() {
     }
 

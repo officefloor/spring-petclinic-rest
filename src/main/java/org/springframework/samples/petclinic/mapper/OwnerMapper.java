@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
@@ -42,8 +43,10 @@ public interface OwnerMapper {
         expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(toContactPreference(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "apiVersion",
+        expression = "java(IDENTITY_API_VERSION)")
+    @Mapping(target = "identity",
+        expression = "java(toIdentity(owner))")
     @Mapping(target = "ageBand",
         expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -210,8 +213,8 @@ public interface OwnerMapper {
      * digits, HASH8 is 8 hex characters and CHK is 1 digit, so the last {@link #MEMBER_ID_SUFFIX_WIDTH}
      * characters are the {@code <FY><HASH8><CHK>} suffix and REGION is the variable-width remainder in
      * front of it. This is the single place the layout is encoded; the position arithmetic in
-     * {@link #memberIdRegion(String)} and {@link #memberIdFyDigits(String)} derives from these, and it
-     * must stay in step with how {@code OwnerRestControllerV1.memberIdFor} assembles the id.
+     * {@link #memberIdFyDigits(String)} derives from these, and it must stay in step with how
+     * {@code OwnerRestControllerV1.memberIdFor} assembles the id.
      */
     int FY_WIDTH = 2;
     int HASH8_WIDTH = 8;
@@ -222,7 +225,7 @@ public interface OwnerMapper {
      * The {@code '<REGION><FY><HASH8><CHK>'} base of a member id, dropping any {@code '-<n>'} collision
      * suffix, or {@code null} when the owner has no (well-formed) member id yet — i.e. one long enough to
      * carry a non-empty REGION in front of the fixed {@link #MEMBER_ID_SUFFIX_WIDTH}-character suffix.
-     * Use {@link #memberIdRegion(String)} and {@link #memberIdFyDigits(String)} to decode its segments.
+     * Use {@link #memberIdFyDigits(String)} to decode its FY segment.
      */
     private static String memberIdBase(String memberId) {
         if (memberId == null) {
@@ -231,14 +234,6 @@ public interface OwnerMapper {
         int dash = memberId.indexOf('-');
         String base = dash >= 0 ? memberId.substring(0, dash) : memberId;
         return base.length() > MEMBER_ID_SUFFIX_WIDTH ? base : null;
-    }
-
-    /**
-     * The leading {@code <REGION>} segment of a (non-null, well-formed) member id base: everything
-     * before the fixed trailing {@code <FY><HASH8><CHK>} suffix.
-     */
-    private static String memberIdRegion(String base) {
-        return base.substring(0, base.length() - MEMBER_ID_SUFFIX_WIDTH);
     }
 
     /**
@@ -251,21 +246,46 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64
-     * characters) of the normalized E.164 telephone, the lower-cased email (empty when none) and the
-     * American Soundex code of the last name, joined with {@code '|'}. Two owners are duplicates only
-     * when their whole identity keys are equal.
+     * The identity API version carried by the owner response. Version 2 groups the identifiers under the
+     * nested {@code identity} object and derives them with the version-2 algorithm (see
+     * {@link IdentityKeyUtils#IDENTITY_VERSION_TAG}).
+     */
+    int IDENTITY_API_VERSION = 2;
+
+    /**
+     * Groups the owner's version-2 identifiers — the member id, household id and identity key — under the
+     * nested {@code identity} object of the DTO. Each identifier is derived by the version-2 algorithm
+     * (see {@link IdentityKeyUtils#IDENTITY_VERSION_TAG}); the identity key is (re)derived here from the same single
+     * source of truth used by the create endpoint's duplicate check, while the member id and household id
+     * are the values frozen on the owner at creation.
+     */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(toIdentityKey(owner));
+        return identity;
+    }
+
+    /**
+     * Derive an owner's version-2 duplicate-detection identity key: the lower-case SHA-256 hex digest
+     * (64 characters) of the normalized E.164 telephone, the lower-cased email (empty when none), the
+     * American Soundex code of the last name and the fixed {@link IdentityKeyUtils#IDENTITY_VERSION_TAG version tag},
+     * joined with {@code '|'}. Mixing in the version tag means no key produced under version 1 is
+     * produced again. Two owners are duplicates only when their whole identity keys are equal.
      *
-     * <p>This is the single source of truth for the key: it is both returned on the DTO and used by
-     * the create endpoint's 409 duplicate check, so the value clients see is exactly the value that
-     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}, and the Soundex and
-     * hashing come from {@link IdentityKeyUtils}, the same helpers the soft-match uses.
+     * <p>This is the single source of truth for the key: it is both returned on the DTO (under
+     * {@code identity}) and used by the create endpoint's 409 duplicate check, so the value clients see
+     * is exactly the value that governs rejection. The "email present" rule reuses
+     * {@link #hasEmail(Owner)}, and the Soundex and hashing come from {@link IdentityKeyUtils}, the same
+     * helpers the soft-match uses.
      */
     default String toIdentityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = hasEmail(owner) ? owner.getEmail() : "";
         String soundex = IdentityKeyUtils.soundex(owner.getLastName());
-        return IdentityKeyUtils.sha256Hex(telephone + "|" + email + "|" + soundex);
+        return IdentityKeyUtils.sha256Hex(
+            telephone + "|" + email + "|" + soundex + "|" + IdentityKeyUtils.IDENTITY_VERSION_TAG);
     }
 
     /**
@@ -390,18 +410,15 @@ public interface OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derive an owner's locality (region) from the region-and-hash member id: the leading
-     * {@code <REGION>} segment of the {@code memberId}, i.e. everything before its trailing FY, HASH8
-     * and CHK segments (see {@link #memberIdBase(String)}). Since the region is baked into the member id
-     * at creation (see the create endpoint), the locality now moves with that identity rather than being
-     * recomputed from the postcode and city. When an owner has no (well-formed) member id yet (e.g.
-     * legacy records), fall back to deriving the region directly via {@link #regionOf(Owner)}.
+     * Derive an owner's locality: the plain, unversioned region code, derived directly from the postcode
+     * (falling back to the fixed city-to-region table, else {@code 'UNKNOWN'}; see
+     * {@link #regionOf(Owner)}). The locality is a user-facing field, not an identifier, so it must stay
+     * the plain region code (e.g. {@code 'NSW'}) and must never carry the {@link IdentityKeyUtils#IDENTITY_VERSION_TAG}
+     * that the version-2 algorithm mixes into the region code <em>inside</em> the member id. It is
+     * therefore recomputed from the owner rather than read back out of the (now version-2-tagged)
+     * member id.
      */
     default String toLocality(Owner owner) {
-        String base = memberIdBase(owner.getMemberId());
-        if (base != null) {
-            return memberIdRegion(base);
-        }
         return regionOf(owner);
     }
 
@@ -442,9 +459,10 @@ public interface OwnerMapper {
      * Derive an owner's region, preferring the postcode: when the postcode is present and falls within
      * a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When the postcode
      * is absent or in no known range, fall back to the fixed {@link #CITY_REGION} table. Returns
-     * 'UNKNOWN' when neither the postcode nor the city resolves a region. This is the region baked into
-     * the leading {@code <REGION>} segment of a new owner's member id and, through it, the owner's
-     * locality.
+     * 'UNKNOWN' when neither the postcode nor the city resolves a region. This plain region code is both
+     * the owner's user-facing {@link #toLocality(Owner) locality} and, with the
+     * {@link IdentityKeyUtils#IDENTITY_VERSION_TAG 'V2' version tag} mixed in, the region code baked into the leading
+     * {@code <REGION>} segment of a new owner's member id.
      */
     default String regionOf(Owner owner) {
         // Prefer the postcode: the region whose range contains it wins. The logic is kept here (rather
