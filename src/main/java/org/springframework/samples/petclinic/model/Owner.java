@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.*;
@@ -251,11 +254,11 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner, keyed
-     * off the shared {@link #getHouseholdId() householdId} (same lastName and postcode). A declared
-     * household member (created with {@code sharesHousehold} true) is never flagged; any other owner
-     * joining an existing household is allowed but flagged {@code true}. {@code false} when no such
-     * earlier owner existed. Assigned at creation.
+     * Whether this owner, when created, was a possible (soft) duplicate of an earlier owner: an
+     * earlier non-deleted owner whose {@link #soundex(String) soundex(lastName)} and postcode both
+     * matched this owner's, but whose {@link #getIdentityKey() identityKey} differed (so it was not a
+     * hard duplicate — an exact identityKey match is rejected 409 and never reaches this flag).
+     * {@code false} when no such earlier owner existed. Assigned at creation.
      */
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
@@ -534,20 +537,99 @@ public class Owner extends Person {
     }
 
     /**
-     * A display-only derived string composing the owner's canonical contact and household values:
-     * {@code normalizedTelephone|email|householdId}, joined with '|'. The telephone is stored in
-     * canonical E.164 form and the email lower-cased; an absent email or householdId contributes an
-     * empty segment. Derived at response time and exposed as a read-only response field only — it
-     * drives no check. Duplicate detection is purely household-based (see
-     * {@code DetectOwnerPossibleDuplicate}, which compares {@link #getHouseholdId() householdId}); this
-     * key is not consulted. Not persisted.
+     * The owner's deterministic identity key: the full lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The telephone is
+     * stored in canonical E.164 form and the email lower-cased; an absent telephone or email
+     * contributes an empty segment, and the last name is reduced to its {@link #soundex(String)
+     * Soundex} code. Two owners share an identity exactly when this 64-character hex value is equal.
+     *
+     * <p>This is the single key duplicate detection keys off: a create is rejected 409 when a
+     * non-deleted owner already carries the same identity key (see {@code DetectOwnerDuplicate}).
+     * Because the telephone participates in the key, two owners with the same last name and postcode
+     * but different telephones no longer collide here — they are flagged as a soft match instead (see
+     * {@code DetectOwnerPossibleDuplicate}). Derived at response time and not persisted.
      */
     public String getIdentityKey() {
-        return keyPart(this.telephone) + "|" + keyPart(this.email) + "|" + keyPart(this.householdId);
+        String telephone = keyPart(this.telephone);
+        String email = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String input = telephone + "|" + email + "|" + soundex(this.lastName);
+        return sha256Hex(input);
     }
 
     private static String keyPart(String value) {
         return value == null ? "" : value;
+    }
+
+    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
+    /**
+     * The American Soundex code for {@code name}: the retained first letter followed by up to three
+     * digits mapping the remaining consonants (b/f/p/v→1, c/g/j/k/q/s/x/z→2, d/t→3, l→4, m/n→5, r→6),
+     * right-padded with zeros to length four. Adjacent duplicate codes collapse; {@code h}/{@code w}
+     * do not separate repeated codes while vowels (and {@code y}) do. Non-letters are ignored. Returns
+     * {@code ""} when {@code name} is null or has no letters. Two last names that sound alike share a
+     * code, which is how the identity key and soft-match group surnames phonetically.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char prev = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue; // ignored and does not separate repeated codes
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            prev = digit; // a vowel resets prev so a later same code is emitted again
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /** The Soundex digit for an upper-case letter, {@code '0'} for vowels and {@code h}/{@code w}. */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**

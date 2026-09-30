@@ -8,11 +8,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * The single definition of "household member" shared by the steps that reason over a household:
- * {@link DeriveOwnerHouseholdSize}, {@link CapOwnerMembershipLevel} and
- * {@link DetectOwnerPossibleDuplicate}. A member is any <em>other</em> non-deleted owner that shares
- * the given owner's {@link Owner#getHouseholdId() householdId}. Keeping the self-exclusion and
- * soft-delete rules in one place ensures the consumers stay in lockstep rather than re-encoding the
- * filters independently.
+ * {@link DeriveOwnerHouseholdSize} and {@link CapOwnerMembershipLevel}. A member is any
+ * <em>other</em> non-deleted owner that shares the given owner's {@link Owner#getHouseholdId()
+ * householdId}. Keeping the self-exclusion and soft-delete rules in one place ensures the consumers
+ * stay in lockstep rather than re-encoding the filters independently.
  */
 final class HouseholdMembers {
 

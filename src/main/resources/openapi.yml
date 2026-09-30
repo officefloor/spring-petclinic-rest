@@ -2111,12 +2111,14 @@ components:
           title: Shares household
           description: >-
             Create-time hint that this owner deliberately shares a household with an
-            existing owner. The household is keyed on (lastName, postcode), so a second
-            owner with the same lastName and postcode is otherwise rejected 409 as a
-            household duplicate. When true, that duplicate block is bypassed so the owner
-            is created as a declared household member (and is not flagged as a possible
-            duplicate). It does not create the household link; the shared householdId is
-            always derived deterministically. Not persisted.
+            existing owner. The household is keyed on (lastName, postcode) and drives
+            only the derived householdId, household size and membership-level cap. It no
+            longer affects duplicate detection, which is now keyed solely on the
+            identityKey (SHA-256 of normalizedTelephone|lowerEmail|soundex(lastName)):
+            an exact identityKey match is rejected 409, while a near match
+            (same soundex(lastName) and postcode, different identityKey) is flagged as a
+            possible duplicate. It does not create the household link; the shared
+            householdId is always derived deterministically. Not persisted.
           type: boolean
           example: false
       required:
@@ -2307,11 +2309,11 @@ components:
             possibleDuplicate:
               title: Possible duplicate
               description: >-
-                Assigned at creation. Flags a suspected duplicate, keyed off the
-                shared householdId (same lastName and postcode). A declared household
-                member (created with 'sharesHousehold' true) is never flagged; any
-                other owner joining an existing household is rejected 409 instead, so
-                in practice this is 'false'.
+                Assigned at creation. Flags a suspected (soft) duplicate: an earlier
+                non-deleted owner whose soundex(lastName) and postcode both match this
+                owner's, but whose identityKey differs (so it is not a hard duplicate).
+                An exact identityKey match is rejected 409 instead and never reaches
+                this flag.
               type: boolean
               example: false
               readOnly: true
@@ -2350,14 +2352,15 @@ components:
             identityKey:
               title: Identity key
               description: >-
-                A display-only derived string formatted
-                'normalizedTelephone|email|householdId' (an absent email or
-                householdId contributes an empty segment). Exposed at response time
-                only; it drives no check. Duplicate detection is household-based: a
-                create is rejected 409 when a new owner joins an existing household
-                (same householdId) without 'sharesHousehold'. Not persisted.
+                The owner's deterministic identity key: the full lower-case hex
+                SHA-256 of 'normalizedTelephone|lowerEmail|soundex(lastName)' (an
+                absent telephone or email contributes an empty segment; the last
+                name is reduced to its Soundex code). This single key drives
+                duplicate detection: a create is rejected 409 when a non-deleted
+                owner already carries the same identity key. Derived at response
+                time and not persisted.
               type: string
-              example: '+61412345678||9F86D081884C'
+              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
               readOnly: true
             pets:
               title: Pets

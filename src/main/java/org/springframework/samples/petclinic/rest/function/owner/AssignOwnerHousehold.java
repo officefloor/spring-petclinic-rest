@@ -16,11 +16,11 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Because the household is now keyed on (lastName, postcode), owners sharing that pair are the
  * same household. This computed id is the single source of truth the household consumers key off
- * (see {@link HouseholdMembers}): {@link DeriveOwnerHouseholdSize}, {@link CapOwnerMembershipLevel}
- * (the membership-level ceiling) and {@link DetectOwnerPossibleDuplicate}. The request's
- * {@code sharesHousehold} flag no longer creates the link — the link is implicit in the shared id —
- * it only suppresses the possible-duplicate flag for a declared member
- * (see {@link DetectOwnerPossibleDuplicate}).
+ * (see {@link HouseholdMembers}): {@link DeriveOwnerHouseholdSize} and {@link CapOwnerMembershipLevel}
+ * (the membership-level ceiling). The request's {@code sharesHousehold} flag no longer creates the
+ * link — the link is implicit in the shared id. Duplicate detection no longer keys off the
+ * householdId: it uses the {@link org.springframework.samples.petclinic.model.Owner#getIdentityKey()
+ * identityKey} (see {@link DetectOwnerDuplicate} and {@link DetectOwnerPossibleDuplicate}).
  *
  * <p>Runs after {@link BuildOwner} has created the entity and before the household consumers (which
  * see the resolved {@code householdId}) and {@link SaveOwner} persists it.
