@@ -68,6 +68,35 @@ public final class OwnerTelephones {
     }
 
     /**
+     * Formats a telephone for humans: the country code, a space, then the national digits
+     * grouped in threes (e.g. "+61412345678" -> "+61 412 345 678"). The input is first
+     * normalized to E.164 via {@link #toE164(String)} so the raw stored value and the display
+     * value can never diverge; when it cannot form valid E.164 the raw value is returned as-is
+     * (empty string when {@code null}). The country code is split off using the same
+     * {@link #NATIONAL_LENGTH_BY_CODE} table that validation uses; an unknown country code
+     * (which validation lets through on digit count alone) is returned in plain E.164.
+     */
+    public static String toDisplay(String telephone) {
+        String e164 = toE164(telephone);
+        if (e164 == null) {
+            return telephone == null ? "" : telephone;
+        }
+        String digits = e164.substring(1); // drop the leading '+'
+        for (String code : NATIONAL_LENGTH_BY_CODE.keySet()) {
+            if (digits.startsWith(code)) {
+                String national = digits.substring(code.length());
+                StringBuilder display = new StringBuilder("+").append(code);
+                for (int i = 0; i < national.length(); i += 3) {
+                    display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+                }
+                return display.toString();
+            }
+        }
+        // Unknown country code: no reliable code/national split, so keep plain E.164.
+        return e164;
+    }
+
+    /**
      * The telephone in E.164 form when it can be normalized, otherwise the raw value as-is (empty
      * string when {@code null}). This is the "normalized telephone" used wherever a telephone must
      * still yield a stable, non-null value even when it is not valid E.164 — both the identityKey

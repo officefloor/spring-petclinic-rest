@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.CityRegions;
 import org.springframework.samples.petclinic.model.LuhnCheckDigit;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
+import org.springframework.samples.petclinic.model.OwnerTelephones;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -22,6 +23,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
@@ -77,6 +79,14 @@ public interface OwnerMapper {
         return (email != null && !email.isBlank())
                 ? OwnerDto.ContactPreferenceEnum.EMAIL
                 : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * The stored E.164 telephone formatted for humans by the shared {@link OwnerTelephones}
+     * rule: country code, a space, then the national digits grouped in threes.
+     */
+    default String toTelephoneDisplay(Owner owner) {
+        return OwnerTelephones.toDisplay(owner.getTelephone());
     }
 
     /** The owner's name formatted as 'LastName, FirstName'. */
