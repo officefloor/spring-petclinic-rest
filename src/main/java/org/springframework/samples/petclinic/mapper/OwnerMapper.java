@@ -50,7 +50,18 @@ public interface OwnerMapper {
         expression = "java(toSalutation(owner))")
     @Mapping(target = "fiscalYear",
         expression = "java(toFiscalYear(owner))")
+    @Mapping(target = "selfLink",
+        expression = "java(toSelfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's canonical self link: the resource path {@code '/api/owners/<id>'} where
+     * {@code <id>} is the owner's id. Returns {@code null} when the owner has no id yet (the field is
+     * then absent from the DTO).
+     */
+    default String toSelfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * The fiscal year that the given date falls in, where the fiscal year starts on 1 July and is
