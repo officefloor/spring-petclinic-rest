@@ -1,0 +1,218 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3b3303397..b878da1fa 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
+     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
++    @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+@@ -67,33 +68,56 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Determines an owner's numeric membership level for the read-only {@code membershipLevel}
+-     * field, ranging from 1 to 4: it starts at 1, gains 1 when an email address is present, gains 1
+-     * when the owner had no namesakes at creation (namesakeCount is 0), and gains a final 1 for
+-     * tenure of more than 365 days (measured from the registration date to the current date). The
+-     * pre-tenure factors are capped at 3, so level 4 requires tenure over 365 days. A newly created
+-     * owner has zero tenure and therefore never exceeds level 3.
++     * Computes an owner's membership points for the read-only {@code membershipPoints} field. Points
++     * start at 0 and accumulate: 2 when an email address is present, 1 when the owner had no
++     * namesakes at creation (namesakeCount is 0), 2 for a household of 3 or more members, and 3 for
++     * tenure of more than 365 days (measured from the registration date to the current date).
+      */
+-    @Named("formatMembershipLevel")
+-    default Integer formatMembershipLevel(Owner owner) {
++    @Named("formatMembershipPoints")
++    default Integer formatMembershipPoints(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        int level = 1;
++        int points = 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         if (hasEmail) {
+-            level++;
++            points += 2;
+         }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         if (noNamesakes) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
+         }
+-        level = Math.min(level, 3);
+         if (owner.getRegistrationDate() != null
+             && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Derives an owner's numeric membership level for the read-only {@code membershipLevel} field
++     * from its membership points: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for
++     * 6 or more points.
++     */
++    @Named("formatMembershipLevel")
++    default Integer formatMembershipLevel(Owner owner) {
++        Integer points = formatMembershipPoints(owner);
++        if (points == null) {
++            return null;
++        }
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        return level;
++        return 4;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fa3655299..56674d6a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -76,6 +76,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Transient
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -177,6 +180,19 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * The number of owners belonging to this owner's household (owners sharing this owner's
++     * household id, including this owner). Not persisted: it is a live count populated at read
++     * time and feeds the {@code membershipPoints} calculation. Null when it has not been resolved.
++     */
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     /**
+      * Whether this owner was flagged a possible (soft-match) duplicate at creation: it was not a
+      * hard duplicate, yet it shared an existing owner's lastName and postcode while carrying a
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6d30fcf19..5edc40a92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -98,6 +98,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+@@ -148,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(
+             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
++        owner.setHouseholdSize(this.clinicService.countOwnersByHouseholdId(owner.getHouseholdId()));
+         auditLogger.info("owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 732983da3..220e656b6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -66,6 +66,7 @@ public interface ClinicService {
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+ 	String computeHouseholdId(Owner owner) throws DataAccessException;
+ 	boolean existsOwnerInHousehold(String householdId) throws DataAccessException;
++	int countOwnersByHouseholdId(String householdId) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
+ 	PetType findPetTypeById(int petTypeId);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index b50ced844..6f7dff929 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -437,6 +437,22 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+     }
+ 
++    /**
++     * Counts the owners that belong to the household identified by the given (deterministic)
++     * household id, i.e. the number of owners currently sharing it. Used to size a household for
++     * the membership-points calculation. Returns {@code 0} when the id is absent.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public int countOwnersByHouseholdId(String householdId) throws DataAccessException {
++        if (householdId == null || householdId.isBlank()) {
++            return 0;
++        }
++        return (int) ownerRepository.findAll().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
++
+     /**
+      * Normalizes a household-identity field for comparison by trimming, collapsing internal
+      * runs of whitespace to a single space and lower-casing, so values that differ only in
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3e57c594b..f20f6bd62 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2199,19 +2199,30 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, starting at 0 and accumulating: 2
++                when an email address is present, 1 when the owner had no
++                namesakes at creation (namesakeCount is 0), 2 for a household of
++                3 or more members, and 3 for tenure of more than 365 days
++                (measured from the registration date to the current date).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level assigned at creation,
+-                ranging from 1 to 3. It starts at 1, gains 1 when an email
+-                address is present, gains 1 when the owner had no namesakes at
+-                creation (namesakeCount is 0), and is capped at 3. Level 4 is
+-                reserved for tenure.
++                The owner's numeric membership level, derived from
++                membershipPoints: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5
++                points, and 4 for 6 or more points.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
