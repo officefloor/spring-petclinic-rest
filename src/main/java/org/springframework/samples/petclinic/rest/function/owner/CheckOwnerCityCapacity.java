@@ -22,13 +22,8 @@ public class CheckOwnerCityCapacity {
         }
     }
 
-    /**
-     * The single source of truth for "how many owners are in this city": existing owners whose city
-     * equals {@code city} case-insensitively. Shared with {@link AssignOwnerCustomerCode} so the 409
-     * capacity gate and the per-city sequence number in the customer code can never drift on what
-     * counts as one city.
-     */
-    static long countInCity(OwnerRepository ownerRepository, String city) {
+    /** Existing owners whose city equals {@code city} case-insensitively, backing the 409 gate. */
+    private static long countInCity(OwnerRepository ownerRepository, String city) {
         return ownerRepository.findAll().stream()
                 .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
                 .count();

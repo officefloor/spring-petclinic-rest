@@ -210,11 +210,10 @@ public class Owner extends Person {
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     /**
-     * The single source of truth for the fixed city-to-region mapping ({@code Sydney -> NSW},
-     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}): the region for {@code city}, or
-     * {@code null} when the city is not in the table. Callers that need a displayable value use
-     * {@link #getLocality()}; callers that need to branch on "known region or not" (such as
-     * postcode validation) test for {@code null}.
+     * The fixed city-to-region mapping ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+     * {@code Brisbane -> QLD}): the region for {@code city}, or {@code null} when the city is not in
+     * the table. Used only by postcode validation, which branches on "known region or not" by testing
+     * for {@code null} before range-checking the postcode.
      */
     public static String regionOf(String city) {
         return CITY_REGION.get(city);
@@ -245,18 +244,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's region, derived at response time by preferring the postcode: the region whose
-     * fixed postcode range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099})
-     * contains {@link #postcode}, falling back to the fixed city-to-region table
-     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}) when the postcode is
-     * absent or in no known range, or {@code UNKNOWN} when neither resolves.
+     * The owner's region, derived at response time from the {@code REGION} prefix of the
+     * {@link #customerCode} (the segment before the first {@code '-'}). Because the customer code is
+     * assigned as {@code <REGION>-<HASH8>} with REGION taken from the postcode, the locality follows
+     * the same region-and-hash identity as the customer code. {@code UNKNOWN} when the owner has no
+     * customer code.
      */
     public String getLocality() {
-        String region = regionOfPostcode(this.postcode);
-        if (region == null) {
-            region = regionOf(this.city);
+        if (this.customerCode == null) {
+            return "UNKNOWN";
         }
-        return region != null ? region : "UNKNOWN";
+        int dash = this.customerCode.indexOf('-');
+        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
     }
 
     /**
