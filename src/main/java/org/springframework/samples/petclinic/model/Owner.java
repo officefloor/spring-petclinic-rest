@@ -36,6 +36,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -87,6 +90,27 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * Derives the owner's salutation for the read-only {@code salutation} field: the title, a single
+     * space and the lastName when a title is present (e.g. {@code 'DR Who'}), or just the lastName
+     * when no title was supplied.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
+    }
 
     public String getAddress() {
         return this.address;
