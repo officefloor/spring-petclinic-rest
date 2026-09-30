@@ -122,6 +122,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
             effectiveRegistrationDate = LocalDate.now();
+        } else if (effectiveRegistrationDate.isAfter(LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "registrationDate must not be later than the current server date");
         }
         effectiveRegistrationDate = rollToBusinessDay(effectiveRegistrationDate);
         owner.setRegistrationDate(effectiveRegistrationDate);
