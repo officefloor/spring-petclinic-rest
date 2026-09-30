@@ -1,0 +1,123 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 4ff2f6ff9..096de91fd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -99,6 +99,9 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    @Transient
++    private Boolean capacityWarning;
++
+     @Transient
+     private Integer householdSize;
+ 
+@@ -312,6 +315,19 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this owner's city already holds between 40 and 49 owners (inclusive), approaching the
++     * hard capacity limit of 50. Derived at response time and not persisted; {@code true} triggers a
++     * capacity warning in the response.
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * The number of owners in this owner's household (owners sharing the same
+      * {@link #householdId}), derived at response time and not persisted.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerCapacityWarning.java
+new file mode 100644
+index 000000000..ad8c1a93e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeriveOwnerCapacityWarning.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Derives the owner's {@code capacityWarning} at response time: {@code true} when the owner's city
++ * already holds between {@value #WARN_THRESHOLD} and {@link CheckOwnerCityCapacity#CITY_CAPACITY}-1
++ * owners (inclusive) — the band approaching the hard capacity limit that
++ * {@link CheckOwnerCityCapacity} enforces — otherwise {@code false}. The per-city count uses the
++ * same case-insensitive match as the capacity gate, so the warning provably tracks the same
++ * population that the 409 rejection governs.
++ *
++ * <p>Wired into both the create pipeline (where the signal originates) and the single-owner GET
++ * pipeline, mirroring {@link DeriveOwnerBulkSignupWarning}, so {@code capacityWarning} is populated
++ * (never null) on reads as well as on the create response. The flag is transient and set on the
++ * in-flight owner so the responder carries it; it is not persisted.
++ */
++public class DeriveOwnerCapacityWarning {
++
++    static final int WARN_THRESHOLD = 40;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        long inCity = ownerRepository.findAll().stream()
++                .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
++                .count();
++        owner.setCapacityWarning(inCity >= WARN_THRESHOLD && inCity < CheckOwnerCityCapacity.CITY_CAPACITY);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index c18de28e3..253dfd7fc 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -115,6 +115,11 @@ audit:
+ deriveBulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerBulkSignupWarning
+   govern: [ transaction ]
++  next: deriveCapacityWarning
++
++deriveCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerCapacityWarning
++  govern: [ transaction ]
+   next: capMembershipLevel
+ 
+ capMembershipLevel:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index bbafcb10d..e772b53c9 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -9,6 +9,11 @@ load:
+ deriveBulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerBulkSignupWarning
+   govern: [ readonly-transaction ]
++  next: deriveCapacityWarning
++
++deriveCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeriveOwnerCapacityWarning
++  govern: [ readonly-transaction ]
+   next: deriveHouseholdSize
+ 
+ deriveHouseholdSize:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c20ba7a78..60eb642cd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2277,6 +2277,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Derived at response time. 'true' when the owner's city already holds
++                between 40 and 49 owners (inclusive), approaching the hard capacity
++                limit of 50, otherwise 'false'.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
