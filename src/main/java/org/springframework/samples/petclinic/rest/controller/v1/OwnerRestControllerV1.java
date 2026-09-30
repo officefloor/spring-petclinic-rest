@@ -424,14 +424,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
-     * the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}).
+     * the last two digits of the fiscal year (which starts on 1 July) of the business-day-adjusted
+     * registration date (e.g. {@code 'NSW-1A2B3C4D-M27'}). The fiscal year is derived via
+     * {@link OwnerMapper#fiscalYear(LocalDate)}, the single source of truth also used by the DTO's
+     * {@code fiscalYear} field.
      *
      * @param customerCode     the owner's assigned customer code
-     * @param registrationDate the owner's registration date
+     * @param registrationDate the owner's business-day-adjusted registration date
      * @return the assigned membership number
      */
     private String membershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        String yy = String.format("%02d", OwnerMapper.fiscalYear(registrationDate) % 100);
         return String.format("%s-M%s", customerCode, yy);
     }
 

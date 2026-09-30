@@ -11,8 +11,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +48,36 @@ public interface OwnerMapper {
         expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "salutation",
         expression = "java(toSalutation(owner))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(toFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The fiscal year that the given date falls in, where the fiscal year starts on 1 July and is
+     * identified by the calendar year in which it ends. A date on or after 1 July belongs to the
+     * fiscal year ending in the following calendar year (e.g. 2026-08-01 -&gt; 2027), while a date
+     * before 1 July belongs to the fiscal year ending in the same calendar year (e.g. 2026-03-01 -&gt;
+     * 2026). This is the single source of truth for the fiscal year used by both the DTO's
+     * {@code fiscalYear} and the create endpoint's membership-number year segment.
+     *
+     * @param date the date to resolve, on a business day
+     * @return the calendar year in which that date's fiscal year ends
+     */
+    static int fiscalYear(LocalDate date) {
+        int year = date.getYear();
+        return date.getMonthValue() >= Month.JULY.getValue() ? year + 1 : year;
+    }
+
+    /**
+     * Derive an owner's fiscal year from its business-day-adjusted {@code registrationDate},
+     * formatted {@code 'FY<YY>'} where YY is the last two digits of the fiscal year (see
+     * {@link #fiscalYear(LocalDate)}), e.g. {@code 'FY27'}. Returns {@code null} when no registration
+     * date is present (the field is then absent from the DTO).
+     */
+    default String toFiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        return registrationDate == null ? null : String.format("FY%02d", fiscalYear(registrationDate) % 100);
+    }
 
     /**
      * Derive an owner's salutation: the {@code title}, a single space, and the {@code lastName}
@@ -178,9 +207,9 @@ public interface OwnerMapper {
      * Derive an owner's membership points: start at 0; add 2 when an email address is present; add 1
      * when the owner has no namesakes (namesakeCount is 0); add 2 when the owner belongs to a
      * household of 3 or more (see {@link #hasHouseholdBonus(Owner)}); add 3 when the owner's tenure
-     * exceeds 365 days (see {@link #hasTenureBonus(Owner)}). Because a newly created owner has zero
-     * tenure it never earns the tenure points, so a new owner with an email and no namesakes in a
-     * single-member household scores 3 points.
+     * is at least one elapsed fiscal year (see {@link #hasTenureBonus(Owner)}). Because a newly
+     * created owner has zero tenure it never earns the tenure points, so a new owner with an email
+     * and no namesakes in a single-member household scores 3 points.
      */
     default Integer toMembershipPoints(Owner owner) {
         int points = 0;
@@ -229,16 +258,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Whether the owner's tenure exceeds 365 days, i.e. more than a year has elapsed between the
-     * {@code registrationDate} and the current date. A brand-new owner (registered today) has zero
-     * tenure and so never qualifies. Returns {@code false} when no registration date is present.
+     * Whether the owner's tenure is at least one elapsed fiscal year, i.e. the fiscal year of the
+     * current date is later than the fiscal year of the {@code registrationDate} (fiscal years start
+     * on 1 July; see {@link #fiscalYear(LocalDate)}). A brand-new owner (registered in the current
+     * fiscal year) has zero elapsed fiscal years and so never qualifies. Returns {@code false} when
+     * no registration date is present.
      */
     default boolean hasTenureBonus(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+        return fiscalYear(LocalDate.now()) - fiscalYear(registrationDate) >= 1;
     }
 
     /**
