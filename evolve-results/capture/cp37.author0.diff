@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 45bb793cf..2f3147e36 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.CityRegions;
+ import org.springframework.samples.petclinic.model.LuhnCheckDigit;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerIdentity;
++import org.springframework.samples.petclinic.model.OwnerTelephones;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -22,6 +23,7 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+@@ -79,6 +81,14 @@ public interface OwnerMapper {
+                 : OwnerDto.ContactPreferenceEnum.PHONE;
+     }
+ 
++    /**
++     * The stored E.164 telephone formatted for humans by the shared {@link OwnerTelephones}
++     * rule: country code, a space, then the national digits grouped in threes.
++     */
++    default String toTelephoneDisplay(Owner owner) {
++        return OwnerTelephones.toDisplay(owner.getTelephone());
++    }
++
+     /** The owner's name formatted as 'LastName, FirstName'. */
+     default String toDisplayName(Owner owner) {
+         return owner.getLastName() + ", " + owner.getFirstName();
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephones.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephones.java
+index 6e76062ba..5b390acfc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephones.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerTelephones.java
+@@ -67,6 +67,35 @@ public final class OwnerTelephones {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Formats a telephone for humans: the country code, a space, then the national digits
++     * grouped in threes (e.g. "+61412345678" -> "+61 412 345 678"). The input is first
++     * normalized to E.164 via {@link #toE164(String)} so the raw stored value and the display
++     * value can never diverge; when it cannot form valid E.164 the raw value is returned as-is
++     * (empty string when {@code null}). The country code is split off using the same
++     * {@link #NATIONAL_LENGTH_BY_CODE} table that validation uses; an unknown country code
++     * (which validation lets through on digit count alone) is returned in plain E.164.
++     */
++    public static String toDisplay(String telephone) {
++        String e164 = toE164(telephone);
++        if (e164 == null) {
++            return telephone == null ? "" : telephone;
++        }
++        String digits = e164.substring(1); // drop the leading '+'
++        for (String code : NATIONAL_LENGTH_BY_CODE.keySet()) {
++            if (digits.startsWith(code)) {
++                String national = digits.substring(code.length());
++                StringBuilder display = new StringBuilder("+").append(code);
++                for (int i = 0; i < national.length(); i += 3) {
++                    display.append(' ').append(national, i, Math.min(i + 3, national.length()));
++                }
++                return display.toString();
++            }
++        }
++        // Unknown country code: no reliable code/national split, so keep plain E.164.
++        return e164;
++    }
++
+     /**
+      * The telephone in E.164 form when it can be normalized, otherwise the raw value as-is (empty
+      * string when {@code null}). This is the "normalized telephone" used wherever a telephone must
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 25b6dd1bc..c3f3d612f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,6 +2119,16 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 telephone formatted for humans: the country
++                code, a space, then the national digits grouped in threes (e.g.
++                '+61 412 345 678'). Derived on read; the raw 'telephone' stays
++                E.164.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             initials:
+               title: Initials
+               description: >-
