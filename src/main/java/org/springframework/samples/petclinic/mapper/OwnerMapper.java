@@ -26,12 +26,26 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** Fixed city-to-region table used to derive an owner's {@code locality}. */
     java.util.Map<String, String> CITY_REGION = java.util.Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derives an owner's preferred contact channel for the read-only {@code contactPreference}
+     * field: {@code 'EMAIL'} when an email address is present, otherwise {@code 'PHONE'}.
+     */
+    @Named("formatContactPreference")
+    default String formatContactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Derives an owner's {@code locality} from its city using the fixed city-to-region table
