@@ -1,0 +1,215 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a29e52f0c..fa3655299 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,12 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -171,6 +177,31 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * Whether this owner was flagged a possible (soft-match) duplicate at creation: it was not a
++     * hard duplicate, yet it shared an existing owner's lastName and postcode while carrying a
++     * different telephone. False when no such match existed.
++     */
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    /**
++     * The id of the existing owner this owner soft-matches (same lastName and postcode, different
++     * telephone), or {@code null} when it is not a possible duplicate.
++     */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The owner's derived identity key, used as the single basis for duplicate detection:
+      * the normalized telephone, the email (empty when absent) and the household id (empty
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c4cc84841..addefd0b9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -133,6 +133,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Soft-match: not a hard duplicate, but shares an existing owner's lastName and postcode with a
++        // different telephone. Still created, flagged 'possibleDuplicate' with the matching owner's id.
++        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
++        owner.setPossibleDuplicate(possibleDuplicateOf != null);
++        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         owner.setNamesakeCount(
+             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index c084cd3d3..4d2755b56 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -60,6 +60,7 @@ public interface ClinicService {
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	boolean existsOwnerWithIdentityKey(String identityKey) throws DataAccessException;
++	Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException;
+ 	int countOwnersByName(String firstName, String lastName) throws DataAccessException;
+ 	int countOwnersByCity(String city) throws DataAccessException;
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 882f07c54..4d2584c5d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -31,7 +31,9 @@ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
+ 
+@@ -324,6 +326,33 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+     }
+ 
++    /**
++     * Finds the id of an existing owner that {@code owner} soft-matches (a possible duplicate): one
++     * that shares its lastName (case-insensitive) and postcode while carrying a <i>different</i>
++     * telephone. This is a weaker match than the hard-duplicate identity key, so it is only meaningful
++     * for an owner that is not itself a hard duplicate. When several owners match, the one with the
++     * lowest id is returned; {@code null} is returned when there is no match (or lastName/postcode is
++     * absent), meaning the owner is not a possible duplicate.
++     */
++    @Override
++    @Transactional(readOnly = true)
++    public Integer findPossibleDuplicateOwnerId(Owner owner) throws DataAccessException {
++        if (owner == null || owner.getLastName() == null || owner.getPostcode() == null) {
++            return null;
++        }
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++        return ownerRepository.findAll().stream()
++            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName())
++                && postcode.equals(existing.getPostcode())
++                && !Objects.equals(telephone, existing.getTelephone()))
++            .map(Owner::getId)
++            .filter(Objects::nonNull)
++            .min(Comparator.naturalOrder())
++            .orElse(null);
++    }
++
+     /**
+      * Counts the existing owners whose firstName and lastName match the given values
+      * case-insensitively. Used to record an owner's namesake count at creation time.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index aaae798e5..f7e25b8c8 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index f1741d764..9d571f8b8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,9 @@ CREATE TABLE owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d50631ebc..617fc5983 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  possible_duplicate BIT,
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 16e1fd5fe..8b9f06422 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1c1c789c7..17c714da7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2209,6 +2209,27 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when this owner was flagged a possible (soft-match)
++                duplicate at creation: it was not a hard duplicate, yet it
++                shared an existing owner's lastName and postcode while carrying a
++                different telephone. Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner soft-matches (same
++                lastName and postcode, different telephone), or null when it is
++                not a possible duplicate.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
