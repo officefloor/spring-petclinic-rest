@@ -1,0 +1,333 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 544eb3257..57f71b06d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.util.E164PhoneNumbers;
++import org.springframework.samples.petclinic.util.IdentityKeyUtils;
+ 
+ import java.time.LocalDate;
+ import java.time.Month;
+@@ -184,18 +185,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derive an owner's duplicate-detection identity key: the normalized E.164 telephone, the
+-     * lower-cased email (empty when none), and the household id (empty when none), joined with
+-     * {@code '|'}. Two owners are duplicates only when their whole identity keys are equal.
++     * Derive an owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64
++     * characters) of the normalized E.164 telephone, the lower-cased email (empty when none) and the
++     * American Soundex code of the last name, joined with {@code '|'}. Two owners are duplicates only
++     * when their whole identity keys are equal.
+      *
+      * <p>This is the single source of truth for the key: it is both returned on the DTO and used by
+      * the create endpoint's 409 duplicate check, so the value clients see is exactly the value that
+-     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}.
++     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}, and the Soundex and
++     * hashing come from {@link IdentityKeyUtils}, the same helpers the soft-match uses.
+      */
+     default String toIdentityKey(Owner owner) {
++        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+         String email = hasEmail(owner) ? owner.getEmail() : "";
+-        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+-        return owner.getTelephone() + "|" + email + "|" + household;
++        String soundex = IdentityKeyUtils.soundex(owner.getLastName());
++        return IdentityKeyUtils.sha256Hex(telephone + "|" + email + "|" + soundex);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 78231a74a..d36b39d26 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,9 +16,6 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.Comparator;
+@@ -48,6 +45,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.E164PhoneNumbers;
++import org.springframework.samples.petclinic.util.IdentityKeyUtils;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -309,7 +307,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private String customerCodeFor(Owner owner) {
+         String region = ownerMapper.regionOf(owner);
+-        String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName()).substring(0, 8);
++        String hash8 = IdentityKeyUtils.sha256UpperHex(owner.getTelephone() + owner.getLastName())
++            .substring(0, 8);
+         String baseCode = region + "-" + hash8;
+         if (!isCustomerCodeInUse(baseCode)) {
+             return baseCode;
+@@ -339,27 +338,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return false;
+     }
+ 
+-    /**
+-     * Computes the SHA-256 digest of the UTF-8 bytes of {@code value} and renders it as an
+-     * upper-case hex string.
+-     *
+-     * @param value the string to hash
+-     * @return the full SHA-256 digest as upper-case hex
+-     */
+-    private static String sha256UpperHex(String value) {
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256")
+-                .digest(value.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder(digest.length * 2);
+-            for (byte b : digest) {
+-                sb.append(String.format("%02X", b));
+-            }
+-            return sb.toString();
+-        } catch (NoSuchAlgorithmException ex) {
+-            throw new IllegalStateException("SHA-256 not available", ex);
+-        }
+-    }
+-
+     /**
+      * The maximum number of owners allowed to live in a single city. A create is rejected once the
+      * owner's city already contains this many owners.
+@@ -779,11 +757,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Finds the existing owner that the given (not-a-hard-duplicate) new owner is a possible
+-     * (soft) duplicate of: one that shares the new owner's last name (compared case-insensitively)
+-     * and postcode while carrying a <em>different</em> normalized telephone. A hard duplicate
+-     * (identical identity key) has already been rejected with a 409 before this runs, so this
+-     * flags only the softer last-name/postcode overlap. The match with the lowest id is returned
+-     * so the result is deterministic when several owners qualify.
++     * (soft) duplicate of: one whose identity key <em>differs</em> from the new owner's while sharing
++     * the same last-name Soundex code (see {@link IdentityKeyUtils#soundex(String)}) and postcode. A
++     * hard duplicate (identical identity key) has already been rejected with a 409 before this runs, so
++     * this flags only the softer same-household-name overlap — in particular two owners with the same
++     * last name and postcode but different telephones (whose identity keys therefore differ) are a soft
++     * match rather than a rejected duplicate. The match with the lowest id is returned so the result is
++     * deterministic when several owners qualify.
+      *
+      * @param owner the new owner being created, with its telephone already normalized
+      * @return the matching existing owner, or {@code null} when none qualifies
+@@ -792,11 +772,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getLastName() == null || owner.getPostcode() == null) {
+             return null;
+         }
++        String identityKey = ownerMapper.toIdentityKey(owner);
++        String soundex = IdentityKeyUtils.soundex(owner.getLastName());
+         return this.clinicService.findAllOwners().stream()
+             .filter(existing -> !existing.isDeleted())
+-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
++            .filter(existing -> !identityKey.equals(ownerMapper.toIdentityKey(existing)))
++            .filter(existing -> soundex.equals(IdentityKeyUtils.soundex(existing.getLastName())))
+             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+             .min(Comparator.comparingInt(Owner::getId))
+             .orElse(null);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index e4eff6252..e6f21698b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -22,12 +22,10 @@ import org.springframework.data.domain.Pageable;
+ import org.springframework.orm.ObjectRetrievalFailureException;
+ import org.springframework.samples.petclinic.model.*;
+ import org.springframework.samples.petclinic.repository.*;
++import org.springframework.samples.petclinic.util.IdentityKeyUtils;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-import java.nio.charset.StandardCharsets;
+-import java.security.MessageDigest;
+-import java.security.NoSuchAlgorithmException;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
+@@ -301,17 +299,7 @@ public class ClinicServiceImpl implements ClinicService {
+      */
+     private static String householdIdFor(String lastName, String postcode) {
+         String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
+-        try {
+-            byte[] digest = MessageDigest.getInstance("SHA-256")
+-                .digest(key.getBytes(StandardCharsets.UTF_8));
+-            StringBuilder sb = new StringBuilder(digest.length * 2);
+-            for (byte b : digest) {
+-                sb.append(String.format("%02X", b));
+-            }
+-            return sb.substring(0, 12);
+-        } catch (NoSuchAlgorithmException ex) {
+-            throw new IllegalStateException("SHA-256 not available", ex);
+-        }
++        return IdentityKeyUtils.sha256UpperHex(key).substring(0, 12);
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKeyUtils.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeyUtils.java
+new file mode 100644
+index 000000000..041875d2b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeyUtils.java
+@@ -0,0 +1,124 @@
++/*
++ * Copyright 2002-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++/**
++ * Helpers backing the owner duplicate-detection identity key. The identity key is the lower-case
++ * SHA-256 hex of the owner's normalized telephone, lower-cased email and the American Soundex code of
++ * the last name, joined with {@code '|'} (see {@code OwnerMapper.toIdentityKey}). Both the key itself
++ * and the soft-match (which compares the Soundex code and postcode) route through this single source of
++ * truth, so the two cannot diverge.
++ *
++ * <p>These are deliberately plain {@code static} utilities in their own class rather than default
++ * methods on the MapStruct owner mapper: a {@code String -> String} mapper method would be picked up by
++ * MapStruct as an implicit type conversion and wrongly applied to unrelated String properties.
++ */
++public final class IdentityKeyUtils {
++
++    private IdentityKeyUtils() {
++    }
++
++    /**
++     * Computes the American Soundex code of a name: the (upper-cased) first letter followed by three
++     * digits, zero-padded or truncated to exactly four characters. Consonants are coded 1-6 by group;
++     * vowels and {@code H}/{@code W} are not coded. Adjacent letters with the same code, and same-code
++     * letters separated only by {@code H} or {@code W}, collapse to a single digit, while same-code
++     * letters separated by a vowel are coded separately. Non-letters are ignored.
++     *
++     * @param name the name to encode, possibly {@code null}
++     * @return the four-character Soundex code, or {@code ""} when the name has no letters
++     */
++    public static String soundex(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder();
++        code.append(letters.charAt(0));
++        char previousDigit = digit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char d = digit(c);
++            if (d != '0' && d != previousDigit) {
++                code.append(d);
++            }
++            // A vowel resets the "previous digit" so a following same-code consonant is coded again;
++            // H and W are transparent, keeping the previous digit so they cannot separate a repeat.
++            if (c != 'H' && c != 'W') {
++                previousDigit = d;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static char digit(char c) {
++        return switch (c) {
++            case 'B', 'F', 'P', 'V' -> '1';
++            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
++            case 'D', 'T' -> '3';
++            case 'L' -> '4';
++            case 'M', 'N' -> '5';
++            case 'R' -> '6';
++            default -> '0'; // A, E, I, O, U, H, W, Y
++        };
++    }
++
++    /**
++     * Computes the SHA-256 digest of the UTF-8 bytes of {@code value} and renders it as a lower-case
++     * hex string (64 characters). This is the single digest-to-hex routine reused across the
++     * application; the upper-case variant simply upper-cases this result.
++     *
++     * @param value the string to hash
++     * @return the full SHA-256 digest as lower-case hex
++     */
++    public static String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        } catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
++    }
++
++    /**
++     * Computes the SHA-256 digest of the UTF-8 bytes of {@code value} and renders it as an upper-case
++     * hex string (64 characters). Delegates to {@link #sha256Hex(String)} so the digest-to-hex logic
++     * lives in one place.
++     *
++     * @param value the string to hash
++     * @return the full SHA-256 digest as upper-case hex
++     */
++    public static String sha256UpperHex(String value) {
++        return sha256Hex(value).toUpperCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b86a0bbdd..bcb802aa3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2245,16 +2245,18 @@ components:
+             identityKey:
+               title: Identity key
+               description: >-
+-                The owner's derived duplicate-detection key, formed as the
+-                normalized E.164 telephone, the lower-cased email (or empty when
+-                none), and the household id (or empty when none), joined with
+-                '|'. A create is rejected with 409 when a new owner's whole
+-                identity key equals an existing owner's; because the telephone
+-                is part of the key, two members of the same household with
+-                different telephones have different keys and are both allowed.
++                The owner's derived duplicate-detection key: the lower-case
++                SHA-256 hex (64 characters) of the normalized E.164 telephone,
++                the lower-cased email (or empty when none), and the American
++                Soundex code of the last name, joined with '|'. A create is
++                rejected with 409 when a new owner's whole identity key equals an
++                existing owner's (ignoring owners flagged deleted); because the
++                telephone is part of the key, two members of the same household
++                with different telephones have different keys and are both
++                allowed (the second is instead flagged as a possible duplicate).
+               type: string
+               readOnly: true
+-              example: '+61412345678||A1B2C3D4E5F6'
++              example: '3b1f8c...'
+             namesakeCount:
+               title: Namesake count
+               description: >-
