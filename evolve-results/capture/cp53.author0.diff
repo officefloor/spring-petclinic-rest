@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 12965b895..67079cee7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -6,11 +6,12 @@ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Emits an audit line via the dedicated {@code AUDIT} logger once an owner has been
+- * persisted, recording the new owner's id, its assigned {@code customerCode}, its
+- * {@code registrationDate}, its {@code membershipLevel} and its {@code membershipNumber}. Runs after {@link SaveOwner} (so the
+- * id is populated) and
+- * before {@link RespondWithOwnerCreated}.
++ * Emits, via the dedicated {@code AUDIT} logger, both the human-readable audit line — recording the
++ * new owner's id, its assigned {@code customerCode}, its {@code registrationDate}, its
++ * {@code membershipLevel} and its {@code membershipNumber} — and, in addition, an immutable structured
++ * {@link OwnerCreatedEvent} serialized as JSON ({@code {seq, ownerId, customerCode, membershipLevel,
++ * event:'OWNER_CREATED'}}) whose {@code seq} increases monotonically across creates. Runs after
++ * {@link SaveOwner} (so the id is populated) and before {@link RespondWithOwnerCreated}.
+  *
+  * <p>It reads no repository, but stays under the pipeline's {@code transaction} governance
+  * so the create commits as a single boundary spanning {@code save} through {@code respond}
+@@ -25,5 +26,6 @@ public class AuditOwnerCreated {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 owner.getMembershipLevel(), owner.getMembershipNumber());
++        AUDIT.info(OwnerCreatedEvent.of(owner).toJson());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..d872ac906
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,87 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured audit event emitted when an owner is created, carrying the
++ * {@code OWNER_CREATED} marker, the owner's id, its {@code membershipLevel} and the owner's
++ * <em>current primary identifier</em>.
++ *
++ * <p>The primary identifier is the value that uniquely names the owner to the outside world. Today
++ * that is the {@link Owner#getCustomerCode() customerCode}, so the event is serialized with a
++ * {@code customerCode} field via {@link #of(Owner)}. When a later evolution unifies the customer code
++ * into a {@code memberId}, the event should be constructed from that new identifier instead (see
++ * {@link #primaryIdentifier}) so the emitted event always reflects the owner's current primary
++ * identity.
++ *
++ * <p>{@link #seq} is a process-wide, monotonically increasing sequence assigned at construction via
++ * {@link #of(Owner)}, ordering events across every create regardless of pipeline or thread. The record
++ * is immutable: once built, its fields never change.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String primaryIdentifier,
++        Integer membershipLevel) {
++
++    /** The fixed event marker. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    /** Monotonic sequence source, shared across all creates in the process. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
++    /**
++     * Builds the event for a persisted {@code owner}, assigning the next monotonic {@link #seq}. The
++     * primary identifier is taken from the owner's {@link Owner#getCustomerCode() customerCode} — the
++     * owner's current primary identifier.
++     */
++    public static OwnerCreatedEvent of(Owner owner) {
++        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++                owner.getCustomerCode(), owner.getMembershipLevel());
++    }
++
++    /**
++     * Renders the event as a compact JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event}}. The primary identifier is emitted
++     * under the {@code customerCode} key (the current primary-identifier field).
++     */
++    public String toJson() {
++        StringBuilder json = new StringBuilder(96);
++        json.append('{');
++        json.append("\"seq\":").append(this.seq);
++        json.append(",\"ownerId\":").append(this.ownerId);
++        json.append(",\"customerCode\":").append(quote(this.primaryIdentifier));
++        json.append(",\"membershipLevel\":").append(this.membershipLevel);
++        json.append(",\"event\":").append(quote(EVENT));
++        json.append('}');
++        return json.toString();
++    }
++
++    /** JSON-encodes {@code value} as a quoted string, or the literal {@code null} when absent. */
++    private static String quote(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    }
++                    else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        sb.append('"');
++        return sb.toString();
++    }
++}
