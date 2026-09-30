@@ -1,0 +1,167 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f143ab74f..20afc7b6f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,8 +30,21 @@ public interface OwnerMapper {
+         expression = "java(toLocality(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java(toContactPreference(owner))")
++    @Mapping(target = "identityKey",
++        expression = "java(toIdentityKey(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derive an owner's duplicate-detection identity key: the normalized E.164 telephone, the
++     * lower-cased email (empty when none), and the household id (empty when none), joined with
++     * {@code '|'}. Two owners are duplicates only when their whole identity keys are equal.
++     */
++    default String toIdentityKey(Owner owner) {
++        String email = hasEmail(owner) ? owner.getEmail() : "";
++        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
++        return owner.getTelephone() + "|" + email + "|" + household;
++    }
++
+     /**
+      * Whether the owner has an email address present (non-null and non-empty). Single source of truth
+      * for the "is an email present" rule shared by the derived fields below.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a785f84bc..a20ddf1a8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -125,19 +125,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                 "the maximum number of owners that may be created today has been reached");
+         }
+-        if (isTelephoneInUse(normalizedTelephone, null)) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                "telephone is already in use by another owner");
+-        }
+-        if (isEmailInUse(owner.getEmail(), null)) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                "email is already in use by another owner");
+-        }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (!sharesHousehold
+-            && this.clinicService.isHouseholdInUse(owner.getLastName(), owner.getAddress(), null)) {
++        if (sharesHousehold) {
++            this.clinicService.assignHousehold(owner);
++        }
++        if (isIdentityKeyInUse(identityKeyFor(owner), null)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                "another owner with the same last name already lives at this address");
++                "an owner with the same identity already exists");
+         }
+         if (countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+@@ -148,9 +142,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setBulkSignupWarning(
+             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
+-        if (sharesHousehold) {
+-            this.clinicService.assignHousehold(owner);
+-        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+@@ -521,48 +512,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether the given normalized E.164 telephone is already used by any owner other
+-     * than the one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g.
+-     * on create). Stored telephones are compared by their E.164 value so that differently formatted
+-     * inputs representing the same number are treated as duplicates.
++     * Builds an owner's duplicate-detection identity key: the normalized E.164 telephone, the
++     * lower-cased email (empty when none) and the household id (empty when none), joined with
++     * {@code '|'}. This single derived key subsumes what used to be separate telephone, email and
++     * household duplicate checks: two owners are duplicates only when their whole identity keys are
++     * equal. Because the telephone is part of the key, two members of the same household (same
++     * {@code householdId}) with different telephones have different keys and are both allowed.
+      *
+-     * @param normalizedTelephone the already-normalized E.164 telephone to look for
+-     * @param excludeId           id of an owner to ignore during the check, or {@code null} for none
+-     * @return {@code true} if another owner already uses the telephone
++     * @param owner the owner whose (already normalized) fields form the key
++     * @return the identity key
+      */
+-    private boolean isTelephoneInUse(String normalizedTelephone, Integer excludeId) {
+-        for (Owner existing : this.clinicService.findAllOwners()) {
+-            if (excludeId != null && excludeId.equals(existing.getId())) {
+-                continue;
+-            }
+-            if (normalizedTelephone.equals(toComparableTelephone(existing.getTelephone()))) {
+-                return true;
+-            }
+-        }
+-        return false;
++    private String identityKeyFor(Owner owner) {
++        return identityKey(toComparableTelephone(owner.getTelephone()),
++            owner.getEmail(), owner.getHouseholdId());
+     }
+ 
+     /**
+-     * Determines whether the given (already normalized, lower-cased) email is already used by any
+-     * owner other than the one identified by {@code excludeId} (pass {@code null} to consider every
+-     * owner, e.g. on create). Stored emails are compared case-insensitively, so two addresses that
+-     * differ only in letter case are treated as duplicates. A {@code null} email never matches, as
+-     * email is optional.
++     * Assembles an identity key from its three normalized parts, treating a {@code null} email or
++     * household id as empty so the key is always three {@code '|'}-joined segments.
++     */
++    private static String identityKey(String normalizedTelephone, String email, String householdId) {
++        return normalizedTelephone + "|"
++            + (email == null ? "" : email) + "|"
++            + (householdId == null ? "" : householdId);
++    }
++
++    /**
++     * Determines whether the given whole identity key already belongs to any owner other than the
++     * one identified by {@code excludeId} (pass {@code null} to consider every owner, e.g. on
++     * create). Only an exact full-key match counts as a duplicate.
+      *
+-     * @param normalizedEmail the already-normalized lower-cased email to look for, or {@code null}
+-     * @param excludeId       id of an owner to ignore during the check, or {@code null} for none
+-     * @return {@code true} if another owner already uses the email
++     * @param identityKey the identity key to look for
++     * @param excludeId   id of an owner to ignore during the check, or {@code null} for none
++     * @return {@code true} if another owner already has the same identity key
+      */
+-    private boolean isEmailInUse(String normalizedEmail, Integer excludeId) {
+-        if (normalizedEmail == null) {
+-            return false;
+-        }
++    private boolean isIdentityKeyInUse(String identityKey, Integer excludeId) {
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (excludeId != null && excludeId.equals(existing.getId())) {
+                 continue;
+             }
+-            String existingEmail = existing.getEmail();
+-            if (existingEmail != null && normalizedEmail.equalsIgnoreCase(existingEmail)) {
++            if (identityKey.equals(identityKeyFor(existing))) {
+                 return true;
+             }
+         }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b5a0ef492..736fc955d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2130,6 +2130,19 @@ components:
+               type: string
+               readOnly: true
+               example: 'A1B2C3D4E5F6'
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived duplicate-detection key, formed as the
++                normalized E.164 telephone, the lower-cased email (or empty when
++                none), and the household id (or empty when none), joined with
++                '|'. A create is rejected with 409 when a new owner's whole
++                identity key equals an existing owner's; because the telephone
++                is part of the key, two members of the same household with
++                different telephones have different keys and are both allowed.
++              type: string
++              readOnly: true
++              example: '+61412345678||A1B2C3D4E5F6'
+             namesakeCount:
+               title: Namesake count
+               description: >-
