@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CityRegions;
 import org.springframework.samples.petclinic.model.LuhnCheckDigit;
 import org.springframework.samples.petclinic.model.Owner;
@@ -27,7 +28,18 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's age band, derived by {@link AgeBand} from the owner's {@code birthDate}
+     * against the effective {@code registrationDate}. {@code null} when the owner has no
+     * birthDate (or no registrationDate to compute against).
+     */
+    default OwnerDto.AgeBandEnum toAgeBand(Owner owner) {
+        AgeBand band = AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
+        return (band == null) ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
+    }
 
     /**
      * A single Luhn check digit (0-9) computed over the digits of the owner's
