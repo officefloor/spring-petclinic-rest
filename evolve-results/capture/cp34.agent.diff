@@ -1,0 +1,193 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9ad0fbe1d..45bb793cf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
++import org.springframework.samples.petclinic.model.AgeBand;
+ import org.springframework.samples.petclinic.model.CityRegions;
+ import org.springframework.samples.petclinic.model.LuhnCheckDigit;
+ import org.springframework.samples.petclinic.model.Owner;
+@@ -27,8 +28,19 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
++    @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The owner's age band, derived by {@link AgeBand} from the owner's {@code birthDate}
++     * against the effective {@code registrationDate}. {@code null} when the owner has no
++     * birthDate (or no registrationDate to compute against).
++     */
++    default OwnerDto.AgeBandEnum toAgeBand(Owner owner) {
++        AgeBand band = AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate());
++        return (band == null) ? null : OwnerDto.AgeBandEnum.valueOf(band.name());
++    }
++
+     /**
+      * A single Luhn check digit (0-9) computed over the digits of the owner's
+      * {@code customerCode}. {@code null} when the owner has no customer code.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+new file mode 100644
+index 000000000..b331220b8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/AgeBand.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.model;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * The single definition of an owner's age band: the completed years from a birth date to a
++ * reference date, classified into named bands — {@code MINOR} under 18, {@code ADULT} 18 to
++ * 64 and {@code SENIOR} 65 or older. Used by the mapping layer to derive an owner's
++ * {@code ageBand} from its {@code birthDate} against the effective {@code registrationDate}.
++ *
++ * <p>Lives beside {@link Owner} — the same home as {@link CityRegions} and
++ * {@link LuhnCheckDigit} — so any layer can depend on it without a package cycle.
++ */
++public enum AgeBand {
++
++    MINOR, ADULT, SENIOR;
++
++    /**
++     * The age band for the completed years from {@code birthDate} to {@code referenceDate}:
++     * {@code MINOR} under 18, {@code ADULT} 18 to 64 and {@code SENIOR} 65 or older.
++     * {@code null} when either date is {@code null}.
++     */
++    public static AgeBand of(LocalDate birthDate, LocalDate referenceDate) {
++        if (birthDate == null || referenceDate == null) {
++            return null;
++        }
++        int years = Period.between(birthDate, referenceDate).getYears();
++        if (years < 18) {
++            return MINOR;
++        }
++        if (years < 65) {
++            return ADULT;
++        }
++        return SENIOR;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ba2d8f74a..2bd07e194 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -56,6 +56,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date", columnDefinition = "DATE")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -124,6 +127,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index b49b6fa98..8441e03e4 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index f680cef18..02810b922 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2e15ea365..9c40f792f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 85c219a6f..3e16254e2 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f0d3d471b..c031ec912 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2057,6 +2057,15 @@ components:
+           type: string
+           format: date
+           example: '2013-01-01'
++        birthDate:
++          title: Birth date
++          description: >-
++            The date of birth of the pet owner, in ISO 'YYYY-MM-DD' format.
++            Optional; when supplied it is used to derive the owner's ageBand,
++            computed against the effective registrationDate.
++          type: string
++          format: date
++          example: '1990-01-01'
+         postcode:
+           title: Postcode
+           description: >-
+@@ -2214,6 +2223,20 @@ components:
+                 - PHONE
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band, derived when a birthDate is supplied by
++                computing the completed years from birthDate to the effective
++                registrationDate: 'MINOR' when under 18, 'ADULT' when 18 to 64,
++                and 'SENIOR' when 65 or older. Null when no birthDate was given.
++              type: string
++              enum:
++                - MINOR
++                - ADULT
++                - SENIOR
++              example: 'ADULT'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
