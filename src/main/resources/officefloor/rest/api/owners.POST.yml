@@ -1,6 +1,23 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Entry point. An 'Idempotency-Key' already seen replays the original owner (200) via the
+# 'replay' branch; otherwise 'proceed' runs the normal create pipeline below.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  outputs:
+    proceed: validate
+    replay: replayLoad
+
+replayLoad:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadOwnerById
+  govern: [ readonly-transaction ]
+  next: replayRespond
+
+replayRespond:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
   next: ensureEmailDomainAllowed
@@ -100,6 +117,13 @@ assignBulkSignupWarning:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Runs after save so the generated id is known; remembers it against the Idempotency-Key
+# (no-op when the request carried no key) so a repeat replays this owner.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: audit
 
