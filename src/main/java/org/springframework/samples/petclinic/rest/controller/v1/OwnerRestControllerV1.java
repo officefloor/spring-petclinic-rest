@@ -98,7 +98,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+    }
+
+    /**
+     * Whether more than 80 owners have already been created on {@code registrationDate},
+     * signalling a bulk-signup surge for the read-only {@code bulkSignupWarning} field.
+     */
+    private boolean isBulkSignup(LocalDate registrationDate) {
+        return this.clinicService.countOwnersByRegistrationDate(registrationDate) > 80;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -130,6 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         auditLogger.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
