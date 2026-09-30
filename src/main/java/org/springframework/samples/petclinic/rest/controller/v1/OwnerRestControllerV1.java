@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
@@ -138,7 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "city has reached its maximum number of owners");
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCodeFor(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(
@@ -248,20 +251,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a new owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
-     * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
-     * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners that already live in that city (e.g. {@code 'LON-SMI-0007'}).
+     * Builds the customer code for a new owner, formatted {@code '<REGION>-<HASH8>'} where REGION is
+     * the region derived from the owner's postcode (preferring the postcode, falling back to the
+     * city table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)}) and HASH8 is the
+     * first 8 upper-case hex characters of the SHA-256 digest of the owner's normalized E.164
+     * telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The code carries no
+     * sequence number, so it is a stable function of the owner's region and telephone/last-name
+     * identity rather than of creation order.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param owner the owner being created, with its telephone already normalized to E.164 form
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = countOwnersInCity(city) + 1;
-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+    private String customerCodeFor(Owner owner) {
+        String region = ownerMapper.regionOf(owner);
+        String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName()).substring(0, 8);
+        return region + "-" + hash8;
+    }
+
+    /**
+     * Computes the SHA-256 digest of the UTF-8 bytes of {@code value} and renders it as an
+     * upper-case hex string.
+     *
+     * @param value the string to hash
+     * @return the full SHA-256 digest as upper-case hex
+     */
+    private static String sha256UpperHex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**
@@ -331,7 +356,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
-     * the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}).
+     * the last two digits of the registration date's year (e.g. {@code 'NSW-1A2B3C4D-M26'}).
      *
      * @param customerCode     the owner's assigned customer code
      * @param registrationDate the owner's registration date

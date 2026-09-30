@@ -130,15 +130,34 @@ public interface OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derive an owner's locality (region), preferring the postcode: when the postcode is present and
-     * falls within a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When
-     * the postcode is absent or in no known range, fall back to the fixed {@link #CITY_REGION} table.
-     * Returns 'UNKNOWN' when neither the postcode nor the city resolves a region. Preferring the
-     * postcode returns the same region for known cities but disambiguates cities that share a name.
+     * Derive an owner's locality (region) from the region-and-hash customer code: the {@code <REGION>}
+     * segment of the {@code customerCode}, i.e. everything before the first {@code '-'}. Since the
+     * region is baked into the customer code at creation (see the create endpoint), the locality now
+     * moves with that identity rather than being recomputed from the postcode and city. When an owner
+     * has no customer code yet (e.g. legacy records), fall back to deriving the region directly via
+     * {@link #regionOf(Owner)}.
      */
     default String toLocality(Owner owner) {
-        // Prefer the postcode: the region whose range contains it wins. The logic is inlined (rather
-        // than a String -> String helper) because MapStruct would treat such a helper as an implicit
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
+        }
+        return regionOf(owner);
+    }
+
+    /**
+     * Derive an owner's region, preferring the postcode: when the postcode is present and falls within
+     * a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When the postcode
+     * is absent or in no known range, fall back to the fixed {@link #CITY_REGION} table. Returns
+     * 'UNKNOWN' when neither the postcode nor the city resolves a region. This is the region baked into
+     * the {@code <REGION>} segment of a new owner's customer code and, through it, the owner's locality.
+     */
+    default String regionOf(Owner owner) {
+        // Prefer the postcode: the region whose range contains it wins. The logic is kept here (rather
+        // than in a String -> String helper) because MapStruct would treat such a helper as an implicit
         // type conversion and wrongly apply it to other String properties (e.g. telephone).
         String postcode = owner.getPostcode();
         if (postcode != null) {
