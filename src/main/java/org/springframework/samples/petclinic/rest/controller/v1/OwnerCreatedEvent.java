@@ -21,26 +21,25 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Immutable structured audit event published to the {@code AUDIT} logger when an owner is created,
  * alongside the human-readable audit line. It is serialized to a compact JSON object of the form
- * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+ * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
  *
  * <p>The {@code seq} is a monotonically increasing sequence number assigned across all owner
  * creates, giving the event stream a total order independent of timestamps.
  *
- * <p>The {@code customerCode} component carries the owner's <em>current primary identifier</em>. Today
- * that primary identifier is the customer code; if a later change unifies the customer code into a
- * member id, that member id becomes the primary identifier the event carries — the caller supplies
- * whatever the owner's current primary identifier is, so this event always reflects it.
+ * <p>The {@code memberId} component carries the owner's <em>current primary identifier</em>: the
+ * unified member id. The caller supplies whatever the owner's current primary identifier is, so this
+ * event always reflects it.
  *
  * <p>The record is immutable: once constructed its fields cannot change, so a published event is a
  * faithful, tamper-proof record of the create at the moment it happened.
  *
  * @param seq             monotonically increasing sequence number across creates
  * @param ownerId         the created owner's id
- * @param customerCode    the owner's current primary identifier (the customer code today)
+ * @param memberId        the owner's current primary identifier (the unified member id)
  * @param membershipLevel the owner's derived membership level
  * @param event           the event type, always {@link #OWNER_CREATED}
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                                 Integer membershipLevel, String event) {
 
     /** The event type discriminator carried by every owner-created event. */
@@ -53,13 +52,13 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
      *
      * @param seq             the monotonically increasing sequence number for this create
      * @param ownerId         the created owner's id
-     * @param customerCode    the owner's current primary identifier (the customer code today)
+     * @param memberId        the owner's current primary identifier (the unified member id)
      * @param membershipLevel the owner's derived membership level
      * @return the immutable event
      */
-    public static OwnerCreatedEvent of(long seq, Integer ownerId, String customerCode,
+    public static OwnerCreatedEvent of(long seq, Integer ownerId, String memberId,
                                        Integer membershipLevel) {
-        return new OwnerCreatedEvent(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
+        return new OwnerCreatedEvent(seq, ownerId, memberId, membershipLevel, OWNER_CREATED);
     }
 
     /**

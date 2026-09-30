@@ -43,8 +43,6 @@ public interface OwnerMapper {
         expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey",
         expression = "java(toIdentityKey(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(toCheckDigit(owner))")
     @Mapping(target = "ageBand",
         expression = "java(toAgeBand(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -71,8 +69,9 @@ public interface OwnerMapper {
      * identified by the calendar year in which it ends. A date on or after 1 July belongs to the
      * fiscal year ending in the following calendar year (e.g. 2026-08-01 -&gt; 2027), while a date
      * before 1 July belongs to the fiscal year ending in the same calendar year (e.g. 2026-03-01 -&gt;
-     * 2026). This is the single source of truth for the fiscal year used by both the DTO's
-     * {@code fiscalYear} and the create endpoint's membership-number year segment.
+     * 2026). This is the single source of truth for the fiscal year used both when the create endpoint
+     * bakes the FY segment into the member id (see {@code OwnerRestControllerV1.memberIdFor}) and when
+     * the DTO's {@code fiscalYear} falls back to the registration date for a legacy record.
      *
      * @param date the date to resolve, on a business day
      * @return the calendar year in which that date's fiscal year ends
@@ -83,12 +82,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's fiscal year from its business-day-adjusted {@code registrationDate},
-     * formatted {@code 'FY<YY>'} where YY is the last two digits of the fiscal year (see
-     * {@link #fiscalYear(LocalDate)}), e.g. {@code 'FY27'}. Returns {@code null} when no registration
-     * date is present (the field is then absent from the DTO).
+     * Derive an owner's fiscal year, formatted {@code 'FY<YY>'} where YY is the two-digit fiscal-year
+     * segment carried by the {@code memberId} (see {@link #memberIdBase(String)}), e.g. {@code 'FY27'}.
+     * The fiscal year therefore moves with the owner's member id. When an owner has no (well-formed)
+     * member id yet (e.g. legacy records) it falls back to deriving the fiscal year directly from the
+     * business-day-adjusted {@code registrationDate} (see {@link #fiscalYear(LocalDate)}), and returns
+     * {@code null} when neither is present (the field is then absent from the DTO).
      */
     default String toFiscalYear(Owner owner) {
+        String base = memberIdBase(owner.getMemberId());
+        if (base != null) {
+            return "FY" + memberIdFyDigits(base);
+        }
         LocalDate registrationDate = owner.getRegistrationDate();
         return registrationDate == null ? null : String.format("FY%02d", fiscalYear(registrationDate) % 100);
     }
@@ -158,32 +163,48 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's check digit: a single Luhn check digit (0-9) computed over the digits
-     * contained in the {@code customerCode}. Non-digit characters (the separators) are ignored.
+     * The fixed trailing-segment widths of a member id base {@code '<REGION><FY><HASH8><CHK>'}: FY is 2
+     * digits, HASH8 is 8 hex characters and CHK is 1 digit, so the last {@link #MEMBER_ID_SUFFIX_WIDTH}
+     * characters are the {@code <FY><HASH8><CHK>} suffix and REGION is the variable-width remainder in
+     * front of it. This is the single place the layout is encoded; the position arithmetic in
+     * {@link #memberIdRegion(String)} and {@link #memberIdFyDigits(String)} derives from these, and it
+     * must stay in step with how {@code OwnerRestControllerV1.memberIdFor} assembles the id.
      */
-    default Integer toCheckDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
+    int FY_WIDTH = 2;
+    int HASH8_WIDTH = 8;
+    int CHK_WIDTH = 1;
+    int MEMBER_ID_SUFFIX_WIDTH = FY_WIDTH + HASH8_WIDTH + CHK_WIDTH;
+
+    /**
+     * The {@code '<REGION><FY><HASH8><CHK>'} base of a member id, dropping any {@code '-<n>'} collision
+     * suffix, or {@code null} when the owner has no (well-formed) member id yet — i.e. one long enough to
+     * carry a non-empty REGION in front of the fixed {@link #MEMBER_ID_SUFFIX_WIDTH}-character suffix.
+     * Use {@link #memberIdRegion(String)} and {@link #memberIdFyDigits(String)} to decode its segments.
+     */
+    private static String memberIdBase(String memberId) {
+        if (memberId == null) {
             return null;
         }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        int dash = memberId.indexOf('-');
+        String base = dash >= 0 ? memberId.substring(0, dash) : memberId;
+        return base.length() > MEMBER_ID_SUFFIX_WIDTH ? base : null;
+    }
+
+    /**
+     * The leading {@code <REGION>} segment of a (non-null, well-formed) member id base: everything
+     * before the fixed trailing {@code <FY><HASH8><CHK>} suffix.
+     */
+    private static String memberIdRegion(String base) {
+        return base.substring(0, base.length() - MEMBER_ID_SUFFIX_WIDTH);
+    }
+
+    /**
+     * The two-digit {@code <FY>} segment of a (non-null, well-formed) member id base: the characters
+     * immediately preceding the trailing HASH8 and CHK segments.
+     */
+    private static String memberIdFyDigits(String base) {
+        int fyEnd = base.length() - HASH8_WIDTH - CHK_WIDTH;
+        return base.substring(fyEnd - FY_WIDTH, fyEnd);
     }
 
     /**
@@ -326,20 +347,17 @@ public interface OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derive an owner's locality (region) from the region-and-hash customer code: the {@code <REGION>}
-     * segment of the {@code customerCode}, i.e. everything before the first {@code '-'}. Since the
-     * region is baked into the customer code at creation (see the create endpoint), the locality now
-     * moves with that identity rather than being recomputed from the postcode and city. When an owner
-     * has no customer code yet (e.g. legacy records), fall back to deriving the region directly via
-     * {@link #regionOf(Owner)}.
+     * Derive an owner's locality (region) from the region-and-hash member id: the leading
+     * {@code <REGION>} segment of the {@code memberId}, i.e. everything before its trailing FY, HASH8
+     * and CHK segments (see {@link #memberIdBase(String)}). Since the region is baked into the member id
+     * at creation (see the create endpoint), the locality now moves with that identity rather than being
+     * recomputed from the postcode and city. When an owner has no (well-formed) member id yet (e.g.
+     * legacy records), fall back to deriving the region directly via {@link #regionOf(Owner)}.
      */
     default String toLocality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
-            }
+        String base = memberIdBase(owner.getMemberId());
+        if (base != null) {
+            return memberIdRegion(base);
         }
         return regionOf(owner);
     }
@@ -382,7 +400,8 @@ public interface OwnerMapper {
      * a known region's range (see {@link #REGION_POSTCODE_RANGES}) that region wins. When the postcode
      * is absent or in no known range, fall back to the fixed {@link #CITY_REGION} table. Returns
      * 'UNKNOWN' when neither the postcode nor the city resolves a region. This is the region baked into
-     * the {@code <REGION>} segment of a new owner's customer code and, through it, the owner's locality.
+     * the leading {@code <REGION>} segment of a new owner's member id and, through it, the owner's
+     * locality.
      */
     default String regionOf(Owner owner) {
         // Prefer the postcode: the region whose range contains it wins. The logic is kept here (rather

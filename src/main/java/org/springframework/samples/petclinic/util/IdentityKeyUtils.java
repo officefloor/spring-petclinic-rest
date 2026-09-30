@@ -121,4 +121,33 @@ public final class IdentityKeyUtils {
     public static String sha256UpperHex(String value) {
         return sha256Hex(value).toUpperCase(Locale.ROOT);
     }
+
+    /**
+     * Computes a single Luhn check digit (0-9) over the decimal digits contained in {@code value}.
+     * Non-digit characters (e.g. letters in a hex segment or separators) are ignored. This is the
+     * single source of truth for the check digit used by the member id's {@code CHK} segment.
+     *
+     * @param value the string whose contained digits are checked
+     * @return the Luhn check digit, 0 to 9
+     */
+    public static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
 }

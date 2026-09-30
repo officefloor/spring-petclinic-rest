@@ -178,8 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "city has reached its maximum number of owners");
         }
         owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
-        owner.setCustomerCode(customerCodeFor(owner));
-        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMemberId(memberIdFor(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
@@ -194,9 +193,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         this.idempotencyKeyRegistry.record(idempotencyKey, owner.getId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         AUDIT.info(event.toJson());
@@ -304,60 +303,65 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The owner's current primary identifier, carried by the structured {@link OwnerCreatedEvent}.
-     * Today an owner's primary identifier is its {@code customerCode}; this single accessor is the one
-     * place that decides which field is primary, so if a later change unifies the customer code into a
-     * member id, redirecting this method to the member id makes the audit event carry it instead.
+     * An owner's primary identifier is its {@code memberId}; this single accessor is the one place that
+     * decides which field is primary, so the audit event always carries the member id.
      *
      * @param owner the created owner
      * @return the owner's current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
-     * Builds the customer code for a new owner, formatted {@code '<REGION>-<HASH8>'} where REGION is
-     * the region derived from the owner's postcode (preferring the postcode, falling back to the
-     * city table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)}) and HASH8 is the
-     * first 8 upper-case hex characters of the SHA-256 digest of the owner's normalized E.164
-     * telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The code carries no
-     * sequence number, so its base form is a stable function of the owner's region and
+     * Builds the member id for a new owner, formatted {@code '<REGION><FY><HASH8><CHK>'} where REGION is
+     * the region derived from the owner's postcode (preferring the postcode, falling back to the city
+     * table, else {@code 'UNKNOWN'}; see {@link OwnerMapper#regionOf(Owner)}), FY is the two-digit fiscal
+     * year (starting 1 July; see {@link OwnerMapper#fiscalYear(LocalDate)}) of the business-day-adjusted
+     * registration date, HASH8 is the first 8 upper-case hex characters of the SHA-256 digest of the
+     * owner's normalized E.164 telephone concatenated with the last name, and CHK is a single Luhn check
+     * digit computed over the digits of {@code '<REGION><FY><HASH8>'} (see
+     * {@link IdentityKeyUtils#luhnCheckDigit(String)}), e.g. {@code 'NSW271A2B3C4D5'}. The id carries no
+     * sequence number, so its base form is a stable function of the owner's region, fiscal year and
      * telephone/last-name identity rather than of creation order.
      *
-     * <p>When that computed code already belongs to an existing owner it is de-duplicated by
-     * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a code no
-     * existing owner already has; the de-duplicated code is returned.
+     * <p>When that computed id already belongs to an existing owner it is de-duplicated by appending
+     * {@code '-<n>'} with the smallest {@code n} of 2 or more that yields an id no existing owner
+     * already has; the de-duplicated id is returned.
      *
-     * @param owner the owner being created, with its telephone already normalized to E.164 form
-     * @return the assigned, collision-free customer code
+     * @param owner the owner being created, with its telephone already normalized to E.164 form and its
+     *              registration date already business-day-adjusted
+     * @return the assigned, collision-free member id
      */
-    private String customerCodeFor(Owner owner) {
+    private String memberIdFor(Owner owner) {
         String region = ownerMapper.regionOf(owner);
+        String fy = String.format("%02d", OwnerMapper.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = IdentityKeyUtils.sha256UpperHex(owner.getTelephone() + owner.getLastName())
             .substring(0, 8);
-        String baseCode = region + "-" + hash8;
-        if (!isCustomerCodeInUse(baseCode)) {
-            return baseCode;
+        String base = region + fy + hash8;
+        String memberId = base + IdentityKeyUtils.luhnCheckDigit(base);
+        if (!isMemberIdInUse(memberId)) {
+            return memberId;
         }
         int n = 2;
-        String candidate = baseCode + "-" + n;
-        while (isCustomerCodeInUse(candidate)) {
+        String candidate = memberId + "-" + n;
+        while (isMemberIdInUse(candidate)) {
             n++;
-            candidate = baseCode + "-" + n;
+            candidate = memberId + "-" + n;
         }
         return candidate;
     }
 
     /**
-     * Determines whether any existing owner already carries the given {@code customerCode}, compared
-     * exactly. Called while assigning a new owner's code so collisions can be de-duplicated.
+     * Determines whether any existing owner already carries the given {@code memberId}, compared
+     * exactly. Called while assigning a new owner's member id so collisions can be de-duplicated.
      *
-     * @param customerCode the candidate customer code to look for
-     * @return {@code true} if an existing owner already has that customer code
+     * @param memberId the candidate member id to look for
+     * @return {@code true} if an existing owner already has that member id
      */
-    private boolean isCustomerCodeInUse(String customerCode) {
+    private boolean isMemberIdInUse(String memberId) {
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (customerCode.equals(existing.getCustomerCode())) {
+            if (memberId.equals(existing.getMemberId())) {
                 return true;
             }
         }
@@ -453,22 +457,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
-    }
-
-    /**
-     * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
-     * the last two digits of the fiscal year (which starts on 1 July) of the business-day-adjusted
-     * registration date (e.g. {@code 'NSW-1A2B3C4D-M27'}). The fiscal year is derived via
-     * {@link OwnerMapper#fiscalYear(LocalDate)}, the single source of truth also used by the DTO's
-     * {@code fiscalYear} field.
-     *
-     * @param customerCode     the owner's assigned customer code
-     * @param registrationDate the owner's business-day-adjusted registration date
-     * @return the assigned membership number
-     */
-    private String membershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", OwnerMapper.fiscalYear(registrationDate) % 100);
-        return String.format("%s-M%s", customerCode, yy);
     }
 
     /**
