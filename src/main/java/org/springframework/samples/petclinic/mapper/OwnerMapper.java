@@ -36,12 +36,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's locality, derived from the city using the shared {@link CityRegions} table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not
-     * in the table.
+     * The owner's locality, derived by the shared {@link CityRegions} table. The postcode is
+     * preferred: the region whose range contains it wins (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), falling back to the city (Sydney->NSW, Melbourne->VIC, Brisbane->QLD)
+     * when the postcode is absent or in no known range, and 'UNKNOWN' when neither resolves.
      */
     default String toLocality(Owner owner) {
-        return CityRegions.localityOf(owner.getCity());
+        return CityRegions.localityOf(owner.getCity(), owner.getPostcode());
     }
 
     /**
