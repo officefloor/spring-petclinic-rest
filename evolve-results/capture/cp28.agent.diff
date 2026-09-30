@@ -1,0 +1,216 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cb5036932..4e6244bee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -130,6 +130,21 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    /**
++     * The owner's derived identity key, used as the single basis for duplicate detection:
++     * the normalized telephone, the email (empty when absent) and the household id (empty
++     * when absent), joined with {@code '|'}. Two owners are duplicates only when their whole
++     * identity keys are equal, so any single differing component (telephone, email or
++     * household) yields distinct keys and is allowed. Derived from persisted fields, so it is
++     * not itself a persistent column.
++     */
++    @Transient
++    public String getIdentityKey() {
++        return (this.telephone == null ? "" : this.telephone)
++            + "|" + (this.email == null ? "" : this.email)
++            + "|" + (this.householdId == null ? "" : this.householdId);
++    }
++
+     /**
+      * Establishes the effective registration date at persist time, so the create-time default
+      * applies to any persistence path.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index f2712bf82..415d8ed04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -56,23 +56,6 @@ public interface OwnerRepository {
+      */
+     Owner findById(int id) throws DataAccessException;
+ 
+-    /**
+-     * Check whether an <code>Owner</code> with the given (already normalized) telephone number exists.
+-     *
+-     * @param telephone the normalized telephone number to look for
+-     * @return <code>true</code> if any owner already uses the given telephone number
+-     */
+-    boolean existsByTelephone(String telephone) throws DataAccessException;
+-
+-    /**
+-     * Check whether an <code>Owner</code> with the given email exists, comparing case-insensitively.
+-     *
+-     * @param email the email address to look for
+-     * @return <code>true</code> if any owner already uses the given email (ignoring case)
+-     */
+-    boolean existsByEmailIgnoreCase(String email) throws DataAccessException;
+-
+-
+     /**
+      * Save an <code>Owner</code> to the data store, either inserting or updating it.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index 0f8cd4c96..a3faf618d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -148,30 +148,6 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         }
+     }
+ 
+-    @Override
+-    public boolean existsByTelephone(String telephone) throws DataAccessException {
+-        Map<String, Object> params = new HashMap<>();
+-        params.put("telephone", telephone);
+-        Long count = this.namedParameterJdbcTemplate.queryForObject(
+-            "SELECT COUNT(*) FROM owners WHERE telephone = :telephone",
+-            params,
+-            Long.class
+-        );
+-        return count != null && count > 0;
+-    }
+-
+-    @Override
+-    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
+-        Map<String, Object> params = new HashMap<>();
+-        params.put("email", email);
+-        Long count = this.namedParameterJdbcTemplate.queryForObject(
+-            "SELECT COUNT(*) FROM owners WHERE LOWER(email) = LOWER(:email)",
+-            params,
+-            Long.class
+-        );
+-        return count != null && count > 0;
+-    }
+-
+     @Override
+     public void save(Owner owner) throws DataAccessException {
+         BeanPropertySqlParameterSource parameterSource = new BeanPropertySqlParameterSource(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index 76e3611fe..db2757657 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -89,20 +89,6 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+     }
+ 
+ 
+-    @Override
+-    public boolean existsByTelephone(String telephone) throws DataAccessException {
+-        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE owner.telephone = :telephone");
+-        query.setParameter("telephone", telephone);
+-        return (long) query.getSingleResult() > 0;
+-    }
+-
+-    @Override
+-    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
+-        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)");
+-        query.setParameter("email", email);
+-        return (long) query.getSingleResult() > 0;
+-    }
+-
+     @Override
+     public void save(Owner owner) {
+         if (owner.getId() == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 58765f880..2355c967e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -120,23 +120,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress());
+-        if (!sharesHousehold && householdExists) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         if (sharesHousehold && householdExists) {
+             this.clinicService.assignHousehold(owner);
+         }
++        // All duplicate detection is consolidated into the owner's derived identity key (see
++        // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
++        if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.setNamesakeCount(
+             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 1acd411d8..c084cd3d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -59,8 +59,7 @@ public interface ClinicService {
+ 	Page<Owner> findOwners(String lastName, Pageable pageable) throws DataAccessException;
+ 	void saveOwner(Owner owner) throws DataAccessException;
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+-	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
+-	boolean existsOwnerWithEmail(String email) throws DataAccessException;
++	boolean existsOwnerWithIdentityKey(String identityKey) throws DataAccessException;
+ 	int countOwnersByName(String firstName, String lastName) throws DataAccessException;
+ 	int countOwnersByCity(String city) throws DataAccessException;
+ 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index e5d0ad3d8..7b6abf347 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -263,19 +263,19 @@ public class ClinicServiceImpl implements ClinicService {
+         return value.substring(0, Math.min(3, value.length())).toUpperCase();
+     }
+ 
++    /**
++     * Whether any existing owner has the given derived identity key. This is the single basis for
++     * duplicate detection: a create is rejected only when the whole key matches an existing owner
++     * exactly. See {@link Owner#getIdentityKey()} for the key's definition.
++     */
+     @Override
+     @Transactional(readOnly = true)
+-    public boolean existsOwnerWithTelephone(String telephone) throws DataAccessException {
+-        return ownerRepository.existsByTelephone(telephone);
+-    }
+-
+-    @Override
+-    @Transactional(readOnly = true)
+-    public boolean existsOwnerWithEmail(String email) throws DataAccessException {
+-        if (email == null || email.isBlank()) {
++    public boolean existsOwnerWithIdentityKey(String identityKey) throws DataAccessException {
++        if (identityKey == null) {
+             return false;
+         }
+-        return ownerRepository.existsByEmailIgnoreCase(email);
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 07fbb069f..c61bf1cb8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2182,6 +2182,17 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived identity key, formed as
++                '<normalizedTelephone>|<email or empty>|<householdId or empty>'.
++                Two owners are considered duplicates only when their whole
++                identity keys are equal; a create is rejected with 409 on an
++                exact full-key match against an existing owner.
++              type: string
++              example: '+61412345678||A1B2C3D4E5F6A7B8'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
