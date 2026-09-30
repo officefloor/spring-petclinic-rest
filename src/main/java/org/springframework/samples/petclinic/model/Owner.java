@@ -202,6 +202,14 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
+    /**
+     * The owner's preferred contact channel, derived at response time: {@code EMAIL} when an
+     * email is present, otherwise {@code PHONE}. Not persisted.
+     */
+    public String getContactPreference() {
+        return (this.email != null && !this.email.isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
