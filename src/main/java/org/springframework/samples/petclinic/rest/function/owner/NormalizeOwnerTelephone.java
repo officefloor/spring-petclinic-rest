@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * Normalizes the telephone on create to E.164 form: strips spaces, dashes and brackets;
  * keeps a leading '+' and country code when present, otherwise assumes country code '+61'
  * and drops a single leading '0' from the national digits; requires 8 to 15 digits after
- * the '+'. The E.164 string is stored back on the request so later steps build, save and
+ * the '+' and a national-number length matching the country code ('+61' => 9, '+1' => 10).
+ * The E.164 string is stored back on the request so later steps build, save and
  * return it. A value that cannot form valid E.164 is rejected 400 via
  * {@link InvalidTelephoneException}.
  */

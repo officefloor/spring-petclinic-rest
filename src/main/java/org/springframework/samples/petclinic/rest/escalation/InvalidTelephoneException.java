@@ -2,8 +2,9 @@ package org.springframework.samples.petclinic.rest.escalation;
 
 /**
  * Thrown when an owner's telephone cannot be converted to a valid E.164 number (8 to 15
- * digits after the '+', once spaces, dashes and brackets are stripped and the '+61'
- * default country code is applied). Handled globally by
+ * digits after the '+', with a national-number length that matches the country code — '+61'
+ * requires 9 national digits, '+1' requires 10 — once spaces, dashes and brackets are
+ * stripped and the '+61' default country code is applied). Handled globally by
  * {@link InvalidTelephoneExceptionHandler}, which responds 400.
  */
 public class InvalidTelephoneException extends Exception {
