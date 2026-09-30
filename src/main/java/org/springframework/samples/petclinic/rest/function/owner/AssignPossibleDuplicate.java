@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Assigns the owner's soft-duplicate flags. Runs after {@link EnsureUniqueOwnerIdentity}
- * has already rejected household duplicates, so any match here is a genuinely different
+ * has already rejected exact identity duplicates, so any match here is a genuinely different
  * owner. A soft (possible) duplicate is an existing owner that shares this owner's
  * {@code lastName} (case-insensitive) and {@code postcode} but has a different (normalized)
  * telephone. When one exists the owner is still created, with {@code possibleDuplicate} true

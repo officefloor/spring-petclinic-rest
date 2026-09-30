@@ -52,6 +52,28 @@ final class OwnerHousehold {
         return count;
     }
 
+    /**
+     * The highest {@code membershipLevel} among the existing owners in the given household —
+     * those whose {@code householdId} matches — or {@code null} when the household has no
+     * existing member with a level. A {@code null} householdId matches nothing. Used by the
+     * level ceiling so a new owner cannot leapfrog their household's current maximum.
+     */
+    static Integer maxMembershipLevel(String householdId, Iterable<Owner> owners) {
+        if (householdId == null) {
+            return null;
+        }
+        Integer max = null;
+        for (Owner owner : owners) {
+            if (householdId.equals(owner.getHouseholdId())) {
+                Integer level = owner.getMembershipLevel();
+                if (level != null && (max == null || level > max)) {
+                    max = level;
+                }
+            }
+        }
+        return max;
+    }
+
     /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
     private static String sha256Hex(String value) {
         try {

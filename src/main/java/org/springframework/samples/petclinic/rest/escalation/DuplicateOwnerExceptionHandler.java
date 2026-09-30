@@ -6,13 +6,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateOwnerExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateOwnerException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
-        detail.setProperty("field", "householdId");
-        detail.setProperty("rejectedValue", ex.getHouseholdId());
+        detail.setProperty("field", "identityKey");
+        detail.setProperty("rejectedValue", ex.getIdentityKey());
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
