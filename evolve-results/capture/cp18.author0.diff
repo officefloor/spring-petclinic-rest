@@ -1,0 +1,47 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f48232fdc..be04773d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,6 +123,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                 "another owner with the same last name already lives at this address");
+         }
++        if (countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "city has reached its maximum number of owners");
++        }
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+@@ -243,12 +247,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private String nextCustomerCode(String city, String lastName) {
+         String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
+         String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        int sequence = (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+-            .count() + 1;
++        int sequence = countOwnersInCity(city) + 1;
+         return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+     }
+ 
++    /**
++     * The maximum number of owners allowed to live in a single city. A create is rejected once the
++     * owner's city already contains this many owners.
++     */
++    private static final int CITY_CAPACITY = 50;
++
++    /**
++     * Counts the existing owners that live in the given city, comparing city names case-insensitively.
++     *
++     * @param city the city to count owners for
++     * @return the number of existing owners in that city
++     */
++    private int countOwnersInCity(String city) {
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
++            .count();
++    }
++
+     /**
+      * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
+      * the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}).
