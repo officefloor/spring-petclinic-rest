@@ -21,10 +21,7 @@ public class AssignOwnerCustomerCode {
         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String lastName = owner.getLastName();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        long inCity = ownerRepository.findAll().stream()
-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-                .count();
-        long sequence = inCity + 1;
+        long sequence = CheckOwnerCityCapacity.countInCity(ownerRepository, city) + 1;
         owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
     }
 }
