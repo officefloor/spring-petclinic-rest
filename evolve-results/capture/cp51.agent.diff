@@ -1,0 +1,171 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7325266d5..544eb3257 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -253,8 +253,28 @@ public interface OwnerMapper {
+      * Derive an owner's numeric membership level (1 to 4) from its membership points (see
+      * {@link #toMembershipPoints(Owner)}): level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6
+      * or more.
++     *
++     * <p>The level is then capped at the owner's {@code membershipLevelCap} when one is present: a new
++     * owner's membership level cannot exceed one above the current maximum membership level among their
++     * existing household members, so the cap (frozen at creation, see the create endpoint) is the
++     * ceiling applied here. When no cap is present (e.g. an owner created with no existing household
++     * member, or a legacy record) the uncapped level stands.
+      */
+     default Integer toMembershipLevel(Owner owner) {
++        int level = uncappedMembershipLevel(owner);
++        Integer cap = owner.getMembershipLevelCap();
++        if (cap != null && level > cap) {
++            return cap;
++        }
++        return level;
++    }
++
++    /**
++     * Derive an owner's numeric membership level (1 to 4) from its membership points (see
++     * {@link #toMembershipPoints(Owner)}) before any household ceiling is applied: level 1 for 0-1
++     * points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++     */
++    default Integer uncappedMembershipLevel(Owner owner) {
+         int points = toMembershipPoints(owner);
+         if (points <= 1) {
+             return 1;
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b0a4900d9..93ec30744 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -219,6 +222,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9845ac398..78231a74a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -158,11 +158,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // The household id is deterministic (derived from the last name and postcode), so every
+         // owner is keyed to its household automatically, regardless of creation order.
+         this.clinicService.assignHousehold(owner);
++        // An owner joining an existing household is now admitted rather than rejected; their
++        // membership level is instead capped relative to the household (see the level-ceiling rule
++        // applied via the membershipLevelCap below).
+         boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getHouseholdId(), null);
+-        if (householdInUse && !sharesHousehold) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                "an owner in the same household already exists");
+-        }
+         if (isIdentityKeyInUse(ownerMapper.toIdentityKey(owner), null)) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                 "an owner with the same identity already exists");
+@@ -175,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
++        owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
+         owner.setBulkSignupWarning(
+             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
+         // A declared household member (one created with 'sharesHousehold' that joins an existing
+@@ -501,6 +501,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return count;
+     }
+ 
++    /**
++     * Computes the membership-level ceiling for a new owner joining the given household: one above the
++     * current maximum effective membership level among the existing owners in that household. The
++     * ceiling is frozen on the owner at creation and later applied by
++     * {@link OwnerMapper#toMembershipLevel(Owner)}. Returns {@code null} when the household has no
++     * existing member (or the owner has no household id), meaning no cap applies.
++     *
++     * @param householdId the new owner's assigned household id
++     * @return one above the household's current maximum membership level, or {@code null} when the
++     *         household has no existing member
++     */
++    private Integer householdMembershipLevelCap(String householdId) {
++        if (householdId == null) {
++            return null;
++        }
++        Integer maxLevel = null;
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                int level = ownerMapper.toMembershipLevel(existing);
++                if (maxLevel == null || level > maxLevel) {
++                    maxLevel = level;
++                }
++            }
++        }
++        return maxLevel == null ? null : maxLevel + 1;
++    }
++
+     /**
+      * Normalizes a telephone number into E.164 form. Spaces, dashes and brackets are stripped. When
+      * the value carries a leading {@code '+'} the following country code and digits are kept as-is;
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 150e02047..78e1b7a65 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 2d3b34475..25e4345e0 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -54,6 +54,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index bed9528bb..9d88f49db 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index ff95c01ed..16106970a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
