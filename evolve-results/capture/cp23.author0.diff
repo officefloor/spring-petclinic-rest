@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 87a7a4396..1aee23993 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -17,16 +19,22 @@ import java.util.Map;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    /** Household size at or above which an owner reaches the 'GOLD' tier. */
++    private static final int GOLD_HOUSEHOLD_SIZE = 3;
++
++    @Autowired
++    protected OwnerRepository ownerRepository;
+ 
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+     @Mapping(target = "membershipTier", expression = "java(toMembershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+-    OwnerDto toOwnerDto(Owner owner);
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /** City -> canonical region; anything not listed derives locality 'UNKNOWN'. */
+-    Map<String, String> CITY_REGION = Map.of(
++    protected static final Map<String, String> CITY_REGION = Map.of(
+             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+     /**
+@@ -34,15 +42,19 @@ public interface OwnerMapper {
+      * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not
+      * in the table.
+      */
+-    default String toLocality(Owner owner) {
++    protected String toLocality(Owner owner) {
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
+     /**
+-     * The owner's membership tier: 'SILVER' when namesakeCount is 0 and an email is
+-     * present, otherwise 'BRONZE'.
++     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
++     * same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0
++     * and an email is present, else 'BRONZE'.
+      */
+-    default OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
++    protected OwnerDto.MembershipTierEnum toMembershipTier(Owner owner) {
++        if (isGoldHousehold(owner)) {
++            return OwnerDto.MembershipTierEnum.GOLD;
++        }
+         Integer namesakeCount = owner.getNamesakeCount();
+         String email = owner.getEmail();
+         boolean hasEmail = email != null && !email.isBlank();
+@@ -50,18 +62,30 @@ public interface OwnerMapper {
+                 ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+     }
+ 
++    /** Whether the owner's household has enough members to reach the 'GOLD' tier. */
++    private boolean isGoldHousehold(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return false;
++        }
++        long members = ownerRepository.findAll().stream()
++                .filter(existing -> householdId.equals(existing.getHouseholdId()))
++                .count();
++        return members >= GOLD_HOUSEHOLD_SIZE;
++    }
++
+     /** The owner's name formatted as 'LastName, FirstName'. */
+-    default String toDisplayName(Owner owner) {
++    protected String toDisplayName(Owner owner) {
+         return owner.getLastName() + ", " + owner.getFirstName();
+     }
+ 
+     /** The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
+-    default String toInitials(Owner owner) {
++    protected String toInitials(Owner owner) {
+         return owner.getFirstName().substring(0, 1).toUpperCase()
+                 + "." + owner.getLastName().substring(0, 1).toUpperCase() + ".";
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+@@ -70,13 +94,13 @@ public interface OwnerMapper {
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "membershipNumber", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5770e2eb3..63d09fca7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2148,12 +2148,15 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier. 'SILVER' when namesakeCount is 0
+-                and an email is present, otherwise 'BRONZE'. Derived on read.
++                The owner's membership tier. 'GOLD' when the owner's household
++                (owners sharing the same householdId) has 3 or more members.
++                Otherwise 'SILVER' when namesakeCount is 0 and an email is
++                present, else 'BRONZE'. Derived on read.
+               type: string
+               enum:
+                 - BRONZE
+                 - SILVER
++                - GOLD
+               example: 'SILVER'
+               readOnly: true
+             locality:
