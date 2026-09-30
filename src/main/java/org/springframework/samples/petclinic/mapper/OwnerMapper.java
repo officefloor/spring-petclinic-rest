@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
 import java.util.Collection;
@@ -50,7 +51,19 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Normalizes a postal address for persistence: whitespace is trimmed and collapsed, the
+     * text is upper-cased and common street-type abbreviations are expanded (e.g.
+     * {@code '  12  main  st '} becomes {@code '12 MAIN STREET'}). The required-field rule is
+     * enforced separately; an address blank after normalization is rejected.
+     */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        return AddressNormalizer.normalize(address);
+    }
 
     /**
      * Normalizes a telephone number for persistence into canonical E.164 form (e.g.

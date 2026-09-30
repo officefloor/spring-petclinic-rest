@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -273,13 +274,13 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeHouseholdField(lastName);
-        String normalizedAddress = normalizeHouseholdField(address);
+        String normalizedAddress = normalizeHouseholdAddress(address);
         if (normalizedLastName == null || normalizedAddress == null) {
             return List.of();
         }
         return ownerRepository.findAll().stream()
             .filter(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
-                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())))
+                && normalizedAddress.equals(normalizeHouseholdAddress(existing.getAddress())))
             .toList();
     }
 
@@ -293,6 +294,21 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Normalizes an address for household comparison and identity using the same canonical form
+     * applied when an owner is created (trim/collapse whitespace, upper-case, expand common
+     * abbreviations), so comparisons always use the normalized address regardless of the form in
+     * which either value was originally supplied. Returns {@code null} when the address is absent
+     * or blank, since no household can be formed without one.
+     */
+    private static String normalizeHouseholdAddress(String address) {
+        String normalized = AddressNormalizer.normalize(address);
+        if (normalized == null || normalized.isBlank()) {
+            return null;
+        }
+        return normalized;
     }
 
     /**
@@ -330,7 +346,7 @@ public class ClinicServiceImpl implements ClinicService {
      * maps to the same value regardless of creation order.
      */
     private static String generateHouseholdId(String lastName, String address) {
-        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdField(address);
+        String seed = normalizeHouseholdField(lastName) + "\n" + normalizeHouseholdAddress(address);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
