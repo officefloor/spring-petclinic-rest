@@ -1,9 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-import java.util.Set;
-
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.EmailDomains;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException;
 
@@ -11,25 +9,23 @@ import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDoma
  * Rejects an owner whose email address uses a disposable domain, but only WHEN AN EMAIL IS
  * PRESENT — a request with no email passes through unchanged (email is optional). The domain
  * is the part after the last {@code '@'}, compared case-insensitively against the
- * disposable-domain blocklist (mailinator.com, tempmail.com, guerrillamail.com). A match is
- * rejected 400 via {@link DisposableEmailDomainException}.
+ * disposable-domain blocklist ({@link EmailDomains#DISPOSABLE}: mailinator.com, tempmail.com,
+ * guerrillamail.com). A match is rejected 400 via {@link DisposableEmailDomainException}.
+ * Near-variants (disposable-adjacent domains) are not rejected here; they surface as a soft
+ * risk signal on read instead.
  */
 public class EnsureEmailDomainAllowed {
-
-    private static final Set<String> DISPOSABLE_DOMAINS =
-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@Val OwnerFieldsDto request) throws DisposableEmailDomainException {
         String email = request.getEmail();
         if (email == null || email.isEmpty()) {
             return; // optional: validated only when present
         }
-        int at = email.lastIndexOf('@');
-        if (at < 0 || at == email.length() - 1) {
+        String domain = EmailDomains.domainOf(email);
+        if (domain == null) {
             return; // not a well-formed address; leave shape validation to @Email
         }
-        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        if (EmailDomains.DISPOSABLE.contains(domain)) {
             throw new DisposableEmailDomainException(email, domain);
         }
     }

@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CityRegions;
+import org.springframework.samples.petclinic.model.EmailDomains;
 import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
@@ -35,7 +36,22 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(toRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's risk flag, derived on read: {@code true} when the owner warrants manual
+     * review because any of these holds — the owner is a possible duplicate
+     * ({@code possibleDuplicate}), the owner's email domain is
+     * {@link EmailDomains#isDisposableAdjacent(String) disposable-adjacent}, or the owner's
+     * city is over its soft capacity ({@code capacityWarning}). Otherwise {@code false}.
+     */
+    default Boolean toRiskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean disposableAdjacent = EmailDomains.isDisposableAdjacent(owner.getEmail());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
+    }
 
     /**
      * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
