@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5ce72868f..bfbcb21c5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,8 +36,22 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
+     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
++     * {@code membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++     * {@link #toLocality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
++     * 'REGIONAL'.
++     */
++    default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
++        Integer level = owner.getMembershipLevel();
++        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
++        String area = CityRegions.UNKNOWN.equals(toLocality(owner)) ? "REGIONAL" : "METRO";
++        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
++    }
++
+     /**
+      * The owner's fiscal year, formatted 'FY&lt;YY&gt;' by the shared {@link FiscalYear} rule
+      * from the business-day-adjusted {@code registrationDate} (fiscal year starts 1 July, named
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c094fd69c..d146c88c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2339,6 +2339,21 @@ components:
+               type: string
+               example: 'FY26'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, derived on read and formatted
++                '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or
++                more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is
++                a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
