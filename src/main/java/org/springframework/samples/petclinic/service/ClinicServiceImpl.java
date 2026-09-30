@@ -269,6 +269,15 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.existsByTelephone(telephone);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnerWithEmail(String email) throws DataAccessException {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return ownerRepository.existsByEmailIgnoreCase(email);
+    }
+
     /**
      * Counts the existing owners whose firstName and lastName match the given values
      * case-insensitively. Used to record an owner's namesake count at creation time.

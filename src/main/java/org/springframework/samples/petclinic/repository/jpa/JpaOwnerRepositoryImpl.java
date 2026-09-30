@@ -97,6 +97,13 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
     }
 
     @Override
+    public boolean existsByEmailIgnoreCase(String email) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT COUNT(owner) FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)");
+        query.setParameter("email", email);
+        return (long) query.getSingleResult() > 0;
+    }
+
+    @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
             this.em.persist(owner);
