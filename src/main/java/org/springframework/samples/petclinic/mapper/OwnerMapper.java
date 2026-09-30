@@ -32,7 +32,38 @@ public interface OwnerMapper {
         expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey",
         expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "checkDigit",
+        expression = "java(toCheckDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's check digit: a single Luhn check digit (0-9) computed over the digits
+     * contained in the {@code customerCode}. Non-digit characters (the separators) are ignored.
+     */
+    default Integer toCheckDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
 
     /**
      * Derive an owner's duplicate-detection identity key: the normalized E.164 telephone, the
