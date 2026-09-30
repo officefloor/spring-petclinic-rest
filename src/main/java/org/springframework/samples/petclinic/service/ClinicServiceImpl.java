@@ -248,12 +248,15 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isHouseholdInUse(String lastName, String address, Integer excludeId) throws DataAccessException {
+    public boolean isHouseholdInUse(String householdId, Integer excludeId) throws DataAccessException {
+        if (householdId == null) {
+            return false;
+        }
         for (Owner existing : ownerRepository.findAll()) {
             if (excludeId != null && excludeId.equals(existing.getId())) {
                 continue;
             }
-            if (sameHousehold(lastName, address, existing)) {
+            if (householdId.equals(existing.getHouseholdId())) {
                 return true;
             }
         }
@@ -261,36 +264,14 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     @Override
-    @Transactional
     public void assignHousehold(Owner owner) throws DataAccessException {
-        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
-        owner.setHouseholdId(householdId);
-        for (Owner existing : ownerRepository.findAll()) {
-            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
-                continue;
-            }
-            if (sameHousehold(owner.getLastName(), owner.getAddress(), existing)
-                && !householdId.equals(existing.getHouseholdId())) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
-            }
-        }
-    }
-
-    /**
-     * Whether {@code other} belongs to the same household as an owner with the given last name and
-     * address, i.e. both match case-insensitively with collapsed whitespace. This single definition
-     * of "same household" backs both {@link #isHouseholdInUse} and {@link #assignHousehold}.
-     */
-    private static boolean sameHousehold(String lastName, String address, Owner other) {
-        return normalizeForHousehold(lastName).equals(normalizeForHousehold(other.getLastName()))
-            && normalizeForHousehold(address).equals(normalizeForHousehold(other.getAddress()));
+        owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
     }
 
     /**
      * Normalizes a value for household comparison: leading/trailing whitespace is trimmed, internal
      * runs of whitespace are collapsed to a single space, and the result is lower-cased. This lets
-     * two last names or addresses that differ only in case or whitespace be treated as equal.
+     * two last names that differ only in case or whitespace be treated as the same household.
      *
      * @param value the raw value, possibly {@code null}
      * @return the normalized comparison key, or {@code ""} when the value is {@code null}
@@ -304,16 +285,17 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Derives the stable household identifier shared by all owners with the same last name and
-     * address. The value is deterministic (the first 12 upper-case hex characters of the SHA-256
-     * digest of the normalized last name and address), so every owner in the same household is
-     * assigned an identical, non-blank identifier regardless of creation order.
+     * postcode. The value is deterministic (the first 12 upper-case hex characters of the SHA-256
+     * digest of the normalized last name and the postcode, joined with {@code '|'}), so every owner
+     * in the same household is assigned an identical identifier regardless of creation order and
+     * without any explicit linking.
      *
      * @param lastName the owner's last name
-     * @param address  the owner's address
+     * @param postcode the owner's postcode, possibly {@code null}
      * @return the stable household identifier
      */
-    private static String householdIdFor(String lastName, String address) {
-        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
+    private static String householdIdFor(String lastName, String postcode) {
+        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));

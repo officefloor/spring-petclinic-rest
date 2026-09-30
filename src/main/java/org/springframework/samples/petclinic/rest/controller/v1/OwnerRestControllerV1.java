@@ -133,8 +133,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "the maximum number of owners that may be created today has been reached");
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold) {
-            this.clinicService.assignHousehold(owner);
+        // The household id is deterministic (derived from the last name and postcode), so every
+        // owner is keyed to its household automatically, regardless of creation order.
+        this.clinicService.assignHousehold(owner);
+        boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getHouseholdId(), null);
+        if (householdInUse && !sharesHousehold) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "an owner in the same household already exists");
         }
         if (isIdentityKeyInUse(ownerMapper.toIdentityKey(owner), null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -149,7 +154,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
-        Owner softDuplicate = findPossibleDuplicate(owner);
+        // A declared household member (one created with 'sharesHousehold' that joins an existing
+        // household) is not a suspected duplicate, so it is never flagged as a possible duplicate.
+        boolean declaredHouseholdMember = sharesHousehold && householdInUse;
+        Owner softDuplicate = declaredHouseholdMember ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(softDuplicate != null);
         owner.setPossibleDuplicateOf(softDuplicate == null ? null : softDuplicate.getId());
         this.clinicService.saveOwner(owner);
@@ -540,8 +548,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Normalizes an owner address for storage. Leading/trailing whitespace is trimmed and internal
      * runs of whitespace are collapsed to a single space, the value is upper-cased, and common
      * street-type abbreviations are expanded per token ({@code ST -> STREET}, {@code RD -> ROAD},
-     * {@code AVE -> AVENUE}). This normalized value is what gets stored, returned, and used for every
-     * address comparison (household duplicate detection and the shared household id).
+     * {@code AVE -> AVENUE}). This normalized value is what gets stored and returned.
      *
      * <p>For example {@code "  12  main  st "} is normalized to {@code "12 MAIN STREET"}.
      *
