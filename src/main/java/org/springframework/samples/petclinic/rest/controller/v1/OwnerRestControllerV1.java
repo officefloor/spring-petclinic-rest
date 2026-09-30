@@ -172,10 +172,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "an owner with the same identity already exists");
         }
-        if (countOwnersInCity(owner.getCity()) >= CITY_CAPACITY) {
+        int ownersInCity = countOwnersInCity(owner.getCity());
+        if (ownersInCity >= CITY_CAPACITY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "city has reached its maximum number of owners");
         }
+        owner.setCapacityWarning(ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD);
         owner.setCustomerCode(customerCodeFor(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -367,6 +369,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owner's city already contains this many owners.
      */
     private static final int CITY_CAPACITY = 50;
+
+    /**
+     * The number of owners a city must already contain before a new owner in it is flagged with
+     * {@code capacityWarning}. Once the city holds this many owners (but fewer than
+     * {@link #CITY_CAPACITY}), the create still succeeds but is flagged as approaching the capacity
+     * limit.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
 
     /**
      * The maximum number of owners that may be created on a single day. A create is rejected with
