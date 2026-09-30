@@ -102,7 +102,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (this.clinicService.countOwnersByRegistrationDate(LocalDate.now()) >= 100) {
+        LocalDate registrationDate = owner.resolveRegistrationDate();
+        if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {

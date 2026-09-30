@@ -131,14 +131,40 @@ public class Owner extends Person {
     }
 
     /**
-     * Defaults the registration date to the server's current date when none was supplied,
-     * so the create-time default applies to any persistence path.
+     * Establishes the effective registration date at persist time, so the create-time default
+     * applies to any persistence path.
      */
     @PrePersist
     protected void defaultRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
+        resolveRegistrationDate();
+    }
+
+    /**
+     * Resolves this owner's effective registration date and stores it: the supplied value is used, or
+     * the server's current date when none was supplied, and the result is rolled forward onto a
+     * business day (a Saturday or Sunday becomes the following Monday). Returns the resolved date.
+     * Idempotent, so it is safe to call from both the create flow and the persist hook.
+     */
+    public LocalDate resolveRegistrationDate() {
+        LocalDate effective = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
+        this.registrationDate = toBusinessDay(effective);
+        return this.registrationDate;
+    }
+
+    /**
+     * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced to the
+     * following Monday, while any weekday (and {@code null}) is returned unchanged. Applying this to a
+     * date that is already a business day is a no-op, so it is safe to call more than once.
+     */
+    public static LocalDate toBusinessDay(LocalDate date) {
+        if (date == null) {
+            return null;
         }
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     protected Set<Pet> getPetsInternal() {
