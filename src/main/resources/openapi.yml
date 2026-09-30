@@ -2080,10 +2080,14 @@ components:
         sharesHousehold:
           title: Shares household
           description: >-
-            Write-only opt-in flag for create. When true it allows creating an
-            owner that shares a household (same lastName and address, compared
-            case-insensitively with collapsed whitespace) with an existing owner;
-            otherwise such a create is rejected 409. Not persisted or returned.
+            Write-only opt-in flag for create. The household is keyed on
+            (lastName, postcode), so a second owner sharing an existing owner's
+            lastName and postcode is a household duplicate and is rejected 409.
+            When true this flag bypasses that block, creating the owner as a
+            declared household member (which is not flagged as a possible
+            duplicate). It does not itself create the household link — the shared
+            householdId is derived deterministically from lastName and postcode.
+            Not persisted or returned.
           type: boolean
           writeOnly: true
           default: false
@@ -2149,26 +2153,27 @@ components:
               title: Household ID
               description: >-
                 A stable shared identifier for owners who live in the same
-                household (same lastName and address, compared case-insensitively
-                with collapsed whitespace). Assigned on create when the request
-                sets sharesHousehold true: all owners sharing the household
-                receive the same value. Null for owners not in a shared household.
+                household, keyed on (lastName, postcode). It is deterministic:
+                the first 12 hex characters of SHA-256 over
+                normalizedLastName + '|' + postcode, so owners with the same
+                lastName and postcode always receive the same value. Assigned to
+                every owner on create.
               type: string
-              example: 'e6b1c2d4-0f3a-4b8c-9d2e-1a2b3c4d5e6f'
+              example: 'e6b1c2d40f3a'
               readOnly: true
             identityKey:
               title: Identity key
               description: >-
-                The owner's derived identity key, the single value all duplicate
-                detection is expressed through:
+                The owner's derived identity key, a read-only composite of
                 normalizedTelephone + '|' + (email or empty) + '|' + householdId,
                 where the telephone is the stored E.164 form, the email is
-                lower-cased (empty when absent) and the householdId is empty when
-                the owner is not in a shared household. A create is rejected 409
-                only when a new owner's whole identityKey equals an existing
-                owner's.
+                lower-cased (empty when absent) and the householdId is the
+                deterministic (lastName, postcode) hash. Duplicate detection is
+                keyed on the household: a create is rejected 409 when another
+                owner already shares the householdId, unless sharesHousehold is
+                set.
               type: string
-              example: '+61412345678|george.franklin@example.com|'
+              example: '+61412345678|george.franklin@example.com|e6b1c2d40f3a'
               readOnly: true
             namesakeCount:
               title: Namesake count

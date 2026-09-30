@@ -5,8 +5,8 @@ import java.util.Map;
 
 /**
  * The single definition of address normalization, applied when an owner is created
- * (see {@link NormalizeOwnerAddress}) and reused by {@link OwnerHousehold} so that every
- * comparison of addresses uses the same normalized form as what is stored and returned.
+ * (see {@link NormalizeOwnerAddress}) so that the stored and returned address is in one
+ * canonical form.
  *
  * <p>Normalization trims and collapses whitespace runs to a single space, upper-cases the
  * value, and expands the common street-type abbreviations {@code ST->STREET},
