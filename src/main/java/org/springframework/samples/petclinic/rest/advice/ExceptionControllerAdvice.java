@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Global Exception handler for REST controllers.
@@ -120,6 +121,24 @@ public class ExceptionControllerAdvice {
         logger.debug("Data integrity violation stacktrace", e);
         HttpStatus status = HttpStatus.NOT_FOUND;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link ResponseStatusException} raised explicitly by controllers (for example when a
+     * request payload fails a business rule such as telephone normalization) so the declared HTTP
+     * status is honoured instead of being turned into a 500 by {@link #handleGeneralException}.
+     *
+     * @param e The {@link ResponseStatusException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} carrying the exception's status and a problem detail body.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        String detailMessage = e.getReason() != null ? e.getReason() : ERROR_INVALID_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
         return ResponseEntity.status(status).body(detail);
     }
 
