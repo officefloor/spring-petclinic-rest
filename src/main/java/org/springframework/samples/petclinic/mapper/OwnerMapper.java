@@ -34,6 +34,8 @@ public interface OwnerMapper {
         expression = "java(toMembershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(toLocality(owner))")
+    @Mapping(target = "timezone",
+        expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey",
@@ -256,6 +258,24 @@ public interface OwnerMapper {
             }
         }
         return regionOf(owner);
+    }
+
+    /**
+     * Fixed region-to-IANA-timezone table used to derive an owner's timezone: NSW -> Australia/Sydney,
+     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane.
+     */
+    Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
+     * Derive an owner's IANA timezone name from its locality/region (see {@link #toLocality(Owner)})
+     * via the fixed {@link #REGION_TIMEZONE} table. Returns {@code null} when the region resolves to no
+     * entry in the table (e.g. 'UNKNOWN'), so the timezone is then absent from the DTO.
+     */
+    default String toTimezone(Owner owner) {
+        return REGION_TIMEZONE.get(toLocality(owner));
     }
 
     /**
