@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 46c62fbe8..72c66506e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,6 +33,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
+     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
++    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "formatOwnerSegment")
+     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
+     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
+     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
+@@ -84,6 +85,24 @@ public interface OwnerMapper {
+         return dash < 0 ? code : code.substring(0, dash);
+     }
+ 
++    /**
++     * Derives an owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
++     * {@code 'PREMIUM'} when the owner's {@code membershipLevel} is 3 or more, otherwise
++     * {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality is a known region
++     * (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}. Both the membership level and the locality
++     * are taken from {@link #formatMembershipLevel(Owner)} and {@link #formatLocality(Owner)}, so
++     * the segment always agrees with those reported fields.
++     */
++    @Named("formatOwnerSegment")
++    default String formatOwnerSegment(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        String tier = formatMembershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String area = REGION_TIMEZONE.containsKey(formatLocality(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Fixed region-to-timezone table mapping each canonical region to its IANA timezone name.
+      */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6c3d41e9d..9d53c2ae8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2398,6 +2398,21 @@ components:
+               type: string
+               example: '3b8c2f0e1d5a9c7b4e6f8a0d2c1b3e5f7a9c0d2e4f6a8c0b1d3e5f7a9c1b3d5e'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise
++                'STANDARD'. AREA is 'METRO' when the locality is a known region
++                (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             selfLink:
+               title: Self link
+               description: >-
