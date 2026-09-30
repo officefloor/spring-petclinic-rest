@@ -7,7 +7,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.AgeBand;
 import org.springframework.samples.petclinic.model.CityRegions;
 import org.springframework.samples.petclinic.model.FiscalYear;
-import org.springframework.samples.petclinic.model.LuhnCheckDigit;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.model.OwnerTelephones;
@@ -33,7 +32,6 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
@@ -72,14 +70,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * A single Luhn check digit (0-9) computed over the digits of the owner's
-     * {@code customerCode}. {@code null} when the owner has no customer code.
-     */
-    default Integer toCheckDigit(Owner owner) {
-        return LuhnCheckDigit.of(owner.getCustomerCode());
-    }
-
-    /**
      * The owner's derived identityKey — the single value all duplicate detection is
      * expressed through. See {@link OwnerIdentity}.
      */
@@ -91,7 +81,7 @@ public interface OwnerMapper {
      * The owner's locality: the region derived from the postcode by the shared
      * {@link CityRegions} table (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or 'UNKNOWN' when
      * the postcode is absent or in no known range. This is the same value as the {@code <REGION>}
-     * prefix of the owner's {@code customerCode}, so the locality follows the region-and-hash
+     * prefix of the owner's {@code memberId}, so the locality follows the region-and-hash
      * identity rather than the city.
      */
     default String toLocality(Owner owner) {
@@ -161,10 +151,9 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
-    @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);

@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.model;
 
 /**
  * The single definition of the Luhn check digit: a single digit (0-9) computed over the
- * digits contained in a string, with non-digit characters ignored. Used by the mapping
- * layer to derive an owner's {@code checkDigit} from its {@code customerCode}.
+ * digits contained in a string, with non-digit characters ignored. Used to derive the CHK
+ * segment of an owner's {@code memberId} from its {@code <REGION><FY><HASH8>} stem.
  *
  * <p>Lives beside {@link Owner} — the same home as {@link CityRegions} and
  * {@link OwnerIdentity} — so any layer can depend on it without a package cycle.

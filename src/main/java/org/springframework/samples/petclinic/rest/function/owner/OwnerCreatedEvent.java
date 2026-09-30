@@ -9,12 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * dedicated {@code AUDIT} logger so downstream consumers can parse it reliably.
  *
  * <p>{@code seq} is a monotonically increasing sequence number across creates.
- * {@code customerCode} carries the owner's <em>current primary identifier</em>.
- * Today that is the customer code; when the customer code is later unified into
- * the member id, {@link #of(long, Owner)} is the single place that changes so the
- * event then carries the member id instead.
+ * {@code memberId} carries the owner's primary identifier — the unified member id.
+ * {@link #of(long, Owner)} is the single place that resolves it.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
         String event) {
 
     /** Marker value for the {@code event} field. */
@@ -22,11 +20,10 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
 
     /**
      * Builds the event for a freshly created owner. This is the single site that
-     * resolves the owner's primary identifier, so a future switch to the member id
-     * only touches this method.
+     * resolves the owner's primary identifier.
      */
     public static OwnerCreatedEvent of(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(), owner.getMembershipLevel(),
                 OWNER_CREATED);
     }
 }

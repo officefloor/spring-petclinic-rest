@@ -100,7 +100,7 @@ public final class OwnerTelephones {
      * The telephone in E.164 form when it can be normalized, otherwise the raw value as-is (empty
      * string when {@code null}). This is the "normalized telephone" used wherever a telephone must
      * still yield a stable, non-null value even when it is not valid E.164 — both the identityKey
-     * (see {@link OwnerIdentity}) and the customerCode hash input derive their telephone through
+     * (see {@link OwnerIdentity}) and the memberId hash input derive their telephone through
      * this one method, so the two can never silently diverge.
      */
     public static String toE164OrRaw(String telephone) {

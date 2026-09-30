@@ -9,8 +9,8 @@ import java.time.Month;
  * December belongs to the fiscal year ending the following calendar year (e.g. 2025-08-01
  * and 2026-03-01 are both in the fiscal year ending 2026 — 'FY26').
  *
- * <p>Used to derive an owner's {@code fiscalYear} label, the year segment of the
- * {@code membershipNumber} and the elapsed-fiscal-year tenure that feeds membership points.
+ * <p>Used to derive an owner's {@code fiscalYear} label, the FY segment of the
+ * {@code memberId} and the elapsed-fiscal-year tenure that feeds membership points.
  *
  * <p>Lives beside {@link Owner} — the same home as {@link AgeBand} and {@link CityRegions} —
  * so any layer can depend on it without a package cycle.
