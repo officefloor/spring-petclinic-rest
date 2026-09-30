@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
 import org.springframework.samples.petclinic.util.IdentityKeyUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -605,14 +606,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     /**
-     * Disposable email domains that are not accepted for an owner. An email whose domain is on this
-     * blocklist is rejected with {@link HttpStatus#BAD_REQUEST}. Entries are lower-case and matched
-     * case-insensitively against the domain (the part after the {@code @}).
-     */
-    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
-        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
-
-    /**
      * Validates and normalizes an optional owner email address. A {@code null} value is left as is
      * (email is optional). When a value is supplied it must be a syntactically valid address whose
      * domain is not on the disposable-domain blocklist; the value is then stored and returned
@@ -634,7 +627,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalized = email.toLowerCase(Locale.ROOT);
         String domain = normalized.substring(normalized.indexOf('@') + 1);
-        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+        if (DisposableEmailDomains.BLOCKLIST.contains(domain)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "email domain " + domain + " is not allowed");
         }

@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
 import org.springframework.samples.petclinic.util.IdentityKeyUtils;
 
@@ -53,7 +54,49 @@ public interface OwnerMapper {
         expression = "java(toFiscalYear(owner))")
     @Mapping(target = "selfLink",
         expression = "java(toSelfLink(owner))")
+    @Mapping(target = "riskFlag",
+        expression = "java(toRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive an owner's risk flag: {@code true} when the owner warrants a manual risk review, defined
+     * as the logical OR of three conditions — the owner is a possible duplicate
+     * ({@code possibleDuplicate} is true), the owner's email domain is disposable-adjacent (see
+     * {@link #hasDisposableAdjacentEmail(Owner)}), or the owner's city is over its soft capacity
+     * ({@code capacityWarning} is true). Otherwise {@code false}. Derived at read time.
+     */
+    default Boolean toRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || Boolean.TRUE.equals(owner.getCapacityWarning())
+            || hasDisposableAdjacentEmail(owner);
+    }
+
+    /**
+     * Whether the owner's email domain is disposable-adjacent: a domain that is not itself a
+     * whole-blocklisted disposable domain (those are rejected at creation) but shares a known
+     * disposable provider's second-level label — i.e. one of the domain's dot-separated labels equals a
+     * label in {@link DisposableEmailDomains#BASE_LABELS}. This catches subdomains of a disposable provider
+     * (e.g. {@code sub.mailinator.com}) and the same base under a different TLD (e.g.
+     * {@code mailinator.net}), while a merely similar label (e.g. {@code mymailinator.com}) is not
+     * matched. Returns {@code false} when the owner has no email or the value carries no domain.
+     */
+    default boolean hasDisposableAdjacentEmail(Owner owner) {
+        if (!hasEmail(owner)) {
+            return false;
+        }
+        String email = owner.getEmail();
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        for (String label : domain.split("\\.")) {
+            if (DisposableEmailDomains.BASE_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * Derive an owner's canonical self link: the resource path {@code '/api/owners/<id>'} where
