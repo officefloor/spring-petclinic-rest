@@ -120,22 +120,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (this.clinicService.countOwnersByCity(owner.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getLastName(), owner.getAddress());
-        if (!sharesHousehold && householdExists) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (sharesHousehold && householdExists) {
             this.clinicService.assignHousehold(owner);
+        }
+        // All duplicate detection is consolidated into the owner's derived identity key (see
+        // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
+        if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(
             this.clinicService.countOwnersByName(owner.getFirstName(), owner.getLastName()));

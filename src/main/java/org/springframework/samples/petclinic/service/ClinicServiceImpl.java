@@ -263,19 +263,19 @@ public class ClinicServiceImpl implements ClinicService {
         return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 
+    /**
+     * Whether any existing owner has the given derived identity key. This is the single basis for
+     * duplicate detection: a create is rejected only when the whole key matches an existing owner
+     * exactly. See {@link Owner#getIdentityKey()} for the key's definition.
+     */
     @Override
     @Transactional(readOnly = true)
-    public boolean existsOwnerWithTelephone(String telephone) throws DataAccessException {
-        return ownerRepository.existsByTelephone(telephone);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerWithEmail(String email) throws DataAccessException {
-        if (email == null || email.isBlank()) {
+    public boolean existsOwnerWithIdentityKey(String identityKey) throws DataAccessException {
+        if (identityKey == null) {
             return false;
         }
-        return ownerRepository.existsByEmailIgnoreCase(email);
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**

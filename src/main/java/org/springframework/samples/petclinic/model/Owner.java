@@ -131,6 +131,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's derived identity key, used as the single basis for duplicate detection:
+     * the normalized telephone, the email (empty when absent) and the household id (empty
+     * when absent), joined with {@code '|'}. Two owners are duplicates only when their whole
+     * identity keys are equal, so any single differing component (telephone, email or
+     * household) yields distinct keys and is allowed. Derived from persisted fields, so it is
+     * not itself a persistent column.
+     */
+    @Transient
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone)
+            + "|" + (this.email == null ? "" : this.email)
+            + "|" + (this.householdId == null ? "" : this.householdId);
+    }
+
+    /**
      * Establishes the effective registration date at persist time, so the create-time default
      * applies to any persistence path.
      */
