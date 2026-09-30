@@ -149,6 +149,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
+        Owner softDuplicate = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(softDuplicate != null);
+        owner.setPossibleDuplicateOf(softDuplicate == null ? null : softDuplicate.getId());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -585,6 +588,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return false;
+    }
+
+    /**
+     * Finds the existing owner that the given (not-a-hard-duplicate) new owner is a possible
+     * (soft) duplicate of: one that shares the new owner's last name (compared case-insensitively)
+     * and postcode while carrying a <em>different</em> normalized telephone. A hard duplicate
+     * (identical identity key) has already been rejected with a 409 before this runs, so this
+     * flags only the softer last-name/postcode overlap. The match with the lowest id is returned
+     * so the result is deterministic when several owners qualify.
+     *
+     * @param owner the new owner being created, with its telephone already normalized
+     * @return the matching existing owner, or {@code null} when none qualifies
+     */
+    private Owner findPossibleDuplicate(Owner owner) {
+        if (owner.getLastName() == null || owner.getPostcode() == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .min(Comparator.comparingInt(Owner::getId))
+            .orElse(null);
     }
 
 }
