@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+import org.springframework.samples.petclinic.util.IdentityKeyUtils;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -184,18 +185,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive an owner's duplicate-detection identity key: the normalized E.164 telephone, the
-     * lower-cased email (empty when none), and the household id (empty when none), joined with
-     * {@code '|'}. Two owners are duplicates only when their whole identity keys are equal.
+     * Derive an owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64
+     * characters) of the normalized E.164 telephone, the lower-cased email (empty when none) and the
+     * American Soundex code of the last name, joined with {@code '|'}. Two owners are duplicates only
+     * when their whole identity keys are equal.
      *
      * <p>This is the single source of truth for the key: it is both returned on the DTO and used by
      * the create endpoint's 409 duplicate check, so the value clients see is exactly the value that
-     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}.
+     * governs rejection. The "email present" rule reuses {@link #hasEmail(Owner)}, and the Soundex and
+     * hashing come from {@link IdentityKeyUtils}, the same helpers the soft-match uses.
      */
     default String toIdentityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = hasEmail(owner) ? owner.getEmail() : "";
-        String household = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return owner.getTelephone() + "|" + email + "|" + household;
+        String soundex = IdentityKeyUtils.soundex(owner.getLastName());
+        return IdentityKeyUtils.sha256Hex(telephone + "|" + email + "|" + soundex);
     }
 
     /**

@@ -22,12 +22,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.IdentityKeyUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -301,17 +299,7 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private static String householdIdFor(String lastName, String postcode) {
         String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, 12);
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+        return IdentityKeyUtils.sha256UpperHex(key).substring(0, 12);
     }
 
     @Override

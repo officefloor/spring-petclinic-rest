@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
@@ -48,6 +45,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+import org.springframework.samples.petclinic.util.IdentityKeyUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -309,7 +307,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String customerCodeFor(Owner owner) {
         String region = ownerMapper.regionOf(owner);
-        String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName()).substring(0, 8);
+        String hash8 = IdentityKeyUtils.sha256UpperHex(owner.getTelephone() + owner.getLastName())
+            .substring(0, 8);
         String baseCode = region + "-" + hash8;
         if (!isCustomerCodeInUse(baseCode)) {
             return baseCode;
@@ -337,27 +336,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return false;
-    }
-
-    /**
-     * Computes the SHA-256 digest of the UTF-8 bytes of {@code value} and renders it as an
-     * upper-case hex string.
-     *
-     * @param value the string to hash
-     * @return the full SHA-256 digest as upper-case hex
-     */
-    private static String sha256UpperHex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
     }
 
     /**
@@ -779,11 +757,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds the existing owner that the given (not-a-hard-duplicate) new owner is a possible
-     * (soft) duplicate of: one that shares the new owner's last name (compared case-insensitively)
-     * and postcode while carrying a <em>different</em> normalized telephone. A hard duplicate
-     * (identical identity key) has already been rejected with a 409 before this runs, so this
-     * flags only the softer last-name/postcode overlap. The match with the lowest id is returned
-     * so the result is deterministic when several owners qualify.
+     * (soft) duplicate of: one whose identity key <em>differs</em> from the new owner's while sharing
+     * the same last-name Soundex code (see {@link IdentityKeyUtils#soundex(String)}) and postcode. A
+     * hard duplicate (identical identity key) has already been rejected with a 409 before this runs, so
+     * this flags only the softer same-household-name overlap — in particular two owners with the same
+     * last name and postcode but different telephones (whose identity keys therefore differ) are a soft
+     * match rather than a rejected duplicate. The match with the lowest id is returned so the result is
+     * deterministic when several owners qualify.
      *
      * @param owner the new owner being created, with its telephone already normalized
      * @return the matching existing owner, or {@code null} when none qualifies
@@ -792,11 +772,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getLastName() == null || owner.getPostcode() == null) {
             return null;
         }
+        String identityKey = ownerMapper.toIdentityKey(owner);
+        String soundex = IdentityKeyUtils.soundex(owner.getLastName());
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> !identityKey.equals(ownerMapper.toIdentityKey(existing)))
+            .filter(existing -> soundex.equals(IdentityKeyUtils.soundex(existing.getLastName())))
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
             .min(Comparator.comparingInt(Owner::getId))
             .orElse(null);
     }
