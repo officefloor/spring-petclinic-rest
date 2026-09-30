@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2b952a650..a785f84bc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -378,11 +379,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *
+      * <p>For example {@code "0412 345 678"} is normalized to {@code "+61412345678"}.
+      *
++     * <p>Once in E.164 form the national-number length is validated against the country code: a
++     * {@code +61} (Australia) number must carry exactly 9 national digits and a {@code +1} (NANP)
++     * number exactly 10 (see {@link #COUNTRY_NATIONAL_LENGTHS}). Country codes without a configured
++     * rule are accepted on the general 8-to-15 digit length alone.
++     *
+      * @param telephone the raw telephone value supplied by the client
+      * @return the normalized E.164 telephone number
+      * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the value cannot form a
+-     *                                 valid E.164 number (unexpected characters, or not 8 to 15
+-     *                                 digits after the {@code '+'})
++     *                                 valid E.164 number (unexpected characters, not 8 to 15 digits
++     *                                 after the {@code '+'}, or the wrong national-number length for
++     *                                 its country code)
+      */
+     private static String normalizeTelephone(String telephone) {
+         String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+@@ -397,9 +404,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                 "telephone could not be normalized to a valid E.164 number");
+         }
++        validateNationalNumberLength(digits);
+         return "+" + digits;
+     }
+ 
++    /**
++     * International dialling codes mapped to the exact number of national (subscriber) digits an
++     * E.164 number for that country must carry: {@code +61} (Australia) requires 9 national digits
++     * and {@code +1} (NANP) requires 10. Country codes absent from this map have no length rule.
++     */
++    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
++
++    /**
++     * Validates the national-number length of an E.164 number (its digits, without the leading
++     * {@code '+'}) against its country code. The longest configured dialling code that prefixes the
++     * number selects the rule; if none is configured the number passes (only the general 8-to-15
++     * digit rule applies).
++     *
++     * @param digits the E.164 digits without the leading {@code '+'}
++     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the number of national
++     *                                 digits does not match the country code's required length
++     */
++    private static void validateNationalNumberLength(String digits) {
++        COUNTRY_NATIONAL_LENGTHS.keySet().stream()
++            .filter(digits::startsWith)
++            .max(Comparator.comparingInt(String::length))
++            .ifPresent(code -> {
++                int nationalLength = digits.length() - code.length();
++                if (nationalLength != COUNTRY_NATIONAL_LENGTHS.get(code)) {
++                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                        "telephone must have " + COUNTRY_NATIONAL_LENGTHS.get(code)
++                            + " national digits for country code +" + code);
++                }
++            });
++    }
++
+     /**
+      * Returns the E.164 form of an already-stored telephone for duplicate comparison, falling back
+      * to the raw stored value if it cannot be normalized (e.g. legacy seed data in another format).
