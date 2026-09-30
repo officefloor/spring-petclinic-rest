@@ -484,6 +484,48 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
+     * Returns the existing, non-deleted owners that belong to the household identified by the given
+     * (deterministic) household id, i.e. the current members of that household. Used to derive the
+     * membership-level ceiling a new owner joining the household is subject to. Returns an empty
+     * collection when the id is absent.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<Owner> findOwnersByHouseholdId(String householdId) throws DataAccessException {
+        if (householdId == null || householdId.isBlank()) {
+            return List.of();
+        }
+        return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .toList();
+    }
+
+    /**
+     * Computes the membership-level ceiling for a new owner joining the household identified by the
+     * given (deterministic) household id: one above the current maximum membershipLevel among the
+     * existing (non-deleted) household members. The members' live household size is passed explicitly
+     * to {@link Owner#membershipLevel(Integer)}, so no persistent state is mutated. Returns
+     * {@code null} when the household has no existing member, so no cap applies to the new owner.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Integer computeMembershipLevelCap(String householdId) throws DataAccessException {
+        Collection<Owner> members = findOwnersByHouseholdId(householdId);
+        if (members.isEmpty()) {
+            return null;
+        }
+        int maxLevel = 0;
+        for (Owner member : members) {
+            int level = member.membershipLevel(members.size());
+            if (level > maxLevel) {
+                maxLevel = level;
+            }
+        }
+        return maxLevel + 1;
+    }
+
+    /**
      * Normalizes a household-identity field for comparison by trimming, collapsing internal
      * runs of whitespace to a single space and lower-casing, so values that differ only in
      * whitespace or letter case are treated as equal.

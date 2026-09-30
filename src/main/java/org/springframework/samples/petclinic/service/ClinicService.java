@@ -67,6 +67,8 @@ public interface ClinicService {
 	String computeHouseholdId(Owner owner) throws DataAccessException;
 	boolean existsOwnerInHousehold(String householdId) throws DataAccessException;
 	int countOwnersByHouseholdId(String householdId) throws DataAccessException;
+	Collection<Owner> findOwnersByHouseholdId(String householdId) throws DataAccessException;
+	Integer computeMembershipLevelCap(String householdId) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 	Integer findOwnerIdByIdempotencyKey(String idempotencyKey) throws DataAccessException;
 	void registerIdempotencyKey(String idempotencyKey, Integer ownerId) throws DataAccessException;

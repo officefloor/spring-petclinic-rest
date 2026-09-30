@@ -143,15 +143,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // The household id is deterministic: owners that share a (normalized lastName, postcode)
-        // share it automatically. It feeds the identity key and the household-duplicate rule below.
+        // share it automatically. It feeds the identity key, the membership-level cap and the
+        // possible-duplicate suppression below.
         owner.setHouseholdId(this.clinicService.computeHouseholdId(owner));
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getHouseholdId());
-        // Household duplicate: another owner already shares this (lastName, postcode). Rejected unless
-        // the caller declares they share the household ('sharesHousehold' only bypasses this block).
-        if (householdExists && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
+        // A new owner joining an existing household (owners sharing a normalized lastName and
+        // postcode) has its membershipLevel capped at one above the current maximum membershipLevel
+        // among the existing household members. With no existing household member, no cap applies.
+        owner.setMembershipLevelCap(this.clinicService.computeMembershipLevelCap(owner.getHouseholdId()));
         // Hard duplicate detection is consolidated into the owner's derived identity key (see
         // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {

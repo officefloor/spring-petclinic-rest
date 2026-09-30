@@ -14,7 +14,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.validation.TelephoneNormalizer;
 
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -108,57 +107,30 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's membership points for the read-only {@code membershipPoints} field. Points
-     * start at 0 and accumulate: 2 when an email address is present, 1 when the owner had no
-     * namesakes at creation (namesakeCount is 0), 2 for a household of 3 or more members, and 3 for
-     * tenure of one or more elapsed fiscal years (the number of 1-July fiscal-year boundaries
-     * between the registration date and the current date).
+     * Computes an owner's membership points for the read-only {@code membershipPoints} field, using
+     * the household size resolved onto the owner at read time. Delegates to
+     * {@link Owner#membershipPoints(Integer)} for the point rules.
      */
     @Named("formatMembershipPoints")
     default Integer formatMembershipPoints(Owner owner) {
         if (owner == null) {
             return null;
         }
-        int points = 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
-            points += 2;
-        }
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (noNamesakes) {
-            points += 1;
-        }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            points += 2;
-        }
-        if (owner.getRegistrationDate() != null
-            && Owner.fiscalYear(LocalDate.now()) - Owner.fiscalYear(owner.getRegistrationDate()) >= 1) {
-            points += 3;
-        }
-        return points;
+        return owner.membershipPoints(owner.getHouseholdSize());
     }
 
     /**
-     * Derives an owner's numeric membership level for the read-only {@code membershipLevel} field
-     * from its membership points: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for
-     * 6 or more points.
+     * Derives an owner's numeric membership level for the read-only {@code membershipLevel} field,
+     * using the household size resolved onto the owner at read time. Delegates to
+     * {@link Owner#membershipLevel(Integer)}, which maps points to a level and applies the owner's
+     * membership-level cap.
      */
     @Named("formatMembershipLevel")
     default Integer formatMembershipLevel(Owner owner) {
-        Integer points = formatMembershipPoints(owner);
-        if (points == null) {
+        if (owner == null) {
             return null;
         }
-        if (points <= 1) {
-            return 1;
-        }
-        if (points <= 3) {
-            return 2;
-        }
-        if (points <= 5) {
-            return 3;
-        }
-        return 4;
+        return owner.membershipLevel(owner.getHouseholdSize());
     }
 
     /**

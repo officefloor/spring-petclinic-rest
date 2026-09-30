@@ -97,6 +97,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "deleted")
     private boolean deleted;
 
@@ -277,6 +280,74 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * The ceiling applied to this owner's derived {@code membershipLevel}, fixed when the owner was
+     * created: one above the maximum membershipLevel among the household members that already existed
+     * at that time. The reported membership level is never allowed to exceed this cap. {@code null}
+     * when the owner had no existing household member at creation, in which case no cap applies.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
+     * Computes this owner's membership points for the given household size. Points start at 0 and
+     * accumulate: 2 when an email address is present, 1 when the owner had no namesakes at creation
+     * (namesakeCount is 0), 2 for a household of 3 or more members, and 3 for tenure of one or more
+     * elapsed fiscal years (the number of 1-July fiscal-year boundaries between the registration date
+     * and the current date). The household size is supplied by the caller (it is a live, non-persisted
+     * count), so a {@code null} size contributes no household points.
+     */
+    public int membershipPoints(Integer householdSize) {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            points += 1;
+        }
+        if (householdSize != null && householdSize >= 3) {
+            points += 2;
+        }
+        if (this.registrationDate != null
+            && fiscalYear(LocalDate.now()) - fiscalYear(this.registrationDate) >= 1) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Derives this owner's numeric membership level for the given household size from its membership
+     * points: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points. The
+     * result is then capped at {@link #getMembershipLevelCap()} (the ceiling fixed at creation from
+     * the household this owner joined): when a cap is present the level can never exceed it. No cap is
+     * applied when the owner had no existing household member at creation.
+     */
+    public int membershipLevel(Integer householdSize) {
+        int points = membershipPoints(householdSize);
+        int level;
+        if (points <= 1) {
+            level = 1;
+        }
+        else if (points <= 3) {
+            level = 2;
+        }
+        else if (points <= 5) {
+            level = 3;
+        }
+        else {
+            level = 4;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            level = this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**
