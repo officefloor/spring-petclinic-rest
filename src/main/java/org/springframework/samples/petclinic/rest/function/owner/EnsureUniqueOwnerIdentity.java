@@ -8,17 +8,18 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * The single duplicate check on create, keyed on the owner's full identity — the
- * {@code normalizedTelephone|email|householdId} composite defined by {@link OwnerIdentity}.
- * Only an existing owner with the same identity is a hard duplicate, rejected 409 via
- * {@link DuplicateOwnerException}. Two owners sharing a household (same lastName and postcode)
- * but differing in telephone or email are therefore <em>not</em> a hard duplicate: they may
- * coexist as household members — which is what makes the household membership-level ceiling
- * meaningful — and are instead soft-flagged downstream by {@link AssignPossibleDuplicate}.
+ * The single duplicate check on create, keyed on the owner's identityKey — the SHA-256 hex over
+ * the {@code normalizedTelephone|email|soundex(lastName)} composite defined by
+ * {@link OwnerIdentity}. Only an existing owner with the same identityKey is a hard duplicate,
+ * rejected 409 via {@link DuplicateOwnerException}. Because the telephone is part of the key,
+ * two owners with the same lastName and postcode but a different telephone are <em>not</em> a
+ * hard duplicate: they may coexist as household members — which is what makes the household
+ * membership-level ceiling meaningful — and are instead soft-flagged downstream by
+ * {@link AssignPossibleDuplicate}. There is no separate household-duplicate block; the identityKey
+ * is the whole duplicate rule.
  *
  * <p>{@code sharesHousehold} bypasses this block entirely: a declared household member is always
- * allowed (and is not flagged as a possible duplicate downstream). Runs after the householdId is
- * assigned and before the owner is saved.
+ * allowed (and is not flagged as a possible duplicate downstream). Runs before the owner is saved.
  */
 public class EnsureUniqueOwnerIdentity {
 

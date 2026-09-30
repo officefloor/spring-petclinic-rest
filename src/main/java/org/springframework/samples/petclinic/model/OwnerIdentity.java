@@ -3,17 +3,18 @@ package org.springframework.samples.petclinic.model;
 import java.util.Locale;
 
 /**
- * The single definition of an owner's {@code identityKey}: a derived, read-only composite of
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the
+ * The single definition of an owner's {@code identityKey}: the lower-case hex SHA-256 over
+ * {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}, where the
  * telephone is normalized to E.164 via {@link OwnerTelephones} (so a stored value and a
  * freshly created one render the same way), the email is lower-cased (empty when absent) and
- * the householdId is the deterministic {@code (lastName, postcode)} hash.
+ * the surname is folded to its American Soundex code by {@link Soundex} (so names that sound
+ * alike share the surname component). The key is therefore a fixed 64-character hex string.
  *
  * <p>This composite is the create-time duplicate key: {@code EnsureUniqueOwnerIdentity} rejects a
- * new owner only when an existing owner has the same identityKey, so two owners in the same
- * household (same lastName and postcode) but with a different telephone or email are not
- * duplicates and may coexist as household members (unless {@code sharesHousehold} shortcuts the
- * check). It is also exposed as the {@code identityKey} field on the owner response.
+ * new owner only when an existing owner has the same identityKey. Because the telephone is part
+ * of the key, two owners with the same lastName and postcode but a <em>different</em> telephone
+ * are not identity duplicates and may coexist — they are soft-flagged as a possible duplicate
+ * instead. The householdId (the {@code (lastName, postcode)} hash) is no longer part of the key.
  *
  * <p>Lives beside {@link Owner} so the mapping layer (which returns the key) can depend on it
  * without a package cycle.
@@ -27,7 +28,7 @@ public final class OwnerIdentity {
     public static String of(Owner owner) {
         String telephone = OwnerTelephones.toE164OrRaw(owner.getTelephone());
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String surname = Soundex.of(owner.getLastName());
+        return Hashing.sha256Hex(telephone + "|" + email + "|" + surname);
     }
 }

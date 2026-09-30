@@ -1,16 +1,15 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.model.Hashing;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * The single definition of household identity, used by {@link AssignOwnerHousehold} (which
- * stamps the householdId) and by the household-keyed rules (duplicate detection, household
- * size), so the rule lives in one place.
+ * stamps the householdId) and by the household-keyed rules (household size, membership-level
+ * ceiling), so the rule lives in one place. Duplicate detection is keyed on the identityKey,
+ * not the householdId.
  *
  * <p>A household is keyed on {@code (lastName, postcode)}: two owners are in the same
  * household when their normalized lastName and postcode match. The householdId is therefore
@@ -31,7 +30,7 @@ final class OwnerHousehold {
      */
     static String householdId(String lastName, String postcode) {
         String input = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
-        return sha256Hex(input).substring(0, 12);
+        return Hashing.sha256Hex(input).substring(0, 12);
     }
 
     /**
@@ -72,23 +71,6 @@ final class OwnerHousehold {
             }
         }
         return max;
-    }
-
-    /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
     }
 
     /** Lower-case and collapse whitespace runs to a single space for comparison. */

@@ -7,8 +7,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * Stamps the owner's {@code householdId} — the deterministic identifier derived from
  * {@code (lastName, postcode)} by {@link OwnerHousehold}. Every owner receives one, so owners
  * with the same lastName and postcode automatically share a household with no lookup or
- * back-fill. Runs after the owner is built and before the household-keyed rules (duplicate
- * detection) so the householdId is known when they run.
+ * back-fill. Runs after the owner is built and before the household-keyed rules (household size,
+ * membership-level ceiling) so the householdId is known when they run.
  *
  * <p>{@code sharesHousehold} no longer creates the link (the link is implicit in the hash); it
  * only bypasses the duplicate block in {@link EnsureUniqueOwnerIdentity}.
