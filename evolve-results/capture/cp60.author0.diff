@@ -1,0 +1,464 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cf46dc56a..373073608 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,8 +21,14 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
++    @Mapping(target = "apiVersion", constant = "2")
++    @Mapping(target = "identity.memberId", source = "memberId")
++    @Mapping(target = "identity.householdId", source = "householdId")
++    @Mapping(target = "identity.identityKey", source = "identityKey")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    @Mapping(target = "memberId", source = "identity.memberId")
++    @Mapping(target = "householdId", source = "identity.householdId")
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c79a72eb0..dd6ec3419 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -225,14 +225,15 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>} — the region code,
+-     * the two-digit fiscal year, the 8 upper-case hex HASH8 of the region-and-hash identity, and a
+-     * single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}. Assigned at creation
+-     * (see {@code AssignOwnerMemberId}); it is the owner's single primary identifier, replacing the
+-     * former {@code customerCode}, {@code membershipNumber} and standalone {@code checkDigit}. Every
+-     * value that used to derive from the customer code — the {@link #getLocality() locality}, the
+-     * {@link #getFiscalYear() fiscal year} and thus the {@link #getOwnerSegment() owner segment} —
+-     * now follows from this member id.
++     * The owner's unified member id, formatted {@code <REGIONV2><FY><HASH8><CHK>} — the version-2
++     * {@link #regionCodeV2(String) region code} (the plain region with the {@link #IDENTITY_VERSION}
++     * tag mixed in), the two-digit fiscal year, the 8 upper-case hex HASH8 of the region-and-hash
++     * identity, and a single Luhn check digit over the digits of {@code <REGIONV2><FY><HASH8>}.
++     * Assigned at creation (see {@code AssignOwnerMemberId}); it is the owner's single primary
++     * identifier, replacing the former {@code customerCode}, {@code membershipNumber} and standalone
++     * {@code checkDigit}. The user-facing {@link #getLocality() locality}, {@link #getFiscalYear()
++     * fiscal year} and {@link #getOwnerSegment() owner segment} are derived independently from the
++     * postcode and registration date, so the version-2 tag stays inside this identifier.
+      */
+     public String getMemberId() {
+         return this.memberId;
+@@ -434,22 +435,19 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's fiscal year, derived at response time from the {@code FY} segment of the
+-     * {@link #getMemberId() memberId} (the two digits following the REGION prefix) as {@code FY<YY>},
+-     * where the fiscal year starts on 1 July and {@code YY} is the last two digits of the fiscal
+-     * year (the calendar year in which it ends). Because the member id embeds the fiscal year of the
+-     * business-day-adjusted {@link #registrationDate} at creation, the value tracks the member id.
+-     * {@code null} when the owner has no member id. Not persisted.
++     * The owner's fiscal year, derived at response time from the (business-day-adjusted)
++     * {@link #registrationDate} as {@code FY<YY>}, where the fiscal year starts on 1 July and
++     * {@code YY} is the last two digits of the fiscal year (the calendar year in which it ends). This
++     * is the same fiscal year the {@link #getMemberId() memberId} embeds, but it is computed directly
++     * from the registration date rather than parsed out of the member id — so the version-2 tag mixed
++     * into the member id never leaks into this value. {@code null} when the owner has no registration
++     * date. Not persisted.
+      */
+     public String getFiscalYear() {
+-        if (this.memberId == null) {
+-            return null;
+-        }
+-        int start = getLocality().length();
+-        if (this.memberId.length() < start + 2) {
++        if (this.registrationDate == null) {
+             return null;
+         }
+-        return "FY" + this.memberId.substring(start, start + 2);
++        return "FY" + String.format(Locale.ROOT, "%02d", fiscalYear(this.registrationDate) % 100);
+     }
+ 
+     /**
+@@ -465,6 +463,16 @@ public class Owner extends Person {
+         return Math.max(years, 0);
+     }
+ 
++    /**
++     * The fixed identity-scheme version tag mixed into every version-2 identifier — the
++     * {@link #getMemberId() memberId} (via its {@link #regionCodeV2(String) region code}), the
++     * {@link #getHouseholdId() householdId} and the {@link #getIdentityKey() identityKey}. It appears
++     * only inside those identifiers; the user-facing {@link #getLocality() locality},
++     * {@link #getTimezone() timezone} and {@link #getOwnerSegment() owner segment} stay the plain
++     * region code.
++     */
++    public static final String IDENTITY_VERSION = "V2";
++
+     /** Fixed city-to-region table used to derive {@link #getLocality()}. */
+     private static final Map<String, String> CITY_REGION = Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+@@ -512,21 +520,28 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's region, derived at response time from the {@code REGION} prefix of the
+-     * {@link #getMemberId() memberId} (the leading run of letters before the two-digit fiscal year).
+-     * Because the member id is assigned as {@code <REGION><FY><HASH8><CHK>} with REGION taken from the
+-     * postcode, the locality follows the same region-and-hash identity as the member id.
+-     * {@code UNKNOWN} when the owner has no member id.
++     * The version-2 region code embedded <em>inside</em> the identifiers: the plain region code with
++     * the fixed {@link #IDENTITY_VERSION} tag appended (e.g. {@code NSWV2}, {@code UNKNOWNV2}). A
++     * {@code null} region is treated as {@code UNKNOWN}. Because every version-1 identifier carried the
++     * bare region code, mixing the tag in guarantees no version-2 identifier can ever reproduce a
++     * version-1 value. This is an identifier-internal value only; the user-facing
++     * {@link #getLocality() locality}, {@link #getTimezone() timezone} and {@link #getOwnerSegment()
++     * owner segment} keep using the plain region code.
++     */
++    public static String regionCodeV2(String region) {
++        return (region == null ? "UNKNOWN" : region) + IDENTITY_VERSION;
++    }
++
++    /**
++     * The owner's region, derived at response time directly from the {@link #getPostcode() postcode}
++     * via {@link #regionOfPostcode(String)} — the plain region code ({@code NSW}, {@code VIC} or
++     * {@code QLD}), or {@code UNKNOWN} when the postcode maps to no known region. This is the same
++     * region the {@link #getMemberId() memberId} is built from, but it is the <em>plain</em> code:
++     * the version-2 {@link #IDENTITY_VERSION} tag mixed into the member id never appears here.
+      */
+     public String getLocality() {
+-        if (this.memberId == null) {
+-            return "UNKNOWN";
+-        }
+-        int i = 0;
+-        while (i < this.memberId.length() && Character.isLetter(this.memberId.charAt(i))) {
+-            i++;
+-        }
+-        return i == 0 ? "UNKNOWN" : this.memberId.substring(0, i);
++        String region = regionOfPostcode(this.postcode);
++        return region == null ? "UNKNOWN" : region;
+     }
+ 
+     /**
+@@ -574,11 +589,15 @@ public class Owner extends Person {
+      * Because the telephone participates in the key, two owners with the same last name and postcode
+      * but different telephones no longer collide here — they are flagged as a soft match instead (see
+      * {@code DetectOwnerPossibleDuplicate}). Derived at response time and not persisted.
++     *
++     * <p>The version-2 derivation mixes the fixed {@link #IDENTITY_VERSION} tag into the hashed input,
++     * so every key differs from the version-1 value while owners that share an identity still share
++     * the (new) key — the collision semantics are unchanged, only the value.
+      */
+     public String getIdentityKey() {
+         String telephone = keyPart(this.telephone);
+         String email = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+-        String input = telephone + "|" + email + "|" + soundex(this.lastName);
++        String input = IDENTITY_VERSION + "|" + telephone + "|" + email + "|" + soundex(this.lastName);
+         return sha256Hex(input);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+index ae7f627e4..0ac6389e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Assigns the owner's deterministic {@code householdId}: the first 12 (upper-case) hex characters of
+- * the SHA-256 of {@code normalizedLastName + '|' + postcode}. The id is derived purely from the
+- * (lastName, postcode) pair, so every owner with the same lastName and postcode receives the same
+- * value automatically, regardless of creation order and without any repository lookup or opt-in.
++ * the SHA-256 of {@code IDENTITY_VERSION + '|' + normalizedLastName + '|' + postcode}. The id is
++ * derived purely from the (lastName, postcode) pair (plus the fixed version-2 tag), so every owner
++ * with the same lastName and postcode receives the same value automatically, regardless of creation
++ * order and without any repository lookup or opt-in.
+  *
+  * <p>Because the household is now keyed on (lastName, postcode), owners sharing that pair are the
+  * same household. This computed id is the single source of truth the household consumers key off
+@@ -33,11 +34,15 @@ public class AssignOwnerHousehold {
+ 
+     /**
+      * The single source of truth for an owner's household identity: the first 12 upper-case hex
+-     * characters of the SHA-256 of {@code normalize(lastName) + '|' + postcode}. An absent postcode
+-     * contributes an empty segment. Two owners share a household exactly when this value is equal.
++     * characters of the SHA-256 of {@code IDENTITY_VERSION + '|' + normalize(lastName) + '|' +
++     * postcode}. An absent postcode contributes an empty segment. Two owners share a household exactly
++     * when this value is equal. The version-2 derivation mixes the fixed {@link Owner#IDENTITY_VERSION}
++     * tag into the hashed input, so every household id differs from its version-1 value while owners
++     * that share a (lastName, postcode) still share the new id.
+      */
+     static String householdId(String lastName, String postcode) {
+-        String input = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
++        String input = Owner.IDENTITY_VERSION + "|" + normalize(lastName) + "|"
++                + (postcode == null ? "" : postcode);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                     .digest(input.getBytes(StandardCharsets.UTF_8));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMemberId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMemberId.java
+index 5dac32bfa..029c9b4b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMemberId.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMemberId.java
+@@ -12,34 +12,34 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where:
++ * Assigns the owner's unified {@code memberId}, formatted {@code <REGIONV2><FY><HASH8><CHK>} where:
+  * <ul>
+- * <li>REGION is the region code derived from the owner's postcode (see
+- * {@link Owner#regionOfPostcode(String)}, or {@code UNKNOWN} when the postcode maps to no known
+- * region),</li>
++ * <li>REGIONV2 is the version-2 {@link Owner#regionCodeV2(String) region code} — the plain region
++ * derived from the owner's postcode (see {@link Owner#regionOfPostcode(String)}, or {@code UNKNOWN}
++ * when the postcode maps to no known region) with the fixed {@link Owner#IDENTITY_VERSION} tag mixed
++ * in (e.g. {@code NSWV2}),</li>
+  * <li>FY is the two-digit (zero-padded) last two digits of the fiscal year (starting 1 July) of the
+  * business-day-adjusted {@code registrationDate},</li>
+  * <li>HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized telephone
+  * concatenated with the lastName — the same region-and-hash identity used elsewhere, and</li>
+- * <li>CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
++ * <li>CHK is a single Luhn check digit computed over the digits of {@code <REGIONV2><FY><HASH8>}.</li>
+  * </ul>
+- * e.g. {@code NSW273F9A1C7E4}. This single value unifies the former {@code customerCode} and
+- * {@code membershipNumber} and subsumes the standalone {@code checkDigit}. When the computed id
+- * collides with an existing owner's {@code memberId}, {@code -<n>} is appended with the smallest
+- * {@code n} of 2 or more that makes it unique (e.g. {@code NSW273F9A1C7E4-2}). Runs after
+- * {@link BuildOwner} builds the entity (so the telephone is in canonical E.164 form and the
+- * business-day-adjusted registration date is set) and before {@link SaveOwner} persists it, mutating
+- * the built owner in place so the saved and returned record carries the id. Every value derived from
+- * the member id — the {@link Owner#getLocality() locality}, the {@link Owner#getFiscalYear() fiscal
+- * year} and thus the owner segment — follows from this region-and-hash identity.
++ * e.g. {@code NSWV2273F9A1C7E4}. Because the version-2 tag is mixed into the region code, no
++ * version-2 member id can reproduce a version-1 value. This single value unifies the former
++ * {@code customerCode} and {@code membershipNumber} and subsumes the standalone {@code checkDigit}.
++ * When the computed id collides with an existing owner's {@code memberId}, {@code -<n>} is appended
++ * with the smallest {@code n} of 2 or more that makes it unique (e.g. {@code NSWV2273F9A1C7E4-2}).
++ * Runs after {@link BuildOwner} builds the entity (so the telephone is in canonical E.164 form and
++ * the business-day-adjusted registration date is set) and before {@link SaveOwner} persists it,
++ * mutating the built owner in place so the saved and returned record carries the id. The user-facing
++ * {@link Owner#getLocality() locality}, {@link Owner#getFiscalYear() fiscal year} and owner segment
++ * are derived independently from the postcode and registration date, so they stay the plain region
++ * code and never carry the version-2 tag.
+  */
+ public class AssignOwnerMemberId {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String region = Owner.regionOfPostcode(owner.getPostcode());
+-        if (region == null) {
+-            region = "UNKNOWN";
+-        }
++        String region = Owner.regionCodeV2(Owner.regionOfPostcode(owner.getPostcode()));
+         String fy = String.format(Locale.ROOT, "%02d", Owner.fiscalYear(owner.getRegistrationDate()) % 100);
+         String hash8 = sha256Hex8(owner.getTelephone() + owner.getLastName());
+         String identity = region + fy + hash8;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+index 1aaafba22..34cb5c40a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -8,23 +8,31 @@ import tools.jackson.databind.ObjectMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Immutable structured audit event emitted when an owner is created, serialized as the JSON object
+- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
++ * Immutable structured audit event emitted when an owner is created, serialized as the schema
++ * version 2 JSON object {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel,
++ * ownerSegment, event:'OWNER_CREATED'}}.
+  *
+  * <p>The {@code memberId} is the owner's <em>primary identifier</em> — the single value that uniquely
+- * names the owner to the outside world, unifying the former customer code and membership number.
++ * names the owner to the outside world, unifying the former customer code and membership number; under
++ * the version-2 identity scheme it embeds the version-2 region code. The {@code ownerSegment} is
++ * recomputed from the (version-2) owner via {@link Owner#getOwnerSegment()}, and {@link #schemaVersion}
++ * pins the event schema at {@link #SCHEMA_VERSION 2}.
+  *
+  * <p>{@link #seq} is a process-wide, monotonically increasing sequence assigned at construction via
+  * {@link #of(Owner)}, ordering events across every create regardless of pipeline or thread. The record
+  * is immutable: once built, its fields never change.
+  */
+-@JsonPropertyOrder({ "seq", "ownerId", "memberId", "membershipLevel", "event" })
+-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+-        Integer membershipLevel, String event) {
++@JsonPropertyOrder({ "schemaVersion", "seq", "ownerId", "memberId", "membershipLevel", "ownerSegment",
++        "event" })
++public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
++        Integer membershipLevel, String ownerSegment, String event) {
+ 
+     /** The fixed event marker. */
+     public static final String EVENT = "OWNER_CREATED";
+ 
++    /** The current audit-event schema version. */
++    public static final int SCHEMA_VERSION = 2;
++
+     /** Monotonic sequence source, shared across all creates in the process. */
+     private static final AtomicLong SEQUENCE = new AtomicLong();
+ 
+@@ -32,13 +40,14 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+     private static final ObjectMapper MAPPER = new ObjectMapper();
+ 
+     /**
+-     * Builds the event for a persisted {@code owner}, assigning the next monotonic {@link #seq} and
+-     * stamping the {@link #EVENT} marker. The identifier is taken from the owner's
+-     * {@link Owner#getMemberId() memberId} — the owner's primary identifier.
++     * Builds the event for a persisted {@code owner}, assigning the next monotonic {@link #seq},
++     * stamping the {@link #EVENT} marker and the {@link #SCHEMA_VERSION schema version}. The identifier
++     * is taken from the owner's {@link Owner#getMemberId() memberId} — the owner's primary identifier —
++     * and the {@code ownerSegment} is recomputed from the version-2 owner.
+      */
+     public static OwnerCreatedEvent of(Owner owner) {
+-        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
+-                owner.getMemberId(), owner.getMembershipLevel(), EVENT);
++        return new OwnerCreatedEvent(SCHEMA_VERSION, SEQUENCE.incrementAndGet(), owner.getId(),
++                owner.getMemberId(), owner.getMembershipLevel(), owner.getOwnerSegment(), EVENT);
+     }
+ 
+     /** Renders the event as a compact JSON object via the shared {@link ObjectMapper}. */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9eb4d1ab0..bb9af2f6a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,6 +2126,51 @@ components:
+         - lastName
+         - city
+         - telephone
++    OwnerIdentity:
++      title: Owner identity
++      description: >-
++        The owner's version-2 identity: the three identifiers grouped together. Each mixes a fixed
++        'V2' version tag into its derivation, so every value differs from the version-1 value it
++        replaces and no version-1 value is ever reproduced. Derived at response time; not persisted.
++      type: object
++      properties:
++        memberId:
++          title: Member id
++          description: >-
++            The owner's unified member id, formatted '<REGIONV2><FY><HASH8><CHK>':
++            REGIONV2 is the version-2 region code — the plain region derived from the
++            postcode (or 'UNKNOWN' when the postcode maps to no known region) with the
++            fixed 'V2' version tag mixed in; FY is the two-digit last two digits of the
++            fiscal year (starting 1 July) of the business-day-adjusted registrationDate;
++            HASH8 is the first 8 upper-case hex characters of the SHA-256 of the normalized
++            telephone concatenated with the lastName; and CHK is a single Luhn check digit
++            over the digits of '<REGIONV2><FY><HASH8>'. Assigned at creation; unifies the
++            former customerCode and membershipNumber and subsumes the standalone checkDigit.
++          type: string
++          example: 'NSWV2273F9A1C7E4'
++          readOnly: true
++        householdId:
++          title: Household ID
++          description: >-
++            A stable, deterministic household identifier: the first 12 upper-case hex
++            characters of the SHA-256 of the fixed 'V2' tag, the normalized lastName and
++            the postcode joined by '|'. Owners with the same lastName and postcode
++            automatically share it, regardless of creation order. Assigned at creation.
++          type: string
++          example: '9F86D081884C'
++          readOnly: true
++        identityKey:
++          title: Identity key
++          description: >-
++            The owner's deterministic identity key: the full lower-case hex SHA-256 of
++            the fixed 'V2' tag, the normalizedTelephone, lowerEmail and soundex(lastName)
++            joined by '|' (an absent telephone or email contributes an empty segment; the
++            last name is reduced to its Soundex code). This single key drives duplicate
++            detection: a create is rejected 409 when a non-deleted owner already carries
++            the same identity key. Derived at response time and not persisted.
++          type: string
++          example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
++          readOnly: true
+     Owner:
+       title: Owner
+       description: A pet owner.
+@@ -2173,43 +2218,32 @@ components:
+               type: string
+               example: 'DR Franklin'
+               readOnly: true
+-            memberId:
+-              title: Member id
++            apiVersion:
++              title: API version
+               description: >-
+-                The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>':
+-                REGION is the region code derived from the postcode (or 'UNKNOWN' when
+-                the postcode maps to no known region); FY is the two-digit last two
+-                digits of the fiscal year (starting 1 July) of the business-day-adjusted
+-                registrationDate; HASH8 is the first 8 upper-case hex characters of the
+-                SHA-256 of the normalized telephone concatenated with the lastName; and
+-                CHK is a single Luhn check digit over the digits of '<REGION><FY><HASH8>'.
+-                Assigned at creation; unifies the former customerCode and membershipNumber
+-                and subsumes the standalone checkDigit.
+-              type: string
+-              example: 'NSW273F9A1C7E4'
++                The version of the owner API contract this representation follows.
++                Fixed at 2 for the version-2 identity scheme, under which the member id,
++                identity key and household id are grouped under the nested 'identity'
++                object rather than returned at the top level. Derived at response time;
++                not persisted.
++              type: integer
++              format: int32
++              example: 2
+               readOnly: true
++            identity:
++              $ref: '#/components/schemas/OwnerIdentity'
+             fiscalYear:
+               title: Fiscal year
+               description: >-
+-                The owner's fiscal year, formatted 'FY<YY>' where YY is the two-digit
+-                FY segment of the memberId (the last two digits of the fiscal year, the
+-                calendar year in which it ends, of the business-day-adjusted
+-                registrationDate). The fiscal year starts on 1 July. Derived at response
+-                time; not persisted.
++                The owner's fiscal year, formatted 'FY<YY>' where YY is the last two
++                digits of the fiscal year (the calendar year in which it ends) of the
++                business-day-adjusted registrationDate. The fiscal year starts on 1 July.
++                Derived at response time directly from the registration date (not parsed
++                from the memberId), so the version-2 tag inside the identifiers never
++                appears here; not persisted.
+               type: string
+               example: 'FY27'
+               readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: >-
+-                A stable, deterministic household identifier: the first 12 upper-case
+-                hex characters of the SHA-256 of the normalized lastName concatenated
+-                with '|' and the postcode. Owners with the same lastName and postcode
+-                automatically share it, regardless of creation order. Assigned at
+-                creation.
+-              type: string
+-              example: '9F86D081884C'
+-              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: >-
+@@ -2247,9 +2281,11 @@ components:
+             locality:
+               title: Locality
+               description: >-
+-                The owner's region, derived at response time from the REGION prefix of
+-                the memberId (the leading run of letters before the two-digit fiscal
+-                year), or 'UNKNOWN' when the owner has no member id.
++                The owner's region, derived at response time directly from the postcode
++                per the fixed city-to-region table (NSW 2000-2099, VIC 3000-3099,
++                QLD 4000-4099), or 'UNKNOWN' when the postcode maps to no known region.
++                This is the plain region code; the version-2 tag mixed into the
++                identifiers never appears here.
+               type: string
+               example: 'NSW'
+               readOnly: true
+@@ -2365,19 +2401,6 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: >-
+-                The owner's deterministic identity key: the full lower-case hex
+-                SHA-256 of 'normalizedTelephone|lowerEmail|soundex(lastName)' (an
+-                absent telephone or email contributes an empty segment; the last
+-                name is reduced to its Soundex code). This single key drives
+-                duplicate detection: a create is rejected 409 when a non-deleted
+-                owner already carries the same identity key. Derived at response
+-                time and not persisted.
+-              type: string
+-              example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+-              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
