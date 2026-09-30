@@ -59,6 +59,7 @@ public interface ClinicService {
 	void saveOwner(Owner owner) throws DataAccessException;
 	void deleteOwner(Owner owner) throws DataAccessException;
 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
+	boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
 	PetType findPetTypeById(int petTypeId);

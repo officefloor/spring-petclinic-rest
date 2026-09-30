@@ -259,6 +259,31 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean existsOwnerInHousehold(String lastName, String address) throws DataAccessException {
+        String normalizedLastName = normalizeHouseholdField(lastName);
+        String normalizedAddress = normalizeHouseholdField(address);
+        if (normalizedLastName == null || normalizedAddress == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> normalizedLastName.equals(normalizeHouseholdField(existing.getLastName()))
+                && normalizedAddress.equals(normalizeHouseholdField(existing.getAddress())));
+    }
+
+    /**
+     * Normalizes a household-identity field for comparison by trimming, collapsing internal
+     * runs of whitespace to a single space and lower-casing, so values that differ only in
+     * whitespace or letter case are treated as equal.
+     */
+    private static String normalizeHouseholdField(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
         return ownerRepository.findByLastName(lastName);
     }
