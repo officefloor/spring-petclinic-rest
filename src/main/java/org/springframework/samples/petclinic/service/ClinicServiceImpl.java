@@ -244,15 +244,22 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Builds an owner's customer code formatted {@code '<LAST3>-<NNNN>'}, where LAST3 is the
-     * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
-     * sequence equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+     * Builds an owner's customer code formatted {@code '<CITY3>-<LAST3>-<NNNN>'}, where CITY3 is the
+     * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
+     * last name and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number
+     * of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
      */
     private String generateCustomerCode(Owner owner) {
-        String lastName = owner.getLastName();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String city = owner.getCity();
+        int sequence = (int) ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count() + 1;
+        return String.format("%s-%s-%04d", prefix3(city), prefix3(owner.getLastName()), sequence);
+    }
+
+    /** The upper-cased first three letters of {@code value} (fewer if it is shorter). */
+    private static String prefix3(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 
     @Override

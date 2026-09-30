@@ -44,7 +44,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last
-     * two digits of the registrationDate year (e.g. {@code 'SMI-0007-M26'}), for the read-only
+     * two digits of the registrationDate year (e.g. {@code 'SYD-SMI-0007-M26'}), for the read-only
      * {@code membershipNumber} field. Null when the customer code or registration date is absent.
      */
     @Named("formatMembershipNumber")
