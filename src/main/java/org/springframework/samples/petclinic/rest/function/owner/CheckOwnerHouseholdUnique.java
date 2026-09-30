@@ -19,19 +19,28 @@ public class CheckOwnerHouseholdUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (sameHousehold(request.getLastName(), request.getAddress(),
+                    existing.getLastName(), existing.getAddress())) {
                 throw new DuplicateHouseholdException(
                         "An owner with the same last name and address already exists");
             }
         }
     }
 
+    /**
+     * The single source of truth for what "same household" means: identical lastName AND address,
+     * each compared case-insensitively with internal whitespace collapsed. Shared with
+     * {@link AssignOwnerHousehold} so the 409 bypass and the {@code householdId} assignment can
+     * never drift on what counts as one household.
+     */
+    static boolean sameHousehold(String lastNameA, String addressA, String lastNameB, String addressB) {
+        return normalize(lastNameA).equals(normalize(lastNameB))
+                && normalize(addressA).equals(normalize(addressB));
+    }
+
     /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */
-    private static String normalize(String value) {
+    static String normalize(String value) {
         if (value == null) {
             return "";
         }
