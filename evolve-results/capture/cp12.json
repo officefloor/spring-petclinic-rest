@@ -1,0 +1,290 @@
+{
+  "checkpoint": 12,
+  "checkpoint_id": "address-normalize",
+  "phase": "Start",
+  "type": "mutative",
+  "mutates": [
+    1,
+    10,
+    11
+  ],
+  "request": {
+    "spec": "Introduce address normalization applied whenever an owner is created: trim and collapse whitespace, upper-case, and expand common abbreviations (ST->STREET, RD->ROAD, AVE->AVENUE). Store and return the normalized 'address'. This changes existing behaviour: the required-field check must reject an address that is blank after normalization, and every comparison of addresses (household duplicate detection and the shared household id) must use the normalized form.",
+    "prompt": "Implement the following change to the application so that it fully satisfies\nthe specification and all existing and new tests pass. Run the test suite and\nmake it green before finishing.\n\nIntroduce address normalization applied whenever an owner is created: trim and collapse whitespace, upper-case, and expand common abbreviations (ST->STREET, RD->ROAD, AVE->AVENUE). Store and return the normalized 'address'. This changes existing behaviour: the required-field check must reject an address that is blank after normalization, and every comparison of addresses (household duplicate detection and the shared household id) must use the normalized form.\n"
+  },
+  "commit_sha": "ef9475749519837058e8ec0cc060432490ddead5",
+  "reset_sha": "",
+  "preagent_sha": "ab63521f96b457c5b44a8133b270fe60bf179654",
+  "prev_sha": "ab63521f96b457c5b44a8133b270fe60bf179654",
+  "base_sha": "ee199b9b0da67ba965aada522e10bb65d063f7c9",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6264925000000003,
+    "input_tokens": 68,
+    "output_tokens": 18514,
+    "cache_read_tokens": 1334025,
+    "cache_creation_tokens": 49629,
+    "num_turns": 34,
+    "duration_ms": 333698,
+    "duration_api_ms": 254962,
+    "model": "claude-opus-4-8",
+    "session_id": "96459126-0667-4c9a-b107-b85bebef03db",
+    "stop_reason": "success",
+    "result_text": "The change is complete and the full suite is green (`Tests run: 3, Failures: 0, Errors: 0` \u2014 BUILD SUCCESS).\n\n## What I did\n\nFollowing the OfficeFloor function-injection pattern already used for email/telephone normalization, I introduced **address normalization on owner creation**.\n\n**New files**\n- `NormalizeOwnerAddress.java` \u2014 a pipeline step that mutates the validated request's address in place: trims and collapses whitespace, upper-cases, and expands abbreviations (`ST\u2192STREET`, `RD\u2192ROAD`, `AVE\u2192AVENUE`) token-by-token. It holds the static `normalize(String)` that is the single source of truth for \"normalized address.\" If the address is **blank after normalization**, it throws `InvalidAddressException` (the required-field check now runs against the normalized form).\n- `InvalidAddressException.java` + `InvalidAddressExceptionHandler.java` \u2014 checked exception mapping to **400**, mirroring the existing `InvalidTelephoneException` machinery.\n- `escalation/\u2026InvalidAddressException.yml` \u2014 wires the handler.\n\n**Edits**\n- `owners.POST.yml` \u2014 inserted the `normalizeAddress` step after `normalizeEmail`, so the address is normalized *before* the household duplicate check and before the entity is built/stored/returned.\n- `CheckOwnerHouseholdUnique.sameHousehold` \u2014 address comparison now goes through `NormalizeOwnerAddress.normalize` (so case/whitespace/abbreviation differences never split a household, including against un-normalized seed data).\n- `AssignOwnerHousehold` \u2014 the shared `householdId` derivation now uses the normalized address too, keeping the 409 bypass and the id assignment consistent.\n\n## How it satisfies the spec\n- **Store/return normalized address**: the request is mutated in place, so `BuildOwner` maps the normalized value into the persisted entity (verified by the two acceptance tests: `\"  12  main  st \"` \u2192 `\"12 MAIN STREET\"`, `\"7 elm ave\"` \u2192 `\"7 ELM AVENUE\"`).\n- **Required-field check rejects blank-after-normalization**: `\"   \"` passes the raw `minLength:1` but normalizes to empty, so `InvalidAddressException` \u2192 400 (verified).\n- **All address comparisons use the normalized form**: both household duplicate detection and the shared household id route through `NormalizeOwnerAddress.normalize`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.6264925000000003,
+        "input_tokens": 68,
+        "output_tokens": 18514,
+        "cache_read_tokens": 1334025,
+        "cache_creation_tokens": 49629,
+        "num_turns": 34,
+        "duration_ms": 333698,
+        "duration_api_ms": 254962,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp12.agent.jsonl",
+  "agent_diff_file": "cp12.agent.diff",
+  "build_log_file": "cp12.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 21,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName": true,
+      "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreFormatAndGlobalSequence": true,
+      "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreRejectsAddressesThatNormalizeEqual": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail": true,
+      "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreRejectsDuplicateAcrossFormats": true,
+      "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreSameHouseholdIdForNormalizedEqualAddresses": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreDefaultsToToday": true,
+      "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityKeepsSuppliedDate": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorStillRejectsMissingCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhitespaceOnlyAddress": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#errorRejectsBlankAfterNormalize": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesWhitespaceAndCase": true,
+      "org.springframework.samples.petclinic.acceptance.Cp12Tests#functionalityExpandsAbbreviations": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable": true,
+      "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode": true,
+      "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp05Tests#coreComputesDisplayName",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp09Tests#coreFormatAndGlobalSequence",
+        "passed": true,
+        "skipped": false,
+        "time": 0.066,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp10Tests#coreRejectsAddressesThatNormalizeEqual",
+        "passed": true,
+        "skipped": false,
+        "time": 0.038,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#errorRejectsInvalidEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.024,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#functionalityAcceptsMissingEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.023,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp04Tests#coreLowercasesEmail",
+        "passed": true,
+        "skipped": false,
+        "time": 0.042,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp03Tests#coreRejectsDuplicateAcrossFormats",
+        "passed": true,
+        "skipped": false,
+        "time": 0.036,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp11Tests#coreSameHouseholdIdForNormalizedEqualAddresses",
+        "passed": true,
+        "skipped": false,
+        "time": 0.093,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#coreStoresE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.037,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp02Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#coreDefaultsToToday",
+        "passed": true,
+        "skipped": false,
+        "time": 0.055,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp07Tests#functionalityKeepsSuppliedDate",
+        "passed": true,
+        "skipped": false,
+        "time": 0.06,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorStillRejectsMissingCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.011,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsWhitespaceOnlyAddress",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#errorRejectsBlankAfterNormalize",
+        "passed": true,
+        "skipped": false,
+        "time": 0.598,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#coreNormalizesWhitespaceAndCase",
+        "passed": true,
+        "skipped": false,
+        "time": 0.33,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp12Tests#functionalityExpandsAbbreviations",
+        "passed": true,
+        "skipped": false,
+        "time": 0.051,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#coreNationalToE164",
+        "passed": true,
+        "skipped": false,
+        "time": 0.042,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#errorRejectsUnformattable",
+        "passed": true,
+        "skipped": false,
+        "time": 0.012,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp08Tests#functionalityKeepsExplicitCountryCode",
+        "passed": true,
+        "skipped": false,
+        "time": 0.041,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp06Tests#coreComputesInitials",
+        "passed": true,
+        "skipped": false,
+        "time": 0.031,
+        "failure": null
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "gate_attempts": 1
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null,
+  "code_review": {
+    "enabled": true,
+    "rounds": 1,
+    "turns_run": 1,
+    "review_model": "claude-opus-4-8",
+    "review_tools": "Read,Grep,Glob",
+    "review_follow_up": true,
+    "author0_diff_file": "cp12.author0.diff",
+    "final_verdict": "VERDICT: LGTM\n\nThe structure is coherent and follows the codebase's established conventions:\n\n- **New function class mirrors its sibling.** `NormalizeOwnerAddress` sits alongside the existing `NormalizeOwnerEmail`, slots into the POST pipeline the same way (`normalizeEmail \u2192 normalizeAddress \u2192 normalize`), mutates the validated DTO in place (the documented `Apply`-style pattern), and keeps exactly one public method (`service`), with `normalize`/`expand` as package-private/private helpers \u2014 satisfying the \"one public method per function class\" rule.\n\n- **Single-source-of-truth placement matches precedent.** `CheckOwnerHouseholdUnique` already co-locates a static `normalize` shared with `AssignOwnerHousehold`; the diff extends that same idiom by making `NormalizeOwnerAddress.normalize` the one canonical address form consumed by the create step, the duplicate check (`sameHousehold`), and the household-id derivation. The address logic lives with the concern that owns it, and the comparison sites reference it rather than re-implementing it \u2014 no drift, no duplication of the abbreviation/expansion rules.\n\n- **Error path is idiomatic.** A checked `InvalidAddressException`, a handler that reuses the existing `ProblemDetails.build` helper (consistent with the codebase's other handlers rather than the bare `ResponseEntity<String>` sketch in AGENTS.md), and the `officefloor/escalation/<FQN>.yml` wiring all follow the documented escalation convention.\n\n- **Sensible asymmetry, not a smell.** `sameHousehold` normalizes lastName via `CheckOwnerHouseholdUnique.normalize` and address via `NormalizeOwnerAddress.normalize` because the two fields genuinely have different canonical forms (address upper-cases and expands abbreviations; lastName does not). Keeping each field's canonical form with its owning concern is the right call over forcing them through one shared function.\n\nThe only nit worth noting \u2014 and it's not blocking \u2014 is that both `normalize` methods repeat the `trim().replaceAll(\"\\\\s+\", \" \")` collapse; a maintainer *could* extract a tiny whitespace-collapse helper, but the two functions differ in case direction and expansion and serve distinct domains, so leaving them separate reads naturally. No changes required.",
+    "review_cost_usd": 0.2168,
+    "fix_cost_usd": 0.0,
+    "turns": [
+      {
+        "role": "author",
+        "ok": true,
+        "session_id": "96459126-0667-4c9a-b107-b85bebef03db",
+        "cost_usd": 1.6264925000000003,
+        "input_tokens": 68,
+        "output_tokens": 18514,
+        "cache_read_tokens": 1334025,
+        "num_turns": 34,
+        "duration_ms": 333698,
+        "duration_api_ms": 254962,
+        "error": ""
+      },
+      {
+        "role": "review1",
+        "ok": true,
+        "session_id": "762aff46-44de-478b-8d93-21d2f5f8d6e6",
+        "cost_usd": 0.216777,
+        "input_tokens": 2,
+        "output_tokens": 3456,
+        "cache_read_tokens": 11894,
+        "num_turns": 1,
+        "duration_ms": 46526,
+        "duration_api_ms": 46460,
+        "error": ""
+      }
+    ],
+    "reviews": [
+      {
+        "round": 1,
+        "ok": true,
+        "session_id": "762aff46-44de-478b-8d93-21d2f5f8d6e6",
+        "resumed": false,
+        "cost_usd": 0.216777,
+        "findings": "VERDICT: LGTM\n\nThe structure is coherent and follows the codebase's established conventions:\n\n- **New function class mirrors its sibling.** `NormalizeOwnerAddress` sits alongside the existing `NormalizeOwnerEmail`, slots into the POST pipeline the same way (`normalizeEmail \u2192 normalizeAddress \u2192 normalize`), mutates the validated DTO in place (the documented `Apply`-style pattern), and keeps exactly one public method (`service`), with `normalize`/`expand` as package-private/private helpers \u2014 satisfying the \"one public method per function class\" rule.\n\n- **Single-source-of-truth placement matches precedent.** `CheckOwnerHouseholdUnique` already co-locates a static `normalize` shared with `AssignOwnerHousehold`; the diff extends that same idiom by making `NormalizeOwnerAddress.normalize` the one canonical address form consumed by the create step, the duplicate check (`sameHousehold`), and the household-id derivation. The address logic lives with the concern that owns it, and the comparison sites reference it rather than re-implementing it \u2014 no drift, no duplication of the abbreviation/expansion rules.\n\n- **Error path is idiomatic.** A checked `InvalidAddressException`, a handler that reuses the existing `ProblemDetails.build` helper (consistent with the codebase's other handlers rather than the bare `ResponseEntity<String>` sketch in AGENTS.md), and the `officefloor/escalation/<FQN>.yml` wiring all follow the documented escalation convention.\n\n- **Sensible asymmetry, not a smell.** `sameHousehold` normalizes lastName via `CheckOwnerHouseholdUnique.normalize` and address via `NormalizeOwnerAddress.normalize` because the two fields genuinely have different canonical forms (address upper-cases and expands abbreviations; lastName does not). Keeping each field's canonical form with its owning concern is the right call over forcing them through one shared function.\n\nThe only nit worth noting \u2014 and it's not blocking \u2014 is that both `normalize` methods repeat the `trim().replaceAll(\"\\\\s+\", \" \")` collapse; a maintainer *could* extract a tiny whitespace-collapse helper, but the two functions differ in case direction and expansion and serve distinct domains, so leaving them separate reads naturally. No changes required."
+      }
+    ]
+  }
+}
