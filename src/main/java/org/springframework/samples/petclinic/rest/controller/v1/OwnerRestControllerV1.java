@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.audit.OwnerAuditEvents;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -67,14 +68,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final OwnerAuditEvents ownerAuditEvents;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 OwnerAuditEvents ownerAuditEvents) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.ownerAuditEvents = ownerAuditEvents;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -171,6 +176,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             "owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        // Immutable structured event, in addition to the human-readable line above. It carries the
+        // owner's CURRENT primary identifier (Owner#primaryIdentifier) so that when the customerCode
+        // is later unified into the memberId, the event follows without touching this call site.
+        this.ownerAuditEvents.ownerCreated(
+            owner.getId(), owner.primaryIdentifier(), ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);

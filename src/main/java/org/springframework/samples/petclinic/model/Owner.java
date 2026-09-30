@@ -229,6 +229,16 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * This owner's current primary identifier. It is the {@code customerCode} today; when the
+     * customerCode is later unified into a {@code memberId}, this returns the memberId instead.
+     * Callers that need "whatever identifies the owner right now" (e.g. the structured audit
+     * event) should read it here so they follow that migration automatically.
+     */
+    public String primaryIdentifier() {
+        return this.customerCode;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
