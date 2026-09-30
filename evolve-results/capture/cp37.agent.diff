@@ -1,0 +1,198 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a815386dc..c029e5165 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+ 
+ import java.time.LocalDate;
+ import java.time.Period;
+@@ -38,6 +39,8 @@ public interface OwnerMapper {
+         expression = "java(toCheckDigit(owner))")
+     @Mapping(target = "ageBand",
+         expression = "java(toAgeBand(owner))")
++    @Mapping(target = "telephoneDisplay",
++        expression = "java(toTelephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -63,6 +66,33 @@ public interface OwnerMapper {
+         return OwnerDto.AgeBandEnum.SENIOR;
+     }
+ 
++    /**
++     * Format an owner's stored E.164 {@code telephone} for humans: the country code, a space, then the
++     * national digits grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}).
++     * The raw {@code telephone} property is left untouched in E.164 form. Returns the value unchanged
++     * when it is {@code null} or not in {@code '+'}-prefixed E.164 form.
++     *
++     * <p>The recognized dialling codes come from {@link E164PhoneNumbers}, the same table the create
++     * endpoint validates against, so the two paths cannot diverge. When a number carries no recognized
++     * code, a two-digit country code is assumed (the most common length).
++     */
++    default String toTelephoneDisplay(Owner owner) {
++        String telephone = owner.getTelephone();
++        if (telephone == null || !telephone.startsWith("+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        String code = E164PhoneNumbers.countryCode(digits)
++            .filter(c -> digits.length() > c.length())
++            .orElse(digits.length() > 2 ? digits.substring(0, 2) : digits);
++        String national = digits.substring(code.length());
++        StringBuilder sb = new StringBuilder("+").append(code);
++        for (int i = 0; i < national.length(); i += 3) {
++            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Derive an owner's check digit: a single Luhn check digit (0-9) computed over the digits
+      * contained in the {@code customerCode}. Non-digit characters (the separators) are ignored.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ec44b23ae..ac88e78a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.E164PhoneNumbers;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -412,7 +413,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *
+      * <p>Once in E.164 form the national-number length is validated against the country code: a
+      * {@code +61} (Australia) number must carry exactly 9 national digits and a {@code +1} (NANP)
+-     * number exactly 10 (see {@link #COUNTRY_NATIONAL_LENGTHS}). Country codes without a configured
++     * number exactly 10 (see {@link E164PhoneNumbers#NATIONAL_LENGTHS}). Country codes without a configured
+      * rule are accepted on the general 8-to-15 digit length alone.
+      *
+      * @param telephone the raw telephone value supplied by the client
+@@ -439,32 +440,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return "+" + digits;
+     }
+ 
+-    /**
+-     * International dialling codes mapped to the exact number of national (subscriber) digits an
+-     * E.164 number for that country must carry: {@code +61} (Australia) requires 9 national digits
+-     * and {@code +1} (NANP) requires 10. Country codes absent from this map have no length rule.
+-     */
+-    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
+-
+     /**
+      * Validates the national-number length of an E.164 number (its digits, without the leading
+-     * {@code '+'}) against its country code. The longest configured dialling code that prefixes the
+-     * number selects the rule; if none is configured the number passes (only the general 8-to-15
+-     * digit rule applies).
++     * {@code '+'}) against its country code. The longest dialling code that prefixes the number (see
++     * {@link E164PhoneNumbers#countryCode}) selects the rule; if none is configured the number passes
++     * (only the general 8-to-15 digit rule applies).
+      *
+      * @param digits the E.164 digits without the leading {@code '+'}
+      * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the number of national
+      *                                 digits does not match the country code's required length
+      */
+     private static void validateNationalNumberLength(String digits) {
+-        COUNTRY_NATIONAL_LENGTHS.keySet().stream()
+-            .filter(digits::startsWith)
+-            .max(Comparator.comparingInt(String::length))
++        E164PhoneNumbers.countryCode(digits)
+             .ifPresent(code -> {
+                 int nationalLength = digits.length() - code.length();
+-                if (nationalLength != COUNTRY_NATIONAL_LENGTHS.get(code)) {
++                int required = E164PhoneNumbers.NATIONAL_LENGTHS.get(code);
++                if (nationalLength != required) {
+                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+-                        "telephone must have " + COUNTRY_NATIONAL_LENGTHS.get(code)
++                        "telephone must have " + required
+                             + " national digits for country code +" + code);
+                 }
+             });
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumbers.java b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumbers.java
+new file mode 100644
+index 000000000..964497023
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/E164PhoneNumbers.java
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Comparator;
++import java.util.Map;
++import java.util.Optional;
++
++/**
++ * Single source of truth for the E.164 international dialling codes the application recognizes and the
++ * exact number of national (subscriber) digits each requires. Both the create-time telephone validation
++ * (in the owner controller) and the read-time display formatting (in the owner mapper) consult this
++ * table, so the recognized set of country codes has one owner: add a code here and both paths pick it up
++ * without hand-syncing separate literal lists.
++ */
++public final class E164PhoneNumbers {
++
++    /**
++     * International dialling codes mapped to the exact number of national (subscriber) digits an E.164
++     * number for that country must carry: {@code +61} (Australia) requires 9 national digits and
++     * {@code +1} (NANP) requires 10. Country codes absent from this map have no configured length rule.
++     */
++    public static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
++
++    private E164PhoneNumbers() {
++    }
++
++    /**
++     * Select the recognized dialling code for a run of E.164 digits (the number without its leading
++     * {@code '+'}): the longest configured code in {@link #NATIONAL_LENGTHS} that prefixes the digits, or
++     * empty when none is configured for the number.
++     *
++     * @param digits the E.164 digits without the leading {@code '+'}
++     * @return the matching dialling code, longest prefix winning, or empty when none matches
++     */
++    public static Optional<String> countryCode(String digits) {
++        return NATIONAL_LENGTHS.keySet().stream()
++            .filter(digits::startsWith)
++            .max(Comparator.comparingInt(String::length));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8fef01024..aee938856 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2127,6 +2127,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'G.F.'
++            telephoneDisplay:
++              title: Telephone (display)
++              description: >-
++                The stored E.164 'telephone' formatted for humans: the country
++                code, a space, then the national digits grouped in threes. For
++                example '+61412345678' is displayed as '+61 412 345 678'. The
++                raw 'telephone' stays in E.164 form. Derived at read time.
++              type: string
++              readOnly: true
++              example: '+61 412 345 678'
+             customerCode:
+               title: Customer code
+               description: >-
