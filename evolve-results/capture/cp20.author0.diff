@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index af9f56370..e69ad7a6a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,10 +110,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(normalizedTelephone);
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+         owner.setAddress(normalizeAddress(owner.getAddress()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
++        if (effectiveRegistrationDate == null) {
++            effectiveRegistrationDate = LocalDate.now();
+         }
+-        if (countOwnersRegisteredToday() >= DAILY_CREATE_LIMIT) {
++        effectiveRegistrationDate = rollToBusinessDay(effectiveRegistrationDate);
++        owner.setRegistrationDate(effectiveRegistrationDate);
++        if (countOwnersRegisteredOn(effectiveRegistrationDate) >= DAILY_CREATE_LIMIT) {
+             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                 "the maximum number of owners that may be created today has been reached");
+         }
+@@ -269,16 +272,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final int DAILY_CREATE_LIMIT = 100;
+ 
+     /**
+-     * Counts the existing owners whose {@code registrationDate} is today, i.e. the number of owners
+-     * that have already been created today. Called before a new owner is saved, so the returned
+-     * value reflects the number of owners created earlier today prior to this create.
++     * Rolls a registration date forward onto a business day: a date that falls on a Saturday or
++     * Sunday is moved forward to the following Monday, while a date already on a weekday is returned
++     * unchanged. Applied to the effective registration date (supplied or defaulted to the server
++     * date) so that the stored {@code registrationDate}, and every value derived from it, always
++     * falls on a business day.
+      *
+-     * @return the number of existing owners registered today
++     * @param date the effective registration date
++     * @return the same date when it is a weekday, otherwise the following Monday
+      */
+-    private int countOwnersRegisteredToday() {
+-        LocalDate today = LocalDate.now();
++    private static LocalDate rollToBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++
++    /**
++     * Counts the existing owners whose {@code registrationDate} equals the given (already
++     * business-day-adjusted) date, i.e. the number of owners that have already been created for that
++     * business day. Called before a new owner is saved, so the returned value reflects the number of
++     * owners created for that day prior to this create.
++     *
++     * @param date the adjusted business-day registration date to count against
++     * @return the number of existing owners registered on that date
++     */
++    private int countOwnersRegisteredOn(LocalDate date) {
+         return (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .filter(existing -> date.equals(existing.getRegistrationDate()))
+             .count();
+     }
+ 
