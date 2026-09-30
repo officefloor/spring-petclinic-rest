@@ -3,10 +3,12 @@ package org.springframework.samples.petclinic.model;
 import java.util.Map;
 
 /**
- * The single definition of the city-to-region fact (Sydney-&gt;NSW, Melbourne-&gt;VIC,
- * Brisbane-&gt;QLD). Both the mapping layer (which derives an owner's {@code locality}) and the
- * request-handling layer (which validates a postcode against the city's region) depend on this
- * one table, so adding a city updates both behaviours together.
+ * The single definition of the region facts: the city-to-region table (Sydney-&gt;NSW,
+ * Melbourne-&gt;VIC, Brisbane-&gt;QLD) used to validate a postcode against a city's region, and the
+ * postcode-to-region ranges used to derive an owner's identity region. The request-handling layer
+ * (which validates a postcode against the city's region and stamps the {@code customerCode}'s
+ * {@code <REGION>} prefix) and the mapping layer (which derives an owner's {@code locality}) both
+ * depend on this one class, so the customerCode region and the locality are always the same value.
  *
  * <p>Lives beside {@link Owner} — the same home as {@link OwnerIdentity} — so both layers can
  * depend on it without a package cycle.
@@ -69,15 +71,14 @@ public final class CityRegions {
     }
 
     /**
-     * The owner's locality, preferring the postcode: the region whose range contains the
-     * postcode wins, falling back to the city-to-region table when the postcode is absent or
-     * in no known range, and finally {@link #UNKNOWN} when the city has no known region.
+     * The REGION component of an owner's identity, derived solely from the postcode: the region
+     * whose range contains {@code postcode}, or {@link #UNKNOWN} when the postcode is absent or in
+     * no known range. This one value is both the {@code <REGION>} prefix of the owner's
+     * {@code customerCode} and the owner's {@code locality}, so the two are always derived the same
+     * way and can never diverge.
      */
-    public static String localityOf(String city, String postcode) {
+    public static String identityRegion(String postcode) {
         String region = regionByPostcode(postcode);
-        if (region != null) {
-            return region;
-        }
-        return CITY_REGION.getOrDefault(city, UNKNOWN);
+        return region != null ? region : UNKNOWN;
     }
 }

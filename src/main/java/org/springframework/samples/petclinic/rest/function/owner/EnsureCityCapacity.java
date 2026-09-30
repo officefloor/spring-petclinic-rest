@@ -8,9 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Rejects a create whose city already contains 50 or more owners. The city is compared
- * case-insensitively, matching {@link AssignCustomerCode}'s per-city counting. Runs
- * before the owner is saved, so the count excludes the owner being created; a full city
- * is rejected 409 via {@link CityAtCapacityException}.
+ * case-insensitively. Runs before the owner is saved, so the count excludes the owner being
+ * created; a full city is rejected 409 via {@link CityAtCapacityException}.
  */
 public class EnsureCityCapacity {
 

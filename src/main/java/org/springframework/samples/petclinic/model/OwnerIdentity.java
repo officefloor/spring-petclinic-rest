@@ -24,10 +24,7 @@ public final class OwnerIdentity {
 
     /** The owner's {@code identityKey} — see the class javadoc for the exact composition. */
     public static String of(Owner owner) {
-        String telephone = OwnerTelephones.toE164(owner.getTelephone());
-        if (telephone == null) {
-            telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        }
+        String telephone = OwnerTelephones.toE164OrRaw(owner.getTelephone());
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
         return telephone + "|" + email + "|" + householdId;
