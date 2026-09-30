@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "formatMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "formatLocality")
+    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "formatOwnerSegment")
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "formatTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "formatContactPreference")
     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
@@ -82,6 +83,24 @@ public interface OwnerMapper {
         }
         int dash = code.indexOf('-');
         return dash < 0 ? code : code.substring(0, dash);
+    }
+
+    /**
+     * Derives an owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code 'PREMIUM'} when the owner's {@code membershipLevel} is 3 or more, otherwise
+     * {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality is a known region
+     * (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}. Both the membership level and the locality
+     * are taken from {@link #formatMembershipLevel(Owner)} and {@link #formatLocality(Owner)}, so
+     * the segment always agrees with those reported fields.
+     */
+    @Named("formatOwnerSegment")
+    default String formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String tier = formatMembershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(formatLocality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
