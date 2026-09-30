@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index bbe6ded2d..8bf5c7794 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.CityRegions;
++import org.springframework.samples.petclinic.model.LuhnCheckDigit;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -25,8 +26,17 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
++    @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * A single Luhn check digit (0-9) computed over the digits of the owner's
++     * {@code customerCode}. {@code null} when the owner has no customer code.
++     */
++    default Integer toCheckDigit(Owner owner) {
++        return LuhnCheckDigit.of(owner.getCustomerCode());
++    }
++
+     /**
+      * The owner's derived identityKey — the single value all duplicate detection is
+      * expressed through. See {@link OwnerIdentity}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java b/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java
+new file mode 100644
+index 000000000..424f75060
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/LuhnCheckDigit.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The single definition of the Luhn check digit: a single digit (0-9) computed over the
++ * digits contained in a string, with non-digit characters ignored. Used by the mapping
++ * layer to derive an owner's {@code checkDigit} from its {@code customerCode}.
++ *
++ * <p>Lives beside {@link Owner} — the same home as {@link CityRegions} and
++ * {@link OwnerIdentity} — so any layer can depend on it without a package cycle.
++ */
++public final class LuhnCheckDigit {
++
++    private LuhnCheckDigit() {
++    }
++
++    /**
++     * The Luhn check digit (0-9) over the digits in {@code value}, ignoring any non-digit
++     * characters. {@code null} when {@code value} is {@code null}.
++     */
++    public static Integer of(String value) {
++        if (value == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8e7ad23a3..f0d3d471b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2125,6 +2125,17 @@ components:
+               type: string
+               example: 'SYD-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the
++                customerCode, derived on read.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
