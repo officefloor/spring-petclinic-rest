@@ -124,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "another owner with the same last name already lives at this address");
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
             this.clinicService.assignHousehold(owner);
@@ -241,6 +242,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", prefix, sequence);
+    }
+
+    /**
+     * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
+     * the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}).
+     *
+     * @param customerCode     the owner's assigned customer code
+     * @param registrationDate the owner's registration date
+     * @return the assigned membership number
+     */
+    private String membershipNumber(String customerCode, LocalDate registrationDate) {
+        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        return String.format("%s-M%s", customerCode, yy);
     }
 
     /**

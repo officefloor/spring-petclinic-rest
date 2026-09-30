@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "membership_number")
+    private String membershipNumber;
+
     @Column(name = "household_id")
     private String householdId;
 
@@ -112,6 +115,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public String getMembershipNumber() {
+        return this.membershipNumber;
+    }
+
+    public void setMembershipNumber(String membershipNumber) {
+        this.membershipNumber = membershipNumber;
     }
 
     public String getHouseholdId() {
