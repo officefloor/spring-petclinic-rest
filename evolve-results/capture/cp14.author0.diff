@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7ea713e64..b8ed3f19e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @Column(name = "household_id")
+     private String householdId;
+ 
+@@ -114,6 +117,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f81f1a035..1da4060a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -124,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 "another owner with the same last name already lives at this address");
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+             this.clinicService.assignHousehold(owner);
+@@ -243,6 +244,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", prefix, sequence);
+     }
+ 
++    /**
++     * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
++     * the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}).
++     *
++     * @param customerCode     the owner's assigned customer code
++     * @param registrationDate the owner's registration date
++     * @return the assigned membership number
++     */
++    private String membershipNumber(String customerCode, LocalDate registrationDate) {
++        String yy = String.format("%02d", registrationDate.getYear() % 100);
++        return String.format("%s-M%s", customerCode, yy);
++    }
++
+     /**
+      * Counts the existing owners that already share the given first name and last name, comparing
+      * both case-insensitively. Called before a new owner is saved, so the returned value reflects
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3d..53eda85ca 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64f..2d3094f72 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 8e38077df..e56468914 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831ac..485b78e8a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
++                                      membership_number TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER
+ );
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f34054c45..b3770047a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,14 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007'
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The owner's membership number, formatted '<customerCode>-M<YY>'
++                where YY is the last two digits of the registration date's year.
++              type: string
++              readOnly: true
++              example: 'SMI-0007-M26'
+             householdId:
+               title: Household ID
+               description: >-
