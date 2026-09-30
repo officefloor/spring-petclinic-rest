@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index e3773f786..78b3011e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Global Exception handler for REST controllers.
+@@ -86,6 +87,29 @@ public class ExceptionControllerAdvice {
+         throw e;
+     }
+ 
++    /**
++     * Handles {@link ResponseStatusException}s raised by controllers to reject a request (e.g. the
++     * per-day rate limit as 429 or a capacity/duplicate conflict as 409). The declared HTTP status
++     * is preserved and the response carries an RFC7807 {@code application/problem+json} body.
++     *
++     * @param e The {@link ResponseStatusException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the problem detail and the exception's HTTP status
++     */
++    @ExceptionHandler(ResponseStatusException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
++        logger.warn("Request rejected with {} at {} {}: {}",
++            status.value(),
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getReason());
++        String detail = Objects.toString(e.getReason(), status.getReasonPhrase());
++        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
++        return ResponseEntity.status(status).body(problemDetail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 08693d7af..d750e1b54 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -46,6 +46,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -187,10 +188,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         LocalDate registrationDate = owner.resolveRegistrationDate();
+         if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
++                "The daily owner registration limit has been reached; please retry later");
+         }
+         if (this.clinicService.countOwnersByCity(owner.getCity()) >= HARD_CAPACITY) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "The requested city has reached its owner capacity");
+         }
+         // The household id is deterministic: owners that share a (normalized lastName, postcode)
+         // share it automatically. It feeds the membership-level cap and household sizing below.
+@@ -204,7 +207,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // There is no separate household-duplicate 409: two owners sharing a lastName and postcode
+         // but differing in telephone (or email) have distinct identity keys and are allowed.
+         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "An owner with the same identity already exists");
+         }
+         // Soft-match: the identity key differs, yet the surname's soundex and the postcode match an
+         // existing owner, flagged 'possibleDuplicate'. This is exactly the same lastName/postcode,
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+index 73e1f4e28..cd882db7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+@@ -36,7 +36,10 @@ public class PostcodeValidator implements ConstraintValidator<PostcodeValidation
+         if (postcode == null || !postcode.matches("^[0-9]{4}$")) {
+             return true;
+         }
+-        String region = CITY_REGION.get(owner.getCity());
++        // A null city has no known region (its own @NotNull rule reports the missing city); treat it
++        // like any unknown-region city and accept the postcode rather than failing the lookup.
++        String city = owner.getCity();
++        String region = city == null ? null : CITY_REGION.get(city);
+         int[] range = region == null ? null : REGION_POSTCODES.get(region);
+         if (range == null) {
+             // City with no known region accepts any 4-digit postcode.
