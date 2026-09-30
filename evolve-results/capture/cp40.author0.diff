@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 715d9f89e..1b2267acc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -252,28 +252,45 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's numeric membership level. Starts at {@code 1}, plus 1 when an email is present,
+-     * plus 1 when {@link #namesakeCount} is 0, plus 1 when the {@link #getHouseholdSize() household}
+-     * has 3 or more members. Level {@code 4} additionally requires tenure of more than 365 days
+-     * (measured from the {@link #registrationDate}); without that tenure the level is capped at
+-     * {@code 3}. Because a newly created owner has zero tenure, a new owner never exceeds level 3.
++     * The owner's membership points, derived at response time. Starts at {@code 0}, plus 2 when an
++     * email is present, plus 1 when {@link #namesakeCount} is 0, plus 2 when the
++     * {@link #getHouseholdSize() household} has 3 or more members, plus 3 when tenure exceeds 365 days
++     * (measured from the {@link #registrationDate}).
+      */
+-    public Integer getMembershipLevel() {
+-        int level = 1;
++    public Integer getMembershipPoints() {
++        int points = 0;
+         if (this.email != null && !this.email.isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (this.namesakeCount != null && this.namesakeCount == 0) {
+-            level++;
++            points += 1;
+         }
+         if (this.householdSize != null && this.householdSize >= 3) {
+-            level++;
++            points += 2;
++        }
++        if (getTenureDays() > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The owner's numeric membership level, mapped from {@link #getMembershipPoints() membershipPoints}:
++     * {@code 1} for 0-1 points, {@code 2} for 2-3 points, {@code 3} for 4-5 points, and {@code 4} for
++     * 6 or more points.
++     */
++    public Integer getMembershipLevel() {
++        int points = getMembershipPoints();
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
+         }
+-        // Level 4 is reserved for established members: it requires tenure of more than 365 days.
+-        if (level >= 4 && getTenureDays() <= 365) {
+-            level = 3;
++        if (points <= 5) {
++            return 3;
+         }
+-        return level;
++        return 4;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d4ad21745..96a71d60b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2161,17 +2161,27 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, derived at response time. Starts at 0,
++                plus 2 when an email is present, plus 1 when namesakeCount is 0, plus 2
++                for a household of 3 or more members, plus 3 for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned at creation. Starts at
+-                1, plus 1 when an email is present, plus 1 when namesakeCount is 0,
+-                capped at 3 (level 4 is reserved for tenure).
++                The owner's numeric membership level, mapped from membershipPoints:
++                1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
