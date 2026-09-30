@@ -1,0 +1,137 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 66599ae0f..cd15e796b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -153,6 +156,27 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
++    /**
++     * The owner's salutation, derived at response time from the optional {@link #title} and the
++     * {@link #getLastName() lastName}: the title, a single space, then the lastName (e.g.
++     * {@code DR Who}) when a title is present, otherwise just the lastName. Not persisted as a
++     * separate value; composed from the stored title and last name.
++     */
++    public String getSalutation() {
++        if (this.title == null || this.title.isBlank()) {
++            return getLastName();
++        }
++        return this.title + " " + getLastName();
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index e23facbd0..936f4e96d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -19,5 +19,6 @@ public class ApplyOwner {
+         owner.setLastName(request.getLastName());
+         owner.setTelephone(request.getTelephone());
+         owner.setEmail(request.getEmail());
++        owner.setTitle(request.getTitle());
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 135c7a2d9..a15e37273 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  title VARCHAR(3),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ada295224..ffa93326f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE owners (
+   postcode   VARCHAR(4),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  title      VARCHAR(3),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ddc9fd770..8447c804e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  title VARCHAR(3),
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8ea5afad1..be9fb1cc1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       postcode   TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      title      TEXT,
+                                       registration_date DATE,
+                                       birth_date DATE,
+                                       customer_code TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6145f6148..ae8201f37 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,15 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            The optional honorific title of the pet owner. When present it is one
++            of 'MR', 'MRS', 'MS' or 'DR'. Stored and returned, and used to derive
++            the owner's 'salutation'.
++          type: string
++          pattern: "^(MR|MRS|MS|DR)$"
++          example: DR
+         address:
+           title: Address
+           description: >-
+@@ -2144,6 +2153,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, derived at response time as the title
++                followed by a single space and the lastName (e.g. 'DR Who'), or
++                just the lastName when no title was supplied.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
