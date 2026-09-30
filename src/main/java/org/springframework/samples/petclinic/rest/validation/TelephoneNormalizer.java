@@ -81,4 +81,48 @@ public final class TelephoneNormalizer {
     public static boolean isValid(String raw) {
         return raw == null || toE164(raw) != null;
     }
+
+    /**
+     * Formats a stored E.164 telephone for human display as the country code, a space and the
+     * national digits grouped in threes (e.g. {@code '+61412345678'} becomes
+     * {@code '+61 412 345 678'}). The country code is recognised for {@code +61} and {@code +1}
+     * and otherwise assumed to be two digits. Returns {@code null} when the input is {@code null}
+     * or carries no digits.
+     *
+     * @param e164 the stored E.164 telephone (may be {@code null})
+     * @return the human-readable form, or {@code null}
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        int ccLength = countryCodeLength(digits);
+        StringBuilder display = new StringBuilder("+").append(digits, 0, ccLength);
+        for (int i = ccLength; i < digits.length(); i += 3) {
+            display.append(' ').append(digits, i, Math.min(i + 3, digits.length()));
+        }
+        return display.toString();
+    }
+
+    /**
+     * The number of leading digits that form the country code carried by {@code digits} (the
+     * E.164 digits without the leading {@code '+'}): {@code 61} is two digits and {@code 1} is
+     * one. Any other country code is assumed to be two digits, bounded by the available length.
+     *
+     * @param digits the E.164 digits without the leading {@code '+'}
+     * @return the country-code length in digits
+     */
+    private static int countryCodeLength(String digits) {
+        if (digits.startsWith("61")) {
+            return 2;
+        }
+        if (digits.startsWith("1")) {
+            return 1;
+        }
+        return Math.min(2, digits.length());
+    }
 }

@@ -23,6 +23,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
+    @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "formatTelephoneDisplay")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "formatCheckDigit")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "formatMembershipLevel")
@@ -149,6 +150,17 @@ public interface OwnerMapper {
         return owner == null ? null
             : Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * Formats the owner's stored E.164 telephone for human display as the country code, a space
+     * and the national digits grouped in threes (e.g. {@code '+61412345678'} becomes
+     * {@code '+61 412 345 678'}), for the read-only {@code telephoneDisplay} field. The raw
+     * {@code telephone} field stays in E.164 form. Null when no telephone is present.
+     */
+    @Named("formatTelephoneDisplay")
+    default String formatTelephoneDisplay(Owner owner) {
+        return owner == null ? null : TelephoneNormalizer.toDisplay(owner.getTelephone());
     }
 
     Owner toOwner(OwnerDto ownerDto);
