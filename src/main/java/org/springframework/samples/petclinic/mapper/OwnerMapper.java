@@ -36,7 +36,21 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(toCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
+     * {@code membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
+     * {@link #toLocality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
+     * 'REGIONAL'.
+     */
+    default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
+        Integer level = owner.getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String area = CityRegions.UNKNOWN.equals(toLocality(owner)) ? "REGIONAL" : "METRO";
+        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
+    }
 
     /**
      * The owner's fiscal year, formatted 'FY&lt;YY&gt;' by the shared {@link FiscalYear} rule
