@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -104,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         if (isTelephoneInUse(normalizedTelephone, null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "telephone is already in use by another owner");
@@ -127,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -237,6 +241,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String stripNonDigits(String telephone) {
         return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Basic syntactic email validation: a non-empty local part, an {@code @}, and a domain
+     * containing at least one dot, none of the three sections containing whitespace or an
+     * additional {@code @}.
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Validates and normalizes an optional owner email address. A {@code null} value is left as is
+     * (email is optional). When a value is supplied it must be a syntactically valid address; the
+     * value is then stored and returned lower-cased.
+     *
+     * @param email the raw email value supplied by the client, possibly {@code null}
+     * @return the lower-cased email, or {@code null} when none was supplied
+     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if a value is present but
+     *                                 is not a syntactically valid address
+     */
+    private static String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "email must be a syntactically valid address");
+        }
+        return email.toLowerCase(Locale.ROOT);
     }
 
     /**
