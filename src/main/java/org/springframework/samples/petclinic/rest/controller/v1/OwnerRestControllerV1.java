@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.E164PhoneNumbers;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -412,7 +413,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * <p>Once in E.164 form the national-number length is validated against the country code: a
      * {@code +61} (Australia) number must carry exactly 9 national digits and a {@code +1} (NANP)
-     * number exactly 10 (see {@link #COUNTRY_NATIONAL_LENGTHS}). Country codes without a configured
+     * number exactly 10 (see {@link E164PhoneNumbers#NATIONAL_LENGTHS}). Country codes without a configured
      * rule are accepted on the general 8-to-15 digit length alone.
      *
      * @param telephone the raw telephone value supplied by the client
@@ -440,31 +441,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * International dialling codes mapped to the exact number of national (subscriber) digits an
-     * E.164 number for that country must carry: {@code +61} (Australia) requires 9 national digits
-     * and {@code +1} (NANP) requires 10. Country codes absent from this map have no length rule.
-     */
-    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
-
-    /**
      * Validates the national-number length of an E.164 number (its digits, without the leading
-     * {@code '+'}) against its country code. The longest configured dialling code that prefixes the
-     * number selects the rule; if none is configured the number passes (only the general 8-to-15
-     * digit rule applies).
+     * {@code '+'}) against its country code. The longest dialling code that prefixes the number (see
+     * {@link E164PhoneNumbers#countryCode}) selects the rule; if none is configured the number passes
+     * (only the general 8-to-15 digit rule applies).
      *
      * @param digits the E.164 digits without the leading {@code '+'}
      * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if the number of national
      *                                 digits does not match the country code's required length
      */
     private static void validateNationalNumberLength(String digits) {
-        COUNTRY_NATIONAL_LENGTHS.keySet().stream()
-            .filter(digits::startsWith)
-            .max(Comparator.comparingInt(String::length))
+        E164PhoneNumbers.countryCode(digits)
             .ifPresent(code -> {
                 int nationalLength = digits.length() - code.length();
-                if (nationalLength != COUNTRY_NATIONAL_LENGTHS.get(code)) {
+                int required = E164PhoneNumbers.NATIONAL_LENGTHS.get(code);
+                if (nationalLength != required) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "telephone must have " + COUNTRY_NATIONAL_LENGTHS.get(code)
+                        "telephone must have " + required
                             + " national digits for country code +" + code);
                 }
             });

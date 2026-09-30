@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.E164PhoneNumbers;
 
 import java.time.LocalDate;
 import java.time.Period;
@@ -38,6 +39,8 @@ public interface OwnerMapper {
         expression = "java(toCheckDigit(owner))")
     @Mapping(target = "ageBand",
         expression = "java(toAgeBand(owner))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(toTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -61,6 +64,33 @@ public interface OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Format an owner's stored E.164 {@code telephone} for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}).
+     * The raw {@code telephone} property is left untouched in E.164 form. Returns the value unchanged
+     * when it is {@code null} or not in {@code '+'}-prefixed E.164 form.
+     *
+     * <p>The recognized dialling codes come from {@link E164PhoneNumbers}, the same table the create
+     * endpoint validates against, so the two paths cannot diverge. When a number carries no recognized
+     * code, a two-digit country code is assumed (the most common length).
+     */
+    default String toTelephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        String code = E164PhoneNumbers.countryCode(digits)
+            .filter(c -> digits.length() > c.length())
+            .orElse(digits.length() > 2 ? digits.substring(0, 2) : digits);
+        String national = digits.substring(code.length());
+        StringBuilder sb = new StringBuilder("+").append(code);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
     }
 
     /**
