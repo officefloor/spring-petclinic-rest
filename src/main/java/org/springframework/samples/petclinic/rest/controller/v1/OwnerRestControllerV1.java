@@ -158,11 +158,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The household id is deterministic (derived from the last name and postcode), so every
         // owner is keyed to its household automatically, regardless of creation order.
         this.clinicService.assignHousehold(owner);
+        // An owner joining an existing household is now admitted rather than rejected; their
+        // membership level is instead capped relative to the household (see the level-ceiling rule
+        // applied via the membershipLevelCap below).
         boolean householdInUse = this.clinicService.isHouseholdInUse(owner.getHouseholdId(), null);
-        if (householdInUse && !sharesHousehold) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "an owner in the same household already exists");
-        }
         if (isIdentityKeyInUse(ownerMapper.toIdentityKey(owner), null)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "an owner with the same identity already exists");
@@ -175,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
+        owner.setMembershipLevelCap(householdMembershipLevelCap(owner.getHouseholdId()));
         owner.setBulkSignupWarning(
             countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         // A declared household member (one created with 'sharesHousehold' that joins an existing
@@ -499,6 +499,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return count;
+    }
+
+    /**
+     * Computes the membership-level ceiling for a new owner joining the given household: one above the
+     * current maximum effective membership level among the existing owners in that household. The
+     * ceiling is frozen on the owner at creation and later applied by
+     * {@link OwnerMapper#toMembershipLevel(Owner)}. Returns {@code null} when the household has no
+     * existing member (or the owner has no household id), meaning no cap applies.
+     *
+     * @param householdId the new owner's assigned household id
+     * @return one above the household's current maximum membership level, or {@code null} when the
+     *         household has no existing member
+     */
+    private Integer householdMembershipLevelCap(String householdId) {
+        if (householdId == null) {
+            return null;
+        }
+        Integer maxLevel = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                int level = ownerMapper.toMembershipLevel(existing);
+                if (maxLevel == null || level > maxLevel) {
+                    maxLevel = level;
+                }
+            }
+        }
+        return maxLevel == null ? null : maxLevel + 1;
     }
 
     /**
