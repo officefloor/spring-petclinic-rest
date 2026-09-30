@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -66,6 +67,13 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Assigns the monotonically increasing sequence number carried by each structured
+     * {@link OwnerCreatedEvent}. Static so the order spans every create handled by this endpoint,
+     * regardless of the controller instance, giving the audit event stream a total order.
+     */
+    private static final AtomicLong AUDIT_EVENT_SEQUENCE = new AtomicLong();
 
     private final ClinicService clinicService;
 
@@ -187,6 +195,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
+            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+        AUDIT.info(event.toJson());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -287,6 +298,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * The owner's current primary identifier, carried by the structured {@link OwnerCreatedEvent}.
+     * Today an owner's primary identifier is its {@code customerCode}; this single accessor is the one
+     * place that decides which field is primary, so if a later change unifies the customer code into a
+     * member id, redirecting this method to the member id makes the audit event carry it instead.
+     *
+     * @param owner the created owner
+     * @return the owner's current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**

@@ -1,0 +1,73 @@
+/*
+ * Copyright 2016-2017 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.controller.v1;
+
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Immutable structured audit event published to the {@code AUDIT} logger when an owner is created,
+ * alongside the human-readable audit line. It is serialized to a compact JSON object of the form
+ * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+ *
+ * <p>The {@code seq} is a monotonically increasing sequence number assigned across all owner
+ * creates, giving the event stream a total order independent of timestamps.
+ *
+ * <p>The {@code customerCode} component carries the owner's <em>current primary identifier</em>. Today
+ * that primary identifier is the customer code; if a later change unifies the customer code into a
+ * member id, that member id becomes the primary identifier the event carries — the caller supplies
+ * whatever the owner's current primary identifier is, so this event always reflects it.
+ *
+ * <p>The record is immutable: once constructed its fields cannot change, so a published event is a
+ * faithful, tamper-proof record of the create at the moment it happened.
+ *
+ * @param seq             monotonically increasing sequence number across creates
+ * @param ownerId         the created owner's id
+ * @param customerCode    the owner's current primary identifier (the customer code today)
+ * @param membershipLevel the owner's derived membership level
+ * @param event           the event type, always {@link #OWNER_CREATED}
+ */
+public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+                                Integer membershipLevel, String event) {
+
+    /** The event type discriminator carried by every owner-created event. */
+    public static final String OWNER_CREATED = "OWNER_CREATED";
+
+    private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+    /**
+     * Builds an owner-created event ({@code event} fixed to {@link #OWNER_CREATED}).
+     *
+     * @param seq             the monotonically increasing sequence number for this create
+     * @param ownerId         the created owner's id
+     * @param customerCode    the owner's current primary identifier (the customer code today)
+     * @param membershipLevel the owner's derived membership level
+     * @return the immutable event
+     */
+    public static OwnerCreatedEvent of(long seq, Integer ownerId, String customerCode,
+                                       Integer membershipLevel) {
+        return new OwnerCreatedEvent(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
+    }
+
+    /**
+     * Renders this event as a compact JSON object suitable for the structured audit log line.
+     *
+     * @return the JSON representation of this event
+     */
+    public String toJson() {
+        return MAPPER.writeValueAsString(this);
+    }
+}
