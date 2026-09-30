@@ -379,6 +379,38 @@ public class Owner extends Person {
         return value == null ? "" : value;
     }
 
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans: the country code, a space, then the
+     * national digits (everything after the country code) grouped in threes and space-separated —
+     * e.g. {@code +61412345678} becomes {@code +61 412 345 678}. The country code is recognised for
+     * '+61' (2 digits) and '+1' (1 digit); any other prefix falls back to a 2-digit country code.
+     * {@code null} when the telephone is absent or not a valid E.164 value. Derived at response time
+     * and not persisted; the raw {@link #getTelephone() telephone} stays in E.164 form.
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+\\d{8,15}")) {
+            return null;
+        }
+        String digits = this.telephone.substring(1);
+        int countryCodeLength;
+        if (digits.startsWith("61")) {
+            countryCodeLength = 2;
+        }
+        else if (digits.startsWith("1")) {
+            countryCodeLength = 1;
+        }
+        else {
+            countryCodeLength = 2;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
