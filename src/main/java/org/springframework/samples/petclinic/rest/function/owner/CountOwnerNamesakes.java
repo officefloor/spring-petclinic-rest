@@ -21,6 +21,9 @@ public class CountOwnerNamesakes {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue;
             }
+            if (existing.isDeleted()) {
+                continue; // soft-deleted owners are ignored by the identity check
+            }
             if (firstName != null && lastName != null
                     && firstName.equalsIgnoreCase(existing.getFirstName())
                     && lastName.equalsIgnoreCase(existing.getLastName())) {

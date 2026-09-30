@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
     @Transient
     private Boolean bulkSignupWarning;
 
@@ -270,6 +273,25 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether this owner has been soft-deleted via {@code DELETE /api/owners/{id}}: the record is
+     * retained and still returned by {@code GET /api/owners/{id}}, but is flagged {@code true} and
+     * ignored by the create endpoint's duplicate and identity checks. {@code false} for a newly
+     * created owner.
+     */
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /** Whether this owner is soft-deleted, treating a {@code null} flag as not deleted. */
+    public boolean isDeleted() {
+        return Boolean.TRUE.equals(this.deleted);
     }
 
     /**

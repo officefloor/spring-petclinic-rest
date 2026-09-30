@@ -35,6 +35,9 @@ public class DetectOwnerPossibleDuplicate {
                             || existing.getId().equals(owner.getId())) {
                         continue;
                     }
+                    if (existing.isDeleted()) {
+                        continue; // soft-deleted owners are ignored by the duplicate check
+                    }
                     if (householdId.equals(existing.getHouseholdId())) {
                         if (match == null || existing.getId() < match.getId()) {
                             match = existing;
