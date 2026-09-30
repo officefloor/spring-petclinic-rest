@@ -24,6 +24,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(toSelfLink(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(toTelephoneDisplay(owner))")
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(toSalutation(owner))")
@@ -102,6 +103,14 @@ public interface OwnerMapper {
         return (email != null && !email.isBlank())
                 ? OwnerDto.ContactPreferenceEnum.EMAIL
                 : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
+
+    /**
+     * The canonical API path to this owner: {@code /api/owners/} followed by the owner's id.
+     * {@code null} when the owner has not yet been assigned an id.
+     */
+    default String toSelfLink(Owner owner) {
+        return (owner.getId() == null) ? null : "/api/owners/" + owner.getId();
     }
 
     /**
