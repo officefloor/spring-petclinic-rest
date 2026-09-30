@@ -141,6 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(
+            countOwnersRegisteredOn(effectiveRegistrationDate) > BULK_SIGNUP_WARNING_THRESHOLD);
         if (sharesHousehold) {
             this.clinicService.assignHousehold(owner);
         }
@@ -276,6 +278,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code registrationDate}.
      */
     private static final int DAILY_CREATE_LIMIT = 100;
+
+    /**
+     * The number of owners that must already have been created for the current day before a new
+     * create is flagged with {@code bulkSignupWarning}. The warning is set once more than this many
+     * owners already carry today's {@code registrationDate}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
     /**
      * Rolls a registration date forward onto a business day: a date that falls on a Saturday or
