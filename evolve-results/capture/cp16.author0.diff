@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1da4060a7..f48232fdc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,7 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                 "another owner with the same last name already lives at this address");
+         }
+-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+@@ -231,22 +231,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Builds the customer code for a new owner, formatted {@code '<LAST3>-<NNNN>'} where LAST3 is the
+-     * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
+-     * sequence equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
++     * Builds the customer code for a new owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
++     * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
++     * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
++     * owners that already live in that city (e.g. {@code 'LON-SMI-0007'}).
+      *
++     * @param city     the owner's city
+      * @param lastName the owner's last name
+      * @return the assigned customer code
+      */
+-    private String nextCustomerCode(String lastName) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+-        int sequence = this.clinicService.findAllOwners().size() + 1;
+-        return String.format("%s-%04d", prefix, sequence);
++    private String nextCustomerCode(String city, String lastName) {
++        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
++        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
++        int sequence = (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
++            .count() + 1;
++        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+     }
+ 
+     /**
+      * Builds the membership number for a new owner, formatted {@code '<customerCode>-M<YY>'} where YY is
+-     * the last two digits of the registration date's year (e.g. {@code 'SMI-0007-M26'}).
++     * the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}).
+      *
+      * @param customerCode     the owner's assigned customer code
+      * @param registrationDate the owner's registration date
