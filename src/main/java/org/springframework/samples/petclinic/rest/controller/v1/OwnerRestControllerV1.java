@@ -119,7 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
-        owner.setAddress(normalizeAddress(owner.getAddress()));
+        applyAddress(owner);
         validatePostcode(owner.getCity(), owner.getPostcode());
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
@@ -181,6 +181,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
+        applyAddress(currentOwner);
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -606,6 +609,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Applies an owner's address, accepting either the structured form (a non-blank
+     * {@code addressLine1} with an optional {@code addressLine2}) or the flat {@code address} form,
+     * preferring the structured fields when present. Whichever fields are supplied are normalized
+     * (see {@link #normalizeAddress(String)}), and the stored flat {@code address} is set to the
+     * composed value: the normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when an {@code addressLine2} was supplied. When only the flat
+     * form is supplied, the normalized flat address is stored and both structured lines are cleared.
+     * This keeps the request contract backward-compatible: an owner that supplied just the flat
+     * {@code address} (plus city) is still accepted.
+     *
+     * @param owner the owner being created or updated, carrying the raw address fields
+     * @throws ResponseStatusException with {@link HttpStatus#BAD_REQUEST} if neither a non-blank
+     *                                 {@code addressLine1} nor a non-blank flat {@code address} was
+     *                                 supplied
+     */
+    private static void applyAddress(Owner owner) {
+        boolean hasStructured = owner.getAddressLine1() != null && !owner.getAddressLine1().isBlank();
+        boolean hasFlat = owner.getAddress() != null && !owner.getAddress().isBlank();
+        if (!hasStructured && !hasFlat) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "an address must be supplied, either 'addressLine1' or 'address'");
+        }
+        if (hasStructured) {
+            String line1 = normalizeAddress(owner.getAddressLine1());
+            owner.setAddressLine1(line1);
+            String composed = line1;
+            if (owner.getAddressLine2() != null && !owner.getAddressLine2().isBlank()) {
+                String line2 = normalizeAddress(owner.getAddressLine2());
+                owner.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            } else {
+                owner.setAddressLine2(null);
+            }
+            owner.setAddress(composed);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(owner.getAddress()));
+        }
+    }
 
     /**
      * Normalizes an owner address for storage. Leading/trailing whitespace is trimmed and internal
