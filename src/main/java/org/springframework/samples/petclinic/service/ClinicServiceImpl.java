@@ -22,12 +22,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectRetrievalFailureException;
 import org.springframework.samples.petclinic.model.*;
 import org.springframework.samples.petclinic.repository.*;
+import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
@@ -322,19 +320,7 @@ public class ClinicServiceImpl implements ClinicService {
     private static String hash8(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String seed = telephone + lastName;
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, 8);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return HashUtils.sha256UpperHex(telephone + lastName, 8);
     }
 
     /**
@@ -355,11 +341,13 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Finds the id of an existing owner that {@code owner} soft-matches (a possible duplicate): one
-     * that shares its lastName (case-insensitive) and postcode while carrying a <i>different</i>
-     * telephone. This is a weaker match than the hard-duplicate identity key, so it is only meaningful
-     * for an owner that is not itself a hard duplicate. When several owners match, the one with the
-     * lowest id is returned; {@code null} is returned when there is no match (or lastName/postcode is
-     * absent), meaning the owner is not a possible duplicate.
+     * whose surname shares this owner's {@code soundex(lastName)} and whose postcode matches, yet
+     * whose identity key differs (so it is not itself a hard duplicate). This is a weaker match than
+     * the hard-duplicate identity key, so it is only meaningful for an owner that is not itself a hard
+     * duplicate; in particular two owners with the same lastName and postcode but different telephones
+     * are soft matches rather than hard duplicates. When several owners match, the one with the lowest
+     * id is returned; {@code null} is returned when there is no match (or lastName/postcode is absent),
+     * meaning the owner is not a possible duplicate.
      */
     @Override
     @Transactional(readOnly = true)
@@ -367,14 +355,14 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner == null || owner.getLastName() == null || owner.getPostcode() == null) {
             return null;
         }
-        String lastName = owner.getLastName();
+        String soundex = Owner.soundex(owner.getLastName());
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
+        String identityKey = owner.getIdentityKey();
         return ownerRepository.findAll().stream()
             .filter(existing -> !existing.isDeleted())
-            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName())
+            .filter(existing -> soundex.equals(Owner.soundex(existing.getLastName()))
                 && postcode.equals(existing.getPostcode())
-                && !Objects.equals(telephone, existing.getTelephone()))
+                && !Objects.equals(identityKey, existing.getIdentityKey()))
             .map(Owner::getId)
             .filter(Objects::nonNull)
             .min(Comparator.naturalOrder())
@@ -447,24 +435,7 @@ public class ClinicServiceImpl implements ClinicService {
             || postcode == null || postcode.isBlank()) {
             return null;
         }
-        return sha256UpperHex(normalizedLastName + "|" + postcode, 12);
-    }
-
-    /**
-     * Whether any existing owner already belongs to the household identified by the given
-     * (deterministic) household id. This is the single basis for the household-duplicate rule:
-     * owners that share a last name and postcode share a household id, so a matching existing owner
-     * means the new owner is a household duplicate. Returns {@code false} when the id is absent.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsOwnerInHousehold(String householdId) throws DataAccessException {
-        if (householdId == null || householdId.isBlank()) {
-            return false;
-        }
-        return ownerRepository.findAll().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+        return HashUtils.sha256UpperHex(normalizedLastName + "|" + postcode, 12);
     }
 
     /**
@@ -535,25 +506,6 @@ public class ClinicServiceImpl implements ClinicService {
             return null;
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    /**
-     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the
-     * UTF-8 bytes of {@code seed}.
-     */
-    private static String sha256UpperHex(String seed, int length) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(seed.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                sb.append(String.format("%02X", b));
-            }
-            return sb.substring(0, length);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     @Override

@@ -143,24 +143,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // The household id is deterministic: owners that share a (normalized lastName, postcode)
-        // share it automatically. It feeds the identity key, the membership-level cap and the
-        // possible-duplicate suppression below.
+        // share it automatically. It feeds the membership-level cap and household sizing below.
         owner.setHouseholdId(this.clinicService.computeHouseholdId(owner));
-        boolean householdExists = this.clinicService.existsOwnerInHousehold(owner.getHouseholdId());
         // A new owner joining an existing household (owners sharing a normalized lastName and
         // postcode) has its membershipLevel capped at one above the current maximum membershipLevel
         // among the existing household members. With no existing household member, no cap applies.
         owner.setMembershipLevelCap(this.clinicService.computeMembershipLevelCap(owner.getHouseholdId()));
         // Hard duplicate detection is consolidated into the owner's derived identity key (see
         // Owner#getIdentityKey): reject only when the new owner's whole key matches an existing one.
+        // There is no separate household-duplicate 409: two owners sharing a lastName and postcode
+        // but differing in telephone (or email) have distinct identity keys and are allowed.
         if (this.clinicService.existsOwnerWithIdentityKey(owner.getIdentityKey())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Soft-match: shares an existing owner's lastName and postcode with a different telephone,
-        // flagged 'possibleDuplicate'. A declared household member is not a suspected duplicate, so
-        // the flag is suppressed when this owner joins an existing household.
-        Integer possibleDuplicateOf = householdExists ? null
-            : this.clinicService.findPossibleDuplicateOwnerId(owner);
+        // Soft-match: the identity key differs, yet the surname's soundex and the postcode match an
+        // existing owner, flagged 'possibleDuplicate'. This is exactly the same lastName/postcode,
+        // different telephone case that is no longer a hard duplicate.
+        Integer possibleDuplicateOf = this.clinicService.findPossibleDuplicateOwnerId(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setNamesakeCount(

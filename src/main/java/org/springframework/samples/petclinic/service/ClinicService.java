@@ -65,7 +65,6 @@ public interface ClinicService {
 	int countOwnersByCity(String city) throws DataAccessException;
 	int countOwnersByRegistrationDate(LocalDate registrationDate) throws DataAccessException;
 	String computeHouseholdId(Owner owner) throws DataAccessException;
-	boolean existsOwnerInHousehold(String householdId) throws DataAccessException;
 	int countOwnersByHouseholdId(String householdId) throws DataAccessException;
 	Collection<Owner> findOwnersByHouseholdId(String householdId) throws DataAccessException;
 	Integer computeMembershipLevelCap(String householdId) throws DataAccessException;

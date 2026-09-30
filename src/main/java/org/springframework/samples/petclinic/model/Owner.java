@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.HashUtils;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -364,18 +365,68 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived identity key, used as the single basis for duplicate detection:
-     * the normalized telephone, the email (empty when absent) and the household id (empty
-     * when absent), joined with {@code '|'}. Two owners are duplicates only when their whole
-     * identity keys are equal, so any single differing component (telephone, email or
-     * household) yields distinct keys and is allowed. Derived from persisted fields, so it is
-     * not itself a persistent column.
+     * The owner's derived identity key, used as the single basis for duplicate detection: the
+     * lower-case hex SHA-256 digest over {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}, where the telephone and email components are empty when absent. Two
+     * owners are duplicates only when their whole identity keys are equal, so any single differing
+     * component (telephone, email or the surname's soundex) yields distinct keys and is allowed.
+     * Derived from persisted fields, so it is not itself a persistent column.
      */
     @Transient
     public String getIdentityKey() {
-        return (this.telephone == null ? "" : this.telephone)
-            + "|" + (this.email == null ? "" : this.email)
-            + "|" + (this.householdId == null ? "" : this.householdId);
+        String normalizedTelephone = this.telephone == null ? "" : this.telephone;
+        String lowerEmail = this.email == null ? "" : this.email.toLowerCase();
+        String seed = normalizedTelephone + "|" + lowerEmail + "|" + soundex(getLastName());
+        return HashUtils.sha256Hex(seed);
+    }
+
+    /**
+     * Computes the American Soundex code for a name: the retained first letter followed by three
+     * digits derived from the remaining consonants (b,f,p,v-&gt;1; c,g,j,k,q,s,x,z-&gt;2; d,t-&gt;3;
+     * l-&gt;4; m,n-&gt;5; r-&gt;6), with adjacent equal codes collapsed, h and w ignored (so they do
+     * not separate equal codes) and vowels acting as separators, right-padded with zeros to length
+     * four. Returns an empty string when the value is null or holds no letters, so surnames that
+     * sound alike share a code.
+     */
+    public static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        String letters = value.toUpperCase().replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previous = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            previous = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /** Maps a letter to its Soundex digit, or {@code '0'} for vowels, y, h and w. */
+    private static char soundexDigit(char c) {
+        return switch (c) {
+            case 'B', 'F', 'P', 'V' -> '1';
+            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
+            case 'D', 'T' -> '3';
+            case 'L' -> '4';
+            case 'M', 'N' -> '5';
+            case 'R' -> '6';
+            default -> '0';
+        };
     }
 
     /**
