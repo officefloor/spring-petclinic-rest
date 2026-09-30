@@ -1,0 +1,141 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a513b5620..22e1c72f1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -37,6 +37,7 @@ public interface OwnerMapper {
+     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "formatSelfLink")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "capacityWarning", ignore = true)
++    @Mapping(target = "riskFlag", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 765ec944f..8da29bf9c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.rest.validation.AddressNormalizer;
++import org.springframework.samples.petclinic.rest.validation.EmailDomainValidator;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -119,9 +120,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
++        ownerDto.setRiskFlag(isRisk(owner));
+         return ownerDto;
+     }
+ 
++    /**
++     * Whether the owner should be flagged for review via the read-only {@code riskFlag} field: true
++     * when any of the following hold, otherwise false. The owner is a possible duplicate
++     * ({@link Owner#getPossibleDuplicate()}); its email domain is disposable-adjacent
++     * ({@link EmailDomainValidator#isDisposableAdjacent(String)}); or its city is over its soft
++     * capacity (see {@link #isOverSoftCapacity(String)}).
++     */
++    private boolean isRisk(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || EmailDomainValidator.isDisposableAdjacent(owner.getEmail())
++            || isOverSoftCapacity(owner.getCity());
++    }
++
++    /**
++     * Whether {@code city} is over its soft capacity: it already holds 40 or more owners. The soft
++     * capacity of 40 sits below the per-city hard limit of 50 enforced at create time (see
++     * {@link #addOwner}), so this stays true from 40 owners right up to the full city.
++     */
++    private boolean isOverSoftCapacity(String city) {
++        return this.clinicService.countOwnersByCity(city) >= 40;
++    }
++
+     /**
+      * Whether more than 80 owners have already been created on {@code registrationDate},
+      * signalling a bulk-signup surge for the read-only {@code bulkSignupWarning} field.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+index f7ce0c80f..411f01d60 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/EmailDomainValidator.java
+@@ -11,6 +11,15 @@ public class EmailDomainValidator implements ConstraintValidator<EmailDomainVali
+     private static final Set<String> BLOCKED_DOMAINS =
+         Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+ 
++    /**
++     * The base (second-level) labels of the blocked disposable domains, e.g. 'mailinator' for
++     * 'mailinator.com'. Used to detect disposable-adjacent domains that are not on the outright
++     * blocklist.
++     */
++    private static final Set<String> DISPOSABLE_BASES = BLOCKED_DOMAINS.stream()
++        .map(EmailDomainValidator::baseLabel)
++        .collect(java.util.stream.Collectors.toUnmodifiableSet());
++
+     @Override
+     public boolean isValid(String email, ConstraintValidatorContext context) {
+         // absence and general syntax are handled elsewhere (@NotEmpty / format: email);
+@@ -25,4 +34,38 @@ public class EmailDomainValidator implements ConstraintValidator<EmailDomainVali
+         String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+         return !BLOCKED_DOMAINS.contains(domain);
+     }
++
++    /**
++     * Whether the given email address is disposable-adjacent: its domain shares the base
++     * (second-level) label of a known disposable domain, so it is either a blocked disposable
++     * domain, a subdomain of one (e.g. 'x.mailinator.com') or the same base name under a
++     * different TLD (e.g. 'mailinator.net'). Returns false when the email or its domain is
++     * absent, or the domain has no recognisable base label.
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String base = baseLabel(email.substring(at + 1).toLowerCase(Locale.ROOT));
++        return base != null && DISPOSABLE_BASES.contains(base);
++    }
++
++    /**
++     * Returns the base (second-level) label of a domain: the label immediately before the final
++     * TLD label (e.g. 'mailinator' for both 'mailinator.com' and 'x.mailinator.com'). Null when
++     * the domain has no dot (so no distinguishable TLD).
++     */
++    private static String baseLabel(String domain) {
++        int lastDot = domain.lastIndexOf('.');
++        if (lastDot <= 0) {
++            return null;
++        }
++        String withoutTld = domain.substring(0, lastDot);
++        int prevDot = withoutTld.lastIndexOf('.');
++        return withoutTld.substring(prevDot + 1);
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d62a8b4f6..190020ffa 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2309,6 +2309,20 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any of the following hold, otherwise false: the owner
++                is a possible duplicate (possibleDuplicate is true); the owner's
++                email domain is disposable-adjacent (not itself a blocked
++                disposable domain, but a subdomain of one or sharing the base
++                label of one, e.g. 'mailinator.net' or 'x.mailinator.com'); or
++                the owner's city is over its soft capacity (already holds 40 or
++                more owners, the soft capacity below the per-city hard limit of
++                50).
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
