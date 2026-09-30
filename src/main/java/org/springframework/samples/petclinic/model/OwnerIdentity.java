@@ -4,7 +4,9 @@ import java.util.Locale;
 
 /**
  * The single definition of an owner's {@code identityKey}: the lower-case hex SHA-256 over
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}, where the
+ * {@code V2 + '|' + normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)} — the
+ * fixed {@link IdentityVersion#TAG version-2 tag} is mixed in so the key is rederived and no value
+ * produced under version 1 is produced again — where the
  * telephone is normalized to E.164 via {@link OwnerTelephones} (so a stored value and a
  * freshly created one render the same way), the email is lower-cased (empty when absent) and
  * the surname is folded to its American Soundex code by {@link Soundex} (so names that sound
@@ -29,6 +31,8 @@ public final class OwnerIdentity {
         String telephone = OwnerTelephones.toE164OrRaw(owner.getTelephone());
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String surname = Soundex.of(owner.getLastName());
-        return Hashing.sha256Hex(telephone + "|" + email + "|" + surname);
+        // Version 2: mix in the fixed version tag so the key is rederived and no value produced
+        // under version 1 is produced again.
+        return Hashing.sha256Hex(IdentityVersion.TAG + "|" + telephone + "|" + email + "|" + surname);
     }
 }

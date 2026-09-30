@@ -10,9 +10,11 @@ import org.springframework.samples.petclinic.model.EmailDomains;
 import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
+import org.springframework.samples.petclinic.model.OwnerSegment;
 import org.springframework.samples.petclinic.model.OwnerTelephones;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentifiersDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -32,12 +34,27 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(toLocality(owner))")
     @Mapping(target = "timezone", expression = "java(toTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(toContactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(toIdentityKey(owner))")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
+    @Mapping(target = "apiVersion", expression = "java(org.springframework.samples.petclinic.model.IdentityVersion.API_VERSION)")
     @Mapping(target = "ageBand", expression = "java(toAgeBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(toFiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(toOwnerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(toRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's derived identifiers grouped under the version-2 {@code identity} object: the
+     * {@code memberId} and {@code householdId} assigned on create, and the {@code identityKey}
+     * derived on read. All three are rederived with the version-2 algorithm; see
+     * {@link org.springframework.samples.petclinic.model.IdentityVersion}.
+     */
+    default OwnerIdentifiersDto toIdentity(Owner owner) {
+        OwnerIdentifiersDto identity = new OwnerIdentifiersDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(toIdentityKey(owner));
+        return identity;
+    }
 
     /**
      * The owner's risk flag, derived on read: {@code true} when the owner warrants manual
@@ -54,16 +71,10 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
-     * {@code membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
-     * {@link #toLocality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
-     * 'REGIONAL'.
+     * The owner's segment. See {@link OwnerSegment}.
      */
     default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
-        Integer level = owner.getMembershipLevel();
-        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
-        String area = CityRegions.UNKNOWN.equals(toLocality(owner)) ? "REGIONAL" : "METRO";
-        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
+        return OwnerDto.OwnerSegmentEnum.valueOf(OwnerSegment.of(owner));
     }
 
     /**
@@ -94,11 +105,11 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's locality: the region derived from the postcode by the shared
+     * The owner's locality: the plain region derived from the postcode by the shared
      * {@link CityRegions} table (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or 'UNKNOWN' when
-     * the postcode is absent or in no known range. This is the same value as the {@code <REGION>}
-     * prefix of the owner's {@code memberId}, so the locality follows the region-and-hash
-     * identity rather than the city.
+     * the postcode is absent or in no known range. The locality is <em>not</em> an identifier, so
+     * it keeps the plain region code (e.g. 'NSW') — the version-2 tag mixed into the {@code memberId}'s
+     * region prefix never appears here.
      */
     default String toLocality(Owner owner) {
         return CityRegions.identityRegion(owner.getPostcode());

@@ -89,6 +89,20 @@ public final class CityRegions {
     }
 
     /**
+     * The version-2 REGION component used <em>inside</em> the owner's identifiers (the
+     * {@code <REGION>} prefix of the {@code memberId}): the plain {@link #identityRegion(String)}
+     * region with the fixed {@link IdentityVersion#TAG version tag} mixed in (e.g. {@code V2NSW},
+     * {@code V2UNKNOWN}). Because a version-1 region code ({@code NSW}, {@code VIC}, {@code QLD},
+     * {@code UNKNOWN}) can never carry the tag, no value produced under version 1 is produced again.
+     *
+     * <p>This is an identifier-only derivation: the user-facing {@code locality} and {@code timezone}
+     * keep the plain {@link #identityRegion(String)} region, so the tag never leaks into them.
+     */
+    public static String identityRegionV2(String postcode) {
+        return IdentityVersion.TAG + identityRegion(postcode);
+    }
+
+    /**
      * The IANA timezone for {@code region} (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
      * QLD-&gt;Australia/Brisbane), or {@code null} when the region has no known timezone (including
      * {@link #UNKNOWN}).

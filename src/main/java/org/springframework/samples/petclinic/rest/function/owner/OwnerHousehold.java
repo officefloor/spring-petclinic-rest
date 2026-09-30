@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Hashing;
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -14,9 +15,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>A household is keyed on {@code (lastName, postcode)}: two owners are in the same
  * household when their normalized lastName and postcode match. The householdId is therefore
  * <em>deterministic</em> — the first 12 hex characters of SHA-256 over
- * {@code normalizedLastName + '|' + postcode} — so owners with the same lastName and
- * postcode share it automatically, with no lookup. lastName is normalized case-insensitively
- * with collapsed whitespace; the postcode is used as given (empty when absent).
+ * {@code V2 + '|' + normalizedLastName + '|' + postcode}, the fixed version-2 tag mixed in — so
+ * owners with the same lastName and postcode share it automatically, with no lookup. lastName is
+ * normalized case-insensitively with collapsed whitespace; the postcode is used as given (empty
+ * when absent).
  */
 final class OwnerHousehold {
 
@@ -25,11 +27,13 @@ final class OwnerHousehold {
 
     /**
      * The deterministic householdId for the given lastName and postcode: the first 12 hex
-     * characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Owners with the
-     * same lastName and postcode therefore compute the same householdId automatically.
+     * characters of SHA-256 over {@code V2 + '|' + normalizedLastName + '|' + postcode}. Owners
+     * with the same lastName and postcode therefore compute the same householdId automatically.
      */
     static String householdId(String lastName, String postcode) {
-        String input = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        // Version 2: mix in the fixed version tag so the householdId is rederived and no value
+        // produced under version 1 is produced again.
+        String input = IdentityVersion.TAG + "|" + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         return Hashing.sha256Hex(input).substring(0, 12);
     }
 

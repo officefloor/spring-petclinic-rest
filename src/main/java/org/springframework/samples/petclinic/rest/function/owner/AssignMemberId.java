@@ -17,8 +17,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Assigns the owner's {@code memberId}, the single unified identifier formatted
  * {@code <REGION><FY><HASH8><CHK>}:
  * <ul>
- * <li>REGION — the region derived from the postcode by the shared {@link CityRegions} table (or
- * {@code UNKNOWN} when the postcode is absent or in no known range),</li>
+ * <li>REGION — the version-2 region code from the shared {@link CityRegions} table: the plain
+ * postcode-derived region (or {@code UNKNOWN} when the postcode is absent or in no known range)
+ * with the fixed {@code V2} version tag mixed in, so no member id produced under version 1 is
+ * produced again. The tag stays inside the identifier — the user-facing locality keeps the plain
+ * region,</li>
  * <li>FY — the 2-digit fiscal year (last two digits of the fiscal year containing the
  * business-day-adjusted {@code registrationDate}) from the shared {@link FiscalYear} rule,</li>
  * <li>HASH8 — the first 8 upper-case hex characters of SHA-256 over
@@ -27,7 +30,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * regardless of the incoming format,</li>
  * <li>CHK — a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * (e.g. {@code NSW263A7F1C2D4}).
+ * (e.g. {@code V2NSW263A7F1C2D4}).
  *
  * <p>The base member id is fully determined by the owner's own fields, but two distinct owners
  * could in principle hash to the same id. When the computed id collides with an existing owner's
@@ -37,7 +40,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = CityRegions.identityRegion(owner.getPostcode());
+        String region = CityRegions.identityRegionV2(owner.getPostcode());
         String fy = String.format("%02d", FiscalYear.endingYearOf(owner.getRegistrationDate()) % 100);
         String normalizedTelephone = OwnerTelephones.toE164OrRaw(owner.getTelephone());
         String hash8 = hash8(normalizedTelephone + owner.getLastName());

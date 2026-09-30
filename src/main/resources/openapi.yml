@@ -2149,6 +2149,16 @@ components:
               minimum: 0
               example: 1
               readOnly: true
+            apiVersion:
+              title: API version
+              description: >-
+                The version of the owner API response shape. Fixed at 2: the
+                identifiers are grouped under the nested 'identity' object and
+                are derived with the version-2 algorithm.
+              type: integer
+              format: int32
+              example: 2
+              readOnly: true
             selfLink:
               title: Self link
               description: >-
@@ -2190,49 +2200,16 @@ components:
               type: string
               example: 'G.F.'
               readOnly: true
-            memberId:
-              title: Member ID
+            identity:
+              title: Identity
               description: >-
-                The owner's unified member id, formatted
-                '<REGION><FY><HASH8><CHK>' and assigned on create. REGION is the
-                region derived from the postcode by the fixed postcode-to-region
-                table (or 'UNKNOWN' when the postcode is absent or in no known
-                range). FY is the last two digits of the fiscal year containing
-                the business-day-adjusted registrationDate. HASH8 is the first 8
-                upper-case hex characters of SHA-256 over normalizedTelephone +
-                lastName (the same value used by the region-and-hash identity).
-                CHK is a single Luhn check digit computed over the digits of
-                <REGION><FY><HASH8>. On the rare collision with an existing
-                member id, '-<n>' is appended (smallest n of 2 or more) so member
-                ids stay distinct.
-              type: string
-              example: 'NSW263A7F1C2D4'
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A stable shared identifier for owners who live in the same
-                household, keyed on (lastName, postcode). It is deterministic:
-                the first 12 hex characters of SHA-256 over
-                normalizedLastName + '|' + postcode, so owners with the same
-                lastName and postcode always receive the same value. Assigned to
-                every owner on create.
-              type: string
-              example: 'e6b1c2d40f3a'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key, a read-only composite of
-                normalizedTelephone + '|' + (email or empty) + '|' + householdId,
-                where the telephone is the stored E.164 form, the email is
-                lower-cased (empty when absent) and the householdId is the
-                deterministic (lastName, postcode) hash. Duplicate detection is
-                keyed on the household: a create is rejected 409 when another
-                owner already shares the householdId, unless sharesHousehold is
-                set.
-              type: string
-              example: '+61412345678|george.franklin@example.com|e6b1c2d40f3a'
+                The owner's derived identifiers, grouped under a nested object in
+                version 2: the memberId, householdId and identityKey. Each is
+                rederived with a version-2 algorithm that mixes in a fixed 'V2'
+                version tag, so no value produced under version 1 is produced
+                again.
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentifiers'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2412,6 +2389,56 @@ components:
               readOnly: true
           required:
             - pets
+    OwnerIdentifiers:
+      title: Owner identifiers
+      description: >-
+        The owner's derived identifiers, grouped together in version 2. Every
+        value is rederived with a version-2 algorithm that mixes in a fixed 'V2'
+        version tag, so no value produced under version 1 is produced again. The
+        'V2' tag appears only inside these identifiers, never in the user-facing
+        locality, timezone or owner segment.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>'
+            and assigned on create. REGION is the version-2 region code derived
+            from the postcode (the plain postcode-to-region region, or 'UNKNOWN'
+            when the postcode is absent or in no known range, with the fixed 'V2'
+            version tag mixed in). FY is the last two digits of the fiscal year
+            containing the business-day-adjusted registrationDate. HASH8 is the
+            first 8 upper-case hex characters of SHA-256 over normalizedTelephone
+            + lastName. CHK is a single Luhn check digit computed over the digits
+            of <REGION><FY><HASH8>. On the rare collision with an existing member
+            id, '-<n>' is appended (smallest n of 2 or more) so member ids stay
+            distinct.
+          type: string
+          example: 'V2NSW263A7F1C2D4'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable shared identifier for owners who live in the same household,
+            keyed on (lastName, postcode). It is deterministic: the first 12 hex
+            characters of SHA-256 over the fixed 'V2' version tag +
+            normalizedLastName + '|' + postcode, so owners with the same lastName
+            and postcode always receive the same value. Assigned to every owner
+            on create.
+          type: string
+          example: 'e6b1c2d40f3a'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key: the lower-case hex SHA-256 over the
+            fixed 'V2' version tag + normalizedTelephone + '|' + (email or empty)
+            + '|' + soundex(lastName), where the telephone is the stored E.164
+            form and the email is lower-cased (empty when absent). Duplicate
+            detection on create is keyed on this value.
+          type: string
+          example: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'
+          readOnly: true
     OwnerPage:
       title: Owner page
       description: A page of pet owners.
