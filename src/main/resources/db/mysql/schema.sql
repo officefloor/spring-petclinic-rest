@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   bulk_signup_warning BOOLEAN,
   membership_level INT,
   postcode VARCHAR(4),
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INT,
   INDEX(last_name)
 ) engine=InnoDB;
 
