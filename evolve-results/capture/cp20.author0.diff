@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7da023131..fbbc19194 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -131,14 +131,31 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Defaults the registration date to the server's current date when none was supplied,
+-     * so the create-time default applies to any persistence path.
++     * Establishes the effective registration date at persist time, so the create-time default
++     * applies to any persistence path. The date is taken from the supplied value, or defaulted to
++     * the server's current date when none was supplied, and then rolled forward onto a business day
++     * (a Saturday or Sunday becomes the following Monday).
+      */
+     @PrePersist
+     protected void defaultRegistrationDate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
++        LocalDate effective = this.registrationDate == null ? LocalDate.now() : this.registrationDate;
++        this.registrationDate = toBusinessDay(effective);
++    }
++
++    /**
++     * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced to the
++     * following Monday, while any weekday (and {@code null}) is returned unchanged. Applying this to a
++     * date that is already a business day is a no-op, so it is safe to call more than once.
++     */
++    public static LocalDate toBusinessDay(LocalDate date) {
++        if (date == null) {
++            return null;
+         }
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a1124d864..c150d8aff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,7 +102,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        if (this.clinicService.countOwnersByRegistrationDate(LocalDate.now()) >= 100) {
++        LocalDate registrationDate = Owner.toBusinessDay(
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
++        owner.setRegistrationDate(registrationDate);
++        if (this.clinicService.countOwnersByRegistrationDate(registrationDate) >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
