@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+index b2977c7be..3641ce538 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/CustomerCode.java
+@@ -44,6 +44,20 @@ public final class CustomerCode {
+         return region + SEPARATOR + hash8;
+     }
+ 
++    /**
++     * Spell a de-duplicated customer code by appending a numeric suffix to {@code base}, joined with the
++     * same {@link #SEPARATOR} as {@link #format(String, String)} so the dedup suffix cannot drift from
++     * the region/hash separator. Used when a computed code collides with an existing owner's: callers try
++     * {@code n} of 2, 3, ... until the result is unique (e.g. {@code NSW-1A2B3C4D-2}).
++     *
++     * @param base the colliding base code to disambiguate
++     * @param n    the suffix number (2 or more)
++     * @return {@code base}, the separator and {@code n}
++     */
++    public static String withSuffix(String base, int n) {
++        return base + SEPARATOR + n;
++    }
++
+     /**
+      * Compute the {@code HASH8} component: the first 8 upper-case hex characters of
+      * {@code SHA-256(normalizedTelephone + lastName)}, where the telephone is normalized to E.164 form
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 1fec34fcd..ae9653f53 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -1,9 +1,13 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.HashSet;
++import java.util.Set;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.Regions;
+ import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Runs after {@link BuildOwner} and before {@link SaveOwner} on {@code POST /api/owners}. Assigns the
+@@ -13,12 +17,31 @@ import org.springframework.samples.petclinic.model.Owner;
+  * hex characters of {@code SHA-256(normalizedTelephone + lastName)} (see
+  * {@link CustomerCode#hash8(String, String)}, e.g. {@code NSW-1A2B3C4D}). The identity no longer uses
+  * per-city sequence numbers, so this step depends only on the owner's own fields.
++ *
++ * <p>When the computed code collides with an existing owner's {@code customerCode}, {@code -<n>} is
++ * appended with the smallest {@code n} of 2 or more that makes it unique (e.g. {@code NSW-1A2B3C4D-2}),
++ * so distinct owners always get distinct customer codes. The new owner is still unsaved, so it is not
++ * among the owners compared against here and cannot collide with itself.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = Regions.regionForPostcode(owner.getPostcode());
+         String hash8 = CustomerCode.hash8(owner.getTelephone(), owner.getLastName());
+-        owner.setCustomerCode(CustomerCode.format(region, hash8));
++        String base = CustomerCode.format(region, hash8);
++
++        Set<String> existing = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            String code = other.getCustomerCode();
++            if (code != null) {
++                existing.add(code);
++            }
++        }
++
++        String code = base;
++        for (int n = 2; existing.contains(code); n++) {
++            code = CustomerCode.withSuffix(base, n);
++        }
++        owner.setCustomerCode(code);
+     }
+ }
