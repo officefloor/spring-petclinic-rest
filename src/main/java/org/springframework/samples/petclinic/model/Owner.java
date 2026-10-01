@@ -323,6 +323,36 @@ public class Owner extends Person {
     }
 
     /**
+     * Compute an owner's {@code identityKey}, the single derived value through which all
+     * duplicate detection is now expressed. It consolidates the three formerly separate
+     * telephone, email and household duplicate checks into one key, formatted as
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}:
+     * <ul>
+     *   <li>the normalized telephone (see {@link #normalizeTelephone(String)}),</li>
+     *   <li>the normalized email (see {@link #normalizeEmail(String)}), or the empty string
+     *       when no email is present, and</li>
+     *   <li>the household id (see {@link #householdId(String, String)}).</li>
+     * </ul>
+     * A {@code null} component is rendered as the empty string. Two owners are the same identity
+     * only when their <em>whole</em> keys are equal; because the telephone is part of the key, two
+     * members of the same household with different telephones have different keys.
+     *
+     * @param telephone the owner's raw telephone, possibly {@code null}
+     * @param email the owner's email, possibly {@code null}
+     * @param lastName the owner's last name, possibly {@code null}
+     * @param address the owner's address, possibly {@code null}
+     * @return the identity key, never {@code null}
+     */
+    public static String identityKey(String telephone, String email, String lastName, String address) {
+        String normalizedTelephone = normalizeTelephone(telephone);
+        String normalizedEmail = normalizeEmail(email);
+        String household = householdId(lastName, address);
+        return (normalizedTelephone == null ? "" : normalizedTelephone)
+            + "|" + (normalizedEmail == null ? "" : normalizedEmail)
+            + "|" + (household == null ? "" : household);
+    }
+
+    /**
      * Build an owner's {@code membershipNumber}, the stable membership identifier derived from the
      * owner's own persisted fields. It is formatted {@code '<customerCode>-M<YY>'} where {@code YY}
      * is the last two digits of the registration date's year (e.g. {@code 'LON-SMI-0007-M26'}). The

@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(formatBulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Format an owner's name as 'LastName, FirstName' from the stored names. */
@@ -114,6 +115,18 @@ public interface OwnerMapper {
             return null;
         }
         return Owner.contactPreference(owner.getEmail());
+    }
+
+    /**
+     * Compute the owner's identity key, the single derived value consolidating the telephone, email
+     * and household duplicate checks (see
+     * {@link Owner#identityKey(String, String, String, String)}).
+     */
+    default String formatIdentityKey(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return Owner.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
     }
 
     Owner toOwner(OwnerDto ownerDto);

@@ -17,13 +17,15 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown by the service layer when an owner is saved with a normalized telephone that is
- * already used by another owner. Mapped to an HTTP 409 Conflict response by the web layer.
+ * Thrown by the service layer when an owner is saved whose derived {@code identityKey} (the single
+ * key consolidating the former telephone, email and household duplicate checks, see
+ * {@link org.springframework.samples.petclinic.model.Owner#identityKey(String, String, String, String)})
+ * already belongs to another owner. Mapped to an HTTP 409 Conflict response by the web layer.
  */
-public class DuplicateTelephoneException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
-    public DuplicateTelephoneException(String telephone) {
-        super("An owner with telephone '" + telephone + "' already exists");
+    public DuplicateIdentityException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
     }
 
 }

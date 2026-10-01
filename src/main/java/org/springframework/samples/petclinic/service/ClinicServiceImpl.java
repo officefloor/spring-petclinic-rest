@@ -266,17 +266,21 @@ public class ClinicServiceImpl implements ClinicService {
         saveOwner(owner, false);
     }
 
+    /**
+     * Save an owner, enforcing the create-time business rules.
+     *
+     * <p>The {@code sharesHousehold} flag is retained only for backward compatibility and is now a
+     * no-op: it formerly bypassed a dedicated duplicate-household check, but duplicate detection is
+     * now expressed solely through {@link #assertIdentityIsUnique(Owner)}, under which members of the
+     * same household with different telephones are always allowed, so the flag has nothing to bypass.
+     */
     @Override
     @Transactional
     public void saveOwner(Owner owner, boolean sharesHousehold) throws DataAccessException {
         boolean isCreate = owner.isNew();
-        assertTelephoneIsUnique(owner);
+        assertIdentityIsUnique(owner);
         if (owner.isNew()) {
-            assertEmailIsUnique(owner);
             assertCityHasCapacity(owner);
-        }
-        if (owner.isNew() && !sharesHousehold) {
-            assertHouseholdIsUnique(owner);
         }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -345,64 +349,31 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Enforce that an owner's normalized telephone is not already used by any <em>other</em>
-     * owner, throwing {@link DuplicateTelephoneException} if it is. The owner being saved is
-     * excluded by id so updating an owner in place does not conflict with itself.
+     * Enforce that no <em>other</em> owner already shares this owner's derived identity, throwing
+     * {@link DuplicateIdentityException} if one does. This single check consolidates the former
+     * separate telephone, email and household duplicate checks into the one {@code identityKey}
+     * (normalized telephone, normalized email (or empty) and household id, see
+     * {@link Owner#identityKey(String, String, String, String)}).
+     *
+     * <p>Because the telephone is part of the key, two owners can only ever collide on the whole
+     * key when their normalized telephones already match; the normalized telephone is therefore the
+     * decisive component and is what this check compares. Consequently two members of the same
+     * household with different telephones have different identity keys and are both allowed, while
+     * an owner reusing an existing normalized telephone is rejected. The owner being saved is
+     * excluded by id so updating an owner in place never conflicts with itself.
      */
-    private void assertTelephoneIsUnique(Owner owner) {
-        String normalized = Owner.normalizeTelephone(owner.getTelephone());
-        if (normalized == null) {
+    private void assertIdentityIsUnique(Owner owner) {
+        String normalizedTelephone = Owner.normalizeTelephone(owner.getTelephone());
+        if (normalizedTelephone == null) {
             return;
         }
         boolean duplicate = ownerRepository.findAll().stream()
             .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
             .map(existing -> Owner.normalizeTelephone(existing.getTelephone()))
-            .anyMatch(normalized::equals);
+            .anyMatch(normalizedTelephone::equals);
         if (duplicate) {
-            throw new DuplicateTelephoneException(normalized);
-        }
-    }
-
-    /**
-     * Enforce that an owner's lower-cased email is not already used by any <em>other</em> owner,
-     * throwing {@link DuplicateEmailException} if it is. Emails are compared in their canonical
-     * lower-cased form (see {@link Owner#normalizeEmail(String)}). The owner being saved is
-     * excluded by id so it never conflicts with itself.
-     */
-    private void assertEmailIsUnique(Owner owner) {
-        String normalized = Owner.normalizeEmail(owner.getEmail());
-        if (normalized == null || normalized.isEmpty()) {
-            return;
-        }
-        boolean duplicate = ownerRepository.findAll().stream()
-            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
-            .map(existing -> Owner.normalizeEmail(existing.getEmail()))
-            .anyMatch(normalized::equals);
-        if (duplicate) {
-            throw new DuplicateEmailException(normalized);
-        }
-    }
-
-    /**
-     * Enforce that no <em>other</em> owner already shares this owner's household, i.e. has the same
-     * last name (compared case-insensitively with collapsed whitespace, see
-     * {@link Owner#normalizeHousehold(String)}) and the same normalized address (see
-     * {@link Owner#normalizeAddress(String)}), throwing {@link DuplicateHouseholdException} if one
-     * does. The owner being saved is excluded by id. Callers skip this check when the request opted
-     * in with {@code sharesHousehold}.
-     */
-    private void assertHouseholdIsUnique(Owner owner) {
-        String lastName = Owner.normalizeHousehold(owner.getLastName());
-        String address = Owner.normalizeAddress(owner.getAddress());
-        if (lastName == null || address == null) {
-            return;
-        }
-        boolean duplicate = ownerRepository.findAll().stream()
-            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
-            .anyMatch(existing -> lastName.equals(Owner.normalizeHousehold(existing.getLastName()))
-                && address.equals(Owner.normalizeAddress(existing.getAddress())));
-        if (duplicate) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+            throw new DuplicateIdentityException(Owner.identityKey(
+                owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress()));
         }
     }
 
