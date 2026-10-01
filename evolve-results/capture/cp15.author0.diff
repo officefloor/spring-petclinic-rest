@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 774fd7422..548a96cb9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "formatDisplayName")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "formatInitials")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "formatMembershipNumber")
++    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "formatMembershipTier")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -76,6 +77,25 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /**
++     * Derives an owner's membership tier, as required by the API's read-only
++     * {@code membershipTier} field: {@code SILVER} when the owner has no namesakes
++     * ({@code namesakeCount} is 0) and an email address is present, otherwise
++     * {@code BRONZE}.
++     *
++     * <p>{@code @Named} keeps this out of MapStruct's automatic method selection, so it is
++     * applied only where referenced via {@code qualifiedByName}.
++     */
++    @Named("formatMembershipTier")
++    default OwnerDto.MembershipTierEnum formatMembershipTier(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
++        return noNamesakes && hasEmail ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
++    }
++
+     private static String initial(String name) {
+         if (name == null || name.isEmpty()) {
+             return "";
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 44972fc94..129a3fb42 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2150,6 +2150,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: >-
++                The pet owner's membership tier: 'SILVER' when the owner has no namesakes
++                (namesakeCount is 0) and an email address is present, otherwise 'BRONZE'.
++              type: string
++              enum:
++                - SILVER
++                - BRONZE
++              example: 'SILVER'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
